@@ -1,0 +1,15 @@
+{
+  "typescript.tsdk": "frontend/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.tsserver.maxTsServerMemory": 4096,
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/frontend/dist/**": true,
+    "**/frontend/node_modules/**": true
+  },
+  "search.exclude": {
+    "**/frontend/dist": true,
+    "**/frontend/node_modules": true
+  }
+}
