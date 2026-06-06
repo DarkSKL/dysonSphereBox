@@ -3,6 +3,8 @@ package main
 import (
 	"embed"
 
+	"DysonSphereBox/service"
+
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -14,6 +16,7 @@ var assets embed.FS
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
+	services := append([]interface{}{app}, service.RegisterServices()...)
 
 	// Create application with options
 	err := wails.Run(&options.App{
@@ -25,9 +28,7 @@ func main() {
 		},
 		//BackgroundColour: &options.RGBA{R: 224, G: 218, B: 220, A: 1},
 		OnStartup: app.startup,
-		Bind: []interface{}{
-			app,
-		},
+		Bind:      services,
 	})
 
 	if err != nil {

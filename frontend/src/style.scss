@@ -1,3 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #fbfbfc;
+  color: #09090b;
+  font-family: "Nunito", "Microsoft YaHei", "PingFang SC", sans-serif;
+}

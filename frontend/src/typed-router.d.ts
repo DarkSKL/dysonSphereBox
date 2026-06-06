@@ -30,6 +30,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/about': RouteRecordInfo<
+      '/about',
+      '/about',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/dashboard': RouteRecordInfo<
       '/dashboard',
       '/dashboard',
@@ -37,9 +44,16 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/plain': RouteRecordInfo<
-      '/plain',
-      '/plain',
+    '/mod': RouteRecordInfo<
+      '/mod',
+      '/mod',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings': RouteRecordInfo<
+      '/settings',
+      '/settings',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -63,15 +77,27 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
+    'src/pages/about.vue': {
+      routes:
+        | '/about'
+      views:
+        | never
+    }
     'src/pages/dashboard.vue': {
       routes:
         | '/dashboard'
       views:
         | never
     }
-    'src/pages/plain.vue': {
+    'src/pages/mod.vue': {
       routes:
-        | '/plain'
+        | '/mod'
+      views:
+        | never
+    }
+    'src/pages/settings.vue': {
+      routes:
+        | '/settings'
       views:
         | never
     }
