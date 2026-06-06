@@ -1,12 +1,29 @@
 <script setup lang="ts">
+definePage({
+  meta: {
+    layout: 'main',
+    title: 'Home',
+  },
+})
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-3xl">
+  <section class="grid gap-4">
     <n-card title="Home">
-      <p class="text-lg font-semibold text-red-500">这是自动路由首页，对应路径 /。</p>
+      <p class="text-base text-slate-700">
+        这个页面使用 main layout，不开启 KeepAlive。
+      </p>
     </n-card>
-  </main>
+
+    <div class="flex flex-wrap gap-3">
+      <RouterLink to="/dashboard">
+        <n-button type="primary">Open Cached Dashboard</n-button>
+      </RouterLink>
+      <RouterLink to="/plain">
+        <n-button>Open Blank Layout</n-button>
+      </RouterLink>
+    </div>
+  </section>
 </template>
 
 <style scoped lang="scss"></style>

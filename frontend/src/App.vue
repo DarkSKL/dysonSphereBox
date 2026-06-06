@@ -1,22 +1,29 @@
 <script lang="ts" setup>
+import {computed} from 'vue'
+import {useRoute} from 'vue-router'
+import BlankLayout from './layouts/BlankLayout.vue'
+import MainLayout from './layouts/MainLayout.vue'
+
+const route = useRoute()
+
+const layouts = {
+  main: MainLayout,
+  blank: BlankLayout,
+}
+
+const layoutComponent = computed(() => layouts[route.meta.layout || 'main'])
+const shouldKeepAlive = computed(() => route.meta.keepAlive === true)
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-950 p-8 text-slate-100">
-    <nav class="mb-8 flex flex-wrap justify-center gap-3">
-      <RouterLink to="/">
-        <n-button quaternary >Home</n-button>
-      </RouterLink>
-      <RouterLink to="/about">
-        <n-button quaternary>About</n-button>
-      </RouterLink>
-      <RouterLink to="/boxes/demo-001">
-        <n-button quaternary>Box Demo</n-button>
-      </RouterLink>
-    </nav>
-    <RouterView />
-  </div>
-
+  <component :is="layoutComponent">
+    <RouterView v-slot="{ Component }">
+      <KeepAlive>
+        <component :is="Component" v-if="shouldKeepAlive" />
+      </KeepAlive>
+      <component :is="Component" v-if="!shouldKeepAlive" />
+    </RouterView>
+  </component>
 </template>
 
 <style lang="scss"></style>

@@ -30,18 +30,18 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/about': RouteRecordInfo<
-      '/about',
-      '/about',
+    '/dashboard': RouteRecordInfo<
+      '/dashboard',
+      '/dashboard',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/boxes/[id]': RouteRecordInfo<
-      '/boxes/[id]',
-      '/boxes/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
+    '/plain': RouteRecordInfo<
+      '/plain',
+      '/plain',
+      Record<never, never>,
+      Record<never, never>,
       | never
     >,
   }
@@ -63,15 +63,15 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/about.vue': {
+    'src/pages/dashboard.vue': {
       routes:
-        | '/about'
+        | '/dashboard'
       views:
         | never
     }
-    'src/pages/boxes/[id].vue': {
+    'src/pages/plain.vue': {
       routes:
-        | '/boxes/[id]'
+        | '/plain'
       views:
         | never
     }
