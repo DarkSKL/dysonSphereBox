@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {CheckCircle2, PackageOpen, Trash2, UsersRound, Wrench} from '@lucide/vue'
 import type {ModPackageKey} from '../../composables/useWorkshopState'
 
 defineProps<{
@@ -31,12 +32,12 @@ defineEmits<{
       </div>
       <button
         v-if="installed && !installing"
-        class="grid h-7 w-7 shrink-0 place-items-center rounded border border-red-200 text-xs text-red-600 opacity-0 transition hover:bg-red-50 group-hover:opacity-100"
+        class="grid h-7 w-7 shrink-0 place-items-center rounded border border-red-200 text-red-600 opacity-0 transition hover:bg-red-50 group-hover:opacity-100"
         type="button"
         title="卸载"
         @click.stop="$emit('uninstall', packageKey)"
       >
-        ×
+        <Trash2 :size="14" :stroke-width="1.8" />
       </button>
     </div>
 
@@ -46,16 +47,19 @@ defineEmits<{
 
     <div class="relative grid flex-1 place-items-center border-t border-zinc-200 bg-zinc-50">
       <div class="mod-pack-emblem">
-        <span>{{ packageKey === 'nebula' ? 'N' : 'Q' }}</span>
+        <UsersRound v-if="packageKey === 'nebula'" :size="34" :stroke-width="1.7" />
+        <Wrench v-else :size="34" :stroke-width="1.7" />
       </div>
       <div class="absolute bottom-2 right-2 rounded border border-zinc-200 bg-white/90 px-2 py-0.5 text-xs text-zinc-600">
-        {{ fileCount }} 个文件
+        <PackageOpen :size="12" :stroke-width="1.8" class="mr-1 inline-block align-[-2px]" />
+        <span>{{ fileCount }} 个文件</span>
       </div>
       <div
         v-if="installed && !installing"
-        class="absolute left-2 top-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700"
+        class="absolute left-2 top-2 flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700"
       >
-        已安装
+        <CheckCircle2 :size="12" :stroke-width="1.9" />
+        <span>已安装</span>
       </div>
       <div v-if="installing" class="absolute inset-0 grid place-items-center bg-white/75 backdrop-blur-sm">
         <div class="text-center">

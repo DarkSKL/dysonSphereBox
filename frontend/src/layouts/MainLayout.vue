@@ -1,14 +1,15 @@
 <script setup lang="ts">
+import {Activity, Home, Info, Package, Settings} from '@lucide/vue'
 import {computed} from 'vue'
 import {useRoute} from 'vue-router'
 
 const route = useRoute()
 
 const navItems = [
-  {label: '首页', to: '/', icon: '⌂'},
-  {label: 'Mod', to: '/mod', icon: '▣'},
-  {label: '设置', to: '/settings', icon: '⚙'},
-  {label: '关于我们', to: '/about', icon: 'i'},
+  {label: '首页', to: '/', icon: Home},
+  {label: 'Mod', to: '/mod', icon: Package},
+  {label: '设置', to: '/settings', icon: Settings},
+  {label: '关于我们', to: '/about', icon: Info},
 ]
 
 const title = computed(() => route.meta.title || 'DysonSphereBox')
@@ -32,7 +33,7 @@ const title = computed(() => route.meta.title || 'DysonSphereBox')
           class="flex h-10 items-center gap-3 rounded border border-transparent px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-200 hover:bg-white hover:text-zinc-950"
           active-class="border-blue-200 bg-blue-50 text-blue-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
         >
-          <span class="grid h-4 w-4 place-items-center text-[13px] leading-none">{{ item.icon }}</span>
+          <component :is="item.icon" :size="16" :stroke-width="1.8" class="shrink-0" />
           <span class="truncate">{{ item.label }}</span>
         </RouterLink>
       </nav>
@@ -41,7 +42,7 @@ const title = computed(() => route.meta.title || 'DysonSphereBox')
         <div class="rounded border border-zinc-200 bg-white px-3 py-2">
           <div class="flex items-center justify-between gap-2">
             <span class="text-xs text-zinc-500">运行状态</span>
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            <Activity :size="14" :stroke-width="2" class="text-emerald-500" />
           </div>
           <p class="mt-1 text-xs text-zinc-800">本地 UI 预览</p>
         </div>

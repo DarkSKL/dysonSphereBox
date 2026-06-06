@@ -3,6 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+
+	"DysonSphereBox/core"
+	"DysonSphereBox/utils"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -19,6 +24,16 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	if err := core.InitDatabase(databaseTemplate); err != nil {
+		panic(fmt.Errorf("init database: %w", err))
+	}
+}
+
+func (a *App) shutdown(ctx context.Context) {
+	if err := core.CloseDatabase(); err != nil {
+		fmt.Printf("close database: %v\n", err)
+	}
 }
 
 // Greet returns a greeting for the given name
@@ -33,4 +48,31 @@ func (a *App) ReadBoxName(id string) (string, error) {
 	fmt.Printf("Reading box name: %s\n", id)
 
 	return "Box " + id, nil
+}
+
+func (a *App) SelectDysonSphereDirectory() (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("app context is not initialized")
+	}
+
+	dirPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择戴森球计划安装目录",
+	})
+	if err != nil || dirPath == "" {
+		return dirPath, err
+	}
+
+	normalizedDirPath := utils.NormalizeDysonSphereDir(dirPath)
+	if normalizedDirPath == "" {
+		return dirPath, nil
+	}
+
+	if core.GLOBAL.Configure == nil || core.GLOBAL.Configure.GameStartFilePath == nil {
+		return "", fmt.Errorf("configure is not initialized")
+	}
+	if err := core.GLOBAL.Configure.GameStartFilePath.Set(normalizedDirPath); err != nil {
+		return "", err
+	}
+
+	return normalizedDirPath, nil
 }

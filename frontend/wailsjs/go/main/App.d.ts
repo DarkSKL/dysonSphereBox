@@ -4,3 +4,5 @@
 export function Greet(arg1:string):Promise<string>;
 
 export function ReadBoxName(arg1:string):Promise<string>;
+
+export function SelectDysonSphereDirectory():Promise<string>;

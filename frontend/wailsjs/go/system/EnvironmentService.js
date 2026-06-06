@@ -5,3 +5,7 @@
 export function CheckDysonSphereExe(arg1) {
   return window['go']['system']['EnvironmentService']['CheckDysonSphereExe'](arg1);
 }
+
+export function LoadOrInitDysonSphereExe() {
+  return window['go']['system']['EnvironmentService']['LoadOrInitDysonSphereExe']();
+}

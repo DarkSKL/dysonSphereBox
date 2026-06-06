@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {ExternalLink, GitFork, Mail} from '@lucide/vue'
+
 definePage({
   meta: {
     layout: 'main',
@@ -7,9 +9,21 @@ definePage({
 })
 
 const links = [
-  {label: 'github.com/dyson-workshop/dsp-mod-manager', href: 'https://github.com/dyson-workshop/dsp-mod-manager'},
-  {label: 'GitHub Issues', href: 'https://github.com/dyson-workshop/dsp-mod-manager/issues'},
-  {label: 'support@dyson-workshop.com', href: 'mailto:support@dyson-workshop.com'},
+  {
+    label: 'github.com/dyson-workshop/dsp-mod-manager',
+    href: 'https://github.com/dyson-workshop/dsp-mod-manager',
+    icon: GitFork,
+  },
+  {
+    label: 'GitHub Issues',
+    href: 'https://github.com/dyson-workshop/dsp-mod-manager/issues',
+    icon: GitFork,
+  },
+  {
+    label: 'support@dyson-workshop.com',
+    href: 'mailto:support@dyson-workshop.com',
+    icon: Mail,
+  },
 ]
 
 const credits = [
@@ -45,8 +59,11 @@ const credits = [
             target="_blank"
             class="flex items-center justify-between rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 transition hover:border-zinc-950 hover:text-zinc-950"
           >
-            <span class="truncate">{{ link.label }}</span>
-            <span class="ml-3 text-xs text-zinc-400">↗</span>
+            <span class="flex min-w-0 items-center gap-2">
+              <component :is="link.icon" :size="16" :stroke-width="1.8" class="shrink-0" />
+              <span class="truncate">{{ link.label }}</span>
+            </span>
+            <ExternalLink :size="14" :stroke-width="1.8" class="ml-3 shrink-0 text-zinc-400" />
           </a>
         </div>
       </section>

@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import {FolderOpen, Search} from '@lucide/vue'
 import {ref} from 'vue'
+import {SelectDysonSphereDirectory} from '../../wailsjs/go/main/App'
+import {LoadOrInitDysonSphereExe} from '../../wailsjs/go/system/EnvironmentService'
 import {useWorkshopState} from '../composables/useWorkshopState'
 
 definePage({
@@ -15,15 +18,48 @@ const {
   autoStart,
   checkUpdate,
   isGamePathValid,
-  resetGamePath,
 } = useWorkshopState()
 
 const clearConfirmVisible = ref(false)
+const isSelectingGamePath = ref(false)
+const isLoadingGamePath = ref(false)
 const serverOptions = [
   {label: '国内 CDN (阿里云) - 推荐', value: 'aliyun'},
   {label: 'GitHub Releases', value: 'github'},
   {label: 'Thunderstore', value: 'thunderstore'},
 ]
+
+const selectGamePath = async (): Promise<void> => {
+  if (isSelectingGamePath.value) {
+    return
+  }
+
+  isSelectingGamePath.value = true
+  try {
+    const selectedPath = await SelectDysonSphereDirectory()
+    if (selectedPath) {
+      gamePath.value = selectedPath
+    }
+  } finally {
+    isSelectingGamePath.value = false
+  }
+}
+
+const loadGamePathFromEnvironment = async (): Promise<void> => {
+  if (isLoadingGamePath.value) {
+    return
+  }
+
+  isLoadingGamePath.value = true
+  try {
+    const detectedPath = await LoadOrInitDysonSphereExe()
+    if (detectedPath) {
+      gamePath.value = detectedPath
+    }
+  } finally {
+    isLoadingGamePath.value = false
+  }
+}
 </script>
 
 <template>
@@ -35,7 +71,18 @@ const serverOptions = [
         <label class="mb-2 block text-sm font-semibold text-zinc-950">游戏路径</label>
         <div class="flex gap-2">
           <n-input v-model:value="gamePath" placeholder="请选择游戏安装目录" />
-          <n-button secondary @click="resetGamePath">选择</n-button>
+          <n-button secondary :loading="isSelectingGamePath" @click="selectGamePath">
+            <template #icon>
+              <FolderOpen :size="16" :stroke-width="1.8" />
+            </template>
+            选择
+          </n-button>
+          <n-button secondary :loading="isLoadingGamePath" @click="loadGamePathFromEnvironment">
+            <template #icon>
+              <Search :size="16" :stroke-width="1.8" />
+            </template>
+            自动获取
+          </n-button>
         </div>
         <p v-if="!isGamePathValid" class="mt-2 text-sm text-red-600">未在该目录下找到 DSPGAME.exe</p>
         <p v-else class="mt-2 text-xs text-zinc-500">已自动检测到游戏路径</p>

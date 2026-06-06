@@ -9,3 +9,7 @@ export function Greet(arg1) {
 export function ReadBoxName(arg1) {
   return window['go']['main']['App']['ReadBoxName'](arg1);
 }
+
+export function SelectDysonSphereDirectory() {
+  return window['go']['main']['App']['SelectDysonSphereDirectory']();
+}

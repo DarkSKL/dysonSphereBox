@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {CheckCircle2, X} from '@lucide/vue'
 import {computed} from 'vue'
 import type {ModPackage, ModPackageKey} from '../../composables/useWorkshopState'
 
@@ -29,7 +30,11 @@ const handleInstall = (): void => {
   <n-modal :show="show" @update:show="$emit('update:show', $event)">
     <n-card class="w-[42rem] max-w-[calc(100vw-2rem)]" :title="title" :bordered="false" role="dialog" aria-modal="true">
       <template #header-extra>
-        <n-button quaternary size="small" @click="$emit('update:show', false)">关闭</n-button>
+        <n-button quaternary circle size="small" title="关闭" @click="$emit('update:show', false)">
+          <template #icon>
+            <X :size="16" :stroke-width="1.8" />
+          </template>
+        </n-button>
       </template>
 
       <div v-if="pack">
@@ -55,6 +60,9 @@ const handleInstall = (): void => {
         <div class="flex items-center justify-between gap-4">
           <p class="text-xs text-zinc-500">所有 Mod 文件均从国内服务器下载，无需加速器。</p>
           <n-button type="primary" @click="handleInstall">
+            <template v-if="installed" #icon>
+              <CheckCircle2 :size="16" :stroke-width="1.8" />
+            </template>
             {{ installed ? '重新安装' : '一键安装' }}
           </n-button>
         </div>

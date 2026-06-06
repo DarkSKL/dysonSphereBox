@@ -13,6 +13,9 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed app.db
+var databaseTemplate []byte
+
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
@@ -27,8 +30,9 @@ func main() {
 			Assets: assets,
 		},
 		//BackgroundColour: &options.RGBA{R: 224, G: 218, B: 220, A: 1},
-		OnStartup: app.startup,
-		Bind:      services,
+		OnStartup:  app.startup,
+		OnShutdown: app.shutdown,
+		Bind:       services,
 	})
 
 	if err != nil {
