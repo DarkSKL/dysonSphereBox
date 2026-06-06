@@ -5,6 +5,7 @@ go 1.23.0
 require (
 	github.com/glebarez/sqlite v1.10.0
 	github.com/wailsapp/wails/v2 v2.12.0
+	golang.org/x/sys v0.31.0
 	gorm.io/datatypes v1.2.7
 	gorm.io/gorm v1.31.1
 )
@@ -45,7 +46,6 @@ require (
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20230315142452-642cacee5cc0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	gorm.io/driver/mysql v1.5.6 // indirect
 	modernc.org/libc v1.61.13 // indirect

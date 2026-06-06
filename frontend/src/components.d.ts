@@ -17,8 +17,6 @@ declare module 'vue' {
     NCard: typeof import('naive-ui')['NCard']
     NInput: typeof import('naive-ui')['NInput']
     NModal: typeof import('naive-ui')['NModal']
-    NSelect: typeof import('naive-ui')['NSelect']
-    NSwitch: typeof import('naive-ui')['NSwitch']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     UniverseHi: typeof import('./components/universe/hi.vue')['default']

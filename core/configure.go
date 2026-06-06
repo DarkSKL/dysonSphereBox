@@ -11,11 +11,13 @@ import (
 
 type Configure struct {
 	GameStartFilePath *ConfigUnit
+	BaseURL           *ConfigUnit
 }
 
 func InitConfigure() *Configure {
 	return &Configure{
 		GameStartFilePath: InitConfigUnit("Game", "StartupFilePath"),
+		BaseURL:           InitConfigUnit("System", "BaseURL"),
 	}
 }
 

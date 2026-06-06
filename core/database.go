@@ -54,9 +54,21 @@ func InitDatabase(databaseTemplate []byte) error {
 	GLOBAL.DB = db
 	GLOBAL.DBPath = dbPath
 	GLOBAL.Configure = InitConfigure()
+
+	httpClient, err := InitHTTPClient()
+	if err != nil {
+		_ = closeDatabase(db)
+		GLOBAL.DB = nil
+		GLOBAL.DBPath = ""
+		GLOBAL.Configure = nil
+		return fmt.Errorf("init http client: %w", err)
+	}
+
+	GLOBAL.HTTPClient = httpClient
 	return nil
 }
 
+// CloseDatabase 关闭全局 SQLite 连接并清理依赖数据库的全局资源。
 func CloseDatabase() error {
 	if GLOBAL.DB == nil {
 		return nil
@@ -64,7 +76,9 @@ func CloseDatabase() error {
 
 	err := closeDatabase(GLOBAL.DB)
 	GLOBAL.DB = nil
+	GLOBAL.DBPath = ""
 	GLOBAL.Configure = nil
+	GLOBAL.HTTPClient = nil
 	return err
 }
 
