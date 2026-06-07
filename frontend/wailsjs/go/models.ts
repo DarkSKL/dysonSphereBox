@@ -99,6 +99,125 @@ export namespace modDependence {
 		}
 	}
 	
+	
+	export class BepInExUninstallResult {
+	    gameDir: string;
+	    removed: boolean;
+	    skipped: boolean;
+	    message: string;
+	    removedPaths: string[];
+	    clearedRecords: boolean;
+	    status: BepInExStatus;
+	
+	    static createFrom(source: any = {}) {
+	        return new BepInExUninstallResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.gameDir = source["gameDir"];
+	        this.removed = source["removed"];
+	        this.skipped = source["skipped"];
+	        this.message = source["message"];
+	        this.removedPaths = source["removedPaths"];
+	        this.clearedRecords = source["clearedRecords"];
+	        this.status = this.convertValues(source["status"], BepInExStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DependencyInstallResult {
+	    id: number;
+	    name: string;
+	    version: string;
+	    pluginDir: string;
+	    zipPath: string;
+	    installed: boolean;
+	    removed: boolean;
+	    skipped: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DependencyInstallResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.version = source["version"];
+	        this.pluginDir = source["pluginDir"];
+	        this.zipPath = source["zipPath"];
+	        this.installed = source["installed"];
+	        this.removed = source["removed"];
+	        this.skipped = source["skipped"];
+	        this.message = source["message"];
+	    }
+	}
+	export class PackageInstallResult {
+	    packageId: number;
+	    packageName: string;
+	    gameDir: string;
+	    pluginRoot: string;
+	    installed: boolean;
+	    uninstalled: boolean;
+	    skipped: boolean;
+	    message: string;
+	    dependencies: DependencyInstallResult[];
+	    bepInExStatus: BepInExStatus;
+	
+	    static createFrom(source: any = {}) {
+	        return new PackageInstallResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.packageId = source["packageId"];
+	        this.packageName = source["packageName"];
+	        this.gameDir = source["gameDir"];
+	        this.pluginRoot = source["pluginRoot"];
+	        this.installed = source["installed"];
+	        this.uninstalled = source["uninstalled"];
+	        this.skipped = source["skipped"];
+	        this.message = source["message"];
+	        this.dependencies = this.convertValues(source["dependencies"], DependencyInstallResult);
+	        this.bepInExStatus = this.convertValues(source["bepInExStatus"], BepInExStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

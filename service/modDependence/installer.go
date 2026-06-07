@@ -1,17 +1,31 @@
 package modDependence
 
-// 安装器服务最核心的功能就是 联动市场，当用户点击app的市场卡片中的下载时，会自动联动卡片的下载状态以及下载整合包相关的依赖
-// 然后安装器会检查目标目录是否包含插件，如果已经包含则移除，如果
-/*
-在已经拿到所有依赖压缩包的情况下，、
-流程就是先确认游戏目录里已经有可用的 BepInEx 环境，
-然后为每个 Mod 包按 Mod名 创建 游戏目录/BepInEx/plugins/ Mod名/ 目录，
-把对应 zip 解压出来的全部内容复制进去，
-最后保留这些插件目录供 BepInEx 在游戏启动时自动加载。
-*/
-// 安装完成后在本地SqlLite记录mod_dependency_packages 和mod_dependencies 代表已经安装，本地的SqlLite只记录本地已经安装依赖
-// 删除时会先移除mode再移除记录
-// 需要跟前端的mod市场页面进行联动
+import (
+	modDependenceHelper "DysonSphereBox/helper/modDependence"
+	ModDependenceResponse "DysonSphereBox/model/modDependence/response"
+)
 
+// InstallerService 提供前端可调用的 Mod 整合包安装能力。
+// 用途：Mod 市场卡片点击安装或卸载时调用；安装完成后同步本地 SQLite 安装记录。
+// 边界：服务层只做 Wails 入参与 helper 转发，下载、解压、文件删除和数据库写入由 helper 承接。
 type InstallerService struct {
+}
+
+// InstallPackage 安装一个远端市场返回的整合包。
+// 使用：前端把选中的 ModDependencyPackageDTO 原样传入；安装器会先确保 BepInEx 可用。
+// 返回：包含游戏目录、插件根目录、依赖安装明细和 BepInEx 状态。
+func (service *InstallerService) InstallPackage(pack ModDependenceResponse.ModDependencyPackageDTO) (*modDependenceHelper.PackageInstallResult, error) {
+	return modDependenceHelper.InstallModDependencyPackage(pack)
+}
+
+// UninstallPackage 卸载指定 ID 的本地整合包记录和可安全移除的插件目录。
+// 边界：若依赖仍被其它已安装整合包引用，则保留该依赖插件目录。
+func (service *InstallerService) UninstallPackage(packageID uint) (*modDependenceHelper.PackageInstallResult, error) {
+	return modDependenceHelper.UninstallModDependencyPackage(packageID)
+}
+
+// ListInstalledPackageIds 返回本地已安装整合包 ID。
+// 使用：前端刷新市场列表后调用，用于把远端卡片映射成本地安装状态。
+func (service *InstallerService) ListInstalledPackageIds() ([]uint, error) {
+	return modDependenceHelper.ListInstalledPackageIds()
 }

@@ -7,6 +7,9 @@ const props = defineProps<{
   show: boolean
   pack?: response.ModDependencyPackageDTO
   installed: boolean
+  installing: boolean
+  canInstall: boolean
+  installDisabledText?: string
 }>()
 
 const emit = defineEmits<{
@@ -18,6 +21,17 @@ const title = computed(() => props.pack?.packageName ?? '')
 const description = computed(() => props.pack?.packageDescription || '暂无整合包说明。')
 const dependencies = computed(() => props.pack?.dependencies ?? [])
 const packageSizeText = computed(() => formatPackageSize(props.pack?.packageSize ?? 0))
+const installButtonDisabled = computed(() => props.installing || !props.canInstall)
+const installButtonText = computed(() => {
+  if (props.installing) {
+    return '安装中'
+  }
+  if (!props.canInstall) {
+    return '需先安装 BepInEx'
+  }
+
+  return props.installed ? '重新安装' : '一键安装'
+})
 
 // =============== 整合包大小格式化 ===============
 // 说明：接口返回 byte 单位，详情面板统一换算为 MB 展示。
@@ -31,7 +45,7 @@ const formatPackageSize = (sizeInBytes: number): string => {
 }
 
 const handleInstall = (): void => {
-  if (!props.pack) {
+  if (!props.pack || props.installing || !props.canInstall) {
     return
   }
 
@@ -104,12 +118,20 @@ const handleInstall = (): void => {
             <span class="truncate">{{ pack.source || '查看来源' }}</span>
           </a>
           <p v-else class="text-xs text-zinc-500">{{ pack?.source || '暂无来源链接' }}</p>
-          <n-button type="primary" @click="handleInstall">
+          <div class="flex items-center gap-3">
+            <p
+              v-if="!canInstall"
+              class="max-w-[15rem] text-right text-xs leading-5 text-amber-600"
+            >
+              {{ installDisabledText || '需要优先安装 BepInEx。' }}
+            </p>
+            <n-button type="primary" :loading="installing" :disabled="installButtonDisabled" @click="handleInstall">
             <template v-if="installed" #icon>
               <CheckCircle2 :size="16" :stroke-width="1.8" />
             </template>
-            {{ installed ? '重新安装' : '一键安装' }}
-          </n-button>
+              {{ installButtonText }}
+            </n-button>
+          </div>
         </div>
       </template>
     </n-card>

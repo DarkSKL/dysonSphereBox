@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import {AlertCircle, RefreshCw} from '@lucide/vue'
+import {AlertCircle, CheckCircle2, RefreshCw} from '@lucide/vue'
 import {createDiscreteApi, useMessage} from 'naive-ui'
 import {computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
-import {SearchAndLoadBepInEx} from '../../wailsjs/go/modDependence/BepInExService'
+import {Install as InstallBepInEx, SearchAndLoadBepInEx} from '../../wailsjs/go/modDependence/BepInExService'
+import {InstallPackage, ListInstalledPackageIds, UninstallPackage} from '../../wailsjs/go/modDependence/InstallerService'
 import {GetPackageList} from '../../wailsjs/go/modDependence/MarketplaceService'
 import {response} from '../../wailsjs/go/models'
 import {GetConfig} from '../../wailsjs/go/system/ConfigurationService'
@@ -29,6 +30,7 @@ const selectedPackId = ref<number | null>(null)
 const dialogVisible = ref(false)
 const isCheckingGamePath = ref(true)
 const isCheckingBepInEx = ref(false)
+const isInstallingBepInEx = ref(false)
 const canOpenModPage = ref(false)
 const isBepInExInstalled = ref(false)
 const bepInExVersion = ref('')
@@ -43,7 +45,6 @@ const loadMoreTarget = ref<HTMLElement | null>(null)
 const installedPackageIds = ref<Record<number, boolean>>({})
 const installingPackageIds = ref<Record<number, boolean>>({})
 const packageProgress = ref<Record<number, number>>({})
-const installTimers: Partial<Record<number, number>> = {}
 const {dialog} = createDiscreteApi(['dialog'])
 const message = useMessage()
 
@@ -60,6 +61,29 @@ const hasLoadedAllPackages = computed(() => {
 })
 const canLoadMorePackages = computed(() => {
   return canOpenModPage.value && !isLoadingPackages.value && !hasLoadedAllPackages.value
+})
+const canInstallPackages = computed(() => {
+  return canOpenModPage.value && isBepInExInstalled.value
+})
+const bepinExStatusTitle = computed(() => {
+  if (isCheckingBepInEx.value) {
+    return '正在检查 BepInEx'
+  }
+  if (isBepInExInstalled.value) {
+    return 'BepInEx 已就绪'
+  }
+
+  return '需要优先安装 BepInEx'
+})
+const bepinExStatusDescription = computed(() => {
+  if (isCheckingBepInEx.value) {
+    return '正在确认当前游戏目录下的前置框架状态。'
+  }
+  if (isBepInExInstalled.value) {
+    return `已检测到 BepInEx ${bepInExVersion.value || '未知版本'}，现在可以安装整合包。`
+  }
+
+  return '安装 Mod 整合包前需要先安装 BepInEx 前置框架。'
 })
 
 // =============== 整合包列表 ===============
@@ -95,6 +119,7 @@ const loadPackagePage = async (page: number, replace = false, showFeedback = fal
     if (showFeedback) {
       message.success(replace ? '整合包列表已刷新' : '已加载下一页整合包')
     }
+    await syncInstalledPackageIds()
   } catch (error) {
     packageLoadError.value = formatErrorMessage(error)
     if (showFeedback) {
@@ -119,6 +144,22 @@ const loadNextPackagePage = async (): Promise<void> => {
   await loadPackagePage(currentPage.value + 1, false, Boolean(packageLoadError.value))
 }
 
+// =============== 本地安装状态 ===============
+// 说明：从本地 SQLite 读取已安装整合包 ID，并映射到市场卡片状态。
+// 边界：状态读取失败不阻止市场列表展示，只清空本地安装标记并给出轻提示。
+const syncInstalledPackageIds = async (): Promise<void> => {
+  try {
+    const ids = await ListInstalledPackageIds()
+    installedPackageIds.value = ids.reduce<Record<number, boolean>>((result, id) => {
+      result[id] = true
+      return result
+    }, {})
+  } catch (error) {
+    installedPackageIds.value = {}
+    message.warning(`本地安装状态读取失败：${formatErrorMessage(error)}`)
+  }
+}
+
 // =============== 滚动加载 ===============
 // 说明：用 IntersectionObserver 监听列表底部哨兵，进入可视区后请求下一页。
 // 边界：页面被 KeepAlive 复用时会重复挂载观察器，因此每次绑定前先断开旧实例。
@@ -141,38 +182,98 @@ const observeLoadMoreTarget = (): void => {
 }
 
 // =============== 整合包交互 ===============
-// 说明：当前安装逻辑仍是本地占位状态，真实安装接口接入后可替换这里。
+// 说明：安装与卸载均调用后端安装器，并在完成后同步本地 SQLite 安装状态。
 const openPack = (id: number): void => {
   selectedPackId.value = id
   dialogVisible.value = true
 }
 
 const handleUninstall = (id: number): void => {
-  installedPackageIds.value[id] = false
+  if (installingPackageIds.value[id]) {
+    return
+  }
+
+  dialog.warning({
+    title: '卸载整合包',
+    content: '将移除该整合包中不再被其它整合包引用的 Mod 插件目录，并删除本地安装记录。',
+    positiveText: '卸载',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      installingPackageIds.value[id] = true
+      packageProgress.value[id] = 35
+      try {
+        const result = await UninstallPackage(id)
+        installedPackageIds.value[id] = false
+        packageProgress.value[id] = 100
+        message.success(result.message || '整合包已卸载')
+        await syncInstalledPackageIds()
+      } catch (error) {
+        message.error(`整合包卸载失败：${formatErrorMessage(error)}`)
+      } finally {
+        installingPackageIds.value[id] = false
+        packageProgress.value[id] = 0
+      }
+    },
+  })
 }
 
 const handleInstall = async (id: number): Promise<void> => {
-  if (!(await ensureBepInExReady(true)) || installingPackageIds.value[id]) {
+  if (installingPackageIds.value[id]) {
+    return
+  }
+  if (!canInstallPackages.value) {
+    message.warning('需要优先安装 BepInEx 后才能安装整合包。')
+    return
+  }
+
+  const pack = packageList.value.find((item) => item.id === id)
+  if (!pack) {
+    message.error('未找到要安装的整合包。')
     return
   }
 
   installingPackageIds.value[id] = true
-  packageProgress.value[id] = 0
-  window.clearInterval(installTimers[id])
-  installTimers[id] = window.setInterval(() => {
-    packageProgress.value[id] = Math.min((packageProgress.value[id] || 0) + 4, 100)
-    if (packageProgress.value[id] < 100) {
-      return
-    }
+  packageProgress.value[id] = 35
+  try {
+    const result = await InstallPackage(pack)
+    installedPackageIds.value[id] = true
+    packageProgress.value[id] = 100
+    isBepInExInstalled.value = result.bepInExStatus.installed
+    bepInExVersion.value = result.bepInExStatus.installedVersion
+    message.success(result.message || '整合包安装完成')
+    await syncInstalledPackageIds()
+  } catch (error) {
+    message.error(`整合包安装失败：${formatErrorMessage(error)}`)
+  } finally {
+    installingPackageIds.value[id] = false
+    packageProgress.value[id] = 0
+  }
+}
 
-    window.clearInterval(installTimers[id])
-    window.setTimeout(() => {
-      installedPackageIds.value[id] = true
-      installingPackageIds.value[id] = false
-      packageProgress.value[id] = 0
-      message.success('整合包安装状态已更新')
-    }, 350)
-  }, 120)
+// =============== BepInEx 前置安装 ===============
+// 说明：在 Mod 页直接触发前置框架安装，成功后刷新页面安装许可状态。
+// 边界：安装失败时保留市场浏览能力，但继续阻止整合包安装。
+const installBepInExFromModPage = async (): Promise<void> => {
+  if (isInstallingBepInEx.value || isCheckingBepInEx.value) {
+    return
+  }
+
+  isInstallingBepInEx.value = true
+  try {
+    const result = await InstallBepInEx()
+    isBepInExInstalled.value = result.status.installed
+    bepInExVersion.value = result.status.installedVersion
+
+    if (result.status.installed) {
+      message.success(result.message || 'BepInEx 已安装')
+    } else {
+      message.warning('BepInEx 安装未完成，请稍后重试。')
+    }
+  } catch (error) {
+    message.error(`BepInEx 安装失败：${formatErrorMessage(error)}`)
+  } finally {
+    isInstallingBepInEx.value = false
+  }
 }
 
 // =============== 封面地址 ===============
@@ -210,6 +311,7 @@ const refreshGamePathAvailability = async (): Promise<void> => {
     canOpenModPage.value = await CheckDysonSphereExe(nextGamePath)
     if (canOpenModPage.value) {
       await refreshBepInExAvailability(nextGamePath)
+      await syncInstalledPackageIds()
       if (packageList.value.length === 0 && !isLoadingPackages.value) {
         await refreshPackages(false)
       }
@@ -240,27 +342,6 @@ const refreshBepInExAvailability = async (path: string = gamePath.value): Promis
   }
 }
 
-const ensureBepInExReady = async (showDialog: boolean): Promise<boolean> => {
-  await refreshBepInExAvailability()
-  if (isBepInExInstalled.value) {
-    return true
-  }
-
-  if (showDialog) {
-    dialog.warning({
-      title: '缺少 BepInEx 前置框架',
-      content: '安装整合包前需要先安装 BepInEx。请先到设置页安装或检查 BepInEx 前置框架。',
-      positiveText: '前往设置',
-      negativeText: '取消',
-      onPositiveClick: () => {
-        router.push('/settings')
-      },
-    })
-  }
-
-  return false
-}
-
 const formatErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message
@@ -281,9 +362,6 @@ onActivated(async () => {
 })
 onBeforeUnmount(() => {
   loadMoreObserver?.disconnect()
-  Object.values(installTimers).forEach((timer) => {
-    window.clearInterval(timer)
-  })
 })
 </script>
 
@@ -291,15 +369,49 @@ onBeforeUnmount(() => {
   <section class="mx-auto max-w-6xl px-8 py-8">
     <div class="relative min-h-[30rem]">
       <!-- ~ 整合包工具栏 -->
-      <!-- * 说明：提供远端整合包列表刷新入口 -->
-      <!-- * 交互：点击刷新重新拉取第一页，滚动到底部自动请求下一页 -->
-      <!-- * 依赖：依赖 MarketplaceService.GetPackageList 与分页状态 -->
+      <!-- * 说明：同层展示 BepInEx 前置状态与远端整合包列表刷新入口 -->
+      <!-- * 交互：未安装 BepInEx 时可直接安装；点击刷新重新拉取第一页，滚动到底部自动请求下一页 -->
+      <!-- * 依赖：依赖 BepInExService.Install、MarketplaceService.GetPackageList 与分页状态 -->
       <!-- * 边界：游戏路径无效时整体虚化并阻止列表交互 -->
       <div
-        class="mb-4 flex justify-end"
+        class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
         :class="(isCheckingGamePath || !canOpenModPage) ? 'pointer-events-none select-none blur-sm' : ''"
       >
-        <n-button secondary :loading="isLoadingPackages" @click="() => refreshPackages()">
+        <div
+          v-if="canOpenModPage"
+          class="flex min-w-0 flex-1 items-center justify-between gap-4 border px-4 py-3"
+          :class="isBepInExInstalled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'"
+        >
+          <div class="flex min-w-0 items-start gap-3">
+            <CheckCircle2
+              v-if="isBepInExInstalled"
+              :size="18"
+              :stroke-width="1.9"
+              class="mt-0.5 shrink-0 text-emerald-700"
+            />
+            <AlertCircle
+              v-else
+              :size="18"
+              :stroke-width="1.9"
+              class="mt-0.5 shrink-0 text-amber-700"
+            />
+            <div class="min-w-0">
+              <p class="text-sm font-semibold">{{ bepinExStatusTitle }}</p>
+              <p class="mt-1 text-xs leading-5 opacity-80">{{ bepinExStatusDescription }}</p>
+            </div>
+          </div>
+          <n-button
+            v-if="!isBepInExInstalled"
+            class="shrink-0"
+            type="primary"
+            :loading="isInstallingBepInEx"
+            :disabled="isCheckingBepInEx"
+            @click="installBepInExFromModPage"
+          >
+            安装 BepInEx
+          </n-button>
+        </div>
+        <n-button class="shrink-0 self-end md:self-auto" secondary :loading="isLoadingPackages" @click="() => refreshPackages()">
           <template #icon>
             <RefreshCw :size="16" :stroke-width="1.8" />
           </template>
@@ -310,7 +422,7 @@ onBeforeUnmount(() => {
       <!-- ~ 整合包列表 -->
       <!-- * 说明：以卡片网格展示后端分页返回的 Mod 整合包 -->
       <!-- * 交互：点击卡片打开详情，底部哨兵进入视口后加载下一页 -->
-      <!-- * 依赖：依赖 packageList、installedPackageIds、installingPackageIds 与 packageProgress -->
+      <!-- * 依赖：依赖 packageList、installedPackageIds、installingPackageIds 与后端安装器状态 -->
       <!-- * 边界：首屏加载、空列表和请求失败都有独立反馈，不遮挡游戏路径检查层 -->
       <div
         class="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
@@ -412,13 +524,16 @@ onBeforeUnmount(() => {
 
     <!-- ~ 整合包详情弹窗 -->
     <!-- * 说明：展示当前选中整合包的版本、作者、来源与依赖明细 -->
-    <!-- * 交互：点击安装前会检查 BepInEx 状态 -->
-    <!-- * 依赖：依赖 selectedPack 与 installedPackageIds -->
+    <!-- * 交互：点击安装后由后端安装器自动处理 BepInEx、下载、解压与本地记录 -->
+    <!-- * 依赖：依赖 selectedPack、installedPackageIds 与 installingPackageIds -->
     <!-- * 边界：未选中整合包时弹窗内容为空，不触发安装事件 -->
     <ModPackDialog
       v-model:show="dialogVisible"
       :pack="selectedPack"
       :installed="selectedPack ? installedPackageIds[selectedPack.id] || false : false"
+      :installing="selectedPack ? installingPackageIds[selectedPack.id] || false : false"
+      :can-install="canInstallPackages"
+      install-disabled-text="需要优先安装 BepInEx 后才能安装整合包。"
       @install="handleInstall"
     />
   </section>

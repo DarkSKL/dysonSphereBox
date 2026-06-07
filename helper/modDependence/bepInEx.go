@@ -15,9 +15,11 @@ import (
 	"unsafe"
 
 	"DysonSphereBox/core"
+	modDependenceModel "DysonSphereBox/model/modDependence"
 	"DysonSphereBox/utils"
 
 	"golang.org/x/sys/windows"
+	"gorm.io/gorm"
 )
 
 const (
@@ -60,6 +62,18 @@ type BepInExInstallResult struct {
 	ZipPath     string          `json:"zipPath,omitempty"`
 	ExtractPath string          `json:"extractPath,omitempty"`
 	Status      BepInExStatus   `json:"status"`
+}
+
+// BepInExUninstallResult 表示 BepInEx 卸载后的本地清理结果。
+// 用途：设置页展示卸载反馈；边界：只删除 BepInEx 注入相关文件和本地 Mod 安装记录，不触碰游戏本体目录。
+type BepInExUninstallResult struct {
+	GameDir        string        `json:"gameDir"`
+	Removed        bool          `json:"removed"`
+	Skipped        bool          `json:"skipped"`
+	Message        string        `json:"message"`
+	RemovedPaths   []string      `json:"removedPaths"`
+	ClearedRecords bool          `json:"clearedRecords"`
+	Status         BepInExStatus `json:"status"`
 }
 
 func GetConfiguredGameDir() (string, error) {
@@ -134,6 +148,69 @@ func SearchAndLoadBepInEx(selectedPath string) (*BepInExStatus, error) {
 
 	status := CheckBepInExStatus(gameDir)
 	return &status, nil
+}
+
+// UninstallBepInEx 移除游戏目录下的 BepInEx 与全部基于 BepInEx 的本地 Mod 记录。
+// 边界：删除范围限定为游戏目录内的 BepInEx 目录、Doorstop 注入文件和本地 SQLite 安装记录。
+func UninstallBepInEx() (*BepInExUninstallResult, error) {
+	gameDir, err := GetConfiguredGameDir()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := assertDysonSphereGameDir(gameDir); err != nil {
+		return nil, err
+	}
+
+	status := CheckBepInExStatus(gameDir)
+	removeTargets := []string{
+		filepath.Join(gameDir, "BepInEx"),
+		filepath.Join(gameDir, "winhttp.dll"),
+		filepath.Join(gameDir, "doorstop_config.ini"),
+		filepath.Join(gameDir, ".doorstop_version"),
+		filepath.Join(gameDir, "changelog.txt"),
+	}
+
+	removedPaths := make([]string, 0, len(removeTargets))
+	for _, targetPath := range removeTargets {
+		if !isSubPath(gameDir, targetPath) {
+			return nil, fmt.Errorf("remove path escapes game directory: %s", targetPath)
+		}
+
+		if _, err := os.Stat(targetPath); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+
+		if err := os.RemoveAll(targetPath); err != nil {
+			return nil, err
+		}
+		removedPaths = append(removedPaths, targetPath)
+	}
+
+	clearedRecords, err := clearInstalledModDependencyRecords()
+	if err != nil {
+		return nil, err
+	}
+
+	nextStatus := CheckBepInExStatus(gameDir)
+	skipped := !status.Installed && len(removedPaths) == 0 && !clearedRecords
+	message := "BepInEx 与相关 Mod 依赖已卸载"
+	if skipped {
+		message = "未检测到可卸载的 BepInEx 文件或本地 Mod 记录"
+	}
+
+	return &BepInExUninstallResult{
+		GameDir:        gameDir,
+		Removed:        !skipped,
+		Skipped:        skipped,
+		Message:        message,
+		RemovedPaths:   removedPaths,
+		ClearedRecords: clearedRecords,
+		Status:         nextStatus,
+	}, nil
 }
 
 func InstallBepInEx() (*BepInExInstallResult, error) {
@@ -620,6 +697,40 @@ func ensureDoorstopConfig(gameDir string) error {
 	}
 
 	return os.WriteFile(cfgPath, []byte(nextContent), 0o644)
+}
+
+func clearInstalledModDependencyRecords() (bool, error) {
+	if core.GLOBAL.DB == nil {
+		return false, fmt.Errorf("database is not initialized")
+	}
+
+	var packageCount int64
+	if err := core.GLOBAL.DB.Table("mod_dependency_packages").Count(&packageCount).Error; err != nil {
+		return false, err
+	}
+	var dependencyCount int64
+	if err := core.GLOBAL.DB.Table("mod_dependencies").Count(&dependencyCount).Error; err != nil {
+		return false, err
+	}
+
+	err := core.GLOBAL.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM mod_dependency_package_relations").Error; err != nil {
+			return err
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&modDependenceModel.ModDependencyPackage{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&modDependenceModel.ModDependency{}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return packageCount > 0 || dependencyCount > 0, nil
 }
 
 func upsertDoorstopSetting(content string, key string, value string) string {

@@ -3,7 +3,7 @@ import {Download, FolderOpen, RefreshCw, Save, Search, Trash2} from '@lucide/vue
 import {useMessage} from 'naive-ui'
 import {computed, onMounted, ref} from 'vue'
 import {SelectDysonSphereDirectory} from '../../wailsjs/go/main/App'
-import {GetLatestVersion, SearchAndLoadBepInEx} from '../../wailsjs/go/modDependence/BepInExService'
+import {GetLatestVersion, SearchAndLoadBepInEx, Uninstall} from '../../wailsjs/go/modDependence/BepInExService'
 import {modDependence} from '../../wailsjs/go/models'
 import {GetConfig, SetConfig} from '../../wailsjs/go/system/ConfigurationService'
 import {LoadOrInitDysonSphereExe} from '../../wailsjs/go/system/EnvironmentService'
@@ -27,6 +27,7 @@ const isSavingGamePath = ref(false)
 const isSavingBaseURL = ref(false)
 const isLoadingBepInExStatus = ref(false)
 const isCheckingBepInEx = ref(false)
+const isUninstallingBepInEx = ref(false)
 const updateBepInExVisible = ref(false)
 const uninstallBepInExVisible = ref(false)
 const savedGamePath = ref(gamePath.value)
@@ -193,6 +194,28 @@ const openBepInExUninstall = (): void => {
   uninstallBepInExVisible.value = true
 }
 
+// =============== BepInEx 卸载 ===============
+// 说明：调用后端真实卸载逻辑，移除 BepInEx、Doorstop 注入文件和所有本地 Mod 依赖记录。
+// 边界：该操作破坏性较强，只能从二次确认弹窗触发；失败时保留当前状态并提示错误。
+const confirmBepInExUninstall = async (): Promise<void> => {
+  if (isUninstallingBepInEx.value) {
+    return
+  }
+
+  isUninstallingBepInEx.value = true
+  try {
+    const result = await Uninstall()
+    uninstallBepInExVisible.value = false
+    bepinExStatus.value = result.status
+    latestBepInExVersion.value = ''
+    message.success(result.message || 'BepInEx 已卸载')
+  } catch (error) {
+    message.error(`BepInEx 卸载失败：${formatErrorMessage(error)}`)
+  } finally {
+    isUninstallingBepInEx.value = false
+  }
+}
+
 interface BepInExSearchOptions {
   readonly showDialog?: boolean
   readonly showLoading?: boolean
@@ -339,7 +362,7 @@ const normalizeVersionForComparison = (version: string): string => {
             </template>
             更新
           </n-button>
-          <n-button :disabled="!bepinExStatus?.installed" secondary type="error" @click="openBepInExUninstall">
+          <n-button :disabled="!bepinExStatus?.installed" secondary type="error" :loading="isUninstallingBepInEx" @click="openBepInExUninstall">
             <template #icon>
               <Trash2 :size="16" :stroke-width="1.8" />
             </template>
@@ -366,13 +389,23 @@ const normalizeVersionForComparison = (version: string): string => {
       </div>
     </n-modal>
 
-    <n-modal v-model:show="uninstallBepInExVisible" preset="dialog" title="卸载 BepInEx" positive-text="确认卸载" negative-text="取消">
+    <n-modal
+      v-model:show="uninstallBepInExVisible"
+      preset="dialog"
+      title="卸载 BepInEx"
+      positive-text="确认卸载"
+      negative-text="取消"
+      :positive-button-props="{ type: 'error', loading: isUninstallingBepInEx, disabled: isUninstallingBepInEx }"
+      :negative-button-props="{ disabled: isUninstallingBepInEx }"
+      :mask-closable="!isUninstallingBepInEx"
+      @positive-click="confirmBepInExUninstall"
+    >
       <div class="space-y-4 text-sm text-zinc-600">
-        <p>将从当前游戏目录移除 BepInEx 相关文件。</p>
+        <p>将从当前游戏目录移除 BepInEx、Doorstop 注入文件和所有已安装的依赖 Mod。</p>
         <div class="rounded border border-red-200 bg-red-50 px-3 py-3 text-xs leading-5 text-red-700">
-          该操作不会删除《戴森球计划》本体文件，但可能导致依赖 BepInEx 的 Mod 无法继续运行。
+          该操作不会删除《戴森球计划》本体文件，但会删除 BepInEx/plugins 下的所有 Mod，并清空本地 Mod 安装记录。
         </div>
-        <p class="text-xs text-zinc-500">实际卸载逻辑稍后接入。</p>
+        <p class="text-xs text-zinc-500">确认后需要重新安装 BepInEx 与整合包才能继续使用 Mod。</p>
       </div>
     </n-modal>
   </section>

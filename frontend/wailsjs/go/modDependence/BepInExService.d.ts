@@ -10,6 +10,6 @@ export function Install():Promise<modDependence.BepInExInstallResult>;
 
 export function SearchAndLoadBepInEx(arg1:string):Promise<modDependence.BepInExStatus>;
 
-export function Uninstall():Promise<void>;
+export function Uninstall():Promise<modDependence.BepInExUninstallResult>;
 
 export function Update():Promise<modDependence.BepInExInstallResult>;

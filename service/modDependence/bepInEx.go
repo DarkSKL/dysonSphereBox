@@ -1,10 +1,6 @@
 package modDependence
 
-import (
-	"fmt"
-
-	modDependenceHelper "DysonSphereBox/helper/modDependence"
-)
+import modDependenceHelper "DysonSphereBox/helper/modDependence"
 
 type BepInExService struct {
 }
@@ -13,12 +9,8 @@ func (service *BepInExService) Install() (*modDependenceHelper.BepInExInstallRes
 	return modDependenceHelper.InstallBepInEx()
 }
 
-func (service *BepInExService) Uninstall() error {
-	if _, err := modDependenceHelper.GetConfiguredGameDir(); err != nil {
-		return err
-	}
-
-	return fmt.Errorf("BepInEx uninstall is not implemented")
+func (service *BepInExService) Uninstall() (*modDependenceHelper.BepInExUninstallResult, error) {
+	return modDependenceHelper.UninstallBepInEx()
 }
 
 func (service *BepInExService) Update() (*modDependenceHelper.BepInExInstallResult, error) {
