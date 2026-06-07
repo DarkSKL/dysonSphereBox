@@ -102,6 +102,145 @@ export namespace modDependence {
 
 }
 
+export namespace response {
+	
+	export class ModDependencyDTO {
+	    id: number;
+	    modName?: string;
+	    modVersion?: string;
+	    modDescription?: string;
+	    gameVersions: any;
+	    updateTime?: string;
+	    source?: string;
+	    url?: string;
+	    trustworthiness?: number;
+	    config?: string;
+	    ex?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModDependencyDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.modName = source["modName"];
+	        this.modVersion = source["modVersion"];
+	        this.modDescription = source["modDescription"];
+	        this.gameVersions = source["gameVersions"];
+	        this.updateTime = source["updateTime"];
+	        this.source = source["source"];
+	        this.url = source["url"];
+	        this.trustworthiness = source["trustworthiness"];
+	        this.config = source["config"];
+	        this.ex = source["ex"];
+	    }
+	}
+	export class ModDependencyPackageDTO {
+	    id: number;
+	    packageName?: string;
+	    packageVersion?: string;
+	    packageDescription?: string;
+	    packageSize?: number;
+	    downloadCount?: number;
+	    dependencyCount?: number;
+	    gameVersions: any;
+	    tags: any;
+	    source?: string;
+	    url?: string;
+	    coverUrl?: string;
+	    author?: string;
+	    status?: number;
+	    trustworthiness?: number;
+	    updateTime?: string;
+	    config?: string;
+	    ex?: string;
+	    dependencies: ModDependencyDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ModDependencyPackageDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.packageName = source["packageName"];
+	        this.packageVersion = source["packageVersion"];
+	        this.packageDescription = source["packageDescription"];
+	        this.packageSize = source["packageSize"];
+	        this.downloadCount = source["downloadCount"];
+	        this.dependencyCount = source["dependencyCount"];
+	        this.gameVersions = source["gameVersions"];
+	        this.tags = source["tags"];
+	        this.source = source["source"];
+	        this.url = source["url"];
+	        this.coverUrl = source["coverUrl"];
+	        this.author = source["author"];
+	        this.status = source["status"];
+	        this.trustworthiness = source["trustworthiness"];
+	        this.updateTime = source["updateTime"];
+	        this.config = source["config"];
+	        this.ex = source["ex"];
+	        this.dependencies = this.convertValues(source["dependencies"], ModDependencyDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PackageListData {
+	    list: ModDependencyPackageDTO[];
+	    total: number;
+	    page: number;
+	    pageSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PackageListData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.list = this.convertValues(source["list"], ModDependencyPackageDTO);
+	        this.total = source["total"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace system {
 	
 	export class ConfigUnitInfo {

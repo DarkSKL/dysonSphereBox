@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {Download, FolderOpen, RefreshCw, Save, Search, Trash2} from '@lucide/vue'
-import {createDiscreteApi} from 'naive-ui'
+import {useMessage} from 'naive-ui'
 import {computed, onMounted, ref} from 'vue'
 import {SelectDysonSphereDirectory} from '../../wailsjs/go/main/App'
 import {GetLatestVersion, SearchAndLoadBepInEx} from '../../wailsjs/go/modDependence/BepInExService'
@@ -32,7 +32,7 @@ const uninstallBepInExVisible = ref(false)
 const savedGamePath = ref(gamePath.value)
 const baseURL = ref('')
 const savedBaseURL = ref('')
-const {dialog} = createDiscreteApi(['dialog'])
+const message = useMessage()
 const bepinExStatus = ref<modDependence.BepInExStatus | null>(null)
 const latestBepInExVersion = ref('')
 const hasPendingGamePathChange = computed(() => gamePath.value.trim() !== savedGamePath.value.trim())
@@ -93,11 +93,7 @@ onMounted(async () => {
 
     savedGamePath.value = gamePath.value
   } catch (error) {
-    dialog.error({
-      title: '读取设置失败',
-      content: formatErrorMessage(error),
-      positiveText: '确定',
-    })
+    message.error(`读取设置失败：${formatErrorMessage(error)}`)
   }
 })
 
@@ -112,25 +108,13 @@ const selectGamePath = async (): Promise<void> => {
     if (selectedPath) {
       gamePath.value = selectedPath
       await searchAndLoadBepInEx(selectedPath, {showDialog: false, showLoading: false})
-      dialog.success({
-        title: '已选择游戏路径',
-        content: '路径已写入输入框，并已检查该目录下的 BepInEx 状态。',
-        positiveText: '确定',
-      })
+      message.success('已选择游戏路径，并完成 BepInEx 检查')
       return
     }
 
-    dialog.warning({
-      title: '未选择游戏路径',
-      content: '已取消选择，游戏路径未改变。',
-      positiveText: '确定',
-    })
+    message.warning('未选择游戏路径，当前配置未改变')
   } catch (error) {
-    dialog.error({
-      title: '选择游戏路径失败',
-      content: formatErrorMessage(error),
-      positiveText: '确定',
-    })
+    message.error(`选择游戏路径失败：${formatErrorMessage(error)}`)
   } finally {
     isSelectingGamePath.value = false
   }
@@ -147,25 +131,13 @@ const loadGamePathFromEnvironment = async (): Promise<void> => {
     if (detectedPath) {
       gamePath.value = detectedPath
       await searchAndLoadBepInEx(detectedPath, {showDialog: false, showLoading: false})
-      dialog.success({
-        title: '已找到游戏路径',
-        content: '路径已写入输入框，并已检查该目录下的 BepInEx 状态。',
-        positiveText: '确定',
-      })
+      message.success('已找到游戏路径，并完成 BepInEx 检查')
       return
     }
 
-    dialog.warning({
-      title: '未找到游戏路径',
-      content: '没有从注册表、Steam 库或桌面/开始菜单快捷方式中找到 DSPGAME.exe。',
-      positiveText: '确定',
-    })
+    message.warning('未找到 DSPGAME.exe，请手动选择游戏目录')
   } catch (error) {
-    dialog.error({
-      title: '自动获取失败',
-      content: formatErrorMessage(error),
-      positiveText: '确定',
-    })
+    message.error(`自动获取失败：${formatErrorMessage(error)}`)
   } finally {
     isLoadingGamePath.value = false
   }
@@ -183,17 +155,9 @@ const confirmGamePath = async (): Promise<void> => {
     gamePath.value = nextGamePath
     savedGamePath.value = nextGamePath
     await searchAndLoadBepInEx(nextGamePath, {showDialog: false, showLoading: false})
-    dialog.success({
-      title: '游戏路径已保存',
-      content: `GameStartFilePath 已更新为：${nextGamePath}`,
-      positiveText: '确定',
-    })
+    message.success('游戏路径已保存')
   } catch (error) {
-    dialog.error({
-      title: '保存游戏路径失败',
-      content: formatErrorMessage(error),
-      positiveText: '确定',
-    })
+    message.error(`保存游戏路径失败：${formatErrorMessage(error)}`)
   } finally {
     isSavingGamePath.value = false
   }
@@ -213,17 +177,9 @@ const confirmBaseURL = async (): Promise<void> => {
     await SetConfig('System', 'BaseURL', nextBaseURL)
     baseURL.value = nextBaseURL
     savedBaseURL.value = nextBaseURL
-    dialog.success({
-      title: '连接地址已保存',
-      content: nextBaseURL ? `BaseURL 已更新为：${nextBaseURL}` : 'BaseURL 已清空。',
-      positiveText: '确定',
-    })
+    message.success(nextBaseURL ? '连接地址已保存' : '连接地址已清空')
   } catch (error) {
-    dialog.error({
-      title: '保存连接地址失败',
-      content: formatErrorMessage(error),
-      positiveText: '确定',
-    })
+    message.error(`保存连接地址失败：${formatErrorMessage(error)}`)
   } finally {
     isSavingBaseURL.value = false
   }
@@ -269,22 +225,16 @@ const searchAndLoadBepInEx = async (
       latestBepInExVersion.value = ''
     }
     if (showDialog) {
-      dialog.success({
-        title: 'BepInEx 检查完成',
-        content: status.installed
+      message.success(
+        status.installed
           ? `已安装 BepInEx ${status.installedVersion || '未知版本'}`
-          : '当前游戏目录下未安装 BepInEx。',
-        positiveText: '确定',
-      })
+          : '当前游戏目录下未安装 BepInEx',
+      )
     }
   } catch (error) {
     bepinExStatus.value = null
     if (showDialog) {
-      dialog.error({
-        title: 'BepInEx 检查失败',
-        content: formatErrorMessage(error),
-        positiveText: '确定',
-      })
+      message.error(`BepInEx 检查失败：${formatErrorMessage(error)}`)
     }
   } finally {
     isLoadingBepInExStatus.value = false

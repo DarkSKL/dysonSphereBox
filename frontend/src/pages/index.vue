@@ -11,7 +11,7 @@ definePage({
   <section class="mx-auto max-w-6xl px-8 py-8">
     <div class="grid min-h-[24rem] place-items-center border border-dashed border-zinc-200 bg-white">
       <div class="max-w-md text-center">
-        <p class="text-xs uppercase tracking-[0.22em] text-zinc-400">Dyson Workshop</p>
+        <p class="text-xs text-zinc-400">戴森工坊</p>
         <h1 class="mt-3 text-2xl font-semibold text-zinc-950">戴森工坊</h1>
         <p class="mt-3 text-sm leading-6 text-zinc-500">
           用于管理《戴森球计划》Mod 包、下载源、缓存与本地游戏路径的桌面工具。

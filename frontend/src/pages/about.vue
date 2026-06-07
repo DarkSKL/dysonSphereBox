@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ExternalLink, GitFork, Mail} from '@lucide/vue'
+import {ExternalLink, GitFork, MessageCircle} from '@lucide/vue'
 
 definePage({
   meta: {
@@ -10,19 +10,21 @@ definePage({
 
 const links = [
   {
-    label: 'github.com/dyson-workshop/dsp-mod-manager',
-    href: 'https://github.com/dyson-workshop/dsp-mod-manager',
+    label: 'https://gitee.com/Dark-Skl/dyson-sphere-box.git',
+    href: 'https://gitee.com/Dark-Skl/dyson-sphere-box.git',
     icon: GitFork,
   },
   {
-    label: 'GitHub Issues',
-    href: 'https://github.com/dyson-workshop/dsp-mod-manager/issues',
+    label: 'Gitee Issues',
+    href: 'https://gitee.com/Dark-Skl/dyson-sphere-box/issues',
     icon: GitFork,
   },
+]
+
+const contacts = [
   {
-    label: 'support@dyson-workshop.com',
-    href: 'mailto:support@dyson-workshop.com',
-    icon: Mail,
+    label: '微信号：DarkSKL',
+    icon: MessageCircle,
   },
 ]
 
@@ -46,7 +48,12 @@ const credits = [
 
       <section>
         <p class="text-sm text-zinc-500">开发者</p>
-        <p class="mt-1 text-zinc-950">戴森工坊团队</p>
+        <p class="mt-1 text-zinc-950">DarkSKL</p>
+      </section>
+
+      <section>
+        <p class="text-sm text-zinc-500">微信号</p>
+        <p class="mt-1 text-zinc-950">DarkSKL</p>
       </section>
 
       <section>
@@ -65,6 +72,20 @@ const credits = [
             </span>
             <ExternalLink :size="14" :stroke-width="1.8" class="ml-3 shrink-0 text-zinc-400" />
           </a>
+        </div>
+      </section>
+
+      <section>
+        <p class="mb-3 text-sm text-zinc-500">联系方式</p>
+        <div class="grid gap-3">
+          <div
+            v-for="contact in contacts"
+            :key="contact.label"
+            class="flex items-center rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
+          >
+            <component :is="contact.icon" :size="16" :stroke-width="1.8" class="mr-2 shrink-0" />
+            <span class="truncate">{{ contact.label }}</span>
+          </div>
         </div>
       </section>
 

@@ -16,14 +16,16 @@ const shouldKeepAlive = computed(() => route.meta.keepAlive === true)
 </script>
 
 <template>
-  <component :is="layoutComponent">
-    <RouterView v-slot="{ Component }">
-      <KeepAlive>
-        <component :is="Component" v-if="shouldKeepAlive" />
-      </KeepAlive>
-      <component :is="Component" v-if="!shouldKeepAlive" />
-    </RouterView>
-  </component>
+  <n-message-provider>
+    <component :is="layoutComponent">
+      <RouterView v-slot="{ Component }">
+        <KeepAlive>
+          <component :is="Component" v-if="shouldKeepAlive" />
+        </KeepAlive>
+        <component :is="Component" v-if="!shouldKeepAlive" />
+      </RouterView>
+    </component>
+  </n-message-provider>
 </template>
 
 <style lang="scss"></style>
