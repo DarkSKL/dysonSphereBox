@@ -352,16 +352,15 @@ onMounted(() => {
 <template>
   <section class="mx-auto max-w-5xl px-8 py-8">
     <!-- ~ 日志工具栏 -->
-    <!-- * 说明：展示日志页标题、刷新入口和筛选面板开关 -->
+    <!-- * 说明：展示当前日志数量、刷新入口和筛选面板开关 -->
     <!-- * 交互：点击刷新会重新读取当前条件下的日志，筛选按钮展开全部查询条件 -->
     <!-- * 依赖：依赖 LogService.ListLogs 与当前页面分页状态 -->
-    <!-- * 边界：后端暂无独立维度列表接口，选择项会合并常用维度与当前页返回值 -->
-    <div class="sticky top-0 z-10 -mx-8 -mt-8 border-b border-zinc-200 bg-[#fbfbfc] px-8 pb-4 pt-8">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0">
-          <h1 class="text-xl font-semibold text-zinc-950">系统日志</h1>
-          <p class="mt-1 text-xs text-zinc-500">按命名空间、模块、事件、等级和类型追踪重要操作。</p>
-        </div>
+    <!-- * 边界：筛选面板悬浮在按钮下方，不参与页面滚动布局，避免展开时挤压日志列表 -->
+    <div class="sticky top-0 z-20 -mx-8 -mt-8 border-b border-zinc-200 bg-[#fbfbfc] px-8 py-2">
+      <div class="flex h-9 items-center justify-between gap-3">
+        <p class="text-xs text-zinc-500">
+          共 <span class="font-medium text-zinc-900">{{ total }}</span> 条日志
+        </p>
 
         <div class="flex items-center gap-2">
           <n-button secondary size="small" :loading="isLoading" @click="loadLogs">
@@ -370,68 +369,73 @@ onMounted(() => {
             </template>
             刷新
           </n-button>
-          <n-button secondary size="small" @click="showFilters = !showFilters">
-            <template #icon>
-              <ListFilter :size="15" :stroke-width="1.8" />
-            </template>
-            筛选
-            <span
-              v-if="hasActiveFilters"
-              class="ml-1 rounded-sm bg-blue-600 px-1.5 py-0.5 text-[11px] leading-none text-white"
+          <div class="relative">
+            <n-button secondary size="small" @click="showFilters = !showFilters">
+              <template #icon>
+                <ListFilter :size="15" :stroke-width="1.8" />
+              </template>
+              筛选
+              <span
+                v-if="hasActiveFilters"
+                class="ml-1 rounded-sm bg-blue-600 px-1.5 py-0.5 text-[11px] leading-none text-white"
+              >
+                {{ activeFilterCount }}
+              </span>
+            </n-button>
+
+            <!-- ~ 悬浮筛选 -->
+            <!-- * 说明：承载命名空间、模块、事件名、日志等级和日志类型筛选 -->
+            <!-- * 交互：输入或选择后自动回到第一页并刷新列表，可一键清除全部条件 -->
+            <!-- * 依赖：依赖 selectedNamespace、selectedModule、selectedLevel、selectedType、selectedEvent 等筛选状态 -->
+            <!-- * 边界：事件名采用精确匹配，面板绝对定位在筛选按钮下方，不改变列表滚动位置 -->
+            <section
+              v-if="showFilters"
+              class="absolute right-0 top-full z-30 mt-2 w-[min(46rem,calc(100vw-14rem))] rounded border border-zinc-200 bg-white px-4 py-4 shadow-lg"
             >
-              {{ activeFilterCount }}
-            </span>
-          </n-button>
+              <div class="mb-4 flex items-center justify-between">
+                <p class="text-sm font-medium text-zinc-950">筛选条件</p>
+                <n-button v-if="hasActiveFilters" quaternary size="tiny" type="primary" @click="clearFilters">
+                  <template #icon>
+                    <X :size="14" :stroke-width="1.9" />
+                  </template>
+                  清除所有
+                </n-button>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-[10rem_10rem_10rem_10rem_1fr]">
+                <label class="block">
+                  <span class="mb-2 block text-xs text-zinc-500">命名空间</span>
+                  <n-select v-model:value="selectedNamespace" size="small" :options="namespaceOptions" />
+                </label>
+                <label class="block">
+                  <span class="mb-2 block text-xs text-zinc-500">模块</span>
+                  <n-select v-model:value="selectedModule" size="small" :options="moduleOptions" />
+                </label>
+                <label class="block">
+                  <span class="mb-2 block text-xs text-zinc-500">日志等级</span>
+                  <n-select v-model:value="selectedLevel" size="small" :options="levelOptions" />
+                </label>
+                <label class="block">
+                  <span class="mb-2 block text-xs text-zinc-500">日志类型</span>
+                  <n-select v-model:value="selectedType" size="small" :options="typeOptions" />
+                </label>
+                <label class="block">
+                  <span class="mb-2 block text-xs text-zinc-500">事件名</span>
+                  <n-input v-model:value="selectedEvent" size="small" placeholder="例如：set_config" clearable />
+                </label>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </div>
-
-    <!-- ~ 展开筛选 -->
-    <!-- * 说明：承载命名空间、模块、事件名、日志等级和日志类型筛选 -->
-    <!-- * 交互：输入或选择后自动回到第一页并刷新列表，可一键清除全部条件 -->
-    <!-- * 依赖：依赖 selectedNamespace、selectedModule、selectedLevel、selectedType、selectedEvent 等筛选状态 -->
-    <!-- * 边界：事件名采用精确匹配，避免前端假装支持后端没有实现的模糊搜索 -->
-    <section v-if="showFilters" class="mb-6 mt-6 rounded border border-zinc-200 bg-white px-4 py-4">
-      <div class="mb-4 flex items-center justify-between">
-        <p class="text-sm font-medium text-zinc-950">筛选条件</p>
-        <n-button v-if="hasActiveFilters" quaternary size="tiny" type="primary" @click="clearFilters">
-          <template #icon>
-            <X :size="14" :stroke-width="1.9" />
-          </template>
-          清除所有
-        </n-button>
-      </div>
-
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-[10rem_10rem_10rem_10rem_1fr]">
-        <label class="block">
-          <span class="mb-2 block text-xs text-zinc-500">命名空间</span>
-          <n-select v-model:value="selectedNamespace" size="small" :options="namespaceOptions" />
-        </label>
-        <label class="block">
-          <span class="mb-2 block text-xs text-zinc-500">模块</span>
-          <n-select v-model:value="selectedModule" size="small" :options="moduleOptions" />
-        </label>
-        <label class="block">
-          <span class="mb-2 block text-xs text-zinc-500">日志等级</span>
-          <n-select v-model:value="selectedLevel" size="small" :options="levelOptions" />
-        </label>
-        <label class="block">
-          <span class="mb-2 block text-xs text-zinc-500">日志类型</span>
-          <n-select v-model:value="selectedType" size="small" :options="typeOptions" />
-        </label>
-        <label class="block">
-          <span class="mb-2 block text-xs text-zinc-500">事件名</span>
-          <n-input v-model:value="selectedEvent" size="small" placeholder="例如：set_config" clearable />
-        </label>
-      </div>
-    </section>
 
     <!-- ~ 日志时间线 -->
     <!-- * 说明：按发生时间倒序展示日志内容、维度、错误详情和结构化扩展信息 -->
     <!-- * 交互：分页切换会重新请求后端，错误状态提供重试按钮 -->
     <!-- * 依赖：依赖 logs、total、page、pageSize 与 LogDTO 字段 -->
     <!-- * 边界：metadata 只做通用键值展示，不引入端口、进程等业务专属字段 -->
-    <section class="mt-6">
+    <section class="mt-4">
       <n-spin :show="isLoading">
         <div v-if="loadError" class="rounded border border-red-200 bg-red-50 px-4 py-4">
           <div class="flex items-start justify-between gap-4">

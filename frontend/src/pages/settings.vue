@@ -3,7 +3,7 @@ import {Download, FolderOpen, RefreshCw, Save, Search, Trash2} from '@lucide/vue
 import {useMessage} from 'naive-ui'
 import {computed, onMounted, ref} from 'vue'
 import {SelectDysonSphereDirectory} from '../../wailsjs/go/main/App'
-import {GetLatestVersion, SearchAndLoadBepInEx, Uninstall} from '../../wailsjs/go/modDependence/BepInExService'
+import {SearchAndLoadBepInEx, Uninstall} from '../../wailsjs/go/modDependence/BepInExService'
 import {modDependence, updater} from '../../wailsjs/go/models'
 import {GetConfig, SetConfig} from '../../wailsjs/go/system/ConfigurationService'
 import {LoadOrInitDysonSphereExe} from '../../wailsjs/go/system/EnvironmentService'
@@ -32,7 +32,6 @@ const isUninstallingBepInEx = ref(false)
 const isCheckingAppUpdate = ref(false)
 const isUpdatingApp = ref(false)
 const updateAppVisible = ref(false)
-const updateBepInExVisible = ref(false)
 const uninstallBepInExVisible = ref(false)
 const savedGamePath = ref(gamePath.value)
 const baseURL = ref('')
@@ -40,7 +39,6 @@ const savedBaseURL = ref('')
 const message = useMessage()
 const bepinExStatus = ref<modDependence.BepInExStatus | null>(null)
 const appUpdateInfo = ref<updater.CheckResult | null>(null)
-const latestBepInExVersion = ref('')
 const hasPendingGamePathChange = computed(() => gamePath.value.trim() !== savedGamePath.value.trim())
 const baseURLValidationMessage = computed(() => {
   const nextBaseURL = baseURL.value.trim()
@@ -61,17 +59,6 @@ const baseURLValidationMessage = computed(() => {
 })
 const hasPendingBaseURLChange = computed(() => baseURL.value.trim() !== savedBaseURL.value.trim())
 const canSaveBaseURL = computed(() => hasPendingBaseURLChange.value && !baseURLValidationMessage.value)
-const hasBepInExUpdate = computed(() => {
-  const installedVersion = normalizeVersionForComparison(bepinExStatus.value?.installedVersion || '')
-  const latestVersion = normalizeVersionForComparison(latestBepInExVersion.value)
-
-  return Boolean(
-    bepinExStatus.value?.installed &&
-      installedVersion &&
-      latestVersion &&
-      installedVersion !== latestVersion,
-  )
-})
 const bepinExSummary = computed(() => {
   if (!bepinExStatus.value) {
     return '尚未检查 BepInEx'
@@ -207,10 +194,6 @@ const confirmBaseURL = async (): Promise<void> => {
   }
 }
 
-const openBepInExUpdate = (): void => {
-  updateBepInExVisible.value = true
-}
-
 const openAppUpdate = (): void => {
   updateAppVisible.value = true
 }
@@ -284,7 +267,6 @@ const confirmBepInExUninstall = async (): Promise<void> => {
     const result = await Uninstall()
     uninstallBepInExVisible.value = false
     bepinExStatus.value = result.status
-    latestBepInExVersion.value = ''
     message.success(result.message || 'BepInEx 已卸载')
   } catch (error) {
     message.error(`BepInEx 卸载失败：${formatErrorMessage(error)}`)
@@ -318,12 +300,6 @@ const searchAndLoadBepInEx = async (
   try {
     const status = await SearchAndLoadBepInEx(selectedPath.trim())
     bepinExStatus.value = status
-    try {
-      const latestPackage = await GetLatestVersion()
-      latestBepInExVersion.value = latestPackage.version
-    } catch {
-      latestBepInExVersion.value = ''
-    }
     if (showDialog) {
       message.success(
         status.installed
@@ -350,15 +326,6 @@ const formatErrorMessage = (error: unknown): string => {
   }
 
   return String(error || '未知错误')
-}
-
-const normalizeVersionForComparison = (version: string): string => {
-  const parts = version.trim().replace(/^v/i, '').split('.')
-  while (parts.length > 0 && parts[parts.length - 1] === '0') {
-    parts.pop()
-  }
-
-  return parts.join('.')
 }
 </script>
 
@@ -433,12 +400,6 @@ const normalizeVersionForComparison = (version: string): string => {
             </template>
             检查
           </n-button>
-          <n-button :disabled="!hasBepInExUpdate" type="primary" @click="openBepInExUpdate">
-            <template #icon>
-              <Download :size="16" :stroke-width="1.8" />
-            </template>
-            更新
-          </n-button>
           <n-button :disabled="!bepinExStatus?.installed" secondary type="error" :loading="isUninstallingBepInEx" @click="openBepInExUninstall">
             <template #icon>
               <Trash2 :size="16" :stroke-width="1.8" />
@@ -448,8 +409,7 @@ const normalizeVersionForComparison = (version: string): string => {
         </div>
         <p v-if="!bepinExStatus" class="mt-2 text-xs text-zinc-500">选择游戏目录后会自动检查 BepInEx。</p>
         <p v-else-if="!bepinExStatus.installed" class="mt-2 text-sm text-red-600">未在当前游戏目录下找到 BepInEx。</p>
-        <p v-else-if="hasBepInExUpdate" class="mt-2 text-sm text-amber-600">发现新版本：{{ latestBepInExVersion }}</p>
-        <p v-else class="mt-2 text-xs text-zinc-500">当前已是最新版本。</p>
+        <p v-else class="mt-2 text-xs text-zinc-500">检测到 BepInEx 文件存在，版本仅展示本地读取结果。</p>
       </section>
 
       <!-- ~ 应用更新 -->
@@ -504,19 +464,6 @@ const normalizeVersionForComparison = (version: string): string => {
           <span class="font-medium text-zinc-950">{{ appUpdateInfo?.assetName || '未匹配' }}</span>
         </div>
         <p v-if="appUpdateInfo?.releaseNotes" class="text-xs leading-5 text-zinc-500">{{ appUpdateInfo.releaseNotes }}</p>
-      </div>
-    </n-modal>
-
-    <n-modal v-model:show="updateBepInExVisible" preset="dialog" title="更新 BepInEx" positive-text="开始更新" negative-text="取消">
-      <div class="space-y-4 text-sm text-zinc-600">
-        <p>将把 BepInEx 从当前版本更新到最新版本。</p>
-        <div class="grid grid-cols-[6rem_1fr] gap-y-2 rounded border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs">
-          <span class="text-zinc-500">当前版本</span>
-          <span class="font-medium text-zinc-950">{{ bepinExStatus?.installedVersion || '未知版本' }}</span>
-          <span class="text-zinc-500">最新版本</span>
-          <span class="font-medium text-zinc-950">{{ latestBepInExVersion || '未知版本' }}</span>
-        </div>
-        <p class="text-xs text-zinc-500">更新前会保留已有配置文件，实际更新逻辑稍后接入。</p>
       </div>
     </n-modal>
 

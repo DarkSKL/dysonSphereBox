@@ -44,6 +44,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/headless': RouteRecordInfo<
+      '/headless',
+      '/headless',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/log': RouteRecordInfo<
       '/log',
       '/log',
@@ -93,6 +100,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/dashboard.vue': {
       routes:
         | '/dashboard'
+      views:
+        | never
+    }
+    'src/pages/headless.vue': {
+      routes:
+        | '/headless'
       views:
         | never
     }

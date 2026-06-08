@@ -170,6 +170,298 @@ export namespace modDependence {
 	        this.message = source["message"];
 	    }
 	}
+	export class HeadlessDependencyStatus {
+	    id: string;
+	    name: string;
+	    folder: string;
+	    installedVersion: string;
+	    description: string;
+	    function: string;
+	    source: string;
+	    pluginDir: string;
+	    manifestPath: string;
+	    installed: boolean;
+	    missingFiles: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new HeadlessDependencyStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.folder = source["folder"];
+	        this.installedVersion = source["installedVersion"];
+	        this.description = source["description"];
+	        this.function = source["function"];
+	        this.source = source["source"];
+	        this.pluginDir = source["pluginDir"];
+	        this.manifestPath = source["manifestPath"];
+	        this.installed = source["installed"];
+	        this.missingFiles = source["missingFiles"];
+	    }
+	}
+	export class HeadlessNetworkSample {
+	    label: string;
+	    capturedAtUnix: number;
+	    uploadMBps: number;
+	    downloadMBps: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HeadlessNetworkSample(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.capturedAtUnix = source["capturedAtUnix"];
+	        this.uploadMBps = source["uploadMBps"];
+	        this.downloadMBps = source["downloadMBps"];
+	    }
+	}
+	export class HeadlessNetworkStatus {
+	    valid: boolean;
+	    uploadBytesPerSecond: number;
+	    downloadBytesPerSecond: number;
+	    uploadMBps: number;
+	    downloadMBps: number;
+	    uploadPeakMBps: number;
+	    downloadPeakMBps: number;
+	    sampleWindowSeconds: number;
+	    samples: HeadlessNetworkSample[];
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HeadlessNetworkStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.valid = source["valid"];
+	        this.uploadBytesPerSecond = source["uploadBytesPerSecond"];
+	        this.downloadBytesPerSecond = source["downloadBytesPerSecond"];
+	        this.uploadMBps = source["uploadMBps"];
+	        this.downloadMBps = source["downloadMBps"];
+	        this.uploadPeakMBps = source["uploadPeakMBps"];
+	        this.downloadPeakMBps = source["downloadPeakMBps"];
+	        this.sampleWindowSeconds = source["sampleWindowSeconds"];
+	        this.samples = this.convertValues(source["samples"], HeadlessNetworkSample);
+	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class HeadlessEnvironmentStatus {
+	    gameDir: string;
+	    pluginRoot: string;
+	    bepInExStatus: BepInExStatus;
+	    dependencies: HeadlessDependencyStatus[];
+	    nebulaReady: boolean;
+	    steamAppIdPath: string;
+	    steamAppIdExists: boolean;
+	    steamAppIdValid: boolean;
+	    hostPort: number;
+	    nebulaConfigPath: string;
+	    processRunning: boolean;
+	    processId: number;
+	    tcpListening: boolean;
+	    udpListening: boolean;
+	    portListening: boolean;
+	    startCommand: string[];
+	    startCommandText: string;
+	    bepInExLogPath: string;
+	    outputLogPath: string;
+	    network: HeadlessNetworkStatus;
+	    issues: string[];
+	    ready: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new HeadlessEnvironmentStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.gameDir = source["gameDir"];
+	        this.pluginRoot = source["pluginRoot"];
+	        this.bepInExStatus = this.convertValues(source["bepInExStatus"], BepInExStatus);
+	        this.dependencies = this.convertValues(source["dependencies"], HeadlessDependencyStatus);
+	        this.nebulaReady = source["nebulaReady"];
+	        this.steamAppIdPath = source["steamAppIdPath"];
+	        this.steamAppIdExists = source["steamAppIdExists"];
+	        this.steamAppIdValid = source["steamAppIdValid"];
+	        this.hostPort = source["hostPort"];
+	        this.nebulaConfigPath = source["nebulaConfigPath"];
+	        this.processRunning = source["processRunning"];
+	        this.processId = source["processId"];
+	        this.tcpListening = source["tcpListening"];
+	        this.udpListening = source["udpListening"];
+	        this.portListening = source["portListening"];
+	        this.startCommand = source["startCommand"];
+	        this.startCommandText = source["startCommandText"];
+	        this.bepInExLogPath = source["bepInExLogPath"];
+	        this.outputLogPath = source["outputLogPath"];
+	        this.network = this.convertValues(source["network"], HeadlessNetworkStatus);
+	        this.issues = source["issues"];
+	        this.ready = source["ready"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class HeadlessPrepareResult {
+	    gameDir: string;
+	    changed: boolean;
+	    message: string;
+	    writtenPath: string[];
+	    status: HeadlessEnvironmentStatus;
+	
+	    static createFrom(source: any = {}) {
+	        return new HeadlessPrepareResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.gameDir = source["gameDir"];
+	        this.changed = source["changed"];
+	        this.message = source["message"];
+	        this.writtenPath = source["writtenPath"];
+	        this.status = this.convertValues(source["status"], HeadlessEnvironmentStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class HeadlessStartResult {
+	    gameDir: string;
+	    started: boolean;
+	    skipped: boolean;
+	    processId: number;
+	    message: string;
+	    startCommandText: string;
+	    status: HeadlessEnvironmentStatus;
+	
+	    static createFrom(source: any = {}) {
+	        return new HeadlessStartResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.gameDir = source["gameDir"];
+	        this.started = source["started"];
+	        this.skipped = source["skipped"];
+	        this.processId = source["processId"];
+	        this.message = source["message"];
+	        this.startCommandText = source["startCommandText"];
+	        this.status = this.convertValues(source["status"], HeadlessEnvironmentStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class HeadlessStopResult {
+	    gameDir: string;
+	    stopped: boolean;
+	    skipped: boolean;
+	    processId: number;
+	    message: string;
+	    status: HeadlessEnvironmentStatus;
+	
+	    static createFrom(source: any = {}) {
+	        return new HeadlessStopResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.gameDir = source["gameDir"];
+	        this.stopped = source["stopped"];
+	        this.skipped = source["skipped"];
+	        this.processId = source["processId"];
+	        this.message = source["message"];
+	        this.status = this.convertValues(source["status"], HeadlessEnvironmentStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PackageInstallResult {
 	    packageId: number;
 	    packageName: string;

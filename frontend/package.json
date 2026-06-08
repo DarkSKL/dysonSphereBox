@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@lucide/vue": "^1.17.0",
+    "echarts": "^6.1.0",
     "vue": "^3.2.37",
+    "vue-echarts": "^8.0.1",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
