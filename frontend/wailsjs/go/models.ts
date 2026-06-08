@@ -378,6 +378,139 @@ export namespace system {
 	        this.key = source["key"];
 	    }
 	}
+	export class CreateLogRequest {
+	    namespace: string;
+	    module: string;
+	    event: string;
+	    level: number;
+	    type: number;
+	    content: string;
+	    metadata: Record<string, any>;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateLogRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.module = source["module"];
+	        this.event = source["event"];
+	        this.level = source["level"];
+	        this.type = source["type"];
+	        this.content = source["content"];
+	        this.metadata = source["metadata"];
+	        this.error = source["error"];
+	    }
+	}
+	export class LogDTO {
+	    id: number;
+	    namespace: string;
+	    module: string;
+	    event: string;
+	    level: number;
+	    type: number;
+	    content: string;
+	    metadata: Record<string, any>;
+	    error: string;
+	    dateTime: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.namespace = source["namespace"];
+	        this.module = source["module"];
+	        this.event = source["event"];
+	        this.level = source["level"];
+	        this.type = source["type"];
+	        this.content = source["content"];
+	        this.metadata = source["metadata"];
+	        this.error = source["error"];
+	        this.dateTime = source["dateTime"];
+	    }
+	}
+	export class LogListResult {
+	    items: LogDTO[];
+	    total: number;
+	    page: number;
+	    pageSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], LogDTO);
+	        this.total = source["total"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LogQuery {
+	    namespace: string;
+	    module: string;
+	    event: string;
+	    level: number;
+	    type: number;
+	    page: number;
+	    pageSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogQuery(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.module = source["module"];
+	        this.event = source["event"];
+	        this.level = source["level"];
+	        this.type = source["type"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	    }
+	}
+
+}
+
+export namespace time {
+	
+	export class Time {
+	
+	
+	    static createFrom(source: any = {}) {
+	        return new Time(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	
+	    }
+	}
 
 }
 

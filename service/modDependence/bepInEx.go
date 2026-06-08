@@ -6,11 +6,25 @@ type BepInExService struct {
 }
 
 func (service *BepInExService) Install() (*modDependenceHelper.BepInExInstallResult, error) {
-	return modDependenceHelper.InstallBepInEx()
+	result, err := modDependenceHelper.InstallBepInEx()
+	if err != nil {
+		modDependenceHelper.RecordBepInExFailure("install", "BepInEx 安装失败", err)
+		return nil, err
+	}
+
+	modDependenceHelper.RecordBepInExInstallResult("install", result)
+	return result, nil
 }
 
 func (service *BepInExService) Uninstall() (*modDependenceHelper.BepInExUninstallResult, error) {
-	return modDependenceHelper.UninstallBepInEx()
+	result, err := modDependenceHelper.UninstallBepInEx()
+	if err != nil {
+		modDependenceHelper.RecordBepInExFailure("uninstall", "BepInEx 卸载失败", err)
+		return nil, err
+	}
+
+	modDependenceHelper.RecordBepInExUninstallSuccess(result)
+	return result, nil
 }
 
 func (service *BepInExService) Update() (*modDependenceHelper.BepInExInstallResult, error) {
@@ -19,16 +33,25 @@ func (service *BepInExService) Update() (*modDependenceHelper.BepInExInstallResu
 		return nil, err
 	}
 	if status.Installed {
-		return &modDependenceHelper.BepInExInstallResult{
+		result := &modDependenceHelper.BepInExInstallResult{
 			GameDir:   status.GameDir,
 			Installed: false,
 			Skipped:   true,
 			Message:   "BepInEx 已安装，跳过重复安装",
 			Status:    *status,
-		}, nil
+		}
+		modDependenceHelper.RecordBepInExInstallResult("update", result)
+		return result, nil
 	}
 
-	return modDependenceHelper.InstallBepInEx()
+	result, err := modDependenceHelper.InstallBepInEx()
+	if err != nil {
+		modDependenceHelper.RecordBepInExFailure("update", "BepInEx 更新失败", err)
+		return nil, err
+	}
+
+	modDependenceHelper.RecordBepInExInstallResult("update", result)
+	return result, nil
 }
 
 func (service *BepInExService) GetLatestVersion() (*modDependenceHelper.BepInExPackage, error) {
@@ -54,11 +77,5 @@ func (service *BepInExService) SearchAndLoadBepInEx(selectedPath string) (*modDe
 		return modDependenceHelper.SearchAndLoadBepInEx(selectedPath)
 	}
 
-	gameDir, err := modDependenceHelper.GetConfiguredGameDir()
-	if err != nil {
-		return nil, err
-	}
-
-	status := modDependenceHelper.CheckBepInExStatus(gameDir)
-	return &status, nil
+	return service.GetStatus()
 }

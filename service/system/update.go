@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"DysonSphereBox/core"
+	systemHelper "DysonSphereBox/helper/system"
 	appUpdater "DysonSphereBox/helper/updater"
 )
 
@@ -19,10 +20,24 @@ func (service *UpdateService) GetAppVersion() string {
 
 // CheckAppUpdate 检查 Gitee Release 是否存在可用的新版本。
 func (service *UpdateService) CheckAppUpdate() (*appUpdater.CheckResult, error) {
-	return appUpdater.CheckAppUpdate(context.Background())
+	result, err := appUpdater.CheckAppUpdate(context.Background())
+	if err != nil {
+		systemHelper.RecordUpdateCheckFailure(core.Version, err)
+		return nil, err
+	}
+
+	systemHelper.RecordUpdateCheckSuccess(core.Version, result)
+	return result, nil
 }
 
 // UpdateAppSelf 下载并应用最新版本。
 func (service *UpdateService) UpdateAppSelf() (*appUpdater.UpdateResult, error) {
-	return appUpdater.UpdateAppSelf(context.Background())
+	result, err := appUpdater.UpdateAppSelf(context.Background())
+	if err != nil {
+		systemHelper.RecordUpdateSelfFailure(core.Version, err)
+		return nil, err
+	}
+
+	systemHelper.RecordUpdateSelfSuccess(core.Version, result)
+	return result, nil
 }

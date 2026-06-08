@@ -55,9 +55,10 @@ Separate files by responsibility. Do not put unrelated layout, page, service, ty
 - Backend global initialization belongs in `core`; keep it small and focused on application-wide infrastructure such as database lifecycle.
 - GORM models belong under `model/<domain>`. Each domain must expose an `enter.go` with `RegisterModels() []interface{}`.
 - The root `model/enter.go` is the only place that aggregates domain model groups. `core` must call `model.RegisterModels()` instead of importing domain model packages directly.
-- Services belong under `service/<domain>`. Each service domain must expose an `enter.go` that registers Wails-bound service structs.
+- Services belong under `service/<domain>` and are the core backend business layer. Each service domain must expose an `enter.go` that registers Wails-bound service structs.
+- Helpers belong under `helper/` and only assist services with reusable implementation details. Helpers must not replace services as the owner of business workflows.
 - Reusable utility functions belong under `utils/`. Do not hide general helpers inside `core`, `service`, `model`, or frontend code.
-- Service-specific helper objects belong under `helper/`. Do not place free helper functions in service files.
+- Service-specific helper functions and helper objects belong under `helper/`. Do not place free helper functions in service files.
 - Do not place service logic in model files, database initialization files, frontend generated files, or Wails entry files.
 
 Use automatic imports where configured:
@@ -169,8 +170,9 @@ Follow these rules strictly when changing Go backend code:
 - For SQLite JSON fields, use `datatypes.JSON` from `gorm.io/datatypes`; do not store JSON as untyped strings unless the field is intentionally plain text.
 - For frontend-facing Wails methods, return DTOs when GORM models contain `time.Time`, internal fields, or database-only tags. Avoid exposing persistence models directly when it would generate weak TypeScript types.
 - Run `wails generate module` after adding, removing, renaming, or changing exported methods on bound services.
-- Before adding any helper or utility function, inspect `utils/` first with `rg` or `rg --files utils`. Reuse existing helpers when they match the need.
-- If no suitable helper exists, create a focused utility in `utils/<topic>.go` under package `utils`. Keep utilities generic and dependency-light; do not import service, model, or core packages from `utils`.
+- Before adding a generic utility function, inspect `utils/` first with `rg` or `rg --files utils`. Reuse existing utilities when they match the need.
+- If no suitable generic utility exists, create a focused utility in `utils/<topic>.go` under package `utils`. Keep utilities generic and dependency-light; do not import service, model, or core packages from `utils`.
+- Before adding a service-specific helper function, inspect `helper/` first. Helpers may support service methods with DTO conversion, log event construction, parsing, filesystem checks, reusable validation, or small persistence helpers, but the service method remains the business workflow owner.
 
 ### Model Registration Pattern
 
@@ -217,13 +219,19 @@ When adding a new model:
 
 Each service domain should follow the existing `service/<domain>/enter.go` pattern:
 
+- Service is the core business layer. Put orchestration, business decisions, state changes, transaction boundaries, and important operation flow in service methods.
+- Helper is only an auxiliary layer for services. Use helper functions to remove repetitive or low-level implementation details, not to hide or replace the service workflow.
 - Service files may contain only service structs and methods on those service structs.
 - Do not define non-method helper functions in service files.
 - Keep methods cohesive by domain; split files by workflow when a service grows.
 - Validate input at the service boundary and return Go errors instead of panicking.
-- If service logic needs reusable helper behavior, first inspect `helper/`. Reuse an existing helper object or helper function when available.
+- If service logic needs reusable auxiliary behavior, first inspect `helper/`. Reuse an existing helper object or helper function when available.
 - If no helper exists, create a focused helper under `helper/<domain>` or `helper/<topic>.go`, then call it from the service method.
-- Helper packages may encapsulate workflow support, parsing, filesystem checks, or other service-adjacent behavior, but must not become Wails-bound service layers.
+- Helper packages may encapsulate DTO conversion, log entry construction, parsing, filesystem checks, reusable validation, and other service-adjacent implementation details.
+- Do not move core business workflows into helper packages. Avoid helper APIs named like complete use cases such as `InstallPackageWithLog`, `UpdateAppSelfWithLog`, or `LoadOrInitGamePath` when the service should own that workflow.
+- Every service workflow that changes persisted state, runtime state, files, network configuration, process state, installation state, or user-visible system behavior should record an important operation log through helper-layer logging functions.
+- Keep the system log schema generic: use `namespace`, `module`, `event`, `level`, and `type` as query dimensions; put user-readable state changes in `content`; put structured details such as port, PID, package ID, path, version, or source in `metadata`.
+- Do not add workflow-specific log columns such as `subject`, `stateBefore`, or `stateAfter` unless the user explicitly redesigns the log model.
 - Do not hand edit `frontend/wailsjs`; regenerate it with Wails.
 
 ## Validation

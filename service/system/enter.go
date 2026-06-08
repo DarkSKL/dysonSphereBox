@@ -4,6 +4,7 @@ type ServiceGroup struct {
 	EnvironmentService
 	ConfigurationService
 	UpdateService
+	LogService
 }
 
 func (serviceGroup *ServiceGroup) RegisterServices() []interface{} {
@@ -11,5 +12,6 @@ func (serviceGroup *ServiceGroup) RegisterServices() []interface{} {
 		&serviceGroup.EnvironmentService,
 		&serviceGroup.ConfigurationService,
 		&serviceGroup.UpdateService,
+		&serviceGroup.LogService,
 	}
 }

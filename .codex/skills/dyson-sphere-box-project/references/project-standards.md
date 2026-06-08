@@ -173,6 +173,29 @@ frontend/wailsjs/runtime/**
 
 Create frontend wrappers in `frontend/src/services` if a backend method is used from multiple pages or needs conversion/error handling.
 
+## Backend Service And Helper Boundaries
+
+Backend service packages are the core business layer:
+
+- Put business orchestration in `service/<domain>` methods.
+- Keep state changes, transaction decisions, important operation flow, and service-level validation in service methods.
+- Keep service files limited to service structs and methods on those structs.
+- Do not add package-level free helper functions to service files.
+
+Helper packages assist services:
+
+- Put reusable support code in `helper/<domain>` or `helper/<topic>.go`.
+- Use helpers for DTO conversion, log entry construction, parsing, filesystem checks, reusable validation, and small implementation details.
+- Do not move complete service workflows into helpers.
+- Avoid helper names that represent full use cases when the service should own the flow, such as `InstallPackageWithLog`, `UpdateAppSelfWithLog`, or `LoadOrInitGamePath`.
+
+Important operation logging:
+
+- Service workflows that change persisted state, runtime state, files, network configuration, process state, installation state, or user-visible system behavior should record system logs.
+- Build log entries through helper-layer logging functions, but keep the business decision to log in the service workflow.
+- Keep the log schema generic: query by `namespace`, `module`, `event`, `level`, and `type`; write user-facing state descriptions into `content`; put structured details in `metadata`.
+- Do not add workflow-specific log columns such as `subject`, `stateBefore`, or `stateAfter` unless the user explicitly redesigns the log model.
+
 ## TypeScript Rules
 
 Use strict, explicit TypeScript:
