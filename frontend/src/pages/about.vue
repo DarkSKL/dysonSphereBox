@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {ExternalLink, GitFork, MessageCircle} from '@lucide/vue'
+import {onMounted} from 'vue'
+import {useAppVersion} from '../composables/useAppVersion'
 
 definePage({
   meta: {
@@ -34,6 +36,15 @@ const credits = [
   ['Mod 框架', 'BepInEx 项目'],
   ['Mod 作者', 'AssemblerUI、BottleneckUI、DSPCalculator、FactoryLocator、CAAP_N'],
 ]
+
+const {
+  appVersion,
+  loadAppVersion,
+} = useAppVersion()
+
+onMounted(() => {
+  void loadAppVersion()
+})
 </script>
 
 <template>
@@ -43,7 +54,7 @@ const credits = [
     <div class="grid gap-8">
       <section>
         <p class="text-sm text-zinc-500">版本</p>
-        <p class="mt-1 text-zinc-950">v1.0.0</p>
+        <p class="mt-1 text-zinc-950">{{ appVersion }}</p>
       </section>
 
       <section>

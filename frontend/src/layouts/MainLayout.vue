@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import {Activity, Home, Info, Package, Settings} from '@lucide/vue'
-import {computed} from 'vue'
+import {computed, onMounted} from 'vue'
 import {useRoute} from 'vue-router'
+import {useAppVersion} from '../composables/useAppVersion'
 
 const route = useRoute()
+const {appVersion, loadAppVersion} = useAppVersion()
 
 const navItems = [
   {label: '首页', to: '/', icon: Home},
@@ -13,6 +15,10 @@ const navItems = [
 ]
 
 const title = computed(() => route.meta.title || 'DysonSphereBox')
+
+onMounted(() => {
+  void loadAppVersion()
+})
 </script>
 
 <template>
@@ -71,7 +77,7 @@ const title = computed(() => route.meta.title || 'DysonSphereBox')
           <p class="text-xs text-zinc-500">戴森球计划 Mod 管理工具</p>
         </div>
         <div class="flex items-center gap-2">
-          <span class="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-500">v1.0.0</span>
+          <span class="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-500">{{ appVersion }}</span>
         </div>
       </header>
 

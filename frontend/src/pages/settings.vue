@@ -4,9 +4,10 @@ import {useMessage} from 'naive-ui'
 import {computed, onMounted, ref} from 'vue'
 import {SelectDysonSphereDirectory} from '../../wailsjs/go/main/App'
 import {GetLatestVersion, SearchAndLoadBepInEx, Uninstall} from '../../wailsjs/go/modDependence/BepInExService'
-import {modDependence} from '../../wailsjs/go/models'
+import {modDependence, updater} from '../../wailsjs/go/models'
 import {GetConfig, SetConfig} from '../../wailsjs/go/system/ConfigurationService'
 import {LoadOrInitDysonSphereExe} from '../../wailsjs/go/system/EnvironmentService'
+import {CheckAppUpdate, UpdateAppSelf} from '../../wailsjs/go/system/UpdateService'
 import {useWorkshopState} from '../composables/useWorkshopState'
 
 definePage({
@@ -28,6 +29,9 @@ const isSavingBaseURL = ref(false)
 const isLoadingBepInExStatus = ref(false)
 const isCheckingBepInEx = ref(false)
 const isUninstallingBepInEx = ref(false)
+const isCheckingAppUpdate = ref(false)
+const isUpdatingApp = ref(false)
+const updateAppVisible = ref(false)
 const updateBepInExVisible = ref(false)
 const uninstallBepInExVisible = ref(false)
 const savedGamePath = ref(gamePath.value)
@@ -35,6 +39,7 @@ const baseURL = ref('')
 const savedBaseURL = ref('')
 const message = useMessage()
 const bepinExStatus = ref<modDependence.BepInExStatus | null>(null)
+const appUpdateInfo = ref<updater.CheckResult | null>(null)
 const latestBepInExVersion = ref('')
 const hasPendingGamePathChange = computed(() => gamePath.value.trim() !== savedGamePath.value.trim())
 const baseURLValidationMessage = computed(() => {
@@ -77,6 +82,20 @@ const bepinExSummary = computed(() => {
 
   return `已安装 BepInEx ${bepinExStatus.value.installedVersion || '未知版本'}`
 })
+const appUpdateSummary = computed(() => {
+  if (!appUpdateInfo.value) {
+    return '尚未检查应用更新'
+  }
+  if (!appUpdateInfo.value.latestVersion) {
+    return `当前版本 ${appUpdateInfo.value.currentVersion}，未发现可用发布版本`
+  }
+  if (appUpdateInfo.value.hasUpdate) {
+    return `当前版本 ${appUpdateInfo.value.currentVersion}，发现新版本 ${appUpdateInfo.value.latestVersion}`
+  }
+
+  return `当前已是最新版本 ${appUpdateInfo.value.currentVersion}`
+})
+const canUpdateApp = computed(() => Boolean(appUpdateInfo.value?.hasUpdate) && !isUpdatingApp.value)
 
 onMounted(async () => {
   try {
@@ -190,8 +209,58 @@ const openBepInExUpdate = (): void => {
   updateBepInExVisible.value = true
 }
 
+const openAppUpdate = (): void => {
+  updateAppVisible.value = true
+}
+
 const openBepInExUninstall = (): void => {
   uninstallBepInExVisible.value = true
+}
+
+// =============== 应用更新检查 ===============
+// 说明：调用后端 Gitee Release 更新源，读取当前程序版本、最新版本与匹配的更新包。
+// 边界：只检查和展示远端状态，不会下载或替换当前程序。
+const checkAppUpdate = async (): Promise<void> => {
+  if (isCheckingAppUpdate.value) {
+    return
+  }
+
+  isCheckingAppUpdate.value = true
+  try {
+    const result = await CheckAppUpdate()
+    appUpdateInfo.value = result
+    if (result.hasUpdate) {
+      message.success(`发现新版本 ${result.latestVersion}`)
+      return
+    }
+
+    message.success('当前已经是最新版本')
+  } catch (error) {
+    message.error(`检查应用更新失败：${formatErrorMessage(error)}`)
+  } finally {
+    isCheckingAppUpdate.value = false
+  }
+}
+
+// =============== 应用自更新 ===============
+// 说明：用户确认后下载 Gitee Release 附件，校验 checksums.txt，并替换当前可执行文件。
+// 边界：更新完成后不会强制退出应用，需要用户手动重启以运行新版本。
+const confirmAppUpdate = async (): Promise<void> => {
+  if (isUpdatingApp.value) {
+    return
+  }
+
+  isUpdatingApp.value = true
+  try {
+    const result = await UpdateAppSelf()
+    appUpdateInfo.value = result.check
+    updateAppVisible.value = false
+    message.success(result.message || '更新完成，请重启应用')
+  } catch (error) {
+    message.error(`应用更新失败：${formatErrorMessage(error)}`)
+  } finally {
+    isUpdatingApp.value = false
+  }
 }
 
 // =============== BepInEx 卸载 ===============
@@ -374,7 +443,61 @@ const normalizeVersionForComparison = (version: string): string => {
         <p v-else-if="hasBepInExUpdate" class="mt-2 text-sm text-amber-600">发现新版本：{{ latestBepInExVersion }}</p>
         <p v-else class="mt-2 text-xs text-zinc-500">当前已是最新版本。</p>
       </section>
+
+      <!-- ~ 应用更新 -->
+      <!-- * 说明：展示 DysonSphereBox 当前版本与 Gitee Release 最新版本 -->
+      <!-- * 交互：用户先检查更新，发现新版本后可打开确认弹窗并执行自更新 -->
+      <!-- * 依赖：依赖 UpdateService.CheckAppUpdate 与 UpdateService.UpdateAppSelf -->
+      <!-- * 边界：更新完成后需要用户重启应用，开发版构建会被正式 Release 视为可更新 -->
+      <section>
+        <label class="mb-2 block text-sm font-semibold text-zinc-950">应用更新</label>
+        <div class="flex gap-2">
+          <n-input :value="appUpdateSummary" readonly />
+          <n-button secondary :loading="isCheckingAppUpdate" @click="checkAppUpdate">
+            <template #icon>
+              <RefreshCw :size="16" :stroke-width="1.8" />
+            </template>
+            检查
+          </n-button>
+          <n-button type="primary" :disabled="!canUpdateApp" :loading="isUpdatingApp" @click="openAppUpdate">
+            <template #icon>
+              <Download :size="16" :stroke-width="1.8" />
+            </template>
+            更新
+          </n-button>
+        </div>
+        <p v-if="appUpdateInfo?.hasUpdate" class="mt-2 text-sm text-amber-600">
+          将下载 {{ appUpdateInfo.assetName }}，校验通过后替换当前程序。
+        </p>
+        <p v-else-if="appUpdateInfo" class="mt-2 text-xs text-zinc-500">当前运行环境：{{ appUpdateInfo.os }}/{{ appUpdateInfo.arch }}</p>
+        <p v-else class="mt-2 text-xs text-zinc-500">更新包来自 Gitee Release，并使用 checksums.txt 校验完整性。</p>
+      </section>
     </div>
+
+    <n-modal
+      v-model:show="updateAppVisible"
+      preset="dialog"
+      title="更新 DysonSphereBox"
+      positive-text="开始更新"
+      negative-text="取消"
+      :positive-button-props="{ type: 'primary', loading: isUpdatingApp, disabled: isUpdatingApp }"
+      :negative-button-props="{ disabled: isUpdatingApp }"
+      :mask-closable="!isUpdatingApp"
+      @positive-click="confirmAppUpdate"
+    >
+      <div class="space-y-4 text-sm text-zinc-600">
+        <p>将下载并校验最新版本，更新完成后需要重启应用。</p>
+        <div class="grid grid-cols-[6rem_1fr] gap-y-2 rounded border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs">
+          <span class="text-zinc-500">当前版本</span>
+          <span class="font-medium text-zinc-950">{{ appUpdateInfo?.currentVersion || '未知版本' }}</span>
+          <span class="text-zinc-500">最新版本</span>
+          <span class="font-medium text-zinc-950">{{ appUpdateInfo?.latestVersion || '未知版本' }}</span>
+          <span class="text-zinc-500">更新包</span>
+          <span class="font-medium text-zinc-950">{{ appUpdateInfo?.assetName || '未匹配' }}</span>
+        </div>
+        <p v-if="appUpdateInfo?.releaseNotes" class="text-xs leading-5 text-zinc-500">{{ appUpdateInfo.releaseNotes }}</p>
+      </div>
+    </n-modal>
 
     <n-modal v-model:show="updateBepInExVisible" preset="dialog" title="更新 BepInEx" positive-text="开始更新" negative-text="取消">
       <div class="space-y-4 text-sm text-zinc-600">
