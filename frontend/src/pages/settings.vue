@@ -98,6 +98,8 @@ const appUpdateSummary = computed(() => {
 const canUpdateApp = computed(() => Boolean(appUpdateInfo.value?.hasUpdate) && !isUpdatingApp.value)
 
 onMounted(async () => {
+  void checkAppUpdate({silentWhenNoUpdate: true})
+
   try {
     const configuredBaseURL = await GetConfig('System', 'BaseURL')
     baseURL.value = configuredBaseURL
@@ -217,10 +219,14 @@ const openBepInExUninstall = (): void => {
   uninstallBepInExVisible.value = true
 }
 
+interface AppUpdateCheckOptions {
+  readonly silentWhenNoUpdate?: boolean
+}
+
 // =============== 应用更新检查 ===============
 // 说明：调用后端 Gitee Release 更新源，读取当前程序版本、最新版本与匹配的更新包。
 // 边界：只检查和展示远端状态，不会下载或替换当前程序。
-const checkAppUpdate = async (): Promise<void> => {
+const checkAppUpdate = async (options: AppUpdateCheckOptions = {}): Promise<void> => {
   if (isCheckingAppUpdate.value) {
     return
   }
@@ -234,7 +240,9 @@ const checkAppUpdate = async (): Promise<void> => {
       return
     }
 
-    message.success('当前已经是最新版本')
+    if (!options.silentWhenNoUpdate) {
+      message.success('当前已经是最新版本')
+    }
   } catch (error) {
     message.error(`检查应用更新失败：${formatErrorMessage(error)}`)
   } finally {
@@ -453,7 +461,7 @@ const normalizeVersionForComparison = (version: string): string => {
         <label class="mb-2 block text-sm font-semibold text-zinc-950">应用更新</label>
         <div class="flex gap-2">
           <n-input :value="appUpdateSummary" readonly />
-          <n-button secondary :loading="isCheckingAppUpdate" @click="checkAppUpdate">
+          <n-button secondary :loading="isCheckingAppUpdate" @click="() => checkAppUpdate()">
             <template #icon>
               <RefreshCw :size="16" :stroke-width="1.8" />
             </template>
