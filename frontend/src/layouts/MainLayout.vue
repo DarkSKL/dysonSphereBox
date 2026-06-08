@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {Activity, Home, Info, Package, Settings} from '@lucide/vue'
+import {Activity, Home, Info, Package, ScrollText, Settings} from '@lucide/vue'
 import {computed, onMounted} from 'vue'
 import {useRoute} from 'vue-router'
 import {useAppVersion} from '../composables/useAppVersion'
@@ -10,6 +10,7 @@ const {appVersion, loadAppVersion} = useAppVersion()
 const navItems = [
   {label: '首页', to: '/', icon: Home},
   {label: 'Mod', to: '/mod', icon: Package},
+  {label: '日志', to: '/log', icon: ScrollText},
   {label: '设置', to: '/settings', icon: Settings},
   {label: '关于我们', to: '/about', icon: Info},
 ]
