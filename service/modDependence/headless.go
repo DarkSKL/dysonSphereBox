@@ -12,8 +12,8 @@ type HeadlessService struct {
 func (service *HeadlessService) GetEnvironmentStatus() (*modDependenceHelper.HeadlessEnvironmentStatus, error) {
 	gameDir, err := modDependenceHelper.GetConfiguredGameDir()
 	if err != nil {
-		modDependenceHelper.RecordHeadlessFailure("status", "无头服务器环境检测失败", err)
-		return nil, err
+		status := modDependenceHelper.BuildUnconfiguredHeadlessEnvironmentStatus(err.Error())
+		return &status, nil
 	}
 
 	status, err := modDependenceHelper.InspectHeadlessEnvironment(gameDir)

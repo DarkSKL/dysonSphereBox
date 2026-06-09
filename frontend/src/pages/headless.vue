@@ -237,6 +237,10 @@ const headlessPrerequisiteBlocked = computed(() => {
 
   return !current.gameDir || !current.bepInExStatus.installed || !current.nebulaReady
 })
+const gamePathMissing = computed(() => {
+  const current = status.value
+  return Boolean(current && !current.gameDir)
+})
 const headlessGateTitle = computed(() => {
   const current = status.value
   if (!current && isLoading.value) {
@@ -279,8 +283,11 @@ const headlessGateDescription = computed(() => {
 })
 const headlessGatePrimaryText = computed(() => {
   const current = status.value
-  if (!current || !current.gameDir) {
-    return current ? '前往设置' : '重新检测'
+  if (gamePathMissing.value) {
+    return '前往设置'
+  }
+  if (!current) {
+    return '重新检测'
   }
   if (!current.bepInExStatus.installed || !current.nebulaReady) {
     return '前往 Mod'
@@ -632,12 +639,11 @@ const saveSettings = async (): Promise<void> => {
 
 const handleHeadlessGatePrimaryAction = (): void => {
   const current = status.value
-  if (!current || (!current.gameDir && current)) {
-    if (current) {
-      router.push('/settings')
-      return
-    }
-
+  if (gamePathMissing.value) {
+    router.push('/settings')
+    return
+  }
+  if (!current) {
     void refreshStatus(true)
     return
   }
@@ -834,15 +840,15 @@ onBeforeUnmount(() => {
     <!-- * 依赖：依赖 HeadlessEnvironmentStatus 聚合字段 -->
     <!-- * 边界：未加载时展示默认占位，保持布局稳定 -->
     <div class="mt-4 grid grid-cols-4 gap-4">
-      <article v-for="metric in metricCards" :key="metric.label" class="h-[104px] overflow-hidden rounded border border-zinc-200 bg-white p-4">
-        <div class="flex gap-3">
-          <div class="grid h-8 w-8 shrink-0 place-items-center rounded-md border" :class="metricToneClass(metric.tone)">
+      <article v-for="metric in metricCards" :key="metric.label" class="h-[104px] overflow-hidden rounded border border-zinc-200 bg-white px-4">
+        <div class="grid h-full grid-cols-[40px_minmax(0,1fr)] items-center gap-3">
+          <div class="grid h-9 w-9 shrink-0 place-items-center rounded-md border" :class="metricToneClass(metric.tone)">
             <component :is="metric.icon" :size="17" :stroke-width="1.8" />
           </div>
-          <div class="min-w-0">
-            <p class="text-[11px] font-medium leading-[14px] text-zinc-400">{{ metric.label }}</p>
-            <p class="mt-1 truncate text-lg font-bold leading-6 text-zinc-950">{{ metric.value }}</p>
-            <p class="mt-1 truncate text-[11px] leading-4 text-zinc-500">{{ metric.detail }}</p>
+          <div class="min-w-0 py-1">
+            <p class="h-4 truncate text-[11px] font-medium leading-4 text-zinc-400">{{ metric.label }}</p>
+            <p class="mt-1 h-7 truncate text-lg font-bold leading-7 text-zinc-950">{{ metric.value }}</p>
+            <p class="mt-1 h-4 truncate text-[11px] leading-4 text-zinc-500">{{ metric.detail }}</p>
           </div>
         </div>
       </article>

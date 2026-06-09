@@ -277,6 +277,25 @@ var headlessDependencySpecs = []headlessDependencySpec{
 	},
 }
 
+// BuildUnconfiguredHeadlessEnvironmentStatus 构造未配置游戏路径时的只读开服状态。
+// 使用：状态页刷新时没有 GameStartFilePath 或路径无效，不把它当成接口异常，而是交给前端遮罩引导用户去设置页。
+func BuildUnconfiguredHeadlessEnvironmentStatus(reason string) HeadlessEnvironmentStatus {
+	status := HeadlessEnvironmentStatus{
+		Dependencies:  inspectHeadlessDependencies(""),
+		HostPort:      defaultNebulaHostPort,
+		ServerArchive: readHeadlessServerArchive(),
+		Network:       inspectHeadlessNetworkStatus(),
+		Issues:        []string{"未检测到 DSPGAME.exe，请先在设置页选择《戴森球计划》游戏目录。"},
+		Ready:         false,
+	}
+	if strings.TrimSpace(reason) != "" {
+		status.Issues = append(status.Issues, reason)
+	}
+	status.NebulaReady = dependenciesReady(status.Dependencies)
+
+	return status
+}
+
 // InspectHeadlessEnvironment 汇总检查当前游戏目录的无头服务器准备状态。
 // 使用：HeadlessService.GetEnvironmentStatus 调用；边界：只读取文件、进程和端口状态，不写入磁盘。
 func InspectHeadlessEnvironment(gameDir string) (HeadlessEnvironmentStatus, error) {
@@ -488,7 +507,7 @@ func StopHeadlessEnvironment(gameDir string) (*HeadlessStopResult, error) {
 		}, nil
 	}
 
-	output, err := exec.Command("taskkill", "/PID", strconv.Itoa(status.ProcessID), "/T", "/F").CombinedOutput()
+	output, err := runHiddenCommandCombinedOutput("taskkill", "/PID", strconv.Itoa(status.ProcessID), "/T", "/F")
 	if err != nil {
 		return nil, fmt.Errorf("stop headless process %d: %w: %s", status.ProcessID, err, strings.TrimSpace(string(output)))
 	}
@@ -518,8 +537,14 @@ func StopHeadlessEnvironment(gameDir string) (*HeadlessStopResult, error) {
 
 func inspectHeadlessDependencies(pluginRoot string) []HeadlessDependencyStatus {
 	results := make([]HeadlessDependencyStatus, 0, len(headlessDependencySpecs))
+	pluginRoot = strings.TrimSpace(pluginRoot)
 	for _, spec := range headlessDependencySpecs {
-		pluginDir := filepath.Join(pluginRoot, spec.Folder)
+		pluginDir := ""
+		manifestPath := ""
+		if pluginRoot != "" {
+			pluginDir = filepath.Join(pluginRoot, spec.Folder)
+			manifestPath = filepath.Join(pluginDir, "manifest.json")
+		}
 		result := HeadlessDependencyStatus{
 			ID:           spec.ID,
 			Name:         spec.Name,
@@ -528,8 +553,14 @@ func inspectHeadlessDependencies(pluginRoot string) []HeadlessDependencyStatus {
 			Description:  spec.Description,
 			Source:       spec.Source,
 			PluginDir:    pluginDir,
-			ManifestPath: filepath.Join(pluginDir, "manifest.json"),
+			ManifestPath: manifestPath,
 			MissingFiles: make([]string, 0),
+		}
+
+		if pluginRoot == "" {
+			result.MissingFiles = append(result.MissingFiles, spec.Folder)
+			results = append(results, result)
+			continue
 		}
 
 		if info, err := os.Stat(pluginDir); err != nil || !info.IsDir() {
@@ -815,7 +846,7 @@ func findHeadlessDysonSphereProcess(gameDir string) (int, bool) {
 
 func listDysonSphereProcesses() ([]headlessWindowsProcess, error) {
 	command := `$items = Get-CimInstance Win32_Process -Filter "Name = 'DSPGAME.exe'" | Select-Object ProcessId,CommandLine,ExecutablePath; if ($null -eq $items) { '[]' } else { $items | ConvertTo-Json -Compress }`
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", command).Output()
+	output, err := runHiddenCommandOutput("powershell", "-NoProfile", "-Command", command)
 	if err != nil {
 		return nil, err
 	}
@@ -870,7 +901,7 @@ func normalizeWindowsPathForCompare(path string) string {
 }
 
 func isNetstatPortListening(protocol string, port int) bool {
-	output, err := exec.Command("netstat", "-ano", "-p", protocol).Output()
+	output, err := runHiddenCommandOutput("netstat", "-ano", "-p", protocol)
 	if err != nil {
 		return false
 	}
@@ -955,7 +986,7 @@ func readHeadlessNetworkCounter() (headlessNetworkCounter, error) {
 
 func readPowerShellNetworkCounter() (headlessNetworkCounter, error) {
 	command := `$items = Get-NetAdapterStatistics | Select-Object ReceivedBytes,SentBytes; $items | ConvertTo-Json -Compress`
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", command).Output()
+	output, err := runHiddenCommandOutput("powershell", "-NoProfile", "-Command", command)
 	if err != nil {
 		return headlessNetworkCounter{}, err
 	}
@@ -991,7 +1022,7 @@ func readPowerShellNetworkCounter() (headlessNetworkCounter, error) {
 }
 
 func readNetstatNetworkCounter() (headlessNetworkCounter, error) {
-	output, err := exec.Command("netstat", "-e").Output()
+	output, err := runHiddenCommandOutput("netstat", "-e")
 	if err != nil {
 		return headlessNetworkCounter{}, err
 	}
@@ -1013,6 +1044,20 @@ func readNetstatNetworkCounter() (headlessNetworkCounter, error) {
 		sentBytes:     numbers[1],
 		capturedAt:    time.Now(),
 	}, nil
+}
+
+// runHiddenCommandOutput 在后台执行只读检测命令，避免 Wails 桌面端刷新状态时弹出控制台窗口。
+func runHiddenCommandOutput(name string, args ...string) ([]byte, error) {
+	command := exec.Command(name, args...)
+	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return command.Output()
+}
+
+// runHiddenCommandCombinedOutput 在后台执行需要诊断输出的系统命令，保留 stderr 便于停止失败时排错。
+func runHiddenCommandCombinedOutput(name string, args ...string) ([]byte, error) {
+	command := exec.Command(name, args...)
+	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return command.CombinedOutput()
 }
 
 func bytesPerSecondToMBps(value float64) float64 {

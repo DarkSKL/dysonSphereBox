@@ -7,7 +7,7 @@ import {SearchAndLoadBepInEx, Uninstall} from '../../wailsjs/go/modDependence/Be
 import {modDependence, updater} from '../../wailsjs/go/models'
 import {GetConfig, SetConfig} from '../../wailsjs/go/system/ConfigurationService'
 import {LoadOrInitDysonSphereExe} from '../../wailsjs/go/system/EnvironmentService'
-import {CheckAppUpdate, UpdateAppSelf} from '../../wailsjs/go/system/UpdateService'
+import {useAppUpdateState} from '../composables/useAppUpdateState'
 import {useWorkshopState} from '../composables/useWorkshopState'
 
 definePage({
@@ -29,8 +29,6 @@ const isSavingBaseURL = ref(false)
 const isLoadingBepInExStatus = ref(false)
 const isCheckingBepInEx = ref(false)
 const isUninstallingBepInEx = ref(false)
-const isCheckingAppUpdate = ref(false)
-const isUpdatingApp = ref(false)
 const updateAppVisible = ref(false)
 const uninstallBepInExVisible = ref(false)
 const savedGamePath = ref(gamePath.value)
@@ -38,7 +36,13 @@ const baseURL = ref('')
 const savedBaseURL = ref('')
 const message = useMessage()
 const bepinExStatus = ref<modDependence.BepInExStatus | null>(null)
-const appUpdateInfo = ref<updater.CheckResult | null>(null)
+const {
+  appUpdateInfo,
+  isCheckingAppUpdate,
+  isUpdatingApp,
+  checkAppUpdate: checkAppUpdateState,
+  updateAppSelf,
+} = useAppUpdateState()
 const hasPendingGamePathChange = computed(() => gamePath.value.trim() !== savedGamePath.value.trim())
 const baseURLValidationMessage = computed(() => {
   const nextBaseURL = baseURL.value.trim()
@@ -85,7 +89,7 @@ const appUpdateSummary = computed(() => {
 const canUpdateApp = computed(() => Boolean(appUpdateInfo.value?.hasUpdate) && !isUpdatingApp.value)
 
 onMounted(async () => {
-  void checkAppUpdate({silentWhenNoUpdate: true})
+  void checkAppUpdate({silentWhenNoUpdate: true, force: false})
 
   try {
     const configuredBaseURL = await GetConfig('System', 'BaseURL')
@@ -204,20 +208,26 @@ const openBepInExUninstall = (): void => {
 
 interface AppUpdateCheckOptions {
   readonly silentWhenNoUpdate?: boolean
+  readonly force?: boolean
 }
 
 // =============== 应用更新检查 ===============
-// 说明：调用后端 Gitee Release 更新源，读取当前程序版本、最新版本与匹配的更新包。
-// 边界：只检查和展示远端状态，不会下载或替换当前程序。
+// 说明：自动检查只在本次程序周期首次进入设置页时请求远端，手动检查会强制刷新。
+// 边界：只检查和展示远端状态，不会下载或替换当前程序；检查失败后本周期不会因重新进入页面反复请求。
 const checkAppUpdate = async (options: AppUpdateCheckOptions = {}): Promise<void> => {
   if (isCheckingAppUpdate.value) {
     return
   }
 
-  isCheckingAppUpdate.value = true
   try {
-    const result = await CheckAppUpdate()
-    appUpdateInfo.value = result
+    const {
+      result,
+      skipped,
+    } = await checkAppUpdateState({force: options.force})
+    if (skipped || !result) {
+      return
+    }
+
     if (result.hasUpdate) {
       message.success(`发现新版本 ${result.latestVersion}`)
       return
@@ -228,8 +238,6 @@ const checkAppUpdate = async (options: AppUpdateCheckOptions = {}): Promise<void
     }
   } catch (error) {
     message.error(`检查应用更新失败：${formatErrorMessage(error)}`)
-  } finally {
-    isCheckingAppUpdate.value = false
   }
 }
 
@@ -241,16 +249,12 @@ const confirmAppUpdate = async (): Promise<void> => {
     return
   }
 
-  isUpdatingApp.value = true
   try {
-    const result = await UpdateAppSelf()
-    appUpdateInfo.value = result.check
+    const result = await updateAppSelf()
     updateAppVisible.value = false
     message.success(result.message || '更新完成，请重启应用')
   } catch (error) {
     message.error(`应用更新失败：${formatErrorMessage(error)}`)
-  } finally {
-    isUpdatingApp.value = false
   }
 }
 
@@ -421,7 +425,7 @@ const formatErrorMessage = (error: unknown): string => {
         <label class="mb-2 block text-sm font-semibold text-zinc-950">应用更新</label>
         <div class="flex gap-2">
           <n-input :value="appUpdateSummary" readonly />
-          <n-button secondary :loading="isCheckingAppUpdate" @click="() => checkAppUpdate()">
+          <n-button secondary :loading="isCheckingAppUpdate" @click="() => checkAppUpdate({force: true})">
             <template #icon>
               <RefreshCw :size="16" :stroke-width="1.8" />
             </template>
