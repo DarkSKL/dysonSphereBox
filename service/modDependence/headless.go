@@ -26,6 +26,26 @@ func (service *HeadlessService) GetEnvironmentStatus() (*modDependenceHelper.Hea
 	return &status, nil
 }
 
+// SaveSettings 保存开服页设置。
+// 使用：前端设置弹窗提交端口和存档名；边界：端口同步写入 nebula.cfg，存档名只记录为文本并参与下一次启动。
+func (service *HeadlessService) SaveSettings(hostPort int, serverArchive string) (*modDependenceHelper.HeadlessSettings, error) {
+	gameDir, err := modDependenceHelper.GetConfiguredGameDir()
+	if err != nil {
+		modDependenceHelper.RecordHeadlessFailure("settings", "无头服务器设置保存失败", err)
+		return nil, err
+	}
+
+	result, err := modDependenceHelper.SaveHeadlessSettings(gameDir, hostPort, serverArchive)
+	if err != nil {
+		modDependenceHelper.RecordHeadlessFailure("settings", "无头服务器设置保存失败", err)
+		return nil, err
+	}
+
+	modDependenceHelper.RecordHeadlessSettingsResult(result)
+	modDependenceHelper.RecordHeadlessStatusObservation(result.Status, "settings")
+	return result, nil
+}
+
 // PrepareEnvironment 准备无头服务器基础运行环境。
 // 使用：前端点击“准备环境”时调用；会先确保 BepInEx 可用，再写入 steam_appid.txt 并返回缺失的 Nebula 依赖。
 // 边界：该方法不会自动安装 Nebula 整合包，也不会启动游戏进程。

@@ -1,6 +1,7 @@
 import {
   GetEnvironmentStatus as getEnvironmentStatusBinding,
   PrepareEnvironment as prepareEnvironmentBinding,
+  SaveSettings as saveSettingsBinding,
   StartEnvironment as startEnvironmentBinding,
   StopEnvironment as stopEnvironmentBinding,
 } from '../../wailsjs/go/modDependence/HeadlessService'
@@ -20,6 +21,7 @@ interface HeadlessBridgeWindow extends Window {
 type HeadlessBridgeMethod =
   | 'GetEnvironmentStatus'
   | 'PrepareEnvironment'
+  | 'SaveSettings'
   | 'StartEnvironment'
   | 'StopEnvironment'
 
@@ -38,6 +40,11 @@ export const getHeadlessEnvironmentStatus = async (): Promise<modDependence.Head
 export const prepareHeadlessEnvironment = async (): Promise<modDependence.HeadlessPrepareResult> => {
   assertHeadlessBridgeReady('PrepareEnvironment')
   return prepareEnvironmentBinding()
+}
+
+export const saveHeadlessSettings = async (hostPort: number, serverArchive: string): Promise<modDependence.HeadlessSettings> => {
+  assertHeadlessBridgeReady('SaveSettings')
+  return saveSettingsBinding(hostPort, serverArchive)
 }
 
 export const startHeadlessEnvironment = async (): Promise<modDependence.HeadlessStartResult> => {

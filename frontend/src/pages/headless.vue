@@ -8,6 +8,7 @@ import {
   Play,
   RefreshCw,
   Server,
+  Settings,
   ShieldCheck,
   Square,
   Zap,
@@ -28,6 +29,7 @@ import {modDependence, system} from '../../wailsjs/go/models'
 import {ListLogs} from '../../wailsjs/go/system/LogService'
 import {
   getHeadlessEnvironmentStatus,
+  saveHeadlessSettings,
   startHeadlessEnvironment,
   stopHeadlessEnvironment,
 } from '../services/headless'
@@ -68,9 +70,15 @@ const recentLogs = ref<system.LogDTO[]>([])
 const isLoading = ref(false)
 const isStarting = ref(false)
 const isStopping = ref(false)
+const isSettingsVisible = ref(false)
+const isSavingSettings = ref(false)
 const isRecentLogLoading = ref(false)
 const loadError = ref('')
 const recentLogError = ref('')
+const settingsForm = ref({
+  hostPort: 8469,
+  serverArchive: '',
+})
 let refreshTimer: number | undefined
 
 const readyDependencies = computed(() => status.value?.dependencies.filter((dependency) => dependency.installed).length ?? 0)
@@ -82,6 +90,7 @@ const networkUploadPeakMBps = computed(() => status.value?.network?.uploadPeakMB
 const networkDownloadPeakMBps = computed(() => status.value?.network?.downloadPeakMBps || 0)
 const networkWindowSeconds = computed(() => status.value?.network?.sampleWindowSeconds || 0)
 const networkValid = computed(() => Boolean(status.value?.network?.valid))
+const serverArchiveLabel = computed(() => status.value?.serverArchive?.trim() || '最近存档')
 const stripBars = computed(() => {
   const samples = networkSamples.value.slice(-10)
   if (!samples.length) {
@@ -242,6 +251,13 @@ const metricCards = computed<HeadlessMetricCard[]>(() => {
     },
   ]
 })
+const syncSettingsFormFromStatus = (): void => {
+  const current = status.value
+  settingsForm.value = {
+    hostPort: current?.hostPort || 8469,
+    serverArchive: current?.serverArchive || '',
+  }
+}
 const chartOption = computed<EChartsOption>(() => {
   const samples = networkSamples.value
   const labels = samples.length ? samples.map((sample) => sample.label) : ['--:--:--']
@@ -393,6 +409,7 @@ const refreshStatus = async (showFeedback = false): Promise<void> => {
   loadError.value = ''
   try {
     status.value = await getHeadlessEnvironmentStatus()
+    syncSettingsFormFromStatus()
     await loadRecentHeadlessLogs()
     if (showFeedback) {
       message.success('开服环境状态已刷新')
@@ -506,6 +523,40 @@ const stopEnvironment = async (): Promise<void> => {
     message.error(`停止失败：${loadError.value}`)
   } finally {
     isStopping.value = false
+  }
+}
+
+// =============== 开服设置 ===============
+// 说明：维护开服端口和启动存档文本；端口写入 nebula.cfg，存档写入 Game.ServerArchive。
+// 边界：存档名允许为空，空值表示使用 -load-latest 加载最近存档。
+const openSettingsDialog = (): void => {
+  syncSettingsFormFromStatus()
+  isSettingsVisible.value = true
+}
+
+const saveSettings = async (): Promise<void> => {
+  if (isSavingSettings.value) {
+    return
+  }
+
+  const hostPort = Number(settingsForm.value.hostPort)
+  if (!Number.isInteger(hostPort) || hostPort < 1 || hostPort > 65535) {
+    message.warning('开服端口需要是 1 到 65535 之间的整数。')
+    return
+  }
+
+  isSavingSettings.value = true
+  try {
+    const result = await saveHeadlessSettings(hostPort, settingsForm.value.serverArchive.trim())
+    status.value = result.status
+    syncSettingsFormFromStatus()
+    await loadRecentHeadlessLogs()
+    isSettingsVisible.value = false
+    message.success('开服设置已保存')
+  } catch (error) {
+    message.error(`开服设置保存失败：${formatErrorMessage(error)}`)
+  } finally {
+    isSavingSettings.value = false
   }
 }
 
@@ -669,13 +720,13 @@ onBeforeUnmount(() => {
             <Square v-else :size="15" :stroke-width="2" />
             <span>停止</span>
           </button>
-          <button class="headless-hero-action text-zinc-700" :disabled="isLoading" @click="() => refreshStatus(true)">
-            <RefreshCw :size="17" :stroke-width="1.8" :class="isLoading ? 'animate-spin' : ''" />
-            <span>刷新</span>
-          </button>
           <button class="headless-hero-action text-zinc-700" @click="router.push('/log')">
             <FileText :size="17" :stroke-width="1.8" />
             <span>日志</span>
+          </button>
+          <button class="headless-hero-action text-zinc-700" @click="openSettingsDialog">
+            <Settings :size="17" :stroke-width="1.8" />
+            <span>设置</span>
           </button>
         </div>
       </div>
@@ -731,6 +782,7 @@ onBeforeUnmount(() => {
         <div class="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs font-semibold leading-4">
           <span class="text-blue-700">上行 {{ formatMBps(networkUploadMBps) }}</span>
           <span class="text-emerald-600">下行 {{ formatMBps(networkDownloadMBps) }}</span>
+          <span class="text-slate-500">存档 {{ serverArchiveLabel }}</span>
 <!--          <span class="text-sky-700">上行峰值 {{ formatMBps(networkUploadPeakMBps) }}</span>-->
 <!--          <span class="text-teal-700">下行峰值 {{ formatMBps(networkDownloadPeakMBps) }}</span>-->
 <!--          <span class="text-slate-500">采样窗口 {{ networkWindowSeconds }} s</span>-->
@@ -812,6 +864,50 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <!-- ~ 开服设置弹窗 -->
+    <!-- * 说明：调整无头服务器监听端口和启动存档文本 -->
+    <!-- * 交互：保存后同步写入 nebula.cfg 与 Game.ServerArchive，并刷新当前状态 -->
+    <!-- * 依赖：依赖 HeadlessService.SaveSettings 与 status.serverArchive -->
+    <!-- * 边界：存档名为空时启动服务会使用最近存档 -->
+    <n-modal
+      v-model:show="isSettingsVisible"
+      preset="dialog"
+      title="开服设置"
+      positive-text="保存"
+      negative-text="取消"
+      :positive-button-props="{ type: 'primary', loading: isSavingSettings, disabled: isSavingSettings }"
+      :negative-button-props="{ disabled: isSavingSettings }"
+      :mask-closable="!isSavingSettings"
+      @positive-click="saveSettings"
+    >
+      <div class="grid gap-4 pt-2">
+        <label class="block">
+          <span class="mb-2 block text-sm font-semibold text-zinc-950">开服端口</span>
+          <n-input-number
+            v-model:value="settingsForm.hostPort"
+            class="w-full"
+            :min="1"
+            :max="65535"
+            :step="1"
+          />
+          <span class="mt-2 block text-xs leading-5 text-zinc-500">
+            保存后会同步写入 {{ status?.nebulaConfigPath || 'BepInEx/config/nebula.cfg' }} 的 HostPort。
+          </span>
+        </label>
+        <label class="block">
+          <span class="mb-2 block text-sm font-semibold text-zinc-950">开服存档</span>
+          <n-input
+            v-model:value="settingsForm.serverArchive"
+            placeholder="留空则加载最近存档"
+            clearable
+          />
+          <span class="mt-2 block text-xs leading-5 text-zinc-500">
+            这里只记录存档名文本；启动时为空使用 -load-latest，填写后使用 -load 存档名。
+          </span>
+        </label>
+      </div>
+    </n-modal>
   </section>
 </template>
 

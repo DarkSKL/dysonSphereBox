@@ -6,6 +6,8 @@ export function GetEnvironmentStatus():Promise<modDependence.HeadlessEnvironment
 
 export function PrepareEnvironment():Promise<modDependence.HeadlessPrepareResult>;
 
+export function SaveSettings(arg1:number,arg2:string):Promise<modDependence.HeadlessSettings>;
+
 export function StartEnvironment():Promise<modDependence.HeadlessStartResult>;
 
 export function StopEnvironment():Promise<modDependence.HeadlessStopResult>;

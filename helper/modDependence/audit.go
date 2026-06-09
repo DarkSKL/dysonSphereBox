@@ -190,6 +190,29 @@ func RecordHeadlessPrepareResult(result *HeadlessPrepareResult) {
 	})
 }
 
+// RecordHeadlessSettingsResult 记录无头服务器设置保存结果。
+func RecordHeadlessSettingsResult(result *HeadlessSettings) {
+	if result == nil {
+		return
+	}
+
+	systemHelper.RecordLogSilently(systemHelper.LogEntry{
+		Namespace: "modDependence",
+		Module:    "headless",
+		Event:     "settings",
+		Level:     systemModel.LogLevelInfo,
+		Type:      systemModel.LogTypeConfiguration,
+		Content:   "无头服务器设置已保存",
+		Metadata: map[string]interface{}{
+			"gameDir":          result.Status.GameDir,
+			"hostPort":         result.HostPort,
+			"serverArchive":    result.ServerArchive,
+			"nebulaConfigPath": result.NebulaConfigPath,
+			"startCommandText": result.Status.StartCommandText,
+		},
+	})
+}
+
 // RecordHeadlessStartResult 记录无头服务器启动动作结果。
 func RecordHeadlessStartResult(result *HeadlessStartResult) {
 	if result == nil {
@@ -215,6 +238,8 @@ func RecordHeadlessStartResult(result *HeadlessStartResult) {
 			"processId":        result.ProcessID,
 			"ready":            result.Status.Ready,
 			"issues":           result.Status.Issues,
+			"hostPort":         result.Status.HostPort,
+			"serverArchive":    result.Status.ServerArchive,
 			"startCommandText": result.StartCommandText,
 		},
 	})

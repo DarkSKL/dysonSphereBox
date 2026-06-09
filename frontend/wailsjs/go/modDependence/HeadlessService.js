@@ -10,6 +10,10 @@ export function PrepareEnvironment() {
   return window['go']['modDependence']['HeadlessService']['PrepareEnvironment']();
 }
 
+export function SaveSettings(arg1, arg2) {
+  return window['go']['modDependence']['HeadlessService']['SaveSettings'](arg1, arg2);
+}
+
 export function StartEnvironment() {
   return window['go']['modDependence']['HeadlessService']['StartEnvironment']();
 }

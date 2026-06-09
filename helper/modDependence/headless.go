@@ -1,6 +1,7 @@
 package modDependence
 
 import (
+	"DysonSphereBox/core"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,6 +26,19 @@ const (
 	headlessPluginRoot      = "BepInEx/plugins"
 	headlessDefaultSaveMode = "-load-latest"
 )
+
+// HeadlessSettings 表示开服页可编辑的服务器启动配置。
+// 用途：前端设置弹窗读取和保存端口、启动存档；边界：端口同步到 nebula.cfg，存档仅写入本地配置。
+type HeadlessSettings struct {
+	// HostPort 是 Nebula 无头服务器监听端口，对应 BepInEx/config/nebula.cfg 的 HostPort。
+	HostPort int `json:"hostPort"`
+	// ServerArchive 是启动服务时传给 -load 的存档名；为空时使用 -load-latest。
+	ServerArchive string `json:"serverArchive"`
+	// NebulaConfigPath 是当前游戏目录下 nebula.cfg 的绝对路径。
+	NebulaConfigPath string `json:"nebulaConfigPath"`
+	// Status 是保存设置后重新检测得到的最新开服状态。
+	Status HeadlessEnvironmentStatus `json:"status"`
+}
 
 // HeadlessDependencyStatus 表示无头服务器依赖 Mod 在本地插件目录中的状态。
 // 用途：开服页面展示 Nebula 依赖是否齐全；边界：版本来自本地 manifest.json，缺失时不猜测远端版本。
@@ -55,6 +69,7 @@ type HeadlessEnvironmentStatus struct {
 	SteamAppIDValid  bool                       `json:"steamAppIdValid"`
 	HostPort         int                        `json:"hostPort"`
 	NebulaConfigPath string                     `json:"nebulaConfigPath"`
+	ServerArchive    string                     `json:"serverArchive"`
 	ProcessRunning   bool                       `json:"processRunning"`
 	ProcessID        int                        `json:"processId"`
 	TCPListening     bool                       `json:"tcpListening"`
@@ -269,6 +284,7 @@ func InspectHeadlessEnvironment(gameDir string) (HeadlessEnvironmentStatus, erro
 	gameDir = filepath.Clean(gameDir)
 	pluginRoot := filepath.Join(gameDir, headlessPluginRoot)
 	hostPort := readNebulaHostPort(gameDir)
+	serverArchive := readHeadlessServerArchive()
 	processID, processRunning := findHeadlessDysonSphereProcess(gameDir)
 	tcpListening := isNetstatPortListening("tcp", hostPort)
 	udpListening := isNetstatPortListening("udp", hostPort)
@@ -281,6 +297,7 @@ func InspectHeadlessEnvironment(gameDir string) (HeadlessEnvironmentStatus, erro
 		SteamAppIDPath:   filepath.Join(gameDir, headlessSteamAppIDFile),
 		HostPort:         hostPort,
 		NebulaConfigPath: filepath.Join(gameDir, filepath.FromSlash(nebulaConfigRelative)),
+		ServerArchive:    serverArchive,
 		ProcessRunning:   processRunning,
 		ProcessID:        processID,
 		TCPListening:     tcpListening,
@@ -289,13 +306,7 @@ func InspectHeadlessEnvironment(gameDir string) (HeadlessEnvironmentStatus, erro
 		BepInExLogPath:   filepath.Join(gameDir, filepath.FromSlash(headlessBepInExLogFile)),
 		OutputLogPath:    filepath.Join(gameDir, headlessOutputLogFile),
 		Network:          inspectHeadlessNetworkStatus(),
-		StartCommand: []string{
-			filepath.Join(gameDir, dysonSphereProcessName),
-			"-batchmode",
-			"-nographics",
-			nebulaServerArgument,
-			headlessDefaultSaveMode,
-		},
+		StartCommand:     buildHeadlessStartCommand(gameDir, serverArchive),
 	}
 	status.StartCommandText = quoteCommand(status.StartCommand)
 
@@ -305,6 +316,41 @@ func InspectHeadlessEnvironment(gameDir string) (HeadlessEnvironmentStatus, erro
 	status.Ready = len(status.Issues) == 0
 
 	return status, nil
+}
+
+// SaveHeadlessSettings 保存开服页设置并同步 Nebula 配置文件。
+// 使用：前端设置弹窗提交时调用；边界：存档名暂不验证真实存在，只作为文本参与启动命令。
+func SaveHeadlessSettings(gameDir string, hostPort int, serverArchive string) (*HeadlessSettings, error) {
+	if err := assertDysonSphereGameDir(gameDir); err != nil {
+		return nil, err
+	}
+	if hostPort <= 0 || hostPort > 65535 {
+		return nil, fmt.Errorf("host port must be between 1 and 65535")
+	}
+
+	gameDir = filepath.Clean(gameDir)
+	normalizedArchive := strings.TrimSpace(serverArchive)
+	if core.GLOBAL.Configure == nil || core.GLOBAL.Configure.GameServerArchive == nil {
+		return nil, fmt.Errorf("GameServerArchive config is not initialized")
+	}
+	if err := core.GLOBAL.Configure.GameServerArchive.Set(normalizedArchive); err != nil {
+		return nil, err
+	}
+	if err := writeNebulaHostPort(gameDir, hostPort); err != nil {
+		return nil, err
+	}
+
+	status, err := InspectHeadlessEnvironment(gameDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &HeadlessSettings{
+		HostPort:         status.HostPort,
+		ServerArchive:    status.ServerArchive,
+		NebulaConfigPath: status.NebulaConfigPath,
+		Status:           status,
+	}, nil
 }
 
 // EnsureHeadlessBaseEnvironment 准备开服所需的基础运行文件。
@@ -546,6 +592,34 @@ func inspectSteamAppID(path string) (bool, bool) {
 	return true, strings.TrimSpace(string(content)) == headlessSteamAppID
 }
 
+func readHeadlessServerArchive() string {
+	if core.GLOBAL.Configure == nil || core.GLOBAL.Configure.GameServerArchive == nil {
+		return ""
+	}
+
+	serverArchive, err := core.GLOBAL.Configure.GameServerArchive.Get()
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(serverArchive)
+}
+
+func buildHeadlessStartCommand(gameDir string, serverArchive string) []string {
+	startCommand := []string{
+		filepath.Join(gameDir, dysonSphereProcessName),
+		"-batchmode",
+		"-nographics",
+		nebulaServerArgument,
+	}
+	normalizedArchive := strings.TrimSpace(serverArchive)
+	if normalizedArchive == "" {
+		return append(startCommand, headlessDefaultSaveMode)
+	}
+
+	return append(startCommand, "-load", normalizedArchive)
+}
+
 func readNebulaHostPort(gameDir string) int {
 	content, err := os.ReadFile(filepath.Join(gameDir, filepath.FromSlash(nebulaConfigRelative)))
 	if err != nil {
@@ -566,6 +640,44 @@ func readNebulaHostPort(gameDir string) int {
 	}
 
 	return defaultNebulaHostPort
+}
+
+func writeNebulaHostPort(gameDir string, hostPort int) error {
+	configPath := filepath.Join(gameDir, filepath.FromSlash(nebulaConfigRelative))
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return err
+	}
+
+	content, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	newLine := fmt.Sprintf("HostPort=%d", hostPort)
+	if os.IsNotExist(err) || len(content) == 0 {
+		return os.WriteFile(configPath, []byte(newLine+"\r\n"), 0o644)
+	}
+
+	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+	replaced := false
+	for index, line := range lines {
+		parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
+		if len(parts) != 2 || !strings.EqualFold(strings.TrimSpace(parts[0]), "HostPort") {
+			continue
+		}
+
+		lines[index] = newLine
+		replaced = true
+	}
+	if !replaced {
+		if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+			lines[len(lines)-1] = newLine
+		} else {
+			lines = append(lines, newLine)
+		}
+	}
+
+	return os.WriteFile(configPath, []byte(strings.Join(lines, "\r\n")), 0o644)
 }
 
 func collectHeadlessIssues(status HeadlessEnvironmentStatus) []string {
