@@ -125,6 +125,8 @@ type HeadlessStopResult struct {
 	Skipped bool `json:"skipped"`
 	// ProcessID 是本次停止前识别到的无头服务器进程号。
 	ProcessID int `json:"processId"`
+	// HostPort 是停止动作发起时识别到的目标监听端口。
+	HostPort int `json:"hostPort"`
 	// Message 是面向前端展示的停止结果摘要。
 	Message string `json:"message"`
 	// Status 是停止动作完成后重新检测得到的最新环境状态。
@@ -480,6 +482,7 @@ func StopHeadlessEnvironment(gameDir string) (*HeadlessStopResult, error) {
 			Stopped:   false,
 			Skipped:   true,
 			ProcessID: 0,
+			HostPort:  status.HostPort,
 			Message:   "未找到正在运行的无头服务器",
 			Status:    status,
 		}, nil
@@ -507,6 +510,7 @@ func StopHeadlessEnvironment(gameDir string) (*HeadlessStopResult, error) {
 		Stopped:   stopped,
 		Skipped:   false,
 		ProcessID: status.ProcessID,
+		HostPort:  status.HostPort,
 		Message:   message,
 		Status:    nextStatus,
 	}, nil

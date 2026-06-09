@@ -16,7 +16,7 @@ const navItems = [
   {label: '关于我们', to: '/about', icon: Info},
 ]
 
-const title = computed(() => route.meta.title || 'DysonSphereBox')
+const title = computed(() => route.meta.title || '戴森球盒子')
 
 onMounted(() => {
   void loadAppVersion()
@@ -28,8 +28,8 @@ onMounted(() => {
     <aside class="fixed inset-y-0 left-0 z-20 flex w-48 flex-col border-r border-zinc-200 bg-[#f7f7f8]">
       <div class="flex h-16 items-center justify-between border-b border-zinc-200 px-4">
         <RouterLink to="/" class="min-w-0">
-          <p class="truncate text-lg font-semibold text-zinc-950">戴森工坊</p>
-          <p class="text-[11px] text-zinc-400">戴森球计划 Mod 工具箱</p>
+          <p class="truncate text-lg font-semibold text-zinc-950">戴森球盒子</p>
+          <p class="text-[11px] text-zinc-400">戴森球计划工具合集</p>
         </RouterLink>
       </div>
 
@@ -76,7 +76,7 @@ onMounted(() => {
       <header class="flex h-16 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-8">
         <div>
           <p class="text-sm font-semibold text-zinc-950">{{ title }}</p>
-          <p class="text-xs text-zinc-500">戴森球计划 Mod 管理工具</p>
+          <p class="text-xs text-zinc-500">戴森球盒子</p>
         </div>
         <div class="flex items-center gap-2">
           <span class="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-500">{{ appVersion }}</span>

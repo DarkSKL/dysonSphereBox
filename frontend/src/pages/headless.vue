@@ -26,6 +26,7 @@ import VChart from 'vue-echarts'
 import {useRouter} from 'vue-router'
 import {modDependence, system} from '../../wailsjs/go/models'
 import {ListLogs} from '../../wailsjs/go/system/LogService'
+import ServerHeroLottie from '../components/headless/server-hero-lottie.vue'
 import ServiceStatusLottie from '../components/headless/service-status-lottie.vue'
 import {
   getHeadlessEnvironmentStatus,
@@ -60,7 +61,7 @@ interface HeadlessMetricCard {
 interface HeadlessEventItem {
   time: string
   text: string
-  tone: 'emerald' | 'blue' | 'amber' | 'red'
+  type: 'success' | 'info' | 'warning' | 'error'
 }
 
 interface HeadlessServiceStatusView {
@@ -155,6 +156,19 @@ const heroToneClass = computed(() => {
   }
 
   return 'border-blue-200 bg-blue-50 text-blue-600'
+})
+const heroLottieTone = computed<'emerald' | 'blue' | 'amber' | 'zinc'>(() => {
+  if (status.value?.processRunning) {
+    return 'emerald'
+  }
+  if (status.value?.ready) {
+    return 'blue'
+  }
+  if (status.value) {
+    return 'amber'
+  }
+
+  return 'zinc'
 })
 const statusPillClass = computed(() => {
   if (status.value?.processRunning || status.value?.ready) {
@@ -446,10 +460,10 @@ const chartOption = computed<EChartsOption>(() => {
   }
 })
 const recentEvents = computed<HeadlessEventItem[]>(() => {
-  return recentLogs.value.slice(0, 4).map((log) => ({
+  return recentLogs.value.map((log) => ({
     time: formatEventTime(log.dateTime),
     text: log.error ? `${log.content || log.event}：${log.error}` : log.content || log.event,
-    tone: getLogEventTone(log),
+    type: getLogEventType(log),
   }))
 })
 
@@ -498,7 +512,7 @@ const loadRecentHeadlessLogs = async (): Promise<void> => {
       level: 0,
       type: 0,
       page: 1,
-      pageSize: 4,
+      pageSize: 12,
     } as system.LogQuery)
 
     recentLogs.value = result.items ?? []
@@ -650,17 +664,6 @@ const metricToneClass = (tone: HeadlessMetricCard['tone']): string => {
   return toneMap[tone]
 }
 
-const eventDotClass = (tone: HeadlessEventItem['tone']): string => {
-  const toneMap: Record<HeadlessEventItem['tone'], string> = {
-    emerald: 'bg-emerald-500',
-    blue: 'bg-blue-600',
-    amber: 'bg-amber-500',
-    red: 'bg-red-500',
-  }
-
-  return toneMap[tone]
-}
-
 const serviceStatusPanelClass = (tone: HeadlessServiceStatusView['tone']): string => {
   const toneMap: Record<HeadlessServiceStatusView['tone'], string> = {
     emerald: 'border-zinc-200 bg-white',
@@ -691,24 +694,24 @@ const serviceStatusTextClass = (tone: HeadlessServiceStatusView['tone']): string
   return toneMap[tone]
 }
 
-const getLogEventTone = (log: system.LogDTO): HeadlessEventItem['tone'] => {
+const getLogEventType = (log: system.LogDTO): HeadlessEventItem['type'] => {
   if (log.level >= 40) {
-    return 'red'
+    return 'error'
   }
   if (log.level >= 30) {
-    return 'amber'
+    return 'warning'
   }
   if (log.event === 'start') {
-    return 'emerald'
+    return 'success'
   }
   if (log.event === 'processOnline' || log.event === 'portOpen') {
-    return 'emerald'
+    return 'success'
   }
   if (log.event === 'stop' || log.event === 'processOffline' || log.event === 'portClosed') {
-    return 'red'
+    return 'error'
   }
 
-  return 'blue'
+  return 'info'
 }
 
 const formatEventTime = (dateTime: string): string => {
@@ -767,11 +770,13 @@ onBeforeUnmount(() => {
     <!-- * 依赖：依赖 HeadlessService 状态与启动接口 -->
     <!-- * 边界：绑定未注入或游戏路径缺失时在错误条展示明确原因 -->
     <div class="h-[164px] rounded border border-zinc-200 bg-white">
-      <div class="grid h-full grid-cols-[128px_minmax(0,1fr)_128px] items-center gap-6 px-8">
-        <div class="relative grid h-28 w-28 place-items-center">
-          <div class="absolute inset-0 rounded-full bg-emerald-50" :class="status?.ready ? 'opacity-100' : 'opacity-60'"></div>
-          <div class="relative grid h-[60px] w-[60px] place-items-center rounded-md border" :class="heroToneClass">
-            <Server :size="21" :stroke-width="1.8" />
+      <div class="grid h-full grid-cols-[96px_minmax(0,1fr)_128px] items-center gap-5 px-8">
+        <div class="relative grid h-24 w-24 place-items-center">
+          <div class="relative grid h-[96px] w-[96px] place-items-center">
+            <ServerHeroLottie
+              :active="Boolean(status?.processRunning)"
+              :tone="heroLottieTone"
+            />
           </div>
         </div>
 
@@ -788,7 +793,7 @@ onBeforeUnmount(() => {
         <div class="grid h-32 w-32 grid-cols-2 overflow-hidden rounded border border-blue-200 bg-white shadow-[0_8px_18px_-12px_rgba(15,23,42,0.14)]">
           <button
             class="headless-hero-action"
-            :class="status?.processRunning ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'"
+            :class="status?.processRunning || isStarting ? 'bg-emerald-700 text-white' : headlessPrerequisiteBlocked ? 'bg-white text-zinc-400' : 'bg-white text-zinc-700 hover:bg-emerald-50 hover:text-emerald-700'"
             :disabled="isStarting || status?.processRunning || headlessPrerequisiteBlocked"
             @click="startEnvironment"
           >
@@ -798,7 +803,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             class="headless-hero-action"
-            :class="status?.processRunning ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-red-600 text-white'"
+            :class="status && !status.processRunning || isStopping ? 'bg-red-700 text-white' : 'bg-white text-zinc-700 hover:bg-red-50 hover:text-red-700'"
             :disabled="isStopping || !status?.processRunning"
             @click="stopEnvironment"
           >
@@ -927,12 +932,17 @@ onBeforeUnmount(() => {
           <div v-else-if="recentEvents.length === 0" class="mt-5 rounded border border-dashed border-zinc-200 py-6 text-center text-xs text-zinc-400">
             暂无开服日志
           </div>
-          <div v-else class="mt-3 grid gap-3">
-            <div v-for="event in recentEvents" :key="`${event.time}-${event.text}`" class="grid grid-cols-[46px_10px_minmax(0,1fr)] items-center gap-2 text-xs">
-              <span class="text-[11px] leading-4 text-zinc-400">{{ event.time }}</span>
-              <span class="h-[7px] w-[7px] rounded-full" :class="eventDotClass(event.tone)"></span>
-              <span class="truncate text-zinc-600">{{ event.text }}</span>
-            </div>
+          <div v-else class="headless-timeline-scroll mt-3 h-[168px] overflow-y-auto pr-1">
+            <n-timeline size="medium" :icon-size="12">
+              <n-timeline-item
+                v-for="event in recentEvents"
+                :key="`${event.time}-${event.text}`"
+                :time="event.time"
+                :type="event.type"
+              >
+                <p class="truncate text-xs leading-5 text-zinc-600">{{ event.text }}</p>
+              </n-timeline-item>
+            </n-timeline>
           </div>
         </div>
       </div>
@@ -1025,5 +1035,14 @@ onBeforeUnmount(() => {
 
 .headless-hero-action:disabled {
   cursor: not-allowed;
+}
+
+.headless-timeline-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.headless-timeline-scroll::-webkit-scrollbar {
+  display: none;
 }
 </style>

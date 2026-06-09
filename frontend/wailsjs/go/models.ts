@@ -465,6 +465,7 @@ export namespace modDependence {
 	    stopped: boolean;
 	    skipped: boolean;
 	    processId: number;
+	    hostPort: number;
 	    message: string;
 	    status: HeadlessEnvironmentStatus;
 	
@@ -478,6 +479,7 @@ export namespace modDependence {
 	        this.stopped = source["stopped"];
 	        this.skipped = source["skipped"];
 	        this.processId = source["processId"];
+	        this.hostPort = source["hostPort"];
 	        this.message = source["message"];
 	        this.status = this.convertValues(source["status"], HeadlessEnvironmentStatus);
 	    }

@@ -413,7 +413,7 @@ const formatErrorMessage = (error: unknown): string => {
       </section>
 
       <!-- ~ 应用更新 -->
-      <!-- * 说明：展示 DysonSphereBox 当前版本与 Gitee Release 最新版本 -->
+      <!-- * 说明：展示戴森球盒子当前版本与 Gitee Release 最新版本 -->
       <!-- * 交互：用户先检查更新，发现新版本后可打开确认弹窗并执行自更新 -->
       <!-- * 依赖：依赖 UpdateService.CheckAppUpdate 与 UpdateService.UpdateAppSelf -->
       <!-- * 边界：更新完成后需要用户重启应用，开发版构建会被正式 Release 视为可更新 -->
@@ -445,7 +445,7 @@ const formatErrorMessage = (error: unknown): string => {
     <n-modal
       v-model:show="updateAppVisible"
       preset="dialog"
-      title="更新 DysonSphereBox"
+      title="更新戴森球盒子"
       positive-text="开始更新"
       negative-text="取消"
       :positive-button-props="{ type: 'primary', loading: isUpdatingApp, disabled: isUpdatingApp }"

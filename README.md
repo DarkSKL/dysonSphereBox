@@ -1,60 +1,72 @@
-# DysonSphereBox
+# 戴森球盒子
 
-> 一个面向《戴森球计划》的桌面工具箱，用来管理游戏路径、Mod 前置环境与后续的整合包工作流。
+> 面向《戴森球计划》的 Windows 桌面工具合集，用来管理游戏目录、BepInEx 前置环境、Mod 整合包、Nebula 开服环境、系统日志和应用自更新。
 
-我是 DarkSKL，DysonSphereBox 是我为《戴森球计划》玩家做的桌面工具箱。这个项目的目标很简单：把安装前置、检查环境、管理 Mod 整合包这些原本容易出错的事情，做成一个更直观、更适合中文玩家使用的工具。
+戴森球盒子是 DarkSKL 为《戴森球计划》玩家制作的桌面工具。项目目标是把安装前置、配置游戏路径、安装整合包、准备联机开服环境这些容易出错的操作，收进一个更直观、可审计、适合中文玩家使用的应用里。
 
-项目目前还在早期开发中。我会先把基础能力打稳，再逐步补齐整合包安装、更新、卸载和更多下载源支持。如果你也在折腾《戴森球计划》的 Mod 生态，欢迎一起把它做得更好用。
+项目仍在持续迭代中，但当前已经不只是界面雏形：本地配置、BepInEx 管理、远端整合包列表、整合包安装/卸载、Nebula 无头服务器状态检测与启停、系统日志、自更新检查等流程都已经接入。
 
-## 项目状态
+## 当前能力
 
-我正在把这个项目整理成可长期维护的开源项目，核心框架和部分基础能力已经接入：
+- 游戏目录管理
+  - 手动选择《戴森球计划》安装目录。
+  - 从已保存配置读取游戏目录。
+  - 从 Steam 库和常见快捷方式位置自动查找 `DSPGAME.exe`。
+  - 保存到本地 SQLite 配置项 `Game/StartupFilePath`。
 
-- 桌面端应用框架：Wails v2
-- 前端：Vue 3、TypeScript、Vite、Naive UI、Tailwind CSS
+- BepInEx 前置环境
+  - 检查 `winhttp.dll`、`doorstop_config.ini`、`BepInEx/core` 等关键文件。
+  - 读取本地 BepInEx 版本。
+  - 从 Thunderstore 查询并安装 BepInEx。
+  - 卸载 BepInEx、Doorstop 注入文件和本地 Mod 安装记录。
+
+- Mod 整合包
+  - 通过后端 `System/BaseURL` 配置访问远端整合包接口。
+  - 分页读取整合包市场列表。
+  - 展示整合包封面、依赖、版本、简介和安装状态。
+  - 安装整合包依赖到 `BepInEx/plugins`。
+  - 卸载本地记录中可安全移除的整合包依赖。
+
+- Nebula 开服
+  - 检查 BepInEx、Nebula 相关依赖、`steam_appid.txt`、端口监听、进程状态和日志路径。
+  - 准备基础开服环境，写入 `steam_appid.txt` 并创建插件目录。
+  - 保存 Nebula HostPort 和存档启动参数。
+  - 启动或停止 Nebula 无头服务器进程。
+  - 展示 TCP/UDP 监听状态、进程 PID、网络速率采样和最近开服日志。
+  - 保留 `script/install-headless.*` 与 `script/start-headless.cmd` 作为独立脚本方案。
+
+- 系统日志
+  - 后端重要操作会写入本地日志表。
+  - 前端日志页支持分页、刷新、命名空间、模块、事件、等级和类型筛选。
+  - 日志包含通用 `metadata`，便于追踪安装、配置、更新和开服操作。
+
+- 应用更新
+  - 设置页可检查 Gitee Release 最新版本。
+  - 发布包使用 `checksums.txt` 做 SHA256 校验。
+  - 更新完成后替换当前程序，用户重启后运行新版本。
+
+## 技术栈
+
+- 桌面框架：Wails v2
 - 后端：Go、GORM、SQLite
-- 当前平台重点：Windows
-- 当前重点能力：游戏目录检测、配置持久化、BepInEx 状态检测与安装流程
+- 前端：Vue 3、TypeScript、Vite 3
+- UI：Naive UI、Tailwind CSS、SCSS、Lucide Icons
+- 路由：Vue Router 4、`unplugin-vue-router`
+- 图表与动效：ECharts、Lottie
+- 当前重点平台：Windows
 
-部分 Mod 整合包安装、卸载、更新等能力仍在完善中，欢迎提出 Issue 或参与开发。
+## 页面说明
 
-## 功能特性
-
-- 自动查找《戴森球计划》安装目录
-  - 支持从已保存配置读取
-  - 支持从 Steam 相关环境中查找
-  - 支持手动选择游戏目录
-
-- 本地配置管理
-  - 使用 SQLite 保存配置
-  - 支持游戏路径配置
-  - 支持后端 HTTP BaseURL 配置
-
-- BepInEx 前置环境管理
-  - 检查 BepInEx 是否已安装
-  - 检查 `winhttp.dll`、`doorstop_config.ini`、`BepInEx/core` 等关键文件
-  - 读取本地 BepInEx 版本
-  - 从 Thunderstore 查询并下载最新 BepInEx 包
-  - 安装时会修复 Doorstop 配置
-
-- Mod 整合包界面雏形
-  - 联机 Mod 包
-  - 常用辅助 Mod 包
-  - 安装进度与已安装状态展示
-
-## 预览
-
-项目界面仍在快速迭代中，当前主要页面包括：
-
-- 首页：项目入口与快捷导航
-- Mod：整合包列表与环境检查提示
-- 设置：游戏路径、连接地址、BepInEx 状态管理
-
-后续我会在这里补充应用截图、演示 GIF 和发布版本下载地址。
+- 首页：当前保留轻量占位，后续用于聚合入口或状态总览。
+- 开服：Nebula 无头服务器环境检测、准备、配置、启动、停止和运行监控。
+- Mod：远端整合包列表、BepInEx 环境提示、整合包安装与卸载。
+- 日志：本地系统日志查询与筛选。
+- 设置：游戏路径、HTTP BaseURL、BepInEx 检查/卸载、应用更新。
+- 关于我们：项目地址、反馈入口、联系方式、鸣谢与免责声明。
 
 ## 环境要求
 
-参与开发前，请先安装以下环境：
+参与开发前，请安装：
 
 - Go 1.23+
 - Node.js 16+
@@ -97,11 +109,11 @@ cd ..
 wails dev
 ```
 
-开发模式会启动 Wails 应用和 Vite 前端服务，适合本地调试前后端交互。
+开发模式会同时启动 Wails 桌面应用和 Vite 前端服务，适合调试前后端绑定。
 
-## 构建
+## 常用验证
 
-构建前端：
+前端构建：
 
 ```powershell
 cd frontend
@@ -109,75 +121,87 @@ npm run build
 cd ..
 ```
 
-构建桌面应用：
+Go 构建：
 
 ```powershell
-wails build
+go build ./...
 ```
 
-构建产物会输出到 Wails 默认构建目录中。
+修改后端导出服务后，重新生成 Wails 绑定：
+
+```powershell
+wails generate module
+```
+
+注意：`frontend/wailsjs` 是生成文件，不要手动编辑。
+
+## 发布构建
+
+仓库保留了 Windows 发布脚本：
+
+```powershell
+deploy\build.bat v1.0.1
+```
+
+脚本会：
+
+- 规范化版本号为 `vX.Y.Z`。
+- 使用 `-ldflags "-X DysonSphereBox/core.Version=..."` 注入应用版本。
+- 构建 `windows/amd64` 和 `windows/arm64`。
+- 生成 `DysonSphereBox_windows_amd64.zip`、`DysonSphereBox_windows_arm64.zip`。
+- 生成 `checksums.txt`。
+
+发布到 Gitee Release 时，需要上传两个 zip 包和 `checksums.txt`。应用自更新依赖这些附件名称和校验文件。
 
 ## 项目结构
 
 ```text
 DysonSphereBox
-├── app.go                    # Wails 应用生命周期与前端绑定入口
+├── app.go                    # Wails 应用生命周期与 App 绑定入口
 ├── main.go                   # Wails 启动入口
-├── core/                     # 数据库、配置、全局运行时资源
-├── helper/                   # 服务辅助逻辑
-├── model/                    # GORM 数据模型
+├── app.db                    # SQLite 模板数据库
+├── core/                     # 数据库、配置、版本、全局 HTTP 客户端
+├── helper/                   # 服务辅助逻辑、安装器、日志构造、自更新源
+├── model/                    # GORM 数据模型与前端 DTO
 ├── service/                  # Wails 后端服务
-├── utils/                    # 通用工具函数
+├── utils/                    # 通用路径、Steam、快捷方式和游戏目录工具
+├── apiDefinition/            # 后端接口路径定义
+├── script/                   # Nebula Headless 独立脚本
+├── deploy/                   # 发布构建脚本与本地发布产物
 ├── frontend/                 # Vue 3 前端项目
 │   ├── src/
 │   │   ├── components/       # 可复用组件
 │   │   ├── composables/      # 组合式状态与逻辑
 │   │   ├── layouts/          # 页面布局
-│   │   └── pages/            # 文件路由页面
+│   │   ├── pages/            # 文件路由页面
+│   │   ├── services/         # 前端 Wails 调用封装
+│   │   └── types/            # 共享类型声明
 │   └── wailsjs/              # Wails 生成的前端绑定文件
 └── build/                    # Wails 构建资源
 ```
 
 ## 开发约定
 
-- 前端使用 Vue 3 Composition API 与 `<script setup lang="ts">`
-- UI 组件优先使用 Naive UI
-- 样式优先使用 Tailwind CSS，复杂局部样式使用 SCSS
-- 后端服务通过 Wails 绑定暴露给前端
-- SQLite 通过 GORM 访问
-- 修改后端导出服务后，需要重新生成 Wails 绑定
-
-生成 Wails 绑定：
-
-```powershell
-wails generate module
-```
-
-验证 Go 代码：
-
-```powershell
-go build ./...
-```
-
-验证前端代码：
-
-```powershell
-cd frontend
-npm run build
-```
+- 前端页面放在 `frontend/src/pages`，使用 `definePage({ meta })` 声明布局、标题和缓存策略。
+- 共享布局放在 `frontend/src/layouts`，可复用组件放在 `frontend/src/components`。
+- 前端优先使用 Naive UI 组件和 Tailwind 工具类，复杂局部样式再使用 SCSS。
+- 后端业务入口放在 `service/<domain>`，可复用辅助能力放在 `helper/<domain>`。
+- GORM 模型放在 `model/<domain>`，统一通过 `model.RegisterModels()` 聚合迁移。
+- 重要配置、安装、更新、启停等操作应写入系统日志。
+- 对外展示名使用“戴森球盒子”；Go module、构建产物和自更新包名仍使用 `DysonSphereBox`。
 
 ## 贡献
 
-欢迎参与这个项目。你可以通过以下方式贡献：
+欢迎提交 Issue 或 Pull Request。比较适合优先参与的方向：
 
-- 提交 Bug 反馈
-- 提出功能建议
-- 补充文档或截图
-- 优化 UI 与交互体验
-- 完善 BepInEx、Mod 包安装、卸载和更新逻辑
-- 适配更多平台或更多下载源
+- 完善远端整合包接口和数据结构。
+- 改进 Mod 安装、卸载、更新和冲突处理。
+- 补充 Nebula 开服环境的一键修复能力。
+- 优化日志检索、日志清理和导出。
+- 补充截图、使用文档和发布说明。
+- 适配更多下载源或更多平台。
 
-提交 Pull Request 前，建议先运行：
+提交前建议至少运行：
 
 ```powershell
 go build ./...
@@ -187,19 +211,17 @@ npm run build
 
 ## 免责声明
 
-DysonSphereBox 是社区开发工具，不隶属于 Youthcat Studio、Gamera Games、Steam、Thunderstore 或 BepInEx 官方项目。
+戴森球盒子是社区开发工具，不隶属于 Youthcat Studio、Gamera Games、Steam、Thunderstore、BepInEx 或 Nebula 官方项目。
 
-使用 Mod 可能影响游戏体验、存档兼容性或多人联机稳定性。请在安装或更新 Mod 前备份重要存档，并自行确认 Mod 与当前游戏版本兼容。
+使用 Mod 可能影响游戏体验、存档兼容性或多人联机稳定性。请在安装、卸载或更新 Mod 前备份重要存档，并自行确认 Mod 与当前游戏版本兼容。
 
 ## 开源协议
 
 本项目使用 [MIT License](LICENSE)。
-
-我选择 MIT，是因为它足够简单、宽松，也很适合这种个人维护的工具型项目。你可以自由使用、修改、分发或基于本项目继续开发，只需要保留原始版权与许可证声明即可。
 
 ## 作者
 
 DarkSKL
 
 - Email: 18214780622@163.com
-- Project: DysonSphereBox
+- Project: 戴森球盒子

@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    HeadlessServerHeroLottie: typeof import('./components/headless/server-hero-lottie.vue')['default']
     HeadlessServiceStatusLottie: typeof import('./components/headless/service-status-lottie.vue')['default']
     ModPackCard: typeof import('./components/mod/pack-card.vue')['default']
     ModPackDialog: typeof import('./components/mod/pack-dialog.vue')['default']
@@ -24,6 +25,8 @@ declare module 'vue' {
     NPagination: typeof import('naive-ui')['NPagination']
     NSelect: typeof import('naive-ui')['NSelect']
     NSpin: typeof import('naive-ui')['NSpin']
+    NTimeline: typeof import('naive-ui')['NTimeline']
+    NTimelineItem: typeof import('naive-ui')['NTimelineItem']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     UniverseHi: typeof import('./components/universe/hi.vue')['default']

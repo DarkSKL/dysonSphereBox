@@ -1,6 +1,7 @@
 package modDependence
 
 import (
+	"fmt"
 	"sync"
 
 	systemHelper "DysonSphereBox/helper/system"
@@ -223,6 +224,12 @@ func RecordHeadlessStartResult(result *HeadlessStartResult) {
 	if !result.Started && !result.Skipped {
 		level = systemModel.LogLevelWarn
 	}
+	content := result.Message
+	if result.Started {
+		content = fmt.Sprintf("已启动 DSPGAME.exe 无头服务器进程 PID %d，目标监听端口 :%d", result.ProcessID, result.Status.HostPort)
+	} else if result.Skipped && result.ProcessID > 0 {
+		content = fmt.Sprintf("DSPGAME.exe 无头服务器已在运行，PID %d，监听端口 :%d", result.ProcessID, result.Status.HostPort)
+	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
 		Namespace: "modDependence",
@@ -230,7 +237,7 @@ func RecordHeadlessStartResult(result *HeadlessStartResult) {
 		Event:     "start",
 		Level:     level,
 		Type:      systemModel.LogTypeConfiguration,
-		Content:   result.Message,
+		Content:   content,
 		Metadata: map[string]interface{}{
 			"gameDir":          result.GameDir,
 			"started":          result.Started,
@@ -255,6 +262,12 @@ func RecordHeadlessStopResult(result *HeadlessStopResult) {
 	if !result.Stopped && !result.Skipped {
 		level = systemModel.LogLevelWarn
 	}
+	content := result.Message
+	if result.Stopped {
+		content = fmt.Sprintf("已停止 DSPGAME.exe 无头服务器进程 PID %d，监听端口 :%d 已释放", result.ProcessID, result.HostPort)
+	} else if !result.Skipped && result.ProcessID > 0 {
+		content = fmt.Sprintf("已发送停止命令到 DSPGAME.exe 进程 PID %d，但进程仍在运行，端口 :%d 状态需继续确认", result.ProcessID, result.HostPort)
+	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
 		Namespace: "modDependence",
@@ -262,12 +275,13 @@ func RecordHeadlessStopResult(result *HeadlessStopResult) {
 		Event:     "stop",
 		Level:     level,
 		Type:      systemModel.LogTypeConfiguration,
-		Content:   result.Message,
+		Content:   content,
 		Metadata: map[string]interface{}{
 			"gameDir":   result.GameDir,
 			"stopped":   result.Stopped,
 			"skipped":   result.Skipped,
 			"processId": result.ProcessID,
+			"hostPort":  result.HostPort,
 			"ready":     result.Status.Ready,
 			"issues":    result.Status.Issues,
 		},
@@ -309,10 +323,10 @@ func RecordHeadlessStatusObservation(status HeadlessEnvironmentStatus, source st
 
 func recordHeadlessProcessTransition(status HeadlessEnvironmentStatus, online bool, source string) {
 	event := "processOffline"
-	content := "无头服务器进程已下线"
+	content := fmt.Sprintf("DSPGAME.exe 无头服务器进程已下线，目标监听端口 :%d", status.HostPort)
 	if online {
 		event = "processOnline"
-		content = "无头服务器进程已上线"
+		content = fmt.Sprintf("DSPGAME.exe 无头服务器进程已上线，PID %d，目标监听端口 :%d", status.ProcessID, status.HostPort)
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
@@ -333,10 +347,10 @@ func recordHeadlessProcessTransition(status HeadlessEnvironmentStatus, online bo
 
 func recordHeadlessPortTransition(status HeadlessEnvironmentStatus, opened bool, source string) {
 	event := "portClosed"
-	content := "无头服务器端口已关闭"
+	content := fmt.Sprintf("无头服务器监听端口 :%d 已关闭，进程 PID %s，协议状态：%s", status.HostPort, formatHeadlessProcessID(status.ProcessID), formatHeadlessProtocolStatus(status))
 	if opened {
 		event = "portOpen"
-		content = "无头服务器端口已开放"
+		content = fmt.Sprintf("无头服务器监听端口 :%d 已开放，进程 PID %s，协议状态：%s", status.HostPort, formatHeadlessProcessID(status.ProcessID), formatHeadlessProtocolStatus(status))
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
@@ -355,6 +369,28 @@ func recordHeadlessPortTransition(status HeadlessEnvironmentStatus, opened bool,
 			"source":       source,
 		},
 	})
+}
+
+func formatHeadlessProcessID(processID int) string {
+	if processID <= 0 {
+		return "-"
+	}
+
+	return fmt.Sprintf("%d", processID)
+}
+
+func formatHeadlessProtocolStatus(status HeadlessEnvironmentStatus) string {
+	if status.TCPListening && status.UDPListening {
+		return "TCP/UDP"
+	}
+	if status.TCPListening {
+		return "TCP"
+	}
+	if status.UDPListening {
+		return "UDP"
+	}
+
+	return "未监听"
 }
 
 // RecordHeadlessFailure 记录无头服务器环境检测或准备失败事件。
