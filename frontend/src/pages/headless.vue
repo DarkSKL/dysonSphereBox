@@ -11,7 +11,6 @@ import {
   Settings,
   ShieldCheck,
   Square,
-  Zap,
 } from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import {LineChart} from 'echarts/charts'
@@ -27,6 +26,7 @@ import VChart from 'vue-echarts'
 import {useRouter} from 'vue-router'
 import {modDependence, system} from '../../wailsjs/go/models'
 import {ListLogs} from '../../wailsjs/go/system/LogService'
+import ServiceStatusLottie from '../components/headless/service-status-lottie.vue'
 import {
   getHeadlessEnvironmentStatus,
   saveHeadlessSettings,
@@ -61,6 +61,16 @@ interface HeadlessEventItem {
   time: string
   text: string
   tone: 'emerald' | 'blue' | 'amber' | 'red'
+}
+
+interface HeadlessServiceStatusView {
+  summary: string
+  title: string
+  detail: string
+  footer: string
+  tone: 'emerald' | 'blue' | 'amber'
+  lottieTone: 'emerald' | 'amber' | 'zinc'
+  lottieActive: boolean
 }
 
 const message = useMessage()
@@ -155,6 +165,52 @@ const statusPillClass = computed(() => {
   }
 
   return 'border-blue-200 bg-blue-50 text-blue-700'
+})
+const serviceStatusView = computed<HeadlessServiceStatusView>(() => {
+  const current = status.value
+  if (current?.processRunning && current.portListening) {
+    return {
+      summary: '运行中 · 可停止',
+      title: '心跳正常',
+      detail: '服务进程持续响应',
+      footer: '进程与端口状态已同步',
+      tone: 'emerald',
+      lottieTone: 'emerald',
+      lottieActive: true,
+    }
+  }
+  if (current?.processRunning) {
+    return {
+      summary: '运行中 · 等待端口',
+      title: '等待监听',
+      detail: `:${current.hostPort || 8469} 尚未监听`,
+      footer: '进程已启动，端口状态仍在确认',
+      tone: 'amber',
+      lottieTone: 'amber',
+      lottieActive: true,
+    }
+  }
+  if (current?.ready) {
+    return {
+      summary: '已就绪 · 待启动',
+      title: '等待启动',
+      detail: '进程与端口等待启动',
+      footer: '启动后会继续同步进程与端口',
+      tone: 'blue',
+      lottieTone: 'zinc',
+      lottieActive: false,
+    }
+  }
+
+  return {
+    summary: '待准备 · 缺依赖',
+    title: '等待就绪',
+    detail: '前置条件尚未完成',
+    footer: '完成前置条件后才能启动服务',
+    tone: 'amber',
+    lottieTone: 'zinc',
+    lottieActive: false,
+  }
 })
 const headlessPrerequisiteBlocked = computed(() => {
   const current = status.value
@@ -605,6 +661,36 @@ const eventDotClass = (tone: HeadlessEventItem['tone']): string => {
   return toneMap[tone]
 }
 
+const serviceStatusPanelClass = (tone: HeadlessServiceStatusView['tone']): string => {
+  const toneMap: Record<HeadlessServiceStatusView['tone'], string> = {
+    emerald: 'border-zinc-200 bg-white',
+    blue: 'border-zinc-200 bg-white',
+    amber: 'border-zinc-200 bg-white',
+  }
+
+  return toneMap[tone]
+}
+
+const serviceStatusIconClass = (tone: HeadlessServiceStatusView['tone']): string => {
+  const toneMap: Record<HeadlessServiceStatusView['tone'], string> = {
+    emerald: 'bg-white text-emerald-600',
+    blue: 'bg-white text-zinc-500',
+    amber: 'bg-white text-amber-600',
+  }
+
+  return toneMap[tone]
+}
+
+const serviceStatusTextClass = (tone: HeadlessServiceStatusView['tone']): string => {
+  const toneMap: Record<HeadlessServiceStatusView['tone'], string> = {
+    emerald: 'text-emerald-600',
+    blue: 'text-blue-600',
+    amber: 'text-amber-600',
+  }
+
+  return toneMap[tone]
+}
+
 const getLogEventTone = (log: system.LogDTO): HeadlessEventItem['tone'] => {
   if (log.level >= 40) {
     return 'red'
@@ -801,25 +887,28 @@ onBeforeUnmount(() => {
         <!-- * 交互：启动或刷新后状态同步刷新 -->
         <!-- * 依赖：依赖 status.ready、processRunning、portListening -->
         <!-- * 边界：未启动时端口未监听不作为准备失败的唯一条件 -->
-        <div class="h-[186px] rounded border border-zinc-200 bg-white p-4">
+        <div class="h-[146px] rounded border border-zinc-200 bg-white p-4">
           <h2 class="text-sm font-bold leading-5 text-zinc-950">服务状态</h2>
-          <p class="mt-1 text-[11px] leading-4 text-slate-500">
-            {{ status?.processRunning ? '运行中 · 可停止' : status?.ready ? '已就绪 · 待启动' : '待准备 · 缺依赖' }}
-          </p>
-          <div class="mt-3 flex h-[78px] items-center gap-4 rounded-md border px-5" :class="status?.processRunning ? 'border-emerald-100 bg-emerald-50' : status?.ready ? 'border-blue-100 bg-blue-50' : 'border-amber-100 bg-amber-50'">
-            <div class="grid h-[54px] w-[54px] place-items-center rounded-full border-2 border-white/70" :class="status?.processRunning ? 'bg-emerald-100 text-emerald-600' : status?.ready ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'">
-              <Zap :size="22" :stroke-width="2" />
+          <div class="mt-1 flex items-center justify-between gap-3 text-[11px] leading-4">
+            <p class="min-w-0 truncate text-slate-500">{{ serviceStatusView.summary }}</p>
+            <p class="shrink-0 text-right text-slate-400">{{ serviceStatusView.footer }}</p>
+          </div>
+          <div class="mt-2 flex h-[62px] items-center gap-4 rounded-md" :class="serviceStatusPanelClass(serviceStatusView.tone)">
+            <div class="grid h-[54px] w-[54px] place-items-center rounded-full " :class="serviceStatusIconClass(serviceStatusView.tone)">
+              <ServiceStatusLottie
+                :active="serviceStatusView.lottieActive"
+                :tone="serviceStatusView.lottieTone"
+              />
             </div>
             <div class="min-w-0">
-              <p class="text-sm font-semibold" :class="status?.processRunning ? 'text-emerald-600' : status?.ready ? 'text-blue-600' : 'text-amber-600'">
-                {{ status?.processRunning ? '心跳正常' : status?.ready ? '等待启动' : '等待就绪' }}
+              <p class="text-sm font-semibold" :class="serviceStatusTextClass(serviceStatusView.tone)">
+                {{ serviceStatusView.title }}
               </p>
               <p class="mt-1 text-[11px] leading-4 text-slate-500">
-                {{ status?.portListening ? '服务进程持续响应' : '进程与端口状态同步' }}
+                {{ serviceStatusView.detail }}
               </p>
             </div>
           </div>
-          <p class="mt-2 text-[11px] leading-4 text-slate-500">进程与端口状态同步</p>
         </div>
 
         <!-- ~ 最近事件 -->
@@ -827,7 +916,7 @@ onBeforeUnmount(() => {
         <!-- * 交互：启动、停止和刷新后同步读取最新日志 -->
         <!-- * 依赖：依赖 LogService.ListLogs 与 recentEvents -->
         <!-- * 边界：日志读取失败时展示错误，不再用前端模拟事件兜底 -->
-        <div class="h-[188px] rounded border border-zinc-200 bg-white p-4">
+        <div class="h-[228px] rounded border border-zinc-200 bg-white p-4">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold leading-5 text-zinc-950">最近事件</h2>
             <RefreshCw v-if="isRecentLogLoading" :size="14" :stroke-width="1.8" class="animate-spin text-zinc-400" />

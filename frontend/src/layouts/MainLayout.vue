@@ -57,7 +57,7 @@ onMounted(() => {
       <!-- * 依赖：依赖前端运行时渲染，不连接后端健康检查接口 -->
       <!-- * 边界：这不是服务器探活结果，只表示本地界面正在运行 -->
       <div class="mt-auto border-t border-zinc-200 p-3">
-        <div class="rounded border border-zinc-200 bg-white px-3 py-2">
+        <div class="rounded    px-3 py-2">
           <div class="flex items-center justify-between gap-2">
             <span class="text-xs text-zinc-500">运行状态</span>
             <Activity :size="15" :stroke-width="2.2" class="heartbeat-icon text-emerald-500" />

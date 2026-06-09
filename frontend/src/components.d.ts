@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    HeadlessServiceStatusLottie: typeof import('./components/headless/service-status-lottie.vue')['default']
     ModPackCard: typeof import('./components/mod/pack-card.vue')['default']
     ModPackDialog: typeof import('./components/mod/pack-dialog.vue')['default']
     NButton: typeof import('naive-ui')['NButton']

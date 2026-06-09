@@ -20,6 +20,7 @@ const (
 	dysonSphereProcessName  = "DSPGAME.exe"
 	nebulaServerArgument    = "-nebula-server"
 	nebulaConfigRelative    = "BepInEx/config/nebula.cfg"
+	nebulaSettingsSection   = "Nebula - Settings"
 	headlessSteamAppIDFile  = "steam_appid.txt"
 	headlessOutputLogFile   = "output_log.txt"
 	headlessBepInExLogFile  = "BepInEx/LogOutput.log"
@@ -327,6 +328,9 @@ func SaveHeadlessSettings(gameDir string, hostPort int, serverArchive string) (*
 	if hostPort <= 0 || hostPort > 65535 {
 		return nil, fmt.Errorf("host port must be between 1 and 65535")
 	}
+	if isPortOccupied(hostPort) {
+		return nil, fmt.Errorf("开服端口 %d 已被占用，请更换端口后再保存", hostPort)
+	}
 
 	gameDir = filepath.Clean(gameDir)
 	normalizedArchive := strings.TrimSpace(serverArchive)
@@ -626,15 +630,12 @@ func readNebulaHostPort(gameDir string) int {
 		return defaultNebulaHostPort
 	}
 
-	lines := strings.Split(string(content), "\n")
+	lines := normalizeConfigLines(content)
+	if port, ok := findNebulaHostPortInSection(lines); ok {
+		return port
+	}
 	for _, line := range lines {
-		parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
-		if len(parts) != 2 || !strings.EqualFold(strings.TrimSpace(parts[0]), "HostPort") {
-			continue
-		}
-
-		port, err := strconv.Atoi(strings.TrimSpace(parts[1]))
-		if err == nil && port > 0 && port <= 65535 {
+		if port, ok := parseNebulaHostPortLine(line); ok {
 			return port
 		}
 	}
@@ -653,31 +654,123 @@ func writeNebulaHostPort(gameDir string, hostPort int) error {
 		return err
 	}
 
-	newLine := fmt.Sprintf("HostPort=%d", hostPort)
+	newLine := fmt.Sprintf("HostPort = %d", hostPort)
 	if os.IsNotExist(err) || len(content) == 0 {
-		return os.WriteFile(configPath, []byte(newLine+"\r\n"), 0o644)
+		return os.WriteFile(configPath, []byte("["+nebulaSettingsSection+"]\r\n\r\n"+newLine+"\r\n"), 0o644)
 	}
 
-	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
-	replaced := false
+	lines := normalizeConfigLines(content)
+	replaced := replaceNebulaHostPortInSection(lines, newLine)
 	for index, line := range lines {
-		parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
-		if len(parts) != 2 || !strings.EqualFold(strings.TrimSpace(parts[0]), "HostPort") {
+		if isInConfigSection(line) {
+			break
+		}
+		if _, ok := parseNebulaHostPortLine(line); !ok {
 			continue
 		}
 
-		lines[index] = newLine
-		replaced = true
+		lines[index] = ""
 	}
 	if !replaced {
-		if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
-			lines[len(lines)-1] = newLine
-		} else {
-			lines = append(lines, newLine)
-		}
+		lines = insertNebulaHostPortInSection(lines, newLine)
 	}
 
 	return os.WriteFile(configPath, []byte(strings.Join(lines, "\r\n")), 0o644)
+}
+
+func normalizeConfigLines(content []byte) []string {
+	return strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+}
+
+func findNebulaHostPortInSection(lines []string) (int, bool) {
+	inSection := false
+	for _, line := range lines {
+		if isNebulaSettingsSection(line) {
+			inSection = true
+			continue
+		}
+		if inSection && isInConfigSection(line) {
+			return 0, false
+		}
+		if !inSection {
+			continue
+		}
+		if port, ok := parseNebulaHostPortLine(line); ok {
+			return port, true
+		}
+	}
+
+	return 0, false
+}
+
+func replaceNebulaHostPortInSection(lines []string, newLine string) bool {
+	inSection := false
+	for index, line := range lines {
+		if isNebulaSettingsSection(line) {
+			inSection = true
+			continue
+		}
+		if inSection && isInConfigSection(line) {
+			return false
+		}
+		if !inSection {
+			continue
+		}
+		if _, ok := parseNebulaHostPortLine(line); ok {
+			lines[index] = newLine
+			return true
+		}
+	}
+
+	return false
+}
+
+func insertNebulaHostPortInSection(lines []string, newLine string) []string {
+	for index, line := range lines {
+		if !isNebulaSettingsSection(line) {
+			continue
+		}
+
+		insertIndex := index + 1
+		for insertIndex < len(lines) && strings.TrimSpace(lines[insertIndex]) == "" {
+			insertIndex++
+		}
+		lines = append(lines[:insertIndex], append([]string{newLine}, lines[insertIndex:]...)...)
+		return lines
+	}
+
+	if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) != "" {
+		lines = append(lines, "")
+	}
+
+	return append(lines, "["+nebulaSettingsSection+"]", "", newLine)
+}
+
+func parseNebulaHostPortLine(line string) (int, bool) {
+	parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
+	if len(parts) != 2 || !strings.EqualFold(strings.TrimSpace(parts[0]), "HostPort") {
+		return 0, false
+	}
+
+	port, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, false
+	}
+
+	return port, true
+}
+
+func isNebulaSettingsSection(line string) bool {
+	return strings.EqualFold(strings.TrimSpace(line), "["+nebulaSettingsSection+"]")
+}
+
+func isInConfigSection(line string) bool {
+	trimmedLine := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmedLine, "[") && strings.HasSuffix(trimmedLine, "]")
+}
+
+func isPortOccupied(port int) bool {
+	return isNetstatPortListening("tcp", port) || isNetstatPortListening("udp", port)
 }
 
 func collectHeadlessIssues(status HeadlessEnvironmentStatus) []string {

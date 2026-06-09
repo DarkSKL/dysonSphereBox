@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	systemModel "DysonSphereBox/model/system"
-
-	"gorm.io/gorm"
 )
 
 type Configure struct {
@@ -42,15 +40,16 @@ func (model *ConfigUnit) Get() (string, error) {
 	}
 
 	var config systemModel.Config
-	err := GLOBAL.DB.
+	result := GLOBAL.DB.
 		Where(&systemModel.Config{Group: model.Group, Key: model.Key}).
-		First(&config).
-		Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", nil
+		Order("id").
+		Limit(1).
+		Find(&config)
+	if result.Error != nil {
+		return "", fmt.Errorf("get config %s.%s: %w", model.Group, model.Key, result.Error)
 	}
-	if err != nil {
-		return "", fmt.Errorf("get config %s.%s: %w", model.Group, model.Key, err)
+	if result.RowsAffected == 0 {
+		return "", nil
 	}
 
 	return config.Value, nil
