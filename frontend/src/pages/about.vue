@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import {ExternalLink, GitFork, MessageCircle} from '@lucide/vue'
+import {Copy, ExternalLink, GitFork, MessageCircle} from '@lucide/vue'
+import {useMessage} from 'naive-ui'
 import {onMounted} from 'vue'
 import {useAppVersion} from '../composables/useAppVersion'
 
@@ -10,6 +11,10 @@ definePage({
   },
 })
 
+const message = useMessage()
+
+// =============== 页面链接 ===============
+// 说明：维护项目主页与问题反馈入口，模板只负责渲染外链。
 const links = [
   {
     label: 'https://gitee.com/Dark-Skl/dyson-sphere-box.git',
@@ -23,10 +28,22 @@ const links = [
   },
 ]
 
+// =============== 联系方式 ===============
+// 说明：维护可复制的联系渠道，点击联系人时统一复制 copyValue。
 const contacts = [
   {
     label: '微信号：DarkSKL',
+    copyValue: 'DarkSKL',
+    successText: '微信号已复制',
     icon: MessageCircle,
+    iconText: '',
+  },
+  {
+    label: 'QQ 群：779182569',
+    copyValue: '779182569',
+    successText: 'QQ 群号已复制',
+    icon: null,
+    iconText: 'QQ',
   },
 ]
 
@@ -41,6 +58,40 @@ const {
   appVersion,
   loadAppVersion,
 } = useAppVersion()
+
+// =============== 复制反馈 ===============
+// 说明：优先使用浏览器剪贴板 API，失败时用输入框选中方案兜底。
+const copyTextToClipboard = async (text: string): Promise<void> => {
+  if (navigator.clipboard !== undefined) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+
+  const copied = document.execCommand('copy')
+  document.body.removeChild(textarea)
+
+  if (!copied) {
+    throw new Error('copy command failed')
+  }
+}
+
+// 说明：联系人点击入口，复制成功或失败都给出明确的用户反馈。
+const copyContact = async (contact: (typeof contacts)[number]): Promise<void> => {
+  try {
+    await copyTextToClipboard(contact.copyValue)
+    message.success(contact.successText)
+  } catch (error) {
+    message.error(`复制失败，请手动复制：${contact.copyValue}`)
+  }
+}
 
 onMounted(() => {
   void loadAppVersion()
@@ -59,11 +110,6 @@ onMounted(() => {
 
       <section>
         <p class="text-sm text-zinc-500">开发者</p>
-        <p class="mt-1 text-zinc-950">DarkSKL</p>
-      </section>
-
-      <section>
-        <p class="text-sm text-zinc-500">微信号</p>
         <p class="mt-1 text-zinc-950">DarkSKL</p>
       </section>
 
@@ -89,14 +135,33 @@ onMounted(() => {
       <section>
         <p class="mb-3 text-sm text-zinc-500">联系方式</p>
         <div class="grid gap-3">
-          <div
+          <!-- ~ 联系方式复制 -->
+          <!-- * 说明：展示可复制的微信号与 QQ 群号 -->
+          <!-- * 交互：点击任一联系方式后复制对应内容，并通过消息提示反馈结果 -->
+          <!-- * 依赖：依赖 contacts 数据与浏览器剪贴板能力 -->
+          <!-- * 边界：剪贴板 API 不可用时使用输入框选中复制兜底，失败时提示用户手动复制 -->
+          <button
             v-for="contact in contacts"
             :key="contact.label"
-            class="flex items-center rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
+            type="button"
+            class="flex items-center justify-between rounded border border-zinc-200 bg-white px-3 py-2 text-left text-sm text-zinc-700 transition hover:border-zinc-950 hover:text-zinc-950"
+            @click="copyContact(contact)"
           >
-            <component :is="contact.icon" :size="16" :stroke-width="1.8" class="mr-2 shrink-0" />
-            <span class="truncate">{{ contact.label }}</span>
-          </div>
+            <span class="flex min-w-0 items-center gap-2">
+              <n-icon v-if="contact.iconText" :size="16" class="shrink-0">
+                <span class="text-[10px] font-semibold leading-none">{{ contact.iconText }}</span>
+              </n-icon>
+              <component
+                :is="contact.icon"
+                v-else
+                :size="16"
+                :stroke-width="1.8"
+                class="shrink-0"
+              />
+              <span class="truncate">{{ contact.label }}</span>
+            </span>
+            <Copy :size="14" :stroke-width="1.8" class="ml-3 shrink-0 text-zinc-400" />
+          </button>
         </div>
       </section>
 
