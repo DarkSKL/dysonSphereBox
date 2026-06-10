@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"DysonSphereBox/core"
+	modDependenceHelper "DysonSphereBox/helper/modDependence"
 	systemHelper "DysonSphereBox/helper/system"
 	"DysonSphereBox/utils"
 
@@ -25,9 +26,16 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	core.GLOBAL.RuntimeContext = ctx
 
 	if err := core.InitDatabase(databaseTemplate); err != nil {
 		panic(fmt.Errorf("init database: %w", err))
+	}
+	if err := modDependenceHelper.RepairLegacyScopedBepInExFiles(); err != nil {
+		fmt.Printf("repair legacy scoped mod files: %v\n", err)
+	}
+	if err := modDependenceHelper.RecoverInterruptedRemotePackageInstalls(); err != nil {
+		fmt.Printf("recover interrupted mod installs: %v\n", err)
 	}
 }
 

@@ -44,6 +44,20 @@ const loadProgressPercentage = computed(() => {
   return Math.round((finishedResourceCount.value / totalResourceCount.value) * 100)
 })
 
+// =============== Naive UI 加载状态 ===============
+// 说明：将资源预加载、内嵌页启动与失败状态映射为 Naive UI 进度组件的视觉语义。
+// 边界：进度只覆盖父页面可统计的静态资源，不读取跨域 iframe 内部执行状态。
+const loadProgressStatus = computed(() => {
+  if (loadStage.value === 'error') {
+    return 'error'
+  }
+  if (loadStage.value === 'embedding') {
+    return 'success'
+  }
+
+  return 'info'
+})
+
 const loadStageTitle = computed(() => {
   if (loadStage.value === 'preloading') {
     return '正在预加载蓝图生成器资源'
@@ -210,26 +224,32 @@ onBeforeUnmount(() => {
         v-if="loadStage !== 'ready'"
         class="absolute inset-0 z-10 grid place-items-center bg-white/90 px-8 backdrop-blur-sm"
       >
-        <div class="w-full max-w-lg border border-zinc-200 bg-white p-5 shadow-sm">
-          <p class="text-base font-semibold text-zinc-950">{{ loadStageTitle }}</p>
-          <p class="mt-2 text-sm leading-6 text-zinc-500">{{ loadStageDescription }}</p>
-
-          <n-progress
-            v-if="loadStage !== 'error'"
-            class="mt-4"
-            type="line"
-            :percentage="loadProgressPercentage"
-            :show-indicator="false"
-          />
-
-          <div v-if="loadStage === 'preloading'" class="mt-3 grid grid-cols-3 gap-2 text-xs text-zinc-500">
-            <span>总数 {{ totalResourceCount }}</span>
-            <span>完成 {{ finishedResourceCount }}</span>
-            <span>等待 {{ pendingResourceCount }}</span>
+        <div class="grid w-full max-w-xl grid-cols-[156px_minmax(0,1fr)] items-center gap-6 p-6 max-sm:grid-cols-1 max-sm:justify-items-center max-sm:text-center">
+          <div class="grid h-36 w-36 shrink-0 place-items-center">
+            <n-progress
+              type="circle"
+              :percentage="loadProgressPercentage"
+              :status="loadProgressStatus"
+              :stroke-width="10"
+            />
           </div>
 
-          <div v-if="loadStage === 'error'" class="mt-5">
-            <n-button type="primary" @click="preloadBlueprintGenerator">重试加载</n-button>
+          <div class="min-w-0">
+            <div class="flex items-center gap-3 max-sm:justify-center">
+              <n-spin v-if="loadStage !== 'error'" size="small" />
+              <p class="text-base font-semibold text-zinc-950">{{ loadStageTitle }}</p>
+            </div>
+            <p class="mt-2 text-sm leading-6 text-zinc-500">{{ loadStageDescription }}</p>
+
+            <div v-if="loadStage === 'preloading'" class="mt-5 grid grid-cols-3 gap-2 text-xs text-zinc-500">
+              <span class="border border-zinc-200 bg-zinc-50 px-3 py-2">资源 {{ totalResourceCount }}</span>
+              <span class="border border-zinc-200 bg-zinc-50 px-3 py-2">完成 {{ finishedResourceCount }}</span>
+              <span class="border border-zinc-200 bg-zinc-50 px-3 py-2">等待 {{ pendingResourceCount }}</span>
+            </div>
+
+            <div v-if="loadStage === 'error'" class="mt-5">
+              <n-button type="primary" @click="preloadBlueprintGenerator">重新加载</n-button>
+            </div>
           </div>
         </div>
       </div>

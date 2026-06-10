@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import {CheckCircle2, Download, PackageOpen, Trash2, Wrench} from '@lucide/vue'
+import {AlertCircle, CheckCircle2, Download, PackageOpen, Trash2, Wrench, X} from '@lucide/vue'
 
 defineProps<{
-  packageId: number
+  packageKey: string
   title: string
   description: string
   imageUrl: string
@@ -11,21 +11,28 @@ defineProps<{
   author: string
   installed: boolean
   installing: boolean
+  failed: boolean
+  conflicted: boolean
   progress: number
+  progressStatus: string
+  downloadSpeed: string
+  failureMessage: string
 }>()
 
 defineEmits<{
-  (event: 'open', id: number): void
-  (event: 'uninstall', id: number): void
+  (event: 'open', key: string): void
+  (event: 'uninstall', key: string): void
+  (event: 'repair', key: string): void
+  (event: 'cancel', key: string): void
 }>()
 </script>
 
 <template>
   <button
     class="mod-pack-card group"
-    :class="{ 'is-installed': installed, 'is-installing': installing }"
+    :class="{ 'is-installed': installed, 'is-installing': installing, 'is-failed': failed, 'is-conflicted': conflicted }"
     type="button"
-    @click="!installing && $emit('open', packageId)"
+    @click="!installing && $emit('open', packageKey)"
   >
     <div class="flex shrink-0 items-start justify-between gap-3 p-2.5">
       <div class="min-w-0">
@@ -34,11 +41,29 @@ defineEmits<{
         <p class="mt-1 truncate text-[11px] text-zinc-400">{{ author || '未知作者' }}</p>
       </div>
       <button
-        v-if="installed && !installing"
+        v-if="installing"
+        class="grid h-7 w-7 shrink-0 place-items-center rounded border border-zinc-300 text-zinc-600 opacity-100 transition hover:bg-zinc-50"
+        type="button"
+        title="取消安装"
+        @click.stop="$emit('cancel', packageKey)"
+      >
+        <X :size="14" :stroke-width="1.8" />
+      </button>
+      <button
+        v-else-if="conflicted"
+        class="grid h-7 w-7 shrink-0 place-items-center rounded border border-amber-200 text-amber-700 opacity-100 transition hover:bg-amber-50"
+        type="button"
+        title="修复安装冲突"
+        @click.stop="$emit('repair', packageKey)"
+      >
+        <Wrench :size="14" :stroke-width="1.8" />
+      </button>
+      <button
+        v-else-if="installed && !installing"
         class="grid h-7 w-7 shrink-0 place-items-center rounded border border-red-200 text-red-600 opacity-0 transition hover:bg-red-50 group-hover:opacity-100"
         type="button"
         title="卸载"
-        @click.stop="$emit('uninstall', packageId)"
+        @click.stop="$emit('uninstall', packageKey)"
       >
         <Trash2 :size="14" :stroke-width="1.8" />
       </button>
@@ -46,6 +71,9 @@ defineEmits<{
 
     <div v-if="installing" class="h-1 bg-zinc-100">
       <div class="h-full bg-zinc-950 transition-all duration-300" :style="{width: `${progress}%`}"></div>
+    </div>
+    <div v-else-if="failed || conflicted" class="h-1 bg-red-100">
+      <div class="h-full w-full bg-red-500"></div>
     </div>
 
     <div class="relative grid flex-1 place-items-center border-t border-zinc-200 bg-zinc-50">
@@ -71,17 +99,32 @@ defineEmits<{
         </div>
       </div>
       <div
-        v-if="installed && !installing"
+        v-if="installed && !failed && !installing"
         class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"
         title="已安装"
       >
         <CheckCircle2 :size="12" :stroke-width="1.9" />
       </div>
+      <div
+        v-if="(failed || conflicted) && !installing"
+        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"
+        :title="conflicted ? '待处理冲突' : '安装失败'"
+      >
+        <Wrench v-if="conflicted" :size="12" :stroke-width="1.9" />
+        <AlertCircle v-else :size="12" :stroke-width="1.9" />
+      </div>
       <div v-if="installing" class="absolute inset-0 grid place-items-center bg-white/75 backdrop-blur-sm">
         <div class="text-center">
-          <p class="text-sm font-semibold text-zinc-950">安装中</p>
-          <p class="mt-1 text-xs text-zinc-500">{{ Math.floor(progress) }}%</p>
+          <p class="max-w-[9rem] truncate text-sm font-semibold text-zinc-950">{{ progressStatus || '安装中' }}</p>
+          <p class="mt-1 text-xs text-zinc-500">{{ Math.floor(progress) }}%<span v-if="downloadSpeed"> · {{ downloadSpeed }}</span></p>
+          <button class="mt-2 border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 hover:border-zinc-500" type="button" @click.stop="$emit('cancel', packageKey)">
+            取消
+          </button>
         </div>
+      </div>
+      <div v-else-if="failed || conflicted" class="absolute inset-x-2 bottom-2 border border-amber-200 bg-amber-50/95 px-2 py-1 text-amber-800 shadow-sm">
+        <p class="truncate text-xs font-semibold">{{ progressStatus || (conflicted ? '待处理冲突' : '安装失败') }}</p>
+        <p class="mt-0.5 line-clamp-2 text-[11px] leading-4">{{ failureMessage || progressStatus || '请稍后重试。' }}</p>
       </div>
     </div>
   </button>
@@ -93,6 +136,14 @@ defineEmits<{
 
   &:hover {
     @apply border-zinc-950;
+  }
+
+  &.is-failed {
+    @apply border-red-300;
+  }
+
+  &.is-conflicted {
+    @apply border-amber-300;
   }
 }
 

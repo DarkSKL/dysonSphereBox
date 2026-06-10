@@ -327,17 +327,28 @@ func ResolveLatestBepInExPackage() (*BepInExPackage, error) {
 }
 
 type thunderstorePackage struct {
-	Owner    string                `json:"owner"`
-	Name     string                `json:"name"`
-	Versions []thunderstoreVersion `json:"versions"`
+	Owner        string                `json:"owner"`
+	Name         string                `json:"name"`
+	FullName     string                `json:"full_name"`
+	PackageURL   string                `json:"package_url"`
+	DateUpdated  string                `json:"date_updated"`
+	IsDeprecated bool                  `json:"is_deprecated"`
+	Categories   []string              `json:"categories"`
+	RatingScore  int64                 `json:"rating_score"`
+	Versions     []thunderstoreVersion `json:"versions"`
 }
 
 type thunderstoreVersion struct {
 	IsActive      bool     `json:"is_active"`
 	DateCreated   string   `json:"date_created"`
 	FullName      string   `json:"full_name"`
+	Description   string   `json:"description"`
+	Icon          string   `json:"icon"`
 	VersionNumber string   `json:"version_number"`
 	DownloadURL   string   `json:"download_url"`
+	Downloads     int64    `json:"downloads"`
+	FileSize      int64    `json:"file_size"`
+	WebsiteURL    string   `json:"website_url"`
 	Dependencies  []string `json:"dependencies"`
 }
 
@@ -501,12 +512,19 @@ func extractPackage(bufferDir string, zipPath string, pkg *BepInExPackage) (stri
 }
 
 func extractZipFile(file *zip.File, destinationDir string) error {
-	targetPath := filepath.Join(destinationDir, file.Name)
+	entryName := normalizeZipEntryName(file.Name)
+	if entryName == "" {
+		return nil
+	}
+	targetPath := filepath.Join(destinationDir, filepath.FromSlash(strings.TrimSuffix(entryName, "/")))
 	if !isSubPath(destinationDir, targetPath) {
 		return fmt.Errorf("zip entry escapes destination: %s", file.Name)
 	}
 
-	if file.FileInfo().IsDir() {
+	if isZipDirectoryEntry(file, entryName) {
+		if err := removeBlockingFile(targetPath); err != nil {
+			return err
+		}
 		return os.MkdirAll(targetPath, file.Mode())
 	}
 
@@ -528,6 +546,30 @@ func extractZipFile(file *zip.File, destinationDir string) error {
 
 	_, err = io.Copy(target, source)
 	return err
+}
+
+func normalizeZipEntryName(entryName string) string {
+	entryName = strings.ReplaceAll(entryName, "\\", "/")
+	entryName = strings.TrimLeft(entryName, "/")
+	return entryName
+}
+
+func isZipDirectoryEntry(file *zip.File, entryName string) bool {
+	return file.FileInfo().IsDir() || strings.HasSuffix(entryName, "/")
+}
+
+func removeBlockingFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.IsDir() {
+		return nil
+	}
+	return os.Remove(path)
 }
 
 func copyDirectoryContents(sourceDir string, destinationDir string) error {

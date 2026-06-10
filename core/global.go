@@ -1,6 +1,10 @@
 package core
 
-import "gorm.io/gorm"
+import (
+	"context"
+
+	"gorm.io/gorm"
+)
 
 // Global 保存应用级基础设施引用。
 // 用途：为服务层提供数据库、配置与 HTTP 客户端等单例资源。
@@ -14,6 +18,8 @@ type Global struct {
 	Configure *Configure
 	// HTTPClient 是基于 Configure.BaseURL 创建的全局 HTTP 客户端。
 	HTTPClient *HTTPClient
+	// RuntimeContext 是 Wails 运行时上下文，用于服务层向前端发送事件。
+	RuntimeContext context.Context
 }
 
 // GLOBAL 是应用启动后可复用的全局基础设施容器。

@@ -1,6 +1,7 @@
 package modDependence
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -22,6 +23,80 @@ var (
 	headlessStatusSnapshotMutex sync.Mutex
 	headlessStatusSnapshots     = make(map[string]headlessStatusSnapshot)
 )
+
+// RecordRemotePackageInstallSuccess 记录统一来源 Mod 包安装成功事件。
+func RecordRemotePackageInstallSuccess(result *PackageInstallResult) {
+	if result == nil {
+		return
+	}
+
+	systemHelper.RecordLogSilently(systemHelper.LogEntry{
+		Namespace: "modDependence",
+		Module:    "installer",
+		Event:     "installRemotePackage",
+		Level:     systemModel.LogLevelInfo,
+		Type:      systemModel.LogTypeInstallation,
+		Content:   "统一来源 Mod 包已安装",
+		Metadata: map[string]interface{}{
+			"packageKey":      result.PackageKey,
+			"packageName":     result.PackageName,
+			"dependencyCount": len(result.Dependencies),
+			"gameDir":         result.GameDir,
+			"pluginRoot":      result.PluginRoot,
+			"message":         result.Message,
+		},
+	})
+}
+
+// RecordRemotePackageInstallFailure 记录统一来源 Mod 包安装失败事件。
+func RecordRemotePackageInstallFailure(pack ModDependenceResponse.RemoteModPackageDTO, err error) {
+	metadata := map[string]interface{}{
+		"packageKey":  pack.Key,
+		"packageName": pack.DisplayName,
+		"source":      pack.Source,
+	}
+
+	var artifactErr *ArtifactInstallError
+	if errors.As(err, &artifactErr) {
+		metadata["failedStage"] = artifactErr.Stage
+		metadata["failedComponentKey"] = artifactErr.ComponentKey
+		metadata["failedComponentName"] = artifactErr.ComponentName
+		metadata["failedComponentVersion"] = artifactErr.ComponentVersion
+		metadata["failedDownloadURL"] = artifactErr.DownloadURL
+	}
+
+	systemHelper.RecordFailure("modDependence", "installer", "installRemotePackage", "统一来源 Mod 包安装失败", err, metadata)
+}
+
+// RecordRemotePackageUninstallSuccess 记录统一来源 Mod 包卸载成功事件。
+func RecordRemotePackageUninstallSuccess(result *PackageInstallResult) {
+	if result == nil {
+		return
+	}
+
+	systemHelper.RecordLogSilently(systemHelper.LogEntry{
+		Namespace: "modDependence",
+		Module:    "installer",
+		Event:     "uninstallRemotePackage",
+		Level:     systemModel.LogLevelInfo,
+		Type:      systemModel.LogTypeInstallation,
+		Content:   "统一来源 Mod 包已卸载",
+		Metadata: map[string]interface{}{
+			"packageKey":      result.PackageKey,
+			"packageName":     result.PackageName,
+			"dependencyCount": len(result.Dependencies),
+			"gameDir":         result.GameDir,
+			"message":         result.Message,
+		},
+	})
+}
+
+// RecordRemotePackageUninstallFailure 记录统一来源 Mod 包卸载失败事件。
+func RecordRemotePackageUninstallFailure(packageKey string, err error) {
+	systemHelper.RecordFailure("modDependence", "installer", "uninstallRemotePackage", "统一来源 Mod 包卸载失败", err, map[string]interface{}{
+		"packageKey": packageKey,
+	})
+}
 
 // RecordPackageInstallSuccess 记录 Mod 整合包安装成功事件。
 func RecordPackageInstallSuccess(result *PackageInstallResult) {

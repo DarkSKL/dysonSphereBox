@@ -3,3 +3,7 @@
 import {response} from '../models';
 
 export function GetPackageList(arg1:number,arg2:number):Promise<response.PackageListData>;
+
+export function GetRemotePackageList(arg1:string,arg2:number,arg3:number,arg4:string):Promise<response.RemotePackageListData>;
+
+export function RefreshRemotePackageList(arg1:string,arg2:number,arg3:number,arg4:string):Promise<response.RemotePackageListData>;

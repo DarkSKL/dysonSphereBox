@@ -28,6 +28,7 @@ const modDependencyBufferDirName = "modDependencies"
 // DependencyInstallResult 表示单个 Mod 依赖的安装或卸载结果。
 // 用途：返回给前端展示整合包安装明细；边界：路径仅用于本机状态展示，不参与前端拼接文件操作。
 type DependencyInstallResult struct {
+	Key       string `json:"key"`
 	ID        uint   `json:"id"`
 	Name      string `json:"name"`
 	Version   string `json:"version"`
@@ -42,6 +43,7 @@ type DependencyInstallResult struct {
 // PackageInstallResult 表示整合包安装器的整体执行结果。
 // 用途：前端根据 Installed、Uninstalled 和 Dependencies 同步市场卡片状态。
 type PackageInstallResult struct {
+	PackageKey    string                    `json:"packageKey"`
 	PackageID     uint                      `json:"packageId"`
 	PackageName   string                    `json:"packageName"`
 	GameDir       string                    `json:"gameDir"`

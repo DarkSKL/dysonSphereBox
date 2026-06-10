@@ -5,3 +5,11 @@
 export function GetPackageList(arg1, arg2) {
   return window['go']['modDependence']['MarketplaceService']['GetPackageList'](arg1, arg2);
 }
+
+export function GetRemotePackageList(arg1, arg2, arg3, arg4) {
+  return window['go']['modDependence']['MarketplaceService']['GetRemotePackageList'](arg1, arg2, arg3, arg4);
+}
+
+export function RefreshRemotePackageList(arg1, arg2, arg3, arg4) {
+  return window['go']['modDependence']['MarketplaceService']['RefreshRemotePackageList'](arg1, arg2, arg3, arg4);
+}

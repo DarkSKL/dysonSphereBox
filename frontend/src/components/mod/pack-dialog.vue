@@ -5,7 +5,7 @@ import {response} from '../../../wailsjs/go/models'
 
 const props = defineProps<{
   show: boolean
-  pack?: response.ModDependencyPackageDTO
+  pack?: response.RemoteModPackageDTO
   installed: boolean
   installing: boolean
   canInstall: boolean
@@ -14,17 +14,37 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'update:show', value: boolean): void
-  (event: 'install', id: number): void
+  (event: 'install', key: string): void
+  (event: 'uninstall', key: string): void
 }>()
 
-const title = computed(() => props.pack?.packageName ?? '')
-const description = computed(() => props.pack?.packageDescription || '暂无整合包说明。')
+const title = computed(() => props.pack?.displayName ?? '')
+const description = computed(() => props.pack?.description || '暂无整合包说明。')
 const dependencies = computed(() => props.pack?.dependencies ?? [])
+const displayComponents = computed(() => {
+  if (!props.pack) {
+    return []
+  }
+  if (props.pack.source === 'official') {
+    return dependencies.value
+  }
+
+  return [
+    {
+      key: props.pack.key,
+      displayName: props.pack.displayName || props.pack.name,
+      name: props.pack.name,
+      version: props.pack.version,
+      description: props.pack.description,
+    },
+    ...dependencies.value,
+  ]
+})
 const packageSizeText = computed(() => formatPackageSize(props.pack?.packageSize ?? 0))
 const installButtonDisabled = computed(() => props.installing || !props.canInstall)
 const installButtonText = computed(() => {
   if (props.installing) {
-    return '安装中'
+    return props.installed ? '卸载中' : '安装中'
   }
   if (!props.canInstall) {
     return '需先安装 BepInEx'
@@ -49,7 +69,16 @@ const handleInstall = (): void => {
     return
   }
 
-  emit('install', props.pack.id)
+  emit('install', props.pack.key)
+  emit('update:show', false)
+}
+
+const handleUninstall = (): void => {
+  if (!props.pack || props.installing) {
+    return
+  }
+
+  emit('uninstall', props.pack.key)
   emit('update:show', false)
 }
 </script>
@@ -71,7 +100,7 @@ const handleInstall = (): void => {
         <div class="mb-5 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
           <div class="border border-zinc-200 bg-zinc-50 px-3 py-2">
             <p class="text-zinc-400">版本</p>
-            <p class="mt-1 truncate font-medium text-zinc-950">{{ pack.packageVersion || '未知' }}</p>
+            <p class="mt-1 truncate font-medium text-zinc-950">{{ pack.version || '未知' }}</p>
           </div>
           <div class="border border-zinc-200 bg-zinc-50 px-3 py-2">
             <p class="text-zinc-400">作者</p>
@@ -87,20 +116,20 @@ const handleInstall = (): void => {
           </div>
         </div>
 
-        <div class="mb-3 text-sm text-zinc-500">包含 {{ dependencies.length }} 个 Mod 组件</div>
+        <div class="mb-3 text-sm text-zinc-500">包含 {{ displayComponents.length }} 个 Mod 组件</div>
         <div class="max-h-[42vh] overflow-auto border-y border-zinc-200">
           <div
-            v-for="mod in dependencies"
-            :key="mod.id || mod.modName"
+            v-for="mod in displayComponents"
+            :key="mod.key || mod.name"
             class="grid grid-cols-[minmax(10rem,14rem)_1fr] gap-4 border-b border-zinc-100 px-1 py-3 last:border-b-0"
           >
             <div class="min-w-0">
-              <p class="truncate text-sm font-semibold text-zinc-950">{{ mod.modName || '未知 Mod' }}</p>
-              <p class="mt-0.5 text-xs text-zinc-400">{{ mod.modVersion || '未知版本' }}</p>
+              <p class="truncate text-sm font-semibold text-zinc-950">{{ mod.displayName || mod.name || '未知 Mod' }}</p>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ mod.version || '未知版本' }}</p>
             </div>
-            <p class="text-sm leading-6 text-zinc-600">{{ mod.modDescription || '暂无说明。' }}</p>
+            <p class="text-sm leading-6 text-zinc-600">{{ mod.description || '暂无说明。' }}</p>
           </div>
-          <div v-if="dependencies.length === 0" class="px-1 py-5 text-sm text-zinc-500">
+          <div v-if="displayComponents.length === 0" class="px-1 py-5 text-sm text-zinc-500">
             该整合包暂未返回组件明细。
           </div>
         </div>
@@ -109,9 +138,9 @@ const handleInstall = (): void => {
       <template #footer>
         <div class="flex items-center justify-between gap-4">
           <a
-            v-if="pack?.url"
+            v-if="pack?.packageUrl || pack?.downloadUrl"
             class="inline-flex min-w-0 items-center gap-1 text-xs text-zinc-500 hover:text-zinc-950"
-            :href="pack.url"
+            :href="pack.packageUrl || pack.downloadUrl"
             target="_blank"
           >
             <ExternalLink :size="13" :stroke-width="1.8" class="shrink-0" />
@@ -125,6 +154,9 @@ const handleInstall = (): void => {
             >
               {{ installDisabledText || '需要优先安装 BepInEx。' }}
             </p>
+            <n-button v-if="installed" type="error" secondary :loading="installing" @click="handleUninstall">
+              卸载
+            </n-button>
             <n-button type="primary" :loading="installing" :disabled="installButtonDisabled" @click="handleInstall">
             <template v-if="installed" #icon>
               <CheckCircle2 :size="16" :stroke-width="1.8" />
