@@ -37,6 +37,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/blueprint-generator': RouteRecordInfo<
+      '/blueprint-generator',
+      '/blueprint-generator',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/dashboard': RouteRecordInfo<
       '/dashboard',
       '/dashboard',
@@ -94,6 +101,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/about.vue': {
       routes:
         | '/about'
+      views:
+        | never
+    }
+    'src/pages/blueprint-generator.vue': {
+      routes:
+        | '/blueprint-generator'
       views:
         | never
     }

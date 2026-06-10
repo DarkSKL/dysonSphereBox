@@ -1,13 +1,16 @@
 {
-  "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "DysonSphereBox",
-  "outputfilename": "DysonSphereBox",
-  "frontend:install": "npm install",
-  "frontend:build": "npm run build",
-  "frontend:dev:watcher": "npm run dev",
-  "frontend:dev:serverUrl": "auto",
-  "author": {
-    "name": "DarkSKL",
-    "email": "18214780622@163.com"
-  }
+    "$schema":  "https://wails.io/schemas/config.v2.json",
+    "name":  "DysonSphereBox",
+    "outputfilename":  "DysonSphereBox",
+    "frontend:install":  "npm install",
+    "frontend:build":  "npm run build",
+    "frontend:dev:watcher":  "npm run dev",
+    "frontend:dev:serverUrl":  "auto",
+    "author":  {
+                   "name":  "DarkSKL",
+                   "email":  "18214780622@163.com"
+               },
+    "info":  {
+                 "productVersion":  "1.1.1"
+             }
 }

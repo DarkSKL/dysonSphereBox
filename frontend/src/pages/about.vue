@@ -52,6 +52,7 @@ const credits = [
   ['联机框架', 'Nebula Multiplayer 团队'],
   ['Mod 框架', 'BepInEx 项目'],
   ['Mod 作者', 'AssemblerUI、BottleneckUI、DSPCalculator、FactoryLocator、CAAP_N'],
+  ['蓝图生成器', 'B站 UP：神不在的黄昏'],
 ]
 
 const {
