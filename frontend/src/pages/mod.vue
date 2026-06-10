@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AlertCircle, CheckCircle2, RefreshCw} from '@lucide/vue'
+import {AlertCircle, CheckCircle2, RefreshCw, Upload} from '@lucide/vue'
 import {createDiscreteApi, useMessage} from 'naive-ui'
 import {computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
@@ -134,6 +134,12 @@ const refreshPackages = async (showFeedback = true): Promise<void> => {
   await loadPackagePage(1, true, showFeedback)
   await nextTick()
   observeLoadMoreTarget()
+}
+
+// =============== 整合包导入 ===============
+// 说明：预留本地整合包导入入口，后续接入文件选择与安装流程。
+const handleImportPackages = (): void => {
+  message.info('整合包导入功能待接入。')
 }
 
 const loadNextPackagePage = async (): Promise<void> => {
@@ -379,26 +385,24 @@ onBeforeUnmount(() => {
       >
         <div
           v-if="canOpenModPage"
-          class="flex min-w-0 flex-1 items-center justify-between gap-4 border px-4 py-3"
+          class="flex h-[34px] min-w-0 flex-1 items-center justify-between gap-4 border px-3"
           :class="isBepInExInstalled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'"
         >
-          <div class="flex min-w-0 items-start gap-3">
+          <div class="flex h-full min-w-0 flex-1 items-center gap-2">
             <CheckCircle2
               v-if="isBepInExInstalled"
-              :size="18"
+              :size="16"
               :stroke-width="1.9"
-              class="mt-0.5 shrink-0 text-emerald-700"
+              class="shrink-0 text-emerald-700"
             />
             <AlertCircle
               v-else
-              :size="18"
+              :size="16"
               :stroke-width="1.9"
-              class="mt-0.5 shrink-0 text-amber-700"
+              class="shrink-0 text-amber-700"
             />
-            <div class="min-w-0">
-              <p class="text-sm font-semibold">{{ bepinExStatusTitle }}</p>
-              <p class="mt-1 text-xs leading-5 opacity-80">{{ bepinExStatusDescription }}</p>
-            </div>
+            <p class="shrink-0 text-sm font-semibold leading-none">{{ bepinExStatusTitle }}</p>
+            <p class="ml-auto min-w-0 truncate text-right text-xs leading-none opacity-80">{{ bepinExStatusDescription }}</p>
           </div>
           <n-button
             v-if="!isBepInExInstalled"
@@ -411,12 +415,20 @@ onBeforeUnmount(() => {
             安装 BepInEx
           </n-button>
         </div>
-        <n-button class="shrink-0 self-end md:self-auto" secondary :loading="isLoadingPackages" @click="() => refreshPackages()">
-          <template #icon>
-            <RefreshCw :size="16" :stroke-width="1.8" />
-          </template>
-          刷新
-        </n-button>
+        <div class="flex shrink-0 items-center gap-2 self-end md:self-auto">
+          <n-button class="h-[34px] shrink-0" secondary @click="handleImportPackages">
+            <template #icon>
+              <Upload :size="16" :stroke-width="1.8" />
+            </template>
+            导入
+          </n-button>
+          <n-button class="h-[34px] shrink-0" secondary :loading="isLoadingPackages" @click="() => refreshPackages()">
+            <template #icon>
+              <RefreshCw :size="16" :stroke-width="1.8" />
+            </template>
+            刷新
+          </n-button>
+        </div>
       </div>
 
       <!-- ~ 整合包列表 -->
