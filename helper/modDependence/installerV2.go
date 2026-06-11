@@ -2,6 +2,7 @@ package modDependence
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"DysonSphereBox/apiDefinition"
 	"DysonSphereBox/core"
 	modDependenceModel "DysonSphereBox/model/modDependence"
 	modDependenceResponse "DysonSphereBox/model/modDependence/response"
@@ -192,6 +194,12 @@ func InstallRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPack
 		return nil, err
 	}
 	emitPackageProgress(pack.Key, "prepare", "依赖解析完成", 12)
+	if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
+		return nil, err
+	}
+	if err := recordOfficialPackageDownloadBeforeInstall(installCtx, pack, options); err != nil {
+		return nil, cleanupFailedRemotePackageInstall(pack.Key, err)
+	}
 	if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
 		return nil, err
 	}
@@ -633,6 +641,60 @@ func resolveArtifactPath(ctx context.Context, bufferDir string, artifact install
 		}
 		return downloadRemoteArtifact(ctx, bufferDir, artifact, progressStart, progressEnd)
 	}
+}
+
+func recordOfficialPackageDownloadBeforeInstall(ctx context.Context, pack modDependenceResponse.RemoteModPackageDTO, options InstallRemotePackageOptions) error {
+	if pack.Source != modDependenceResponse.ModSourceOfficial || pack.LegacyID == 0 {
+		return nil
+	}
+	if !options.ResetSession {
+		return nil
+	}
+	if core.GLOBAL.HTTPClient == nil {
+		return fmt.Errorf("http client is not initialized")
+	}
+
+	body, err := json.Marshal(modDependenceResponse.DownloadRecordRequest{
+		ResourceType: "mod_dependency_package",
+		ResourceID:   pack.LegacyID,
+		Channel:      "windows",
+		Extra: map[string]interface{}{
+			"packageKey":      pack.Key,
+			"packageName":     pack.DisplayName,
+			"packageVersion":  pack.Version,
+			"rawDownloadURL":  pack.DownloadURL,
+			"installScenario": "desktop_install",
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	request, err := core.GLOBAL.HTTPClient.NewRequest(ctx, http.MethodPost, apiDefinition.API_URL_DOWNLOAD_RECORD, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := core.GLOBAL.HTTPClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("record official package download failed: %s", response.Status)
+	}
+
+	result := modDependenceResponse.DownloadRecordResponse{}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return err
+	}
+	if result.Code != 0 {
+		return fmt.Errorf("record official package download failed: %s", result.Msg)
+	}
+	emitPackageProgress(pack.Key, "prepare", fmt.Sprintf("%s 下载计数已记录，当前累计 %d 次", pack.DisplayName, result.Data.DownloadCount), 12)
+	return nil
 }
 
 func downloadRemoteArtifact(ctx context.Context, bufferDir string, artifact installArtifact, progressStart int, progressEnd int) (string, error) {

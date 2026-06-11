@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {AlertCircle, CheckCircle2, Database, HelpCircle, RefreshCw} from '@lucide/vue'
+import {AlertCircle, CheckCircle2, Database, HelpCircle, RefreshCw, Search} from '@lucide/vue'
 import {NButton, NTooltip, createDiscreteApi, useMessage} from 'naive-ui'
-import {computed, h, nextTick, onActivated, onBeforeUnmount, onMounted, ref} from 'vue'
+import {computed, h, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
 import {Install as InstallBepInEx, SearchAndLoadBepInEx} from '../../wailsjs/go/modDependence/BepInExService'
 import {CancelRemotePackageInstall, ContinueRemotePackageInstall, InstallRemotePackage, ListInstalledPackageKeys, ListInstallProgressSnapshots, UninstallRemotePackage} from '../../wailsjs/go/modDependence/InstallerService'
@@ -34,6 +34,7 @@ const {
 
 const selectedPackKey = ref('')
 const selectedSource = ref('official')
+const searchKeyword = ref('')
 const dialogVisible = ref(false)
 const isCheckingGamePath = ref(true)
 const isCheckingBepInEx = ref(false)
@@ -65,6 +66,7 @@ const message = useMessage()
 
 let loadMoreObserver: IntersectionObserver | null = null
 let disposeInstallProgressListener: (() => void) | null = null
+let searchRefreshTimer: number | undefined
 
 type InstallConflictAction = 'overwrite' | 'skip' | 'fail'
 
@@ -144,9 +146,10 @@ const loadPackagePage = async (page: number, replace = false, showFeedback = fal
   isLoadingPackages.value = true
   packageLoadError.value = ''
   try {
+    const keyword = searchKeyword.value.trim()
     const result = showFeedback && replace
-      ? await RefreshRemotePackageList(selectedSource.value, page, pageSize, '')
-      : await GetRemotePackageList(selectedSource.value, page, pageSize, '')
+      ? await RefreshRemotePackageList(selectedSource.value, page, pageSize, keyword)
+      : await GetRemotePackageList(selectedSource.value, page, pageSize, keyword)
     const nextList = result.list ?? []
 
     if (replace) {
@@ -292,6 +295,18 @@ const refreshPackages = async (showFeedback = true): Promise<void> => {
   await loadPackagePage(1, true, showFeedback)
   await nextTick()
   observeLoadMoreTarget()
+}
+
+// =============== 整合包搜索 ===============
+// 说明：搜索框只改变远端列表查询条件，实际匹配由后端按名称、作者、命名空间和描述过滤。
+// 边界：手动导入来源暂不支持数据源，输入变化仍只刷新为空态，不触发导入流程。
+const scheduleSearchRefresh = (): void => {
+  if (searchRefreshTimer !== undefined) {
+    window.clearTimeout(searchRefreshTimer)
+  }
+  searchRefreshTimer = window.setTimeout(() => {
+    void refreshPackages(false)
+  }, 300)
 }
 
 const loadNextPackagePage = async (): Promise<void> => {
@@ -755,15 +770,20 @@ onBeforeUnmount(() => {
   loadMoreObserver?.disconnect()
   disposeInstallProgressListener?.()
   disposeInstallProgressListener = null
+  if (searchRefreshTimer !== undefined) {
+    window.clearTimeout(searchRefreshTimer)
+  }
 })
+
+watch(searchKeyword, scheduleSearchRefresh)
 </script>
 
 <template>
   <section class="mx-auto max-w-6xl px-8 py-8">
     <div class="relative min-h-[30rem]">
       <!-- ~ 整合包工具栏 -->
-      <!-- * 说明：同层展示 BepInEx 前置状态与远端整合包列表刷新入口 -->
-      <!-- * 交互：未安装 BepInEx 时可直接安装；点击刷新重新拉取第一页，滚动到底部自动请求下一页 -->
+      <!-- * 说明：同层展示 BepInEx 前置状态、整合包搜索、来源切换与刷新入口 -->
+      <!-- * 交互：未安装 BepInEx 时可直接安装；搜索框按关键词刷新第一页，滚动到底部自动请求下一页 -->
       <!-- * 依赖：依赖 BepInExService.Install、MarketplaceService.GetPackageList 与分页状态 -->
       <!-- * 边界：游戏路径无效时整体虚化并阻止列表交互 -->
       <div
@@ -801,6 +821,25 @@ onBeforeUnmount(() => {
           >
             安装 BepInEx
           </n-button>
+        </div>
+        <!-- ~ 整合包搜索 -->
+        <!-- * 说明：在 BepInEx 状态和渠道来源之间提供关键词搜索 -->
+        <!-- * 交互：输入后自动刷新列表，清空后恢复当前来源的默认分页 -->
+        <!-- * 依赖：依赖 searchKeyword 与 MarketplaceService 的 keyword 参数 -->
+        <!-- * 边界：桌面宽度固定占工具栏 30%，不参与左右组件的空间分配 -->
+        <div v-if="canOpenModPage" class="w-full md:basis-[30%] md:max-w-[30%] md:shrink-0">
+          <n-input
+            v-model:value="searchKeyword"
+            class="h-[34px]"
+            size="small"
+            clearable
+            placeholder="搜索 Mod"
+            :disabled="isManualSource"
+          >
+            <template #prefix>
+              <Search :size="15" :stroke-width="1.8" class="text-zinc-400" />
+            </template>
+          </n-input>
         </div>
         <div class="flex shrink-0 items-center gap-2 self-end md:self-auto">
           <n-popselect
