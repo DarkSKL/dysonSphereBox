@@ -61,6 +61,168 @@ Separate files by responsibility. Do not put unrelated layout, page, service, ty
 - Service-specific helper functions and helper objects belong under `helper/`. Do not place free helper functions in service files.
 - Do not place service logic in model files, database initialization files, frontend generated files, or Wails entry files.
 
+### Backend Responsibility Boundaries
+
+Keep these backend root directories as the stable project architecture. Subdirectories may expand by domain or workflow, but the root responsibility must not drift:
+
+```text
+apiDefinition/   # 外部 API 契约层
+constant/        # 全局常量与枚举层
+core/            # 基础设施层
+model/           # 数据库模型层
+service/         # 核心业务层
+helper/          # 业务辅助层
+utils/           # 通用工具层
+```
+
+- `apiDefinition/` describes external API contracts only. Put API paths, request parameters, third-party response DTOs, and URL builders here. Do not send HTTP requests, read databases, or make business decisions here.
+- `constant/` contains stable constants, enum-like values, event names, state names, source names, and shared keys. Use it to avoid duplicated magic strings in service, helper, model, and frontend-facing DTO code.
+- `core/` owns application infrastructure initialization only: database lifecycle, HTTP client construction, global runtime context, configuration units, infrastructure paths, and version metadata. Do not place Mod installation, marketplace queries, logging workflows, or other business behavior here.
+- `model/` contains GORM persistence models and model registration only. Do not place third-party API responses, frontend DTOs, DTO conversion, or service behavior in model packages.
+- `service/` is the core business owner. Put input validation, workflow orchestration, transaction boundaries, state transitions, calls into helper/model/core, and the decision of when to record operation logs here. Wails-bound business methods should be service methods.
+- `helper/` assists services with implementation details. It may contain file operations, archive extraction, path resolution, database query helpers, DTO conversion helpers, log builders, progress event helpers, and validation helpers. Helpers must not own complete business use cases.
+- `utils/` contains pure, reusable, dependency-light utilities. Prefer standard library dependencies only. Do not import `core`, `model`, `service`, or `helper` from `utils`.
+
+Use this dependency direction unless a task explicitly redesigns the architecture:
+
+```text
+service  -> helper / model / core / apiDefinition / constant / utils
+helper   -> model / core / apiDefinition / constant / utils
+core     -> model / constant / utils
+model    -> constant
+utils    -> standard library first; no business package dependencies
+constant -> no business package dependencies
+```
+
+Reference backend subdirectory design for new or refactored code. This is an architecture example, not a mandatory file checklist. Use it to guide naming, responsibility boundaries, and future expansion; when implementing a concrete feature, keep only the subdirectories and files that the current domain genuinely needs.
+
+```text
+apiDefinition/
+  modDependence/
+    official_api.go
+    thunderstore_api.go
+    download_api.go
+    official_dto.go
+    thunderstore_dto.go
+  system/
+    update_api.go
+
+constant/
+  modDependence/
+    source.go
+    install_state.go
+    install_stage.go
+    artifact_kind.go
+    event.go
+  system/
+    config.go
+    log.go
+    update.go
+
+core/
+  global.go
+  database.go
+  configure.go
+  http_client.go
+  version.go
+  runtime.go
+
+model/
+  enter.go
+  system/
+    enter.go
+    config.go
+    log.go
+  modDependence/
+    enter.go
+    dependency.go
+    dependency_package.go
+    installed_package.go
+    installed_component.go
+    installed_file.go
+    remote_package_cache.go
+
+service/
+  enter.go
+  system/
+    enter.go
+    configuration_service.go
+    environment_service.go
+    log_service.go
+    update_service.go
+    startup_service.go
+    dto.go
+    errors.go
+  modDependence/
+    enter.go
+    marketplace_service.go
+    installer_service.go
+    bep_in_ex_service.go
+    headless_service.go
+    dto.go
+    errors.go
+    marketplace/
+      provider.go
+      official_provider.go
+      thunderstore_provider.go
+      manual_provider.go
+    installer/
+      remote_install.go
+      legacy_install.go
+      uninstall.go
+      conflict.go
+      session.go
+      progress.go
+      artifact.go
+      result.go
+
+helper/
+  system/
+    audit.go
+    log_builder.go
+    config_reflection.go
+  modDependence/
+    store/
+      package_store.go
+      component_store.go
+      file_store.go
+      cache_store.go
+      install_session_store.go
+    artifact/
+      resolver.go
+      layout.go
+      validator.go
+    file/
+      copy.go
+      backup.go
+      cleanup.go
+    archive/
+      zip.go
+      extract.go
+    progress/
+      event.go
+      snapshot.go
+    audit.go
+    bep_in_ex_file.go
+    headless_process.go
+  updater/
+    gitee_source.go
+    release_validator.go
+    self_update.go
+
+utils/
+  file.go
+  hash.go
+  path.go
+  slice.go
+  string.go
+  steam.go
+  shortcut.go
+  dyson_sphere.go
+```
+
+When deciding where a new type or function belongs, use this rule: service tells the business story, helper hides implementation detail, utils provides business-agnostic primitives, model describes persisted data shape, apiDefinition describes external contracts, and constant centralizes stable shared names. Do not create empty directories or placeholder files merely to match the reference design.
+
 Use automatic imports where configured:
 
 - Use Naive UI tags such as `<n-button>` and `<n-card>` directly in Vue templates.
@@ -80,6 +242,8 @@ Keep code modular and readable:
 - Add comments only for non-obvious module boundaries, business rules, Wails bridge behavior, or complex layout decisions.
 - Avoid obvious comments such as "set value" or "render button".
 - Use named, focused files. Split files before they become mixed-purpose.
+- Design code for reasonable reuse and ease of use. Public service methods, helper functions, utilities, DTOs, and constants should have clear names, narrow responsibilities, predictable inputs and outputs, and extension points that support likely future features without over-engineering the current task.
+- Prefer general, composable helpers over one-off local implementations when the behavior is not tied to a single function. Keep the call site easy to read, and avoid hiding important business decisions behind overly generic helpers.
 
 ## Commenting Standards
 
@@ -170,9 +334,10 @@ Follow these rules strictly when changing Go backend code:
 - For SQLite JSON fields, use `datatypes.JSON` from `gorm.io/datatypes`; do not store JSON as untyped strings unless the field is intentionally plain text.
 - For frontend-facing Wails methods, return DTOs when GORM models contain `time.Time`, internal fields, or database-only tags. Avoid exposing persistence models directly when it would generate weak TypeScript types.
 - Run `wails generate module` after adding, removing, renaming, or changing exported methods on bound services.
-- Before adding a generic utility function, inspect `utils/` first with `rg` or `rg --files utils`. Reuse existing utilities when they match the need.
+- Before adding a generic utility function, inspect `utils/` first with `rg` or `rg --files utils`. Reuse existing utilities when they match the need instead of writing a new local utility inside the current file.
 - If no suitable generic utility exists, create a focused utility in `utils/<topic>.go` under package `utils`. Keep utilities generic and dependency-light; do not import service, model, or core packages from `utils`.
-- Before adding a service-specific helper function, inspect `helper/` first. Helpers may support service methods with DTO conversion, log event construction, parsing, filesystem checks, reusable validation, or small persistence helpers, but the service method remains the business workflow owner.
+- Before adding a service-specific helper function, inspect `helper/` first with `rg` or `rg --files helper`. Reuse or extend an existing helper when it already owns the same concern instead of creating a parallel helper with overlapping behavior.
+- Create a new helper only when no existing helper fits the concern cleanly. Helpers may support service methods with DTO conversion, log event construction, parsing, filesystem checks, reusable validation, or small persistence helpers, but the service method remains the business workflow owner.
 
 ### Model Registration Pattern
 
