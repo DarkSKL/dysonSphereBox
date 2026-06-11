@@ -1,11 +1,13 @@
 package modDependence
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
-// ArtifactInstallError 表示统一来源安装包中某个组件的安装失败。
+// ArtifactInstallError 表示 Thunderstore 安装包中某个组件的安装失败。
 // 用途：Thunderstore 依赖链安装失败时，把具体组件、阶段和下载地址写入日志。
 type ArtifactInstallError struct {
 	Stage            string
@@ -78,6 +80,12 @@ func IsInstallConflictError(err error) bool {
 // 用途：服务层遇到取消时写入“已取消”状态，而不是展示成网络或文件失败。
 func IsInstallCancelledError(err error) bool {
 	if errors.Is(err, errInstallCancelled) {
+		return true
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "context canceled") {
 		return true
 	}
 	var artifactErr *ArtifactInstallError

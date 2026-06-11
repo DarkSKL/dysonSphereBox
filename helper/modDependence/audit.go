@@ -24,7 +24,7 @@ var (
 	headlessStatusSnapshots     = make(map[string]headlessStatusSnapshot)
 )
 
-// RecordRemotePackageInstallSuccess 记录统一来源 Mod 包安装成功事件。
+// RecordRemotePackageInstallSuccess 记录 Thunderstore Mod 包安装成功事件。
 func RecordRemotePackageInstallSuccess(result *PackageInstallResult) {
 	if result == nil {
 		return
@@ -36,7 +36,7 @@ func RecordRemotePackageInstallSuccess(result *PackageInstallResult) {
 		Event:     "installRemotePackage",
 		Level:     systemModel.LogLevelInfo,
 		Type:      systemModel.LogTypeInstallation,
-		Content:   "统一来源 Mod 包已安装",
+		Content:   "Thunderstore Mod 包已安装",
 		Metadata: map[string]interface{}{
 			"packageKey":      result.PackageKey,
 			"packageName":     result.PackageName,
@@ -48,7 +48,7 @@ func RecordRemotePackageInstallSuccess(result *PackageInstallResult) {
 	})
 }
 
-// RecordRemotePackageInstallFailure 记录统一来源 Mod 包安装失败事件。
+// RecordRemotePackageInstallFailure 记录 Thunderstore Mod 包安装失败事件。
 func RecordRemotePackageInstallFailure(pack ModDependenceResponse.RemoteModPackageDTO, err error) {
 	metadata := map[string]interface{}{
 		"packageKey":  pack.Key,
@@ -65,10 +65,27 @@ func RecordRemotePackageInstallFailure(pack ModDependenceResponse.RemoteModPacka
 		metadata["failedDownloadURL"] = artifactErr.DownloadURL
 	}
 
-	systemHelper.RecordFailure("modDependence", "installer", "installRemotePackage", "统一来源 Mod 包安装失败", err, metadata)
+	systemHelper.RecordFailure("modDependence", "installer", "installRemotePackage", "Thunderstore Mod 包安装失败", err, metadata)
 }
 
-// RecordRemotePackageUninstallSuccess 记录统一来源 Mod 包卸载成功事件。
+func recordRemotePackageCleanupLog(event string, level systemModel.LogLevel, content string, err error, metadata map[string]interface{}) {
+	errorText := ""
+	if err != nil {
+		errorText = err.Error()
+	}
+	systemHelper.RecordLogSilently(systemHelper.LogEntry{
+		Namespace: "modDependence",
+		Module:    "installer",
+		Event:     event,
+		Level:     level,
+		Type:      systemModel.LogTypeInstallation,
+		Content:   content,
+		Metadata:  metadata,
+		Error:     errorText,
+	})
+}
+
+// RecordRemotePackageUninstallSuccess 记录 Thunderstore Mod 包卸载成功事件。
 func RecordRemotePackageUninstallSuccess(result *PackageInstallResult) {
 	if result == nil {
 		return
@@ -80,7 +97,7 @@ func RecordRemotePackageUninstallSuccess(result *PackageInstallResult) {
 		Event:     "uninstallRemotePackage",
 		Level:     systemModel.LogLevelInfo,
 		Type:      systemModel.LogTypeInstallation,
-		Content:   "统一来源 Mod 包已卸载",
+		Content:   "Thunderstore Mod 包已卸载",
 		Metadata: map[string]interface{}{
 			"packageKey":      result.PackageKey,
 			"packageName":     result.PackageName,
@@ -91,9 +108,9 @@ func RecordRemotePackageUninstallSuccess(result *PackageInstallResult) {
 	})
 }
 
-// RecordRemotePackageUninstallFailure 记录统一来源 Mod 包卸载失败事件。
+// RecordRemotePackageUninstallFailure 记录 Thunderstore Mod 包卸载失败事件。
 func RecordRemotePackageUninstallFailure(packageKey string, err error) {
-	systemHelper.RecordFailure("modDependence", "installer", "uninstallRemotePackage", "统一来源 Mod 包卸载失败", err, map[string]interface{}{
+	systemHelper.RecordFailure("modDependence", "installer", "uninstallRemotePackage", "Thunderstore Mod 包卸载失败", err, map[string]interface{}{
 		"packageKey": packageKey,
 	})
 }

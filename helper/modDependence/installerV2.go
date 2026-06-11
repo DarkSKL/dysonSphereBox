@@ -28,6 +28,14 @@ import (
 
 const modDependencyV2BufferDirName = "modDependenciesV2"
 
+// installRemotePackageTestHooks 只在集成测试中使用，用来把取消精确卡在安装阶段边界。
+// 边界：生产环境保持 nil，不改变真实安装流程。
+var installRemotePackageTestHooks struct {
+	AfterPlannedFiles  func(packageKey string, componentKey string)
+	AfterArtifactFiles func(packageKey string, componentKey string)
+	AfterSaveArtifact  func(packageKey string, componentKey string)
+}
+
 type installArtifact struct {
 	PackageKey string
 	// ParentPackageKey 表示用户实际点击安装的主包 key。
@@ -44,13 +52,16 @@ type installArtifact struct {
 }
 
 type plannedInstallFile struct {
-	PackageKey   string `json:"packageKey"`
-	ComponentKey string `json:"componentKey"`
-	SourcePath   string `json:"sourcePath"`
-	TargetPath   string `json:"targetPath"`
-	RelativePath string `json:"relativePath"`
-	Sha256       string `json:"sha256"`
-	FileSize     int64  `json:"fileSize"`
+	PackageKey      string `json:"packageKey"`
+	ComponentKey    string `json:"componentKey"`
+	SourcePath      string `json:"sourcePath"`
+	TargetPath      string `json:"targetPath"`
+	RelativePath    string `json:"relativePath"`
+	Sha256          string `json:"sha256"`
+	FileSize        int64  `json:"fileSize"`
+	TargetExisted   bool
+	BackupPath      string
+	PreviousRecords []installSessionFileRecordDTO
 }
 
 // InstallConflictAction 表示用户对安装冲突的处理方式。
@@ -86,21 +97,17 @@ type InstallConflictDTO struct {
 }
 
 // InstallRemotePackageOptions 表示安装器可恢复执行时使用的用户决策。
-// 边界：当前只按具体 targetPath/componentKey 记录冲突决策，不做全局默认覆盖。
+// 边界：冲突决策优先按具体文件匹配；同一组件的后续版本冲突会复用用户选择，避免 DLL/PDB/XML 等文件逐个弹窗。
 type InstallRemotePackageOptions struct {
-	Decisions []InstallConflictDecisionDTO `json:"decisions"`
+	Decisions    []InstallConflictDecisionDTO `json:"decisions"`
+	ResetSession bool                         `json:"-"`
 }
 
-// InstallConflictDecisionDTO 记录用户对单个冲突文件的选择。
+// InstallConflictDecisionDTO 记录用户对一次组件文件冲突的选择。
 type InstallConflictDecisionDTO struct {
 	TargetPath   string                `json:"targetPath"`
 	ComponentKey string                `json:"componentKey"`
 	Action       InstallConflictAction `json:"action"`
-}
-
-type installConflictManifest struct {
-	Conflict  *InstallConflictDTO          `json:"conflict,omitempty"`
-	Decisions []InstallConflictDecisionDTO `json:"decisions,omitempty"`
 }
 
 type installFileConflictError struct {
@@ -116,14 +123,20 @@ type plannedUninstallFile struct {
 	shared bool
 }
 
-// InstallRemoteModPackage 安装统一来源 Mod 包。
+type plannedCopyRollback struct {
+	targetPath string
+	backupPath string
+	existed    bool
+}
+
+// InstallRemoteModPackage 安装 Thunderstore Mod 包。
 // 使用：支持国内源、Thunderstore 与手动导入模型；Thunderstore 会先递归安装依赖。
 // 边界：所有写入文件都会记录清单，便于卸载时精确清理 patchers、plugins 与 config。
 func InstallRemoteModPackage(pack modDependenceResponse.RemoteModPackageDTO) (*PackageInstallResult, error) {
-	return InstallRemoteModPackageWithOptions(pack, InstallRemotePackageOptions{})
+	return InstallRemoteModPackageWithOptions(pack, InstallRemotePackageOptions{ResetSession: true})
 }
 
-// InstallRemoteModPackageWithOptions 带用户冲突决策安装统一来源 Mod 包。
+// InstallRemoteModPackageWithOptions 带用户冲突决策安装 Thunderstore Mod 包。
 // 使用：首次安装不传决策；用户处理冲突后传入具体文件的覆盖、跳过或失败选择继续安装。
 func InstallRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPackageDTO, options InstallRemotePackageOptions) (*PackageInstallResult, error) {
 	if strings.TrimSpace(pack.Key) == "" {
@@ -132,11 +145,24 @@ func InstallRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPack
 	installCtx, unregisterInstallCancellation := registerInstallCancellation(pack.Key)
 	defer unregisterInstallCancellation()
 
+	var previousPackage *installSessionPackageDTO
+	if options.ResetSession {
+		var captureErr error
+		previousPackage, captureErr = capturePreviousInstallSessionPackageSnapshot(pack.Key)
+		if captureErr != nil {
+			return nil, captureErr
+		}
+	}
 	if err := saveRemotePackageInstallState(pack, installProgressStateRunning, "prepare", "准备安装", 1, "", 0); err != nil {
 		return nil, err
 	}
+	if options.ResetSession {
+		if err := resetInstallSessionManifest(pack.Key, previousPackage); err != nil {
+			return nil, err
+		}
+	}
 	emitPackageProgress(pack.Key, "prepare", "准备安装", 1)
-	if err := checkInstallCancelled(installCtx); err != nil {
+	if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
 		return nil, err
 	}
 
@@ -148,7 +174,7 @@ func InstallRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPack
 		return nil, fmt.Errorf("BepInEx is not ready: %s", strings.Join(bepInExResult.Status.MissingFiles, ", "))
 	}
 	emitPackageProgress(pack.Key, "prepare", "BepInEx 已就绪", 8)
-	if err := checkInstallCancelled(installCtx); err != nil {
+	if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
 		return nil, err
 	}
 
@@ -162,14 +188,17 @@ func InstallRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPack
 	if err != nil {
 		return nil, err
 	}
+	if err := appendInstallSessionPlannedArtifacts(pack.Key, artifacts); err != nil {
+		return nil, err
+	}
 	emitPackageProgress(pack.Key, "prepare", "依赖解析完成", 12)
-	if err := checkInstallCancelled(installCtx); err != nil {
+	if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
 		return nil, err
 	}
 
 	results := make([]DependencyInstallResult, 0, len(artifacts))
 	for index, artifact := range artifacts {
-		if err := checkInstallCancelled(installCtx); err != nil {
+		if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
 			return nil, err
 		}
 		artifactStart := 12 + index*78/len(artifacts)
@@ -178,14 +207,29 @@ func InstallRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPack
 		emitPackageProgress(pack.Key, "install", fmt.Sprintf("正在处理 %s", artifact.DisplayName), artifactStart)
 		fileRecords, zipPath, err := installArtifactFiles(installCtx, bufferDir, gameDir, artifact, artifactStart, recordPercent, options)
 		if err != nil {
-			if conflictErr := persistInstallConflict(pack, err, options); conflictErr != nil {
-				return nil, conflictErr
+			if IsInstallConflictError(err) {
+				if conflictErr := persistInstallConflict(pack, err, options); conflictErr != nil {
+					return nil, conflictErr
+				}
+				return nil, err
 			}
-			return nil, wrapArtifactInstallError("install", artifact, err)
+			return nil, cleanupFailedRemotePackageInstall(pack.Key, wrapArtifactInstallError("install", artifact, err))
+		}
+		if installRemotePackageTestHooks.AfterArtifactFiles != nil {
+			installRemotePackageTestHooks.AfterArtifactFiles(pack.Key, artifact.ComponentKey)
+		}
+		if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
+			return nil, err
 		}
 		emitPackageProgress(pack.Key, "record", fmt.Sprintf("正在记录 %s", artifact.DisplayName), recordPercent)
 		if err := saveInstalledArtifact(pack, artifact, fileRecords); err != nil {
-			return nil, wrapArtifactInstallError("record", artifact, err)
+			return nil, cleanupFailedRemotePackageInstall(pack.Key, wrapArtifactInstallError("record", artifact, err))
+		}
+		if installRemotePackageTestHooks.AfterSaveArtifact != nil {
+			installRemotePackageTestHooks.AfterSaveArtifact(pack.Key, artifact.ComponentKey)
+		}
+		if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
+			return nil, err
 		}
 		emitPackageProgress(pack.Key, "install", fmt.Sprintf("%s 安装完成", artifact.DisplayName), artifactEnd)
 		results = append(results, DependencyInstallResult{
@@ -198,9 +242,13 @@ func InstallRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPack
 		})
 	}
 
+	if err := checkInstallCancelledWithCleanup(installCtx, pack.Key); err != nil {
+		return nil, err
+	}
+
 	emitPackageProgress(pack.Key, "record", "正在写入安装记录", 94)
 	if err := saveInstalledRemotePackage(pack); err != nil {
-		return nil, err
+		return nil, cleanupFailedRemotePackageInstall(pack.Key, err)
 	}
 	emitPackageProgress(pack.Key, "done", "安装完成", 100)
 
@@ -240,6 +288,7 @@ func ContinueRemoteModPackageInstall(packageKey string, action InstallConflictAc
 	}
 	if action == InstallConflictActionFail {
 		err := fmt.Errorf("用户选择终止安装：%s", manifest.Conflict.Message)
+		err = cleanupFailedRemotePackageInstall(record.PackageKey, err)
 		markPackageInstallConflictFailed(record.PackageKey, err)
 		return nil, err
 	}
@@ -440,7 +489,7 @@ func appendThunderstoreDependencyArtifacts(artifacts *[]installArtifact, visited
 	if key == "" {
 		return nil
 	}
-	if strings.HasPrefix(key, fmt.Sprintf("thunderstore:%s:%s:", bepInExOwner, bepInExName)) {
+	if isBepInExDependencyKey(key) {
 		return nil
 	}
 	if _, ok := visited[key]; ok {
@@ -523,6 +572,12 @@ func installArtifactFiles(ctx context.Context, bufferDir string, gameDir string,
 		if err != nil {
 			return nil, "", wrapArtifactInstallError("plan", artifact, err)
 		}
+		if err := appendInstallSessionPlannedFiles(artifact.installRecordPackageKey(), files); err != nil {
+			return nil, "", wrapArtifactInstallError("plan", artifact, err)
+		}
+		if installRemotePackageTestHooks.AfterPlannedFiles != nil {
+			installRemotePackageTestHooks.AfterPlannedFiles(artifact.installRecordPackageKey(), artifact.ComponentKey)
+		}
 		if err := checkInstallCancelled(ctx); err != nil {
 			return nil, "", err
 		}
@@ -540,6 +595,12 @@ func installArtifactFiles(ctx context.Context, bufferDir string, gameDir string,
 		files, err := planExtractedArtifactFiles(ctx, artifactPath, gameDir, artifact)
 		if err != nil {
 			return nil, "", wrapArtifactInstallError("plan", artifact, err)
+		}
+		if err := appendInstallSessionPlannedFiles(artifact.installRecordPackageKey(), files); err != nil {
+			return nil, "", wrapArtifactInstallError("plan", artifact, err)
+		}
+		if installRemotePackageTestHooks.AfterPlannedFiles != nil {
+			installRemotePackageTestHooks.AfterPlannedFiles(artifact.installRecordPackageKey(), artifact.ComponentKey)
 		}
 		if err := checkInstallCancelled(ctx); err != nil {
 			return nil, "", err
@@ -700,9 +761,6 @@ func planExtractedArtifactFiles(ctx context.Context, extractPath string, gameDir
 			return err
 		}
 		normalizedRelativePath := filepath.ToSlash(relativePath)
-		if shouldSkipArtifactMetadata(normalizedRelativePath) {
-			return nil
-		}
 
 		targetRelativePath, err := resolveArtifactTargetRelativePath(normalizedRelativePath, artifact)
 		if err != nil {
@@ -890,12 +948,20 @@ func sameArtifactPathSegment(left string, right string) bool {
 }
 
 func artifactInstallDirName(artifact installArtifact) string {
+	return artifact.installDirName()
+}
+
+func (artifact installArtifact) installDirName() string {
 	for _, candidate := range []string{artifact.DisplayName, artifact.Name, artifact.sourceDependencyID(), artifact.ComponentKey} {
 		if sanitized := sanitizePathSegment(candidate, "artifact"); sanitized != "artifact" {
 			return sanitized
 		}
 	}
 	return "artifact"
+}
+
+func isBepInExDependencyKey(key string) bool {
+	return strings.HasPrefix(key, fmt.Sprintf("thunderstore:%s:%s:", bepInExOwner, bepInExName))
 }
 
 // installRecordPackageKey 返回文件清单应写入的安装包 key。
@@ -991,7 +1057,7 @@ func isUninstallFileShared(tx *gorm.DB, packageKey string, record modDependenceM
 		Select("component_key").
 		Where("package_key = ?", packageKey)
 	if err := tx.Model(&modDependenceModel.ModInstalledFile{}).
-		Where("target_path = ?", record.TargetPath).
+		Where("lower(target_path) IN ?", normalizeInstallTargetPathValuesForQuery(record.TargetPath)).
 		Where("NOT (package_key = ? OR component_key IN (?))", packageKey, componentKeys).
 		Count(&sharedFileCount).Error; err != nil {
 		return false, err
@@ -999,33 +1065,32 @@ func isUninstallFileShared(tx *gorm.DB, packageKey string, record modDependenceM
 	return sharedFileCount > 0, nil
 }
 
-func shouldSkipArtifactMetadata(relativePath string) bool {
-	switch strings.ToLower(relativePath) {
-	case "manifest.json", "readme.md", "changelog.md", "icon.png":
-		return true
-	default:
-		return false
-	}
-}
-
 func copyPlannedFiles(ctx context.Context, files []plannedInstallFile, artifact installArtifact, options InstallRemotePackageOptions, progressStart int, progressEnd int) ([]plannedInstallFile, error) {
 	db, err := requireDatabase()
 	if err != nil {
 		return nil, err
 	}
+	packageKey := artifact.installRecordPackageKey()
+	manifest := loadInstallConflictManifest(packageKey)
+	hasPreviousInstalledPackage := manifest.PreviousPackage != nil
 
-	copiedFiles := make([]string, 0, len(files))
+	rollbackPlan := make([]plannedCopyRollback, 0, len(files))
+	overwrittenFiles := make([]plannedInstallFile, 0, len(files))
 	installableFiles := make([]plannedInstallFile, 0, len(files))
+	rollbackCopySession := func() {
+		rollbackCopiedFiles(rollbackPlan)
+		_ = removeInstallSessionFiles(packageKey, installableFiles)
+	}
 	totalFiles := len(files)
 	for index, file := range files {
 		if err := checkInstallCancelled(ctx); err != nil {
-			rollbackCopiedFiles(copiedFiles)
+			rollbackCopySession()
 			return nil, err
 		}
 		emitPackageProgress(file.PackageKey, "copy", fmt.Sprintf("正在复制文件 %d/%d", index+1, totalFiles), mapProgress(progressStart, progressEnd, progressPercent(int64(index+1), int64(maxInt(totalFiles, 1)))))
 		conflict, err := inspectFileInstallConflict(db, file, artifact)
 		if err != nil {
-			rollbackCopiedFiles(copiedFiles)
+			rollbackCopySession()
 			return nil, err
 		}
 		if conflict != nil {
@@ -1033,44 +1098,74 @@ func copyPlannedFiles(ctx context.Context, files []plannedInstallFile, artifact 
 			switch decision {
 			case InstallConflictActionOverwrite:
 				if info, err := os.Stat(file.TargetPath); err == nil && info.IsDir() {
-					rollbackCopiedFiles(copiedFiles)
+					rollbackCopySession()
 					return nil, fmt.Errorf("目标路径是目录，无法用文件覆盖：%s", file.TargetPath)
 				} else if err != nil && !os.IsNotExist(err) {
-					rollbackCopiedFiles(copiedFiles)
+					rollbackCopySession()
 					return nil, err
 				}
-				if err := releaseConflictingFileRecords(db, file); err != nil {
-					rollbackCopiedFiles(copiedFiles)
-					return nil, err
-				}
+				overwrittenFiles = append(overwrittenFiles, file)
 			case InstallConflictActionSkip:
 				continue
 			case InstallConflictActionFail:
-				rollbackCopiedFiles(copiedFiles)
+				rollbackCopySession()
 				return nil, fmt.Errorf("用户选择终止安装：%s", conflict.Message)
 			default:
-				rollbackCopiedFiles(copiedFiles)
+				rollbackCopySession()
 				return nil, &installFileConflictError{Conflict: *conflict}
 			}
 		}
 		_, statErr := os.Stat(file.TargetPath)
 		targetExisted := statErr == nil
 		if statErr != nil && !os.IsNotExist(statErr) {
-			rollbackCopiedFiles(copiedFiles)
+			rollbackCopySession()
 			return nil, statErr
 		}
+		rollbackItem := plannedCopyRollback{
+			targetPath: file.TargetPath,
+			existed:    targetExisted,
+		}
+		file.TargetExisted = targetExisted
+		previousRecords, err := loadInstallTargetRecords(db, file.TargetPath)
+		if err != nil {
+			rollbackCopySession()
+			return nil, err
+		}
+		file.PreviousRecords = filterInstallTargetPreviousRecords(previousRecords, packageKey, hasPreviousInstalledPackage)
+		if targetExisted {
+			backupPath, err := backupInstallTargetFile(file.TargetPath)
+			if err != nil {
+				rollbackCopySession()
+				return nil, err
+			}
+			rollbackItem.backupPath = backupPath
+			file.BackupPath = backupPath
+		}
 		if err := os.MkdirAll(filepath.Dir(file.TargetPath), 0o755); err != nil {
-			rollbackCopiedFiles(copiedFiles)
+			rollbackCopySession()
 			return nil, err
 		}
-		if err := copyFile(file.SourcePath, file.TargetPath, 0o644); err != nil {
-			rollbackCopiedFiles(copiedFiles)
+		if err := copyFileWithContext(ctx, file.SourcePath, file.TargetPath, 0o644); err != nil {
+			rollbackPlan = append(rollbackPlan, rollbackItem)
+			rollbackCopySession()
 			return nil, err
 		}
-		if !targetExisted {
-			copiedFiles = append(copiedFiles, file.TargetPath)
+		rollbackPlan = append(rollbackPlan, rollbackItem)
+		if err := checkInstallCancelled(ctx); err != nil {
+			rollbackCopySession()
+			return nil, err
 		}
 		installableFiles = append(installableFiles, file)
+		if err := appendInstallSessionArtifact(packageKey, artifact.ComponentKey, []plannedInstallFile{file}); err != nil {
+			rollbackCopySession()
+			return nil, err
+		}
+	}
+	for _, file := range overwrittenFiles {
+		if err := releaseConflictingFileRecords(db, file); err != nil {
+			rollbackCopySession()
+			return nil, err
+		}
 	}
 	return installableFiles, nil
 }
@@ -1082,9 +1177,44 @@ func maxInt(left int, right int) int {
 	return right
 }
 
-func rollbackCopiedFiles(paths []string) {
-	for index := len(paths) - 1; index >= 0; index-- {
-		_ = os.Remove(paths[index])
+func rollbackCopiedFiles(plan []plannedCopyRollback) {
+	for index := len(plan) - 1; index >= 0; index-- {
+		item := plan[index]
+		if item.existed {
+			_ = os.Remove(item.targetPath)
+			if item.backupPath != "" {
+				_ = os.Rename(item.backupPath, item.targetPath)
+			}
+			continue
+		}
+		_ = os.Remove(item.targetPath)
+		if item.backupPath != "" {
+			_ = os.Remove(item.backupPath)
+		}
+		cleanupEmptyInstallParentDirs(item.targetPath)
+	}
+}
+
+func backupInstallTargetFile(targetPath string) (string, error) {
+	backupDir, err := modDependencyV2BufferDir()
+	if err != nil {
+		return "", err
+	}
+	backupPath := filepath.Join(backupDir, "rollback", fmt.Sprintf("%d-%s", time.Now().UnixNano(), sanitizePathSegment(filepath.Base(targetPath), "file")))
+	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
+		return "", err
+	}
+	if err := copyFile(targetPath, backupPath, 0o644); err != nil {
+		return "", err
+	}
+	return backupPath, nil
+}
+
+func cleanupCopyBackups(plan []plannedCopyRollback) {
+	for _, item := range plan {
+		if item.backupPath != "" {
+			_ = os.Remove(item.backupPath)
+		}
 	}
 }
 
@@ -1110,7 +1240,7 @@ func inspectFileInstallConflict(db *gorm.DB, file plannedInstallFile, artifact i
 
 	managedRecord := modDependenceModel.ModInstalledFile{}
 	result := db.
-		Where("target_path = ? AND package_key <> ?", file.TargetPath, file.PackageKey).
+		Where("lower(target_path) IN ? AND package_key <> ?", normalizeInstallTargetPathValuesForQuery(file.TargetPath), file.PackageKey).
 		Take(&managedRecord)
 	if result.Error != nil && result.Error != gorm.ErrRecordNotFound {
 		return nil, result.Error
@@ -1121,7 +1251,7 @@ func inspectFileInstallConflict(db *gorm.DB, file plannedInstallFile, artifact i
 
 	var samePackageCount int64
 	if err := db.Model(&modDependenceModel.ModInstalledFile{}).
-		Where("target_path = ? AND package_key = ?", file.TargetPath, file.PackageKey).
+		Where("lower(target_path) IN ? AND package_key = ?", normalizeInstallTargetPathValuesForQuery(file.TargetPath), file.PackageKey).
 		Count(&samePackageCount).Error; err != nil {
 		return nil, err
 	}
@@ -1184,7 +1314,12 @@ func buildInstallConflictDTO(db *gorm.DB, file plannedInstallFile, artifact inst
 
 func resolveConflictDecision(options InstallRemotePackageOptions, file plannedInstallFile) InstallConflictAction {
 	for _, decision := range options.Decisions {
-		if decision.TargetPath == file.TargetPath && decision.ComponentKey == file.ComponentKey {
+		if sameInstallTargetPath(decision.TargetPath, file.TargetPath) {
+			return decision.Action
+		}
+	}
+	for _, decision := range options.Decisions {
+		if strings.TrimSpace(file.ComponentKey) != "" && decision.ComponentKey == file.ComponentKey {
 			return decision.Action
 		}
 	}
@@ -1193,7 +1328,7 @@ func resolveConflictDecision(options InstallRemotePackageOptions, file plannedIn
 
 func releaseConflictingFileRecords(db *gorm.DB, file plannedInstallFile) error {
 	return db.
-		Where("target_path = ? AND package_key <> ?", file.TargetPath, file.PackageKey).
+		Where("lower(target_path) IN ? AND package_key <> ?", normalizeInstallTargetPathValuesForQuery(file.TargetPath), file.PackageKey).
 		Delete(&modDependenceModel.ModInstalledFile{}).
 		Error
 }
@@ -1203,9 +1338,10 @@ func persistInstallConflict(pack modDependenceResponse.RemoteModPackageDTO, err 
 	if !errors.As(err, &conflictErr) {
 		return nil
 	}
-	manifest := installConflictManifest{
-		Conflict:  &conflictErr.Conflict,
-		Decisions: options.Decisions,
+	manifest := loadInstallConflictManifest(pack.Key)
+	manifest.Conflict = &conflictErr.Conflict
+	if len(options.Decisions) > 0 {
+		manifest.Decisions = options.Decisions
 	}
 	errorMessage := conflictErr.Error()
 	if saveErr := saveInstallConflictManifest(pack.Key, installProgressStateConflict, "conflict", "等待处理文件冲突", 100, errorMessage, &manifest); saveErr != nil {
@@ -1259,7 +1395,7 @@ func appendOrReplaceConflictDecision(decisions []InstallConflictDecisionDTO, nex
 	next := make([]InstallConflictDecisionDTO, 0, len(decisions)+1)
 	replaced := false
 	for _, decision := range decisions {
-		if decision.TargetPath == nextDecision.TargetPath && decision.ComponentKey == nextDecision.ComponentKey {
+		if sameConflictDecisionScope(decision, nextDecision) {
 			next = append(next, nextDecision)
 			replaced = true
 			continue
@@ -1270,6 +1406,47 @@ func appendOrReplaceConflictDecision(decisions []InstallConflictDecisionDTO, nex
 		next = append(next, nextDecision)
 	}
 	return next
+}
+
+func sameConflictDecisionScope(left InstallConflictDecisionDTO, right InstallConflictDecisionDTO) bool {
+	if sameInstallTargetPath(left.TargetPath, right.TargetPath) {
+		return true
+	}
+	if strings.TrimSpace(right.ComponentKey) != "" && left.ComponentKey == right.ComponentKey {
+		return true
+	}
+	return false
+}
+
+func sameInstallTargetPath(left string, right string) bool {
+	return normalizeInstallTargetPathForCompare(left) == normalizeInstallTargetPathForCompare(right)
+}
+
+// normalizeInstallTargetPathForCompare 将安装目标路径转成 SQLite 可比较格式。
+// 边界：Windows 文件系统默认不区分大小写，且历史记录可能混用斜杠，因此内存比较统一使用 slash 语义。
+func normalizeInstallTargetPathForCompare(path string) string {
+	return strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+}
+
+// normalizeInstallTargetPathValuesForQuery 返回兼容历史路径写法的数据库匹配值。
+// 边界：SQLite 不理解 Windows 路径语义，只能用多候选值覆盖旧记录里的正反斜杠差异。
+func normalizeInstallTargetPathValuesForQuery(path string) []string {
+	cleaned := strings.ToLower(filepath.Clean(path))
+	slash := strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+	backslash := strings.ReplaceAll(slash, "/", "\\")
+	values := make([]string, 0, 3)
+	seen := map[string]struct{}{}
+	for _, value := range []string{cleaned, slash, backslash} {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return values
 }
 
 func packageInstallConflictFromManifest(raw datatypes.JSON) *InstallConflictDTO {
@@ -1330,7 +1507,7 @@ func saveInstalledArtifact(pack modDependenceResponse.RemoteModPackageDTO, artif
 				FileSize:     file.FileSize,
 				CreatedAt:    time.Now(),
 			}
-			if err := tx.Where("package_key = ? AND target_path = ?", file.PackageKey, file.TargetPath).
+			if err := tx.Where("package_key = ? AND lower(target_path) IN ?", file.PackageKey, normalizeInstallTargetPathValuesForQuery(file.TargetPath)).
 				Assign(record).
 				FirstOrCreate(&record).Error; err != nil {
 				return err
@@ -1355,6 +1532,10 @@ func saveInstalledRemotePackage(pack modDependenceResponse.RemoteModPackageDTO) 
 	record.InstallProgress = 100
 	record.ErrorMessage = ""
 	record.CurrentSpeed = 0
+	if err := cleanupInstallSessionBackups(pack.Key); err != nil {
+		return err
+	}
+	record.InstallManifest = datatypes.JSON([]byte("{}"))
 	return db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "package_key"}}, UpdateAll: true}).Create(&record).Error
 }
 
@@ -1491,6 +1672,27 @@ func removeManagedFile(path string) error {
 func cleanupEmptyManagedDirs(root string) {
 	for _, child := range []string{"plugins", "patchers", "config"} {
 		cleanupEmptyDirs(filepath.Join(root, child), filepath.Join(root, child))
+	}
+}
+
+func cleanupEmptyInstallParentDirs(filePath string) {
+	if strings.TrimSpace(filePath) == "" {
+		return
+	}
+	dir := filepath.Dir(filePath)
+	for {
+		base := strings.ToLower(filepath.Base(dir))
+		if base == "plugins" || base == "patchers" || base == "config" || base == "bepinex" || dir == filepath.Dir(dir) {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) > 0 {
+			return
+		}
+		if err := os.Remove(dir); err != nil {
+			return
+		}
+		dir = filepath.Dir(dir)
 	}
 }
 

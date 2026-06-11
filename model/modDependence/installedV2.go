@@ -6,7 +6,7 @@ import (
 	"gorm.io/datatypes"
 )
 
-// ModInstalledPackage 记录 V2 统一来源安装包。
+// ModInstalledPackage 记录 V2 Thunderstore 安装包。
 // 用途：以 PackageKey 承接国内源、Thunderstore 与手动导入的统一安装状态。
 // 边界：ID 只作为本地数据库主键，跨来源身份必须使用 PackageKey。
 type ModInstalledPackage struct {

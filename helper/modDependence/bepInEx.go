@@ -2,6 +2,7 @@ package modDependence
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -601,6 +602,10 @@ func copyDirectoryContents(sourceDir string, destinationDir string) error {
 }
 
 func copyFile(sourcePath string, destinationPath string, mode os.FileMode) error {
+	return copyFileWithContext(context.Background(), sourcePath, destinationPath, mode)
+}
+
+func copyFileWithContext(ctx context.Context, sourcePath string, destinationPath string, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o755); err != nil {
 		return err
 	}
@@ -617,8 +622,31 @@ func copyFile(sourcePath string, destinationPath string, mode os.FileMode) error
 	}
 	defer target.Close()
 
-	_, err = io.Copy(target, source)
+	_, err = io.Copy(target, newContextReader(ctx, source))
 	return err
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func newContextReader(ctx context.Context, reader io.Reader) io.Reader {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return contextReader{ctx: ctx, reader: reader}
+}
+
+func (reader contextReader) Read(buffer []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, errInstallCancelled
+	}
+	count, err := reader.reader.Read(buffer)
+	if err != nil && reader.ctx.Err() != nil {
+		return count, errInstallCancelled
+	}
+	return count, err
 }
 
 func isValidZipFile(path string) bool {

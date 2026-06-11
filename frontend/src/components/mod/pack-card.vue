@@ -28,11 +28,14 @@ defineEmits<{
 </script>
 
 <template>
-  <button
+  <div
     class="mod-pack-card group"
     :class="{ 'is-installed': installed, 'is-installing': installing, 'is-failed': failed, 'is-conflicted': conflicted }"
-    type="button"
+    role="button"
+    tabindex="0"
     @click="!installing && $emit('open', packageKey)"
+    @keydown.enter.prevent="!installing && $emit('open', packageKey)"
+    @keydown.space.prevent="!installing && $emit('open', packageKey)"
   >
     <div class="flex shrink-0 items-start justify-between gap-3 p-2.5">
       <div class="min-w-0">
@@ -105,13 +108,21 @@ defineEmits<{
       >
         <CheckCircle2 :size="12" :stroke-width="1.9" />
       </div>
+      <button
+        v-if="conflicted && !installing"
+        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100"
+        type="button"
+        title="修复安装冲突"
+        @click.stop="$emit('repair', packageKey)"
+      >
+        <Wrench :size="12" :stroke-width="1.9" />
+      </button>
       <div
-        v-if="(failed || conflicted) && !installing"
+        v-else-if="failed && !installing"
         class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"
         :title="conflicted ? '待处理冲突' : '安装失败'"
       >
-        <Wrench v-if="conflicted" :size="12" :stroke-width="1.9" />
-        <AlertCircle v-else :size="12" :stroke-width="1.9" />
+        <AlertCircle :size="12" :stroke-width="1.9" />
       </div>
       <div v-if="installing" class="absolute inset-0 grid place-items-center bg-white/75 backdrop-blur-sm">
         <div class="text-center">
@@ -127,7 +138,7 @@ defineEmits<{
         <p class="mt-0.5 line-clamp-2 text-[11px] leading-4">{{ failureMessage || progressStatus || '请稍后重试。' }}</p>
       </div>
     </div>
-  </button>
+  </div>
 </template>
 
 <style scoped lang="scss">

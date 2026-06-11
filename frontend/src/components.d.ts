@@ -30,6 +30,7 @@ declare module 'vue' {
     NSpin: typeof import('naive-ui')['NSpin']
     NTimeline: typeof import('naive-ui')['NTimeline']
     NTimelineItem: typeof import('naive-ui')['NTimelineItem']
+    NTooltip: typeof import('naive-ui')['NTooltip']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     UniverseHi: typeof import('./components/universe/hi.vue')['default']

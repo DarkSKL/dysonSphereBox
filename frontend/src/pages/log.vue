@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AlertCircle, AlertTriangle, Bug, Info, ListFilter, RefreshCw, X} from '@lucide/vue'
+import {AlertCircle, AlertTriangle, Bug, ClipboardCopy, Download, Info, ListFilter, RefreshCw, X} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import type {SelectOption} from 'naive-ui'
 import {computed, onMounted, ref, watch} from 'vue'
@@ -47,6 +47,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(50)
 const isLoading = ref(false)
+const isExporting = ref(false)
 const loadError = ref('')
 const showFilters = ref(false)
 const selectedNamespace = ref('')
@@ -110,6 +111,7 @@ const typeConfigs: Record<number, LogTypeConfig> = {
 const commonNamespaces = ['system', 'modDependence', 'server']
 const commonModules = ['configuration', 'environment', 'installer', 'update', 'process', 'port']
 const pageSizeOptions = [20, 50, 100, 200]
+const maxExportPageSize = 200
 const levelOptions: SelectOption[] = [
   {label: '全部等级', value: 0},
   {label: 'Debug', value: LogLevel.Debug},
@@ -157,6 +159,7 @@ const pageRangeText = computed(() => {
 
   return `${start}-${end} / ${total.value} 条`
 })
+const exportableLogCount = computed(() => Number(total.value || logs.value.length || 0))
 
 // =============== 日志查询 ===============
 // 说明：根据命名空间、模块、事件、等级和类型从后端分页读取日志。
@@ -243,6 +246,164 @@ const formatMetadataValue = (value: unknown): string => {
   }
 
   return String(value)
+}
+
+// =============== 日志复制与导出 ===============
+// 说明：把单条日志格式化为可读文本，供复制按钮和批量导出共用。
+// 边界：metadata 为空时不输出扩展信息，避免复制内容里出现无意义空段落。
+const formatLogText = (log: system.LogDTO): string => {
+  const lines = [
+    log.content || '未填写日志内容',
+    '',
+    `时间：${formatFullTime(log.dateTime)}`,
+    `等级：${getLevelConfig(log.level).label}`,
+    `类型：${getTypeConfig(log.type).label}`,
+    `命名空间：${log.namespace || '-'}`,
+    `模块：${log.module || '-'}`,
+    `事件：${log.event || '-'}`,
+  ]
+
+  if (log.error) {
+    lines.push('', `错误详情：${log.error}`)
+  }
+
+  const metadata = metadataEntries(log.metadata)
+  if (metadata.length > 0) {
+    lines.push('', '扩展信息')
+    metadata.forEach(([key, value]) => {
+      lines.push(`${key}：${formatMetadataValue(value)}`)
+    })
+  }
+
+  return lines.join('\n')
+}
+
+const copyTextToClipboard = async (text: string): Promise<void> => {
+  if (navigator.clipboard !== undefined) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const input = document.createElement('textarea')
+  input.value = text
+  input.setAttribute('readonly', 'true')
+  input.style.position = 'fixed'
+  input.style.left = '-9999px'
+  input.style.top = '0'
+  document.body.appendChild(input)
+  input.select()
+
+  try {
+    const copied = document.execCommand('copy')
+    if (!copied) {
+      throw new Error('copy command failed')
+    }
+  } finally {
+    document.body.removeChild(input)
+  }
+}
+
+const copyLog = async (log: system.LogDTO): Promise<void> => {
+  try {
+    await copyTextToClipboard(formatLogText(log))
+    message.success('日志信息已复制')
+  } catch (error) {
+    message.error(`复制日志失败：${formatErrorMessage(error)}`)
+  }
+}
+
+const buildLogExportFileName = (): string => {
+  const now = new Date()
+  const timestamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0'),
+  ].join('')
+
+  return `dyson-sphere-box-logs-${timestamp}.txt`
+}
+
+const downloadTextFile = (fileName: string, content: string): void => {
+  const blob = new Blob([content], {type: 'text/plain;charset=utf-8'})
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const exportLogs = async (): Promise<void> => {
+  if (exportableLogCount.value === 0) {
+    message.warning('当前没有可导出的日志')
+    return
+  }
+
+  isExporting.value = true
+  try {
+    const exportedLogs: system.LogDTO[] = []
+    let exportPage = 1
+    let exportTotal = exportableLogCount.value
+
+    while (exportedLogs.length < exportTotal) {
+      const result = await ListLogs({
+        namespace: selectedNamespace.value,
+        module: selectedModule.value,
+        event: selectedEvent.value.trim(),
+        level: selectedLevel.value,
+        type: selectedType.value,
+        page: exportPage,
+        pageSize: maxExportPageSize,
+      } as system.LogQuery)
+      const pageLogs = result.items ?? []
+      exportTotal = Number(result.total || pageLogs.length || exportTotal)
+      exportedLogs.push(...pageLogs)
+      if (pageLogs.length < maxExportPageSize) {
+        break
+      }
+      exportPage += 1
+    }
+
+    if (exportedLogs.length === 0) {
+      message.warning('当前没有可导出的日志')
+      return
+    }
+
+    const filterSummary = [
+      selectedNamespace.value ? `命名空间=${selectedNamespace.value}` : '',
+      selectedModule.value ? `模块=${selectedModule.value}` : '',
+      selectedEvent.value.trim() ? `事件=${selectedEvent.value.trim()}` : '',
+      selectedLevel.value ? `等级=${getLevelConfig(selectedLevel.value).label}` : '',
+      selectedType.value ? `类型=${getTypeConfig(selectedType.value).label}` : '',
+    ].filter(Boolean)
+
+    const header = [
+      'DysonSphereBox 系统日志导出',
+      `导出时间：${formatFullTime(new Date().toISOString())}`,
+      `导出数量：${exportedLogs.length} / ${exportTotal}`,
+      `筛选条件：${filterSummary.length > 0 ? filterSummary.join('，') : '全部日志'}`,
+    ].join('\n')
+    const content = [
+      header,
+      ...exportedLogs.map((log, index) => [
+        '',
+        `========== 日志 ${index + 1} / ${exportedLogs.length} ==========`,
+        formatLogText(log),
+      ].join('\n')),
+    ].join('\n')
+
+    downloadTextFile(buildLogExportFileName(), content)
+    message.success(`已导出 ${exportedLogs.length} 条日志`)
+  } catch (error) {
+    message.error(`导出日志失败：${formatErrorMessage(error)}`)
+  } finally {
+    isExporting.value = false
+  }
 }
 
 const formatLogTime = (dateTime: string): string => {
@@ -352,8 +513,8 @@ onMounted(() => {
 <template>
   <section class="mx-auto max-w-5xl px-8 py-8">
     <!-- ~ 日志工具栏 -->
-    <!-- * 说明：展示当前日志数量、刷新入口和筛选面板开关 -->
-    <!-- * 交互：点击刷新会重新读取当前条件下的日志，筛选按钮展开全部查询条件 -->
+    <!-- * 说明：展示当前日志数量、刷新入口、导出入口和筛选面板开关 -->
+    <!-- * 交互：点击刷新会重新读取当前条件下的日志，导出会按当前筛选条件批量下载日志文本 -->
     <!-- * 依赖：依赖 LogService.ListLogs 与当前页面分页状态 -->
     <!-- * 边界：筛选面板悬浮在按钮下方，不参与页面滚动布局，避免展开时挤压日志列表 -->
     <div class="sticky top-0 z-20 -mx-8 -mt-8 border-b border-zinc-200 bg-[#fbfbfc] px-8 py-2">
@@ -363,6 +524,12 @@ onMounted(() => {
         </p>
 
         <div class="flex items-center gap-2">
+          <n-button secondary size="small" :loading="isExporting" :disabled="exportableLogCount === 0" @click="exportLogs">
+            <template #icon>
+              <Download :size="15" :stroke-width="1.8" />
+            </template>
+            导出
+          </n-button>
           <n-button secondary size="small" :loading="isLoading" @click="loadLogs">
             <template #icon>
               <RefreshCw :size="15" :stroke-width="1.8" />
@@ -477,9 +644,21 @@ onMounted(() => {
                       {{ getTypeConfig(log.type).label }}
                     </span>
                   </div>
-                  <div class="text-right text-xs text-zinc-500">
-                    <p>{{ formatLogTime(log.dateTime) }}</p>
-                    <p class="mt-0.5">{{ formatFullTime(log.dateTime) }}</p>
+                  <div class="flex items-start gap-2">
+                    <div class="text-right text-xs text-zinc-500">
+                      <p>{{ formatLogTime(log.dateTime) }}</p>
+                      <p class="mt-0.5">{{ formatFullTime(log.dateTime) }}</p>
+                    </div>
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <n-button quaternary circle size="tiny" @click="copyLog(log)">
+                          <template #icon>
+                            <ClipboardCopy :size="14" :stroke-width="1.8" />
+                          </template>
+                        </n-button>
+                      </template>
+                      复制日志信息
+                    </n-tooltip>
                   </div>
                 </div>
 

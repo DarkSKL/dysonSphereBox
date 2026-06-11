@@ -26,7 +26,7 @@ const (
 	ArtifactKindLocalDir ArtifactKind = "local_dir"
 )
 
-// RemotePackageListData 表示统一来源后的 Mod 包分页数据。
+// RemotePackageListData 表示 Thunderstore 等来源适配后的 Mod 包分页数据。
 // 用途：前端 Mod 页只消费该结构，不再关心不同来源的原始响应形状。
 type RemotePackageListData struct {
 	List     []RemoteModPackageDTO `json:"list"`
@@ -36,7 +36,7 @@ type RemotePackageListData struct {
 	Source   ModSource             `json:"source"`
 }
 
-// RemoteModDependencyDTO 表示统一来源后的依赖组件。
+// RemoteModDependencyDTO 表示 Thunderstore 等来源适配后的依赖组件。
 // 边界：Key 是跨来源稳定身份；Raw 保留原始依赖声明，便于排查来源解析问题。
 type RemoteModDependencyDTO struct {
 	Key                string       `json:"key"`
@@ -55,7 +55,7 @@ type RemoteModDependencyDTO struct {
 	Deprecated         bool         `json:"deprecated"`
 }
 
-// RemoteModPackageDTO 表示统一来源后的可安装 Mod 包。
+// RemoteModPackageDTO 表示 Thunderstore 等来源适配后的可安装 Mod 包。
 // 边界：保留 LegacyID 只用于兼容旧国内源状态；新逻辑必须以 Key 为唯一身份。
 type RemoteModPackageDTO struct {
 	Key                 string                   `json:"key"`

@@ -76,6 +76,7 @@ var installCancelStore = struct {
 type installCancellation struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 type progressReader struct {
@@ -244,11 +245,12 @@ func MarkPackageProgressFailure(packageKey string, status string, err error) {
 
 func registerInstallCancellation(packageKey string) (context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	installCancelStore.Lock()
 	if previous, ok := installCancelStore.items[packageKey]; ok {
 		previous.cancel()
 	}
-	installCancelStore.items[packageKey] = installCancellation{ctx: ctx, cancel: cancel}
+	installCancelStore.items[packageKey] = installCancellation{ctx: ctx, cancel: cancel, done: done}
 	installCancelStore.Unlock()
 
 	return ctx, func() {
@@ -257,6 +259,7 @@ func registerInstallCancellation(packageKey string) (context.Context, func()) {
 			delete(installCancelStore.items, packageKey)
 		}
 		installCancelStore.Unlock()
+		close(done)
 	}
 }
 
@@ -270,28 +273,38 @@ func checkInstallCancelled(ctx context.Context) error {
 	return nil
 }
 
-// CancelRemoteModPackageInstall 取消当前进程内正在执行的统一来源安装。
+// CancelRemoteModPackageInstall 取消当前进程内正在执行的 Thunderstore 安装。
 // 用途：下载进度长时间不动时，前端可立即取消后台请求并释放卡片操作状态。
 // 边界：只能取消当前进程内仍注册的安装；应用重启后的遗留 running 由 RecoverInterruptedRemotePackageInstalls 处理。
 func CancelRemoteModPackageInstall(packageKey string) error {
 	installCancelStore.Lock()
 	item, ok := installCancelStore.items[packageKey]
-	if ok {
-		delete(installCancelStore.items, packageKey)
-	}
 	installCancelStore.Unlock()
 	if !ok {
 		return fmt.Errorf("当前没有正在安装的整合包")
 	}
 
 	item.cancel()
-	err := fmt.Errorf("用户取消安装")
-	MarkPackageProgressFailure(packageKey, "安装已取消", err)
+	select {
+	case <-item.done:
+	case <-time.After(10 * time.Second):
+		err := fmt.Errorf("用户取消安装，后台清理仍在进行")
+		emitRuntimeOnlyProgress(installProgressPayload{
+			PackageKey:   packageKey,
+			Stage:        "cleanup",
+			Status:       "正在清理取消安装",
+			Percent:      99,
+			Message:      err.Error(),
+			State:        installProgressStateRunning,
+			ErrorMessage: err.Error(),
+		})
+		return nil
+	}
 	return nil
 }
 
 // RecoverInterruptedRemotePackageInstalls 将上次进程遗留的安装中记录恢复为失败。
-// 用途：应用异常退出或用户关闭程序后，后台下载协程已经不存在，不能在下次启动时继续显示“下载中”。
+// 用途：应用异常退出或用户关闭程序后，清理已经落库的部分安装文件，再把卡片恢复为失败状态。
 // 边界：只处理 running 状态；conflict 会保留给用户继续选择覆盖、跳过或失败。
 func RecoverInterruptedRemotePackageInstalls() error {
 	if core.GLOBAL.DB == nil {
@@ -308,20 +321,9 @@ func RecoverInterruptedRemotePackageInstalls() error {
 		return nil
 	}
 
-	errorMessage := "上次安装在程序退出时中断，请重新安装该整合包。"
-	now := time.Now()
+	errorMessage := "上次安装在程序退出时中断，已清理未完成安装文件，请重新安装该整合包。"
 	for _, record := range records {
-		if err := core.GLOBAL.DB.Model(&modDependenceModel.ModInstalledPackage{}).
-			Where("package_key = ? AND install_state = ?", record.PackageKey, installProgressStateRunning).
-			Updates(map[string]interface{}{
-				"install_state":    installProgressStateFailed,
-				"install_stage":    "failed",
-				"install_status":   "安装已中断",
-				"install_progress": clampProgress(record.InstallProgress),
-				"current_speed":    0,
-				"error_message":    errorMessage,
-				"updated_at":       now,
-			}).Error; err != nil {
+		if err := cleanupInterruptedRemotePackageInstall(record.PackageKey, "安装已中断"); err != nil {
 			return err
 		}
 		storeInstallProgressSnapshot(installProgressPayload{

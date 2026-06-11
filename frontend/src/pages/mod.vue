@@ -58,6 +58,8 @@ const packageDownloadSpeeds = ref<Record<string, string>>({})
 const packageFailureMessages = ref<Record<string, string>>({})
 const packageConflicts = ref<Record<string, modDependence.InstallConflictDTO | undefined>>({})
 const packageOperationVersions = ref<Record<string, number>>({})
+const activeConflictDialogKeys = ref<Record<string, string>>({})
+const lastHandledConflictDialogKeys = ref<Record<string, string>>({})
 const {dialog} = createDiscreteApi(['dialog'])
 const message = useMessage()
 
@@ -443,12 +445,23 @@ const resolveConflictAction = async (key: string, action: InstallConflictAction)
   }
 }
 
-const openConflictDialog = (key: string): void => {
+const openConflictDialog = (key: string, force = false): void => {
   const conflict = packageConflicts.value[key]
   if (!conflict) {
     message.warning('未找到需要处理的安装冲突。')
     return
   }
+  const dialogKey = buildConflictDialogKey(conflict)
+  if (force) {
+    activeConflictDialogKeys.value[key] = ''
+  }
+  if (activeConflictDialogKeys.value[key] === dialogKey) {
+    return
+  }
+  if (!force && lastHandledConflictDialogKeys.value[key] === dialogKey) {
+    return
+  }
+  activeConflictDialogKeys.value[key] = dialogKey
 
   const renderConflictHelp = (content: string) => h(NTooltip, {
     trigger: 'hover',
@@ -465,9 +478,16 @@ const openConflictDialog = (key: string): void => {
     h('span', {}, value),
     renderConflictHelp(help),
   ])
+  const clearActiveConflictDialog = (): void => {
+    if (activeConflictDialogKeys.value[key] === dialogKey) {
+      activeConflictDialogKeys.value[key] = ''
+    }
+  }
   let closeConflictDialog: (() => void) | undefined
   const handleConflictDecision = (action: InstallConflictAction): void => {
+    lastHandledConflictDialogKeys.value[key] = dialogKey
     closeConflictDialog?.()
+    clearActiveConflictDialog()
     void resolveConflictAction(key, action)
   }
   const conflictDialog = dialog.warning({
@@ -486,6 +506,8 @@ const openConflictDialog = (key: string): void => {
       ),
       h('p', {class: 'break-all text-xs text-zinc-500'}, `路径：${conflict.targetPath}`),
     ]),
+    onClose: clearActiveConflictDialog,
+    onAfterLeave: clearActiveConflictDialog,
     action: () => [
       h(NButton, {
         size: 'small',
@@ -505,7 +527,19 @@ const openConflictDialog = (key: string): void => {
       }, {default: () => '失败'}),
     ],
   })
-  closeConflictDialog = () => conflictDialog.destroy()
+  closeConflictDialog = () => {
+    clearActiveConflictDialog()
+    conflictDialog.destroy()
+  }
+}
+
+const buildConflictDialogKey = (conflict: modDependence.InstallConflictDTO): string => {
+  return [
+    conflict.componentKey || '',
+    conflict.targetPath || '',
+    conflict.incomingSha256 || '',
+    conflict.existingSha256 || '',
+  ].join('|')
 }
 
 const handleInstall = async (key: string): Promise<void> => {
@@ -578,6 +612,8 @@ const handleSourceChange = async (): Promise<void> => {
   failedPackageKeys.value = {}
   packageFailureMessages.value = {}
   packageConflicts.value = {}
+  activeConflictDialogKeys.value = {}
+  lastHandledConflictDialogKeys.value = {}
   packageOperationVersions.value = {}
   packageProgress.value = {}
   packageProgressStatus.value = {}
@@ -824,7 +860,7 @@ onBeforeUnmount(() => {
           :failure-message="packageFailureMessages[pack.key] || ''"
           @open="openPack"
           @uninstall="handleUninstall"
-          @repair="openConflictDialog"
+          @repair="(key) => openConflictDialog(key, true)"
           @cancel="cancelInstall"
         />
 
