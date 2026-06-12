@@ -869,13 +869,13 @@ onBeforeUnmount(() => {
       </article>
     </div>
 
-    <div class="mt-4 grid grid-cols-[minmax(0,1fr)_280px] gap-4">
+    <div class="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)_280px] gap-4 overflow-hidden">
       <!-- ~ 网络速率图表 -->
       <!-- * 说明：展示后端从系统网卡计数器计算出的真实网络速率 -->
       <!-- * 交互：刷新状态会追加真实采样点，ECharts 使用当前后端样本渲染折线图 -->
       <!-- * 依赖：依赖 HeadlessEnvironmentStatus.network 与 vue-echarts -->
       <!-- * 边界：首次采样没有差值时显示 0，读取失败时显示空态提示，不使用模拟数据 -->
-      <div class="h-[390px] rounded border border-zinc-200 bg-white p-4">
+      <div class="h-[390px] min-w-0 rounded border border-zinc-200 bg-white p-4">
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-2">
             <h2 class="text-sm font-semibold leading-5 text-zinc-950">网络速率</h2>
@@ -907,20 +907,20 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="grid gap-4">
+      <div class="grid min-w-0 gap-4 overflow-hidden">
         <!-- ~ 服务状态 -->
         <!-- * 说明：右侧服务状态卡片与网络速率面板成列对齐，展示真实进程与端口同步结论 -->
         <!-- * 交互：启动或刷新后状态同步刷新 -->
         <!-- * 依赖：依赖 status.ready、processRunning、portListening -->
         <!-- * 边界：未启动时端口未监听不作为准备失败的唯一条件 -->
-        <div class="h-[146px] rounded border border-zinc-200 bg-white p-4">
+        <div class="h-[146px] min-w-0 overflow-hidden rounded border border-zinc-200 bg-white p-4">
           <h2 class="text-sm font-bold leading-5 text-zinc-950">服务状态</h2>
-          <div class="mt-1 flex items-center justify-between gap-3 text-[11px] leading-4">
+          <div class="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-center gap-3 text-[11px] leading-4">
             <p class="min-w-0 truncate text-slate-500">{{ serviceStatusView.summary }}</p>
-            <p class="shrink-0 text-right text-slate-400">{{ serviceStatusView.footer }}</p>
+            <p class="min-w-0 truncate text-right text-slate-400">{{ serviceStatusView.footer }}</p>
           </div>
           <div class="mt-2 flex h-[62px] items-center gap-4 rounded-md" :class="serviceStatusPanelClass(serviceStatusView.tone)">
-            <div class="grid h-[54px] w-[54px] place-items-center rounded-full " :class="serviceStatusIconClass(serviceStatusView.tone)">
+            <div class="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full" :class="serviceStatusIconClass(serviceStatusView.tone)">
               <ServiceStatusLottie
                 :active="serviceStatusView.lottieActive"
                 :tone="serviceStatusView.lottieTone"
@@ -942,7 +942,7 @@ onBeforeUnmount(() => {
         <!-- * 交互：启动、停止和刷新后同步读取最新日志 -->
         <!-- * 依赖：依赖 LogService.ListLogs 与 recentEvents -->
         <!-- * 边界：日志读取失败时展示错误，不再用前端模拟事件兜底 -->
-        <div class="h-[228px] rounded border border-zinc-200 bg-white p-4">
+        <div class="h-[228px] min-w-0 overflow-hidden rounded border border-zinc-200 bg-white p-4">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold leading-5 text-zinc-950">最近事件</h2>
             <RefreshCw v-if="isRecentLogLoading" :size="14" :stroke-width="1.8" class="animate-spin text-zinc-400" />
@@ -953,7 +953,7 @@ onBeforeUnmount(() => {
           <div v-else-if="recentEvents.length === 0" class="mt-5 rounded border border-dashed border-zinc-200 py-6 text-center text-xs text-zinc-400">
             暂无开服日志
           </div>
-          <div v-else class="headless-timeline-scroll mt-3 h-[168px] overflow-y-auto pr-1">
+          <div v-else class="headless-timeline-scroll mt-3 h-[168px] min-w-0 overflow-y-auto pr-1">
             <n-timeline size="medium" :icon-size="12">
               <n-timeline-item
                 v-for="event in recentEvents"
@@ -1061,6 +1061,19 @@ onBeforeUnmount(() => {
 .headless-timeline-scroll {
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.headless-timeline-scroll :deep(.n-timeline),
+.headless-timeline-scroll :deep(.n-timeline-item),
+.headless-timeline-scroll :deep(.n-timeline-item-content),
+.headless-timeline-scroll :deep(.n-timeline-item-content__content),
+.headless-timeline-scroll :deep(.n-timeline-item-content__meta) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.headless-timeline-scroll :deep(.n-timeline-item-content) {
+  overflow: hidden;
 }
 
 .headless-timeline-scroll::-webkit-scrollbar {
