@@ -5,7 +5,7 @@ import {
   StartEnvironment as startEnvironmentBinding,
   StopEnvironment as stopEnvironmentBinding,
 } from '../../wailsjs/go/modDependence/HeadlessService'
-import {modDependence} from '../../wailsjs/go/models'
+import {contract} from '../../wailsjs/go/models'
 
 interface HeadlessBridgeWindow extends Window {
   go?: {
@@ -32,27 +32,27 @@ const assertHeadlessBridgeReady = (methodName: HeadlessBridgeMethod): void => {
   }
 }
 
-export const getHeadlessEnvironmentStatus = async (): Promise<modDependence.HeadlessEnvironmentStatus> => {
+export const getHeadlessEnvironmentStatus = async (): Promise<contract.HeadlessEnvironmentStatus> => {
   assertHeadlessBridgeReady('GetEnvironmentStatus')
   return getEnvironmentStatusBinding()
 }
 
-export const prepareHeadlessEnvironment = async (): Promise<modDependence.HeadlessPrepareResult> => {
+export const prepareHeadlessEnvironment = async (): Promise<contract.HeadlessPrepareResult> => {
   assertHeadlessBridgeReady('PrepareEnvironment')
   return prepareEnvironmentBinding()
 }
 
-export const saveHeadlessSettings = async (hostPort: number, serverArchive: string): Promise<modDependence.HeadlessSettings> => {
+export const saveHeadlessSettings = async (hostPort: number, serverArchive: string): Promise<contract.HeadlessSettings> => {
   assertHeadlessBridgeReady('SaveSettings')
   return saveSettingsBinding(hostPort, serverArchive)
 }
 
-export const startHeadlessEnvironment = async (): Promise<modDependence.HeadlessStartResult> => {
+export const startHeadlessEnvironment = async (): Promise<contract.HeadlessStartResult> => {
   assertHeadlessBridgeReady('StartEnvironment')
   return startEnvironmentBinding()
 }
 
-export const stopHeadlessEnvironment = async (): Promise<modDependence.HeadlessStopResult> => {
+export const stopHeadlessEnvironment = async (): Promise<contract.HeadlessStopResult> => {
   assertHeadlessBridgeReady('StopEnvironment')
   return stopEnvironmentBinding()
 }

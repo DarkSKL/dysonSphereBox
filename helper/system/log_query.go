@@ -1,146 +1,66 @@
 package system
 
-import (
-	"encoding/json"
-	"fmt"
-	"time"
+// 文件职责：定义系统日志分页查询请求和分页结果 DTO。
+// 使用：LogService.ListLogs 接收前端查询并返回 LogListResult。
+// 边界：只描述查询和结果形状，不直接访问数据库、不创建日志、不删除日志。
 
-	systemModel "DysonSphereBox/model/system"
-)
-
-const (
-	defaultLogPage     = 1
-	defaultLogPageSize = 50
-	maxLogPageSize     = 200
-)
+import systemModel "DysonSphereBox/model/system"
 
 // LogQuery 描述系统日志分页查询条件。
+// 职责：承载日志页筛选条件和分页参数。
+// 使用：LogService.ListLogs 接收前端查询时使用。
+// 边界：空筛选项表示不过滤；分页参数会由 NormalizeLogPage 归一化。
 type LogQuery struct {
-	// Namespace 按日志命名空间筛选；为空时不过滤。
+	// Namespace 职责：保存日志命名空间筛选值；使用：日志页按业务域过滤；边界：为空时不过滤。
 	Namespace string `json:"namespace"`
-	// Module 按模块筛选；为空时不过滤。
+	// Module 职责：保存模块筛选值；使用：日志页按业务模块过滤；边界：为空时不过滤。
 	Module string `json:"module"`
-	// Event 按事件筛选；为空时不过滤。
+	// Event 职责：保存事件筛选值；使用：日志页按稳定事件名过滤；边界：为空时不过滤。
 	Event string `json:"event"`
-	// Level 按日志等级筛选；为 0 时不过滤。
+	// Level 职责：保存日志等级筛选值；使用：日志页按 info/warn/error 等等级过滤；边界：为 0 时不过滤。
 	Level systemModel.LogLevel `json:"level"`
-	// Type 按日志类型筛选；为 0 时不过滤。
+	// Type 职责：保存日志类型筛选值；使用：日志页按操作、配置、安装等类型过滤；边界：为 0 时不过滤。
 	Type systemModel.LogType `json:"type"`
-	// Page 是从 1 开始的页码；小于 1 时使用默认值。
+	// Page 职责：保存从 1 开始的页码；使用：LogService.ListLogs 计算 Offset；边界：小于 1 时使用默认值。
 	Page int `json:"page"`
-	// PageSize 是每页数量；超过上限时会被限制。
+	// PageSize 职责：保存每页数量；使用：LogService.ListLogs 设置 Limit；边界：小于 1 使用默认值，超过上限时会被裁剪。
 	PageSize int `json:"pageSize"`
 }
 
 // LogListResult 表示系统日志分页查询结果。
+// 职责：承载日志列表、总数和实际分页参数。
+// 使用：LogService.ListLogs 返回给日志页。
+// 边界：Items 可为空；Total 是筛选后的总数，不代表数据库全部日志数量。
 type LogListResult struct {
-	// Items 是当前页日志列表。
+	// Items 职责：保存当前页日志 DTO；使用：前端表格渲染；边界：空切片表示当前页无数据。
 	Items []LogDTO `json:"items"`
-	// Total 是符合条件的日志总数。
+	// Total 职责：保存符合筛选条件的日志总数；使用：前端分页器计算页数；边界：不受当前页大小限制。
 	Total int64 `json:"total"`
-	// Page 是实际使用的页码。
+	// Page 职责：保存实际查询页码；使用：前端同步分页状态；边界：已经过 NormalizeLogPage 归一化。
 	Page int `json:"page"`
-	// PageSize 是实际使用的每页数量。
+	// PageSize 职责：保存实际查询分页大小；使用：前端同步分页大小；边界：已经过 NormalizeLogPage 裁剪。
 	PageSize int `json:"pageSize"`
 }
 
-// LogDTO 表示前端可安全消费的系统日志。
-// 边界：DateTime 使用字符串，Metadata 使用普通 map，避免 Wails 生成弱类型或暴露 GORM 持久化细节。
-type LogDTO struct {
-	// ID 是日志主键。
-	ID uint `json:"id"`
-	// Namespace 是日志所属业务域。
-	Namespace string `json:"namespace"`
-	// Module 是业务域下的具体模块。
-	Module string `json:"module"`
-	// Event 是稳定事件名。
-	Event string `json:"event"`
-	// Level 是日志重要等级。
-	Level systemModel.LogLevel `json:"level"`
-	// Type 是日志业务分类。
-	Type systemModel.LogType `json:"type"`
-	// Content 是面向用户或维护者阅读的日志摘要。
-	Content string `json:"content"`
-	// Metadata 是结构化扩展信息。
-	Metadata map[string]interface{} `json:"metadata"`
-	// Error 是失败详情；成功日志保持为空。
-	Error string `json:"error"`
-	// DateTime 是日志发生时间，使用 RFC3339Nano 字符串。
-	DateTime string `json:"dateTime"`
-}
-
 // CreateLogRequest 描述前端主动创建日志的请求。
+// 职责：承载前端补充审计日志所需字段。
+// 使用：LogService.CreateLog 接收前端无法由后端感知的重要交互。
+// 边界：业务关键流程仍应由后端 helper 自动记录，前端不应替代后端埋点。
 type CreateLogRequest struct {
-	// Namespace 是日志所属业务域；为空时由 helper 使用默认值。
+	// Namespace 职责：保存日志所属业务域；使用：RecordLog 定位日志范围；边界：为空时由 helper 使用默认值。
 	Namespace string `json:"namespace"`
-	// Module 是业务域下的具体模块；为空时由 helper 使用默认值。
+	// Module 职责：保存业务域下的具体模块；使用：RecordLog 定位日志模块；边界：为空时由 helper 使用默认值。
 	Module string `json:"module"`
-	// Event 是可稳定检索的事件名；为空时由 helper 使用默认值。
+	// Event 职责：保存可稳定检索的事件名；使用：RecordLog 写入事件维度；边界：为空时由 helper 使用默认值。
 	Event string `json:"event"`
-	// Level 是日志重要等级；为 0 时按普通信息记录。
+	// Level 职责：保存日志重要等级；使用：RecordLog 写入等级维度；边界：为 0 时按普通信息记录。
 	Level systemModel.LogLevel `json:"level"`
-	// Type 是日志业务分类；为 0 时按普通操作记录。
+	// Type 职责：保存日志业务分类；使用：RecordLog 写入类型维度；边界：为 0 时按普通操作记录。
 	Type systemModel.LogType `json:"type"`
-	// Content 是面向人阅读的日志摘要。
+	// Content 职责：保存面向人阅读的日志摘要；使用：日志列表展示；边界：结构化信息应放入 Metadata。
 	Content string `json:"content"`
-	// Metadata 是结构化扩展信息。
+	// Metadata 职责：保存结构化扩展信息；使用：日志详情和诊断；边界：必须可 JSON 序列化。
 	Metadata map[string]interface{} `json:"metadata"`
-	// Error 是失败详情；成功日志保持为空。
+	// Error 职责：保存失败详情；使用：失败日志详情展示；边界：成功日志保持为空。
 	Error string `json:"error"`
-}
-
-// ToLogDTOs 将持久化模型转换为前端 DTO。
-func ToLogDTOs(items []systemModel.Log) ([]LogDTO, error) {
-	results := make([]LogDTO, 0, len(items))
-	for index := range items {
-		item, err := toLogDTO(items[index])
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, item)
-	}
-
-	return results, nil
-}
-
-func toLogDTO(item systemModel.Log) (LogDTO, error) {
-	metadata := make(map[string]interface{})
-	if len(item.Metadata) > 0 {
-		if err := json.Unmarshal(item.Metadata, &metadata); err != nil {
-			return LogDTO{}, fmt.Errorf("decode system log metadata: %w", err)
-		}
-	}
-
-	dateTime := ""
-	if item.DateTime != nil {
-		dateTime = item.DateTime.Format(time.RFC3339Nano)
-	}
-
-	return LogDTO{
-		ID:        item.ID,
-		Namespace: item.Namespace,
-		Module:    item.Module,
-		Event:     item.Event,
-		Level:     item.Level,
-		Type:      item.Type,
-		Content:   item.Content,
-		Metadata:  metadata,
-		Error:     item.Error,
-		DateTime:  dateTime,
-	}, nil
-}
-
-// NormalizeLogPage 归一化日志分页参数。
-func NormalizeLogPage(page int, pageSize int) (int, int) {
-	if page < 1 {
-		page = defaultLogPage
-	}
-	if pageSize < 1 {
-		pageSize = defaultLogPageSize
-	}
-	if pageSize > maxLogPageSize {
-		pageSize = maxLogPageSize
-	}
-
-	return page, pageSize
 }

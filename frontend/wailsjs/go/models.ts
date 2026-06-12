@@ -1,4 +1,4 @@
-export namespace modDependence {
+export namespace contract {
 	
 	export class BepInExStatus {
 	    gameDir: string;
@@ -647,7 +647,7 @@ export namespace modDependence {
 
 }
 
-export namespace response {
+export namespace modDependence {
 	
 	export class ModDependencyDTO {
 	    id: number;

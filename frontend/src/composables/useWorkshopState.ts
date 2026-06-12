@@ -36,11 +36,11 @@ const packageProgress = ref<Record<ModPackageKey, number>>({
 export const modPackages: ModPackage[] = [
   {
     key: 'nebula',
-    title: '联机 Mod',
+    title: '联机模组',
     description: '安装后可创建或加入多人游戏，包含 BepInEx 与 Nebula 联机组件。',
     fileCount: 8,
     mods: [
-      {name: 'BepInEx', version: 'v5.4.17', description: 'Mod 框架底座'},
+      {name: 'BepInEx', version: 'v5.4.17', description: '模组框架底座'},
       {name: 'IlLine', version: 'v1.0.0', description: 'IL 注入辅助工具'},
       {name: 'LDBTool', version: 'v2.0.0', description: '数据修改库'},
       {name: 'CommonAPI', version: 'v1.6.0', description: '通用 API 库'},
@@ -52,8 +52,8 @@ export const modPackages: ModPackage[] = [
   },
   {
     key: 'qol',
-    title: '常用辅助 Mod',
-    description: '量化计算、工厂定位、瓶颈分析、自动导航，纯辅助 Mod 不修改游戏平衡。',
+    title: '常用辅助模组',
+    description: '量化计算、工厂定位、瓶颈分析、自动导航，纯辅助模组不修改游戏平衡。',
     fileCount: 5,
     mods: [
       {name: 'AssemblerUI', version: 'v3.0.0', description: '显示组装机 I/O 速率'},

@@ -48,11 +48,11 @@ const contacts = [
 ]
 
 const credits = [
-  ['Mod 社区', 'Thunderstore'],
+  ['模组社区', 'Thunderstore'],
   ['联机框架', 'Nebula Multiplayer 团队'],
-  ['Mod 框架', 'BepInEx 项目'],
-  ['Mod 作者', 'AssemblerUI、BottleneckUI、DSPCalculator、FactoryLocator、CAAP_N'],
-  ['蓝图生成器', 'B站 UP：神不在的黄昏'],
+  ['模组框架', 'BepInEx 项目'],
+  ['模组作者', 'AssemblerUI、BottleneckUI、DSPCalculator、FactoryLocator、CAAP_N'],
+  ['蓝图', 'B站 UP：神不在的黄昏'],
 ]
 
 const {
@@ -179,7 +179,7 @@ onMounted(() => {
       <section class="border-t border-zinc-200 pt-6">
         <p class="mb-2 text-sm text-zinc-500">免责声明</p>
         <p class="text-sm leading-7 text-zinc-500">
-          本工具仅提供 Mod 安装便利，Mod 版权归原作者所有。使用 Mod 可能影响游戏稳定性，请自行承担风险。
+          本工具仅提供模组安装便利，模组版权归原作者所有。使用模组可能影响游戏稳定性，请自行承担风险。
         </p>
       </section>
     </div>

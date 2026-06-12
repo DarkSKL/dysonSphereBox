@@ -57,6 +57,8 @@ Separate files by responsibility. Do not put unrelated layout, page, service, ty
 - The root `model/enter.go` is the only place that aggregates domain model groups. `core` must call `model.RegisterModels()` instead of importing domain model packages directly.
 - Services belong under `service/<domain>` and are the core backend business layer. Each service domain must expose an `enter.go` that registers Wails-bound service structs.
 - Helpers belong under `helper/` and only assist services with reusable implementation details. Helpers must not replace services as the owner of business workflows.
+- All backend directories must also follow single-responsibility directory structure, not only `helper/<domain>`. When any directory under `apiDefinition/`, `constant/`, `core/`, `model/`, `service/`, `helper/`, or `utils/` accumulates many files or clearly contains multiple concerns, split it into concern subdirectories instead of leaving a wide flat folder. Examples: `helper/modDependence/audit/`, `helper/modDependence/installer/`, `service/modDependence/marketplace/`, `apiDefinition/modDependence/thunderstore/`, `model/modDependence/installed/`, `constant/modDependence/install/`, or `utils/path/` when those concerns grow enough to justify a package boundary.
+- A backend subdirectory must have one responsibility and one reason to change. For example, `helper/modDependence/audit/` may contain only operation-log builders and audit event helpers; it must not contain installer file-copy logic, marketplace HTTP queries, BepInEx archive extraction, or headless process control. The same rule applies everywhere: `service/.../installer/` owns installer orchestration methods, `apiDefinition/.../thunderstore/` owns Thunderstore contracts, and `model/.../installed/` owns installed-record persistence models. If a concern grows again inside a subdirectory, split it one level deeper instead of creating broad catch-all files.
 - Reusable utility functions belong under `utils/`. Do not hide general helpers inside `core`, `service`, `model`, or frontend code.
 - Service-specific helper functions and helper objects belong under `helper/`. Do not place free helper functions in service files.
 - Do not place service logic in model files, database initialization files, frontend generated files, or Wails entry files.
@@ -182,16 +184,31 @@ helper/
     log_builder.go
     config_reflection.go
   modDependence/
+    audit/
+      bep_in_ex.go
+      headless.go
+      install.go
     store/
       package_store.go
       component_store.go
       file_store.go
       cache_store.go
       install_session_store.go
+    installer/
+      remote_install.go
+      legacy_install.go
+      uninstall.go
+      conflict.go
+      session.go
+      progress.go
     artifact/
       resolver.go
       layout.go
       validator.go
+    marketplace/
+      provider.go
+      official.go
+      thunderstore.go
     file/
       copy.go
       backup.go
@@ -199,12 +216,19 @@ helper/
     archive/
       zip.go
       extract.go
+    bepInEx/
+      install.go
+      uninstall.go
+      status.go
+      config.go
+    headless/
+      environment.go
+      process.go
+      settings.go
+      network.go
     progress/
       event.go
       snapshot.go
-    audit.go
-    bep_in_ex_file.go
-    headless_process.go
   updater/
     gitee_source.go
     release_validator.go
@@ -251,20 +275,38 @@ All newly written or modified comments in this repository must be written in Chi
 
 ### Go Comment Rules
 
-Backend Go code must follow Go documentation comment conventions while keeping the content Chinese:
+Backend Go code must follow Go documentation comment conventions while keeping the content Chinese. The backend comment standard is strict: every meaningful declaration must explain `职责`、`使用`、`边界`; do not rely on names alone as documentation.
 
-- Every exported package-level constant, variable, type, field whose meaning is not obvious, function, and method must have a Go doc comment.
-- The comment for an exported identifier must start with that identifier name, followed by a Chinese explanation.
-- Important unexported functions, methods, variables, and structs must also have Chinese comments when they encode business rules, filesystem behavior, Wails bridge behavior, persistence assumptions, or non-obvious edge cases.
-- Struct fields used by frontend DTOs, GORM models, configuration units, or JSON bindings must be commented when the field name alone cannot fully explain its role.
-- Comments must explain what the item does, when to use it, and any important boundary behavior. Do not write empty comments such as "获取数据" when the data source, fallback, or failure behavior matters.
+- Every Go file must include a Chinese file-level responsibility comment. The comment must cover three points: `职责`（this file/module owns what）, `使用`（which layer or caller should use the functions, structs, variables, or constants in this file and in what scenario）, and `边界`（what this file must not do, what failure/fallback behavior matters, and which responsibilities belong elsewhere). Place the file-level responsibility comment immediately after the `package` declaration or before the first related declaration.
+- Each meaningful module inside a file must have a nearby Chinese comment when the file contains more than one responsibility block, such as DTO definitions, persistence conversion, filesystem cleanup, progress emission, audit log construction, or Wails event bridging. The module comment must include the same three elements: `职责`、`使用`、`边界`; it should not narrate each line.
+- Every constant, variable, type, struct, interface, function, method, helper, service struct, core infrastructure object, model registration group, DTO, and package-level declaration must have a Chinese comment with `职责`、`使用`、`边界`. This applies to exported and unexported declarations.
+- Every exported package-level constant, variable, type, field, function, and method must have a Go doc comment.
+- The comment for an exported identifier must start with that identifier name, followed by a Chinese explanation that includes its responsibility, how callers should use it, and its boundary/fallback behavior when relevant.
+- Unexported identifiers do not need to start with the identifier name, but they still need a nearby Chinese comment explaining `职责`、`使用`、`边界`. This includes small encapsulated helpers when they hide file operations, persistence behavior, path rules, cache behavior, log construction, request handling, or state transitions.
+- Grouped `const` and `var` blocks must have a group-level comment explaining the module responsibility, and each constant or variable must have its own Chinese comment when it represents a distinct business value, state, path, event, source, key, or runtime object.
+- Every struct and interface must have a Chinese comment explaining `职责`、`使用`、`边界`. Struct fields must also be commented when they are DTO fields, GORM model fields, configuration fields, JSON-bound fields, Wails-facing fields, or non-obvious internal state.
+- Every Service method and service struct must document `职责`、`使用`、`边界`, including which frontend page or service workflow should call it, what helper/model/core dependencies it may use, and what validation or error behavior callers should expect.
+- Every core package declaration must document `职责`、`使用`、`边界`, especially initialization order, global state ownership, lifecycle, fallback behavior, and what business logic is forbidden in `core`.
+- Complex logic must include a short Chinese logic-flow comment. Use it when a function or module spans multiple steps such as request/response handling, remote data loading, transaction workflows, file backup/rollback, conflict recovery, progress events, or cleanup. The flow should be concise and ordered, for example `逻辑流：1. 调用远端请求 => 2. 解析响应数据 => 3. 写入本地缓存 => 4. 返回统一 DTO 给调用方`。Keep the flow at the module/function boundary; do not annotate every line.
+- Logic-flow comments must describe the actual data/control path, including important failure branches when they affect behavior, such as fallback to cache, rollback files, skip shared dependencies, or return a typed error for frontend handling.
+- Comments must explain what the item does, when to use it, and any important boundary behavior. Do not write empty comments such as "获取数据" when the data source, caller, fallback, side effects, or failure behavior matters.
+- Comments must not be decorative or empty. A comment such as `// 获取数据`, `// 工具函数`, `// 设置变量`, or a mere English-to-Chinese restatement of the identifier is not acceptable unless it also states responsibility, usage, and boundary.
 - Keep Go comments close to the declaration and let `gofmt` format the file.
 
 Example:
 
 ```go
+package modDependence
+
+// 文件职责：维护 Thunderstore 安装会话中的文件快照与回滚文件操作。
+// 使用：由远端安装器在安装取消、冲突恢复、失败清理或文件归属规则变化时调用。
+// 边界：不负责下载、解压、市场查询或服务层日志决策。
+// 逻辑流：1. 读取安装清单 => 2. 定位已写入文件 => 3. 按备份状态恢复或删除 => 4. 更新清单并交给上层记录结果。
+```
+
+```go
 // EnvironmentService 提供前端可调用的运行环境检测能力。
-// 用途：定位戴森球计划安装目录、校验游戏启动文件是否存在。
+// 使用：由设置页和启动页调用，用于定位戴森球计划安装目录、校验游戏启动文件是否存在。
 // 边界：找不到路径时返回空字符串而不是猜测无效目录。
 type EnvironmentService struct{}
 

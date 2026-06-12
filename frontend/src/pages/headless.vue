@@ -24,7 +24,7 @@ import type {EChartsOption} from 'echarts'
 import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref} from 'vue'
 import VChart from 'vue-echarts'
 import {useRouter} from 'vue-router'
-import {modDependence, system} from '../../wailsjs/go/models'
+import {contract, system} from '../../wailsjs/go/models'
 import {ListLogs} from '../../wailsjs/go/system/LogService'
 import ServerHeroLottie from '../components/headless/server-hero-lottie.vue'
 import ServiceStatusLottie from '../components/headless/service-status-lottie.vue'
@@ -76,7 +76,7 @@ interface HeadlessServiceStatusView {
 
 const message = useMessage()
 const router = useRouter()
-const status = ref<modDependence.HeadlessEnvironmentStatus | null>(null)
+const status = ref<contract.HeadlessEnvironmentStatus | null>(null)
 const recentLogs = ref<system.LogDTO[]>([])
 const isLoading = ref(false)
 const isStarting = ref(false)
@@ -290,7 +290,7 @@ const headlessGatePrimaryText = computed(() => {
     return '重新检测'
   }
   if (!current.bepInExStatus.installed || !current.nebulaReady) {
-    return '前往 Mod'
+    return '前往模组'
   }
 
   return '重新检测'
@@ -955,8 +955,8 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- ~ 开服前置条件遮罩 -->
-    <!-- * 说明：当前置条件未满足时阻止开服操作，保持与 Mod 页一致的遮挡体验 -->
-    <!-- * 交互：根据缺失项跳转设置页、Mod 页或重新检测 -->
+    <!-- * 说明：当前置条件未满足时阻止开服操作，保持与模组页一致的遮挡体验 -->
+    <!-- * 交互：根据缺失项跳转设置页、模组页或重新检测 -->
     <!-- * 依赖：依赖 HeadlessService 聚合状态中的 gameDir、BepInEx 与 Nebula 依赖字段 -->
     <!-- * 边界：无头进程已经运行时不遮挡，避免异常状态下无法停止服务 -->
     <div v-if="headlessPrerequisiteBlocked" class="absolute inset-0 z-20 grid place-items-center bg-white/65 backdrop-blur-sm">

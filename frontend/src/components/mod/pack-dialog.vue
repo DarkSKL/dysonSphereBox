@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import {CheckCircle2, ExternalLink, X} from '@lucide/vue'
-import {computed} from 'vue'
-import {response} from '../../../wailsjs/go/models'
+import { CheckCircle2, ExternalLink, X } from '@lucide/vue'
+import { computed } from 'vue'
+import { modDependence } from '../../../wailsjs/go/models'
 
 const props = defineProps<{
   show: boolean
-  pack?: response.RemoteModPackageDTO
+  pack?: modDependence.RemoteModPackageDTO
   installed: boolean
   installing: boolean
   canInstall: boolean
@@ -116,7 +116,7 @@ const handleUninstall = (): void => {
           </div>
         </div>
 
-        <div class="mb-3 text-sm text-zinc-500">包含 {{ displayComponents.length }} 个 Mod 组件</div>
+        <div class="mb-3 text-sm text-zinc-500">包含 {{ displayComponents.length }} 个模组组件</div>
         <div class="max-h-[42vh] overflow-auto border-y border-zinc-200">
           <div
             v-for="mod in displayComponents"
@@ -124,7 +124,7 @@ const handleUninstall = (): void => {
             class="grid grid-cols-[minmax(10rem,14rem)_1fr] gap-4 border-b border-zinc-100 px-1 py-3 last:border-b-0"
           >
             <div class="min-w-0">
-              <p class="truncate text-sm font-semibold text-zinc-950">{{ mod.displayName || mod.name || '未知 Mod' }}</p>
+              <p class="truncate text-sm font-semibold text-zinc-950">{{ mod.displayName || mod.name || '未知模组' }}</p>
               <p class="mt-0.5 text-xs text-zinc-400">{{ mod.version || '未知版本' }}</p>
             </div>
             <p class="text-sm leading-6 text-zinc-600">{{ mod.description || '暂无说明。' }}</p>

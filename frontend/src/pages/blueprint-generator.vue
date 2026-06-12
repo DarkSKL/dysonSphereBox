@@ -5,11 +5,11 @@ definePage({
   meta: {
     layout: 'main',
     keepAlive: true,
-    title: '蓝图生成器',
+    title: '蓝图',
   },
 })
 
-// =============== 蓝图生成器来源 ===============
+// =============== 蓝图来源 ===============
 // 说明：集中维护内嵌页面地址，方便后续切换到镜像站或本地托管版本。
 const blueprintGeneratorUrl = 'https://sgwswordemperor.github.io/'
 
@@ -60,13 +60,13 @@ const loadProgressStatus = computed(() => {
 
 const loadStageTitle = computed(() => {
   if (loadStage.value === 'preloading') {
-    return '正在预加载蓝图生成器资源'
+    return '正在预加载蓝图资源'
   }
   if (loadStage.value === 'embedding') {
-    return '正在启动蓝图生成器'
+    return '正在启动蓝图'
   }
   if (loadStage.value === 'error') {
-    return '蓝图生成器加载失败'
+    return '蓝图加载失败'
   }
 
   return ''
@@ -195,8 +195,8 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="flex h-full min-h-[calc(100vh-4rem)] flex-col bg-zinc-100">
-    <!-- ~ 蓝图生成器内嵌页 -->
-    <!-- * 说明：直接承载外部蓝图生成器页面，保留原站点完整交互能力 -->
+    <!-- ~ 蓝图内嵌页 -->
+    <!-- * 说明：直接承载外部蓝图页面，保留原站点完整交互能力 -->
     <!-- * 交互：用户在嵌入页面内完成蓝图编辑与生成操作；窗口较窄时外层提供横向滚动 -->
     <!-- * 依赖：依赖 sgwswordemperor.github.io 可访问，并由 WebView 承载 iframe -->
     <!-- * 边界：外部站点不可访问或主动拒绝嵌入时，浏览器会在 iframe 内展示加载失败状态；小窗口下不压缩外部工具布局 -->
@@ -207,7 +207,7 @@ onBeforeUnmount(() => {
         class="block h-full w-full border-0 bg-white"
         :style="embeddedViewportStyle"
         :src="iframeUrl"
-        title="蓝图生成器"
+        title="蓝图"
         allow="clipboard-read; clipboard-write"
         loading="eager"
         referrerpolicy="no-referrer-when-downgrade"

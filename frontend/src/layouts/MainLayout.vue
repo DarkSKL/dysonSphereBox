@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {Activity, Home, Info, Package, ScrollText, Server, Settings} from '@lucide/vue'
+import {Activity, Home, Info, Package, PencilRuler, ScrollText, Server, Settings} from '@lucide/vue'
 import {computed, onMounted} from 'vue'
 import {useRoute} from 'vue-router'
 import {useAppVersion} from '../composables/useAppVersion'
@@ -10,8 +10,8 @@ const {appVersion, loadAppVersion} = useAppVersion()
 const navItems = [
   {label: '首页', to: '/', icon: Home},
   {label: '开服', to: '/headless', icon: Server},
-  {label: 'Mod', to: '/mod', icon: Package},
-  {label: '蓝图生成器', to: '/blueprint-generator', icon: ScrollText},
+  {label: '模组', to: '/mod', icon: Package},
+  {label: '蓝图', to: '/blueprint-generator', icon: PencilRuler},
   {label: '日志', to: '/log', icon: ScrollText},
   {label: '设置', to: '/settings', icon: Settings},
   {label: '关于我们', to: '/about', icon: Info},

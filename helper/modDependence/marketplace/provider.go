@@ -1,0 +1,93 @@
+package marketplace
+
+// 文件职责：提供统一 Mod 市场 Provider 分派入口与远端包 key 解析能力。
+// 使用：由 MarketplaceService 查询远端包列表，或安装器按依赖 key 回查 Thunderstore 包详情时调用。
+// 边界：只做来源分派、参数归一化和 DTO 返回；不安装文件、不写 installed 模型、不记录服务层日志。
+
+import (
+	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
+	sourceConstant "DysonSphereBox/constant/modDependence/source"
+	"DysonSphereBox/helper/modDependence/marketplace/contract"
+	"DysonSphereBox/helper/modDependence/marketplace/thunderstoreindex"
+	"DysonSphereBox/helper/modDependence/marketplace/thunderstoreview"
+	"context"
+	"fmt"
+	"strings"
+)
+
+// ListRemotePackages 按来源返回统一 Mod 包分页数据。
+// 职责：按统一来源分派市场 Provider 并返回统一分页 DTO。
+// 使用：MarketplaceService 的加载和刷新方法调用。
+// 边界：国内源沿用远端分页；Thunderstore 使用全量缓存后在本地分页；manual 当前返回空列表。
+// 逻辑流：1. 归一化查询参数 => 2. 按 Source 分派 Provider => 3. 官方源远端分页或 Thunderstore 本地分页 => 4. 返回统一 RemotePackageListData。
+func ListRemotePackages(ctx context.Context, query contract.RemotePackageQuery) (modDependenceResponse.RemotePackageListData, error) {
+	query = normalizeRemotePackageQuery(query)
+	switch query.Source {
+	case sourceConstant.ModSourceOfficial:
+		return listOfficialRemotePackages(ctx, query)
+	case sourceConstant.ModSourceThunderstore:
+		return listThunderstoreRemotePackages(ctx, query)
+	case sourceConstant.ModSourceManual:
+		return modDependenceResponse.RemotePackageListData{
+			List:     []modDependenceResponse.RemoteModPackageDTO{},
+			Total:    0,
+			Page:     query.Page,
+			PageSize: query.PageSize,
+			Source:   query.Source,
+		}, nil
+	default:
+		return modDependenceResponse.RemotePackageListData{}, fmt.Errorf("unsupported mod source: %s", query.Source)
+	}
+}
+
+// ResolveRemotePackage 根据统一 key 解析单个远端包。
+// 职责：根据统一包 key 从来源索引中解析完整远端包 DTO。
+// 使用：V2 安装器递归解析 Thunderstore 依赖时调用。
+// 边界：目前 Thunderstore 通过包索引定位；国内源包由前端列表 DTO 直接传入安装器。
+// 逻辑流：1. 拆分统一 key => 2. 判断来源 => 3. Thunderstore 加载包索引 => 4. 遍历版本匹配 key => 5. 转换为统一 DTO 返回。
+func ResolveRemotePackage(ctx context.Context, key string) (*modDependenceResponse.RemoteModPackageDTO, error) {
+	parts := strings.Split(key, ":")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid package key: %s", key)
+	}
+	source := sourceConstant.ModSource(parts[0])
+	switch source {
+	case sourceConstant.ModSourceThunderstore:
+		packages, err := thunderstoreindex.LoadPackages(ctx, true)
+		if err != nil {
+			return nil, err
+		}
+		for _, pkg := range packages {
+			for _, version := range pkg.Versions {
+				candidate := thunderstoreview.PackageKey(pkg, version)
+				if candidate == key {
+					result := thunderstoreview.PackageToRemote(pkg, version, packages)
+					return &result, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("Thunderstore package not found: %s", key)
+	default:
+		return nil, fmt.Errorf("resolve package is not implemented for source: %s", source)
+	}
+}
+
+// normalizeRemotePackageQuery 归一化市场查询参数。
+// 职责：为来源、页码和分页大小提供稳定默认值与上限。
+// 使用：ListRemotePackages 分派 Provider 前调用。
+// 边界：不修改关键字和缓存策略；只返回新的查询值。
+func normalizeRemotePackageQuery(query contract.RemotePackageQuery) contract.RemotePackageQuery {
+	if query.Source == "" {
+		query.Source = sourceConstant.ModSourceOfficial
+	}
+	if query.Page < 1 {
+		query.Page = 1
+	}
+	if query.PageSize < 1 {
+		query.PageSize = 10
+	}
+	if query.PageSize > 100 {
+		query.PageSize = 100
+	}
+	return query
+}
