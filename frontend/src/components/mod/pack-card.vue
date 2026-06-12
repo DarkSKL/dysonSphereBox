@@ -37,15 +37,15 @@ defineEmits<{
     @keydown.enter.prevent="!installing && $emit('open', packageKey)"
     @keydown.space.prevent="!installing && $emit('open', packageKey)"
   >
-    <div class="flex shrink-0 items-start justify-between gap-3 p-2.5">
+    <div class="mod-pack-card__header flex shrink-0 items-start justify-between gap-3 p-2.5">
       <div class="min-w-0">
-        <h3 class="truncate text-sm font-semibold text-zinc-950">{{ title }}</h3>
-        <p class="mt-1 line-clamp-1 text-xs leading-5 text-zinc-500">{{ description }}</p>
-        <p class="mt-1 truncate text-[11px] text-zinc-400">{{ author || '未知作者' }}</p>
+        <h3 class="mod-pack-card__title truncate text-sm font-semibold">{{ title }}</h3>
+        <p class="mod-pack-card__description mt-1 line-clamp-1 text-xs leading-5">{{ description }}</p>
+        <p class="mod-pack-card__author mt-1 truncate text-[11px]">{{ author || '未知作者' }}</p>
       </div>
       <button
         v-if="installing"
-        class="grid h-7 w-7 shrink-0 place-items-center rounded border border-zinc-300 text-zinc-600 opacity-100 transition hover:bg-zinc-50"
+        class="mod-pack-card__icon-action grid h-7 w-7 shrink-0 place-items-center rounded opacity-100 transition"
         type="button"
         title="取消安装"
         @click.stop="$emit('cancel', packageKey)"
@@ -54,7 +54,7 @@ defineEmits<{
       </button>
       <button
         v-else-if="conflicted"
-        class="grid h-7 w-7 shrink-0 place-items-center rounded border border-amber-200 text-amber-700 opacity-100 transition hover:bg-amber-50"
+        class="mod-pack-card__icon-action is-warning grid h-7 w-7 shrink-0 place-items-center rounded opacity-100 transition"
         type="button"
         title="修复安装冲突"
         @click.stop="$emit('repair', packageKey)"
@@ -63,7 +63,7 @@ defineEmits<{
       </button>
       <button
         v-else-if="installed && !installing"
-        class="grid h-7 w-7 shrink-0 place-items-center rounded border border-red-200 text-red-600 opacity-0 transition hover:bg-red-50 group-hover:opacity-100"
+        class="mod-pack-card__icon-action is-danger grid h-7 w-7 shrink-0 place-items-center rounded opacity-0 transition group-hover:opacity-100"
         type="button"
         title="卸载"
         @click.stop="$emit('uninstall', packageKey)"
@@ -72,14 +72,14 @@ defineEmits<{
       </button>
     </div>
 
-    <div v-if="installing" class="h-1 bg-zinc-100">
-      <div class="h-full bg-zinc-950 transition-all duration-300" :style="{width: `${progress}%`}"></div>
+    <div v-if="installing" class="mod-pack-card__progress-track h-1">
+      <div class="mod-pack-card__progress h-full transition-all duration-300" :style="{width: `${progress}%`}"></div>
     </div>
-    <div v-else-if="failed || conflicted" class="h-1 bg-red-100">
-      <div class="h-full w-full bg-red-500"></div>
+    <div v-else-if="failed || conflicted" class="mod-pack-card__progress-track is-danger h-1">
+      <div class="mod-pack-card__progress is-danger h-full w-full"></div>
     </div>
 
-    <div class="relative grid flex-1 place-items-center border-t border-zinc-200 bg-zinc-50">
+    <div class="mod-pack-card__media relative grid flex-1 place-items-center border-t">
       <img
         v-if="imageUrl"
         class="absolute inset-0 h-full w-full object-cover"
@@ -92,25 +92,25 @@ defineEmits<{
       </div>
       <div v-if="imageUrl" class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/45 to-transparent"></div>
       <div class="absolute bottom-2 right-2 flex max-w-[calc(100%-1rem)] gap-1">
-        <div class="rounded border border-zinc-200 bg-white/90 px-2 py-0.5 text-xs text-zinc-600">
+        <div class="mod-pack-card__stat rounded px-2 py-0.5 text-xs">
           <PackageOpen :size="12" :stroke-width="1.8" class="mr-1 inline-block align-[-2px]" />
           <span>{{ fileCount }} 个组件</span>
         </div>
-        <div class="hidden rounded border border-zinc-200 bg-white/90 px-2 py-0.5 text-xs text-zinc-600 sm:block">
+        <div class="mod-pack-card__stat hidden rounded px-2 py-0.5 text-xs sm:block">
           <Download :size="12" :stroke-width="1.8" class="mr-1 inline-block align-[-2px]" />
           <span>{{ downloadCount }}</span>
         </div>
       </div>
       <div
         v-if="installed && !failed && !installing"
-        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm"
+        class="mod-pack-card__status-badge is-success absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded"
         title="已安装"
       >
         <CheckCircle2 :size="12" :stroke-width="1.9" />
       </div>
       <button
         v-if="conflicted && !installing"
-        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100"
+        class="mod-pack-card__status-badge is-warning absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded transition"
         type="button"
         title="修复安装冲突"
         @click.stop="$emit('repair', packageKey)"
@@ -119,21 +119,21 @@ defineEmits<{
       </button>
       <div
         v-else-if="failed && !installing"
-        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded border border-amber-200 bg-amber-50 text-amber-700 shadow-sm"
+        class="mod-pack-card__status-badge is-warning absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded"
         :title="conflicted ? '待处理冲突' : '安装失败'"
       >
         <AlertCircle :size="12" :stroke-width="1.9" />
       </div>
-      <div v-if="installing" class="absolute inset-0 grid place-items-center bg-white/75 backdrop-blur-sm">
+      <div v-if="installing" class="mod-pack-card__installing absolute inset-0 grid place-items-center backdrop-blur-sm">
         <div class="text-center">
-          <p class="max-w-[9rem] truncate text-sm font-semibold text-zinc-950">{{ progressStatus || '安装中' }}</p>
-          <p class="mt-1 text-xs text-zinc-500">{{ Math.floor(progress) }}%<span v-if="downloadSpeed"> · {{ downloadSpeed }}</span></p>
-          <button class="mt-2 border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 hover:border-zinc-500" type="button" @click.stop="$emit('cancel', packageKey)">
+          <p class="mod-pack-card__title max-w-[9rem] truncate text-sm font-semibold">{{ progressStatus || '安装中' }}</p>
+          <p class="mod-pack-card__description mt-1 text-xs">{{ Math.floor(progress) }}%<span v-if="downloadSpeed"> · {{ downloadSpeed }}</span></p>
+          <button class="mod-pack-card__cancel mt-2 px-2 py-1 text-xs" type="button" @click.stop="$emit('cancel', packageKey)">
             取消
           </button>
         </div>
       </div>
-      <div v-else-if="failed || conflicted" class="absolute inset-x-2 bottom-2 border border-amber-200 bg-amber-50/95 px-2 py-1 text-amber-800 shadow-sm">
+      <div v-else-if="failed || conflicted" class="mod-pack-card__failure absolute inset-x-2 bottom-2 px-2 py-1">
         <p class="truncate text-xs font-semibold">{{ progressStatus || (conflicted ? '待处理冲突' : '安装失败') }}</p>
         <p class="mt-0.5 line-clamp-2 text-[11px] leading-4">{{ failureMessage || progressStatus || '请稍后重试。' }}</p>
       </div>
@@ -143,23 +143,127 @@ defineEmits<{
 
 <style scoped lang="scss">
 .mod-pack-card {
-  @apply flex aspect-square w-full flex-col overflow-hidden rounded border border-zinc-200 bg-white text-left transition;
+  @apply flex aspect-square w-full flex-col overflow-hidden rounded text-left transition;
+  border: 1px solid var(--ds-border-default);
+  background: var(--ds-bg-panel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.02);
 
   &:hover {
-    @apply border-zinc-950;
+    border-color: var(--ds-border-strong);
   }
 
   &.is-failed {
-    @apply border-red-300;
+    border-color: rgb(232 125 99 / 0.42);
   }
 
   &.is-conflicted {
-    @apply border-amber-300;
+    border-color: var(--ds-border-strong);
   }
 }
 
+.mod-pack-card__header {
+  background: linear-gradient(180deg, var(--ds-bg-panel-elevated), var(--ds-bg-panel));
+}
+
+.mod-pack-card__title {
+  color: var(--ds-text-primary);
+}
+
+.mod-pack-card__description {
+  color: var(--ds-text-secondary);
+}
+
+.mod-pack-card__author {
+  color: var(--ds-text-muted);
+}
+
+.mod-pack-card__icon-action,
+.mod-pack-card__cancel {
+  border: 1px solid var(--ds-border-default);
+  background: var(--ds-bg-panel);
+  color: var(--ds-text-secondary);
+
+  &:hover {
+    border-color: var(--ds-border-strong);
+    background: var(--ds-hover-bg);
+    color: var(--ds-brand);
+  }
+}
+
+.mod-pack-card__icon-action.is-warning {
+  color: var(--ds-warning);
+}
+
+.mod-pack-card__icon-action.is-danger {
+  color: var(--ds-error);
+}
+
+.mod-pack-card__progress-track {
+  background: var(--ds-pressed-bg);
+}
+
+.mod-pack-card__progress {
+  background: var(--ds-brand);
+}
+
+.mod-pack-card__progress-track.is-danger {
+  background: rgb(232 125 99 / 0.14);
+}
+
+.mod-pack-card__progress.is-danger {
+  background: var(--ds-error);
+}
+
+.mod-pack-card__media {
+  border-color: var(--ds-border-subtle);
+  background: var(--ds-bg-shell);
+}
+
+.mod-pack-card__stat {
+  border: 1px solid rgb(255 255 255 / 0.48);
+  background: rgb(5 8 6 / 0.72);
+  color: #f4ead0;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.18);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.38);
+}
+
+.mod-pack-card__status-badge {
+  border: 1px solid var(--ds-border-default);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.18);
+}
+
+.mod-pack-card__status-badge.is-success {
+  border-color: rgb(124 212 131 / 0.32);
+  background: rgb(124 212 131 / 0.14);
+  color: var(--ds-success);
+}
+
+.mod-pack-card__status-badge.is-warning {
+  border-color: var(--ds-border-strong);
+  background: rgb(226 185 93 / 0.14);
+  color: var(--ds-warning);
+
+  &:hover {
+    background: var(--ds-pressed-bg);
+  }
+}
+
+.mod-pack-card__installing {
+  background: rgb(16 23 19 / 0.82);
+}
+
+.mod-pack-card__failure {
+  border: 1px solid var(--ds-border-strong);
+  background: rgb(29 27 22 / 0.96);
+  color: var(--ds-text-primary);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.2);
+}
+
 .mod-pack-emblem {
-  @apply grid h-16 w-16 place-items-center rounded border border-zinc-300 bg-white text-3xl font-semibold text-zinc-900;
-  box-shadow: inset 0 0 0 6px #f4f4f5;
+  @apply grid h-16 w-16 place-items-center rounded text-3xl font-semibold;
+  border: 1px solid var(--ds-border-default);
+  background: var(--ds-bg-panel-elevated);
+  color: var(--ds-text-primary);
+  box-shadow: inset 0 0 0 6px var(--ds-hover-bg);
 }
 </style>

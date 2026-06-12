@@ -1,8 +1,23 @@
 <script setup lang="ts">
-import {Activity, Home, Info, Moon, Package, PencilRuler, ScrollText, Server, Settings, Sun} from '@lucide/vue'
+import {
+  Activity,
+  Home,
+  Info,
+  Minus,
+  Moon,
+  Package,
+  PencilRuler,
+  ScrollText,
+  Server,
+  Settings,
+  Square,
+  Sun,
+  X,
+} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import {computed, onMounted} from 'vue'
 import {useRoute} from 'vue-router'
+import {Quit, WindowMinimise, WindowToggleMaximise} from '../../wailsjs/runtime/runtime'
 import {useAppVersion} from '../composables/useAppVersion'
 import {useThemeMode} from '../composables/useThemeMode'
 
@@ -50,6 +65,20 @@ const handleThemeToggle = async (event: MouseEvent): Promise<void> => {
   } catch (error) {
     message.error(`主题保存失败：${error instanceof Error ? error.message : String(error || '未知错误')}`)
   }
+}
+
+// =============== 窗口控制交互 ===============
+// 说明：无边框窗口隐藏系统标题栏后，由右上角按钮代理最小化、最大化和关闭操作。
+const minimizeWindow = (): void => {
+  WindowMinimise()
+}
+
+const toggleMaximizeWindow = (): void => {
+  WindowToggleMaximise()
+}
+
+const closeWindow = (): void => {
+  Quit()
 }
 </script>
 
@@ -103,12 +132,13 @@ const handleThemeToggle = async (event: MouseEvent): Promise<void> => {
       <!-- * 交互：右侧展示当前版本号，不承担页面操作 -->
       <!-- * 依赖：依赖路由 meta.title 生成标题 -->
       <!-- * 边界：未配置标题时回退到应用名称 -->
-      <header class="app-header flex h-16 shrink-0 items-center justify-between px-8">
-        <div>
+      <header class="app-header flex h-16 shrink-0 items-center justify-between pl-8 pr-4">
+        <div class="app-drag-region min-w-0 flex-1">
           <p class="app-header-title text-sm font-semibold">{{ title }}</p>
           <p class="app-muted-text text-xs">戴森球盒子</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="app-window-controls flex items-center gap-2">
+          <span class="app-version-pill inline-flex h-10 items-center rounded px-3 text-xs">{{ appVersion }}</span>
           <!-- ~ 日夜模式切换 -->
           <!-- * 说明：在版本信息旁提供无文字图标按钮，用于切换日间和夜间模式 -->
           <!-- * 交互：点击后从按钮中心触发圆形扩散动画，并将结果写入 System/AppTheme 配置 -->
@@ -125,7 +155,22 @@ const handleThemeToggle = async (event: MouseEvent): Promise<void> => {
             <Sun v-if="isDarkMode" :size="16" :stroke-width="1.9" />
             <Moon v-else :size="16" :stroke-width="1.9" />
           </button>
-          <span class="app-version-pill rounded px-2 py-1 text-xs">{{ appVersion }}</span>
+          <!-- ~ 自定义窗口控制 -->
+          <!-- * 说明：在无边框窗口下提供最小化、最大化和关闭按钮，替代系统标题栏按钮 -->
+          <!-- * 交互：点击后调用 Wails runtime 窗口 API -->
+          <!-- * 依赖：依赖 WindowMinimise、WindowToggleMaximise 与 Quit -->
+          <!-- * 边界：按钮区域禁止窗口拖拽，避免点击时触发移动窗口 -->
+          <div class="window-control-group flex items-center gap-1">
+            <button class="window-control-button" type="button" title="最小化" aria-label="最小化" @click="minimizeWindow">
+              <Minus :size="15" :stroke-width="1.9" />
+            </button>
+            <button class="window-control-button" type="button" title="最大化" aria-label="最大化" @click="toggleMaximizeWindow">
+              <Square :size="13" :stroke-width="1.9" />
+            </button>
+            <button class="window-control-button is-close" type="button" title="关闭" aria-label="关闭" @click="closeWindow">
+              <X :size="15" :stroke-width="1.9" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -163,6 +208,18 @@ const handleThemeToggle = async (event: MouseEvent): Promise<void> => {
 
 .app-header {
   background: var(--ds-bg-header);
+  --wails-draggable: drag;
+}
+
+.app-drag-region {
+  --wails-draggable: drag;
+}
+
+.app-window-controls,
+.theme-toggle-button,
+.app-version-pill,
+.window-control-button {
+  --wails-draggable: no-drag;
 }
 
 .app-brand-title,
@@ -202,16 +259,18 @@ const handleThemeToggle = async (event: MouseEvent): Promise<void> => {
 }
 
 .app-version-pill,
-.theme-toggle-button {
+.theme-toggle-button,
+.window-control-button {
   border: 1px solid var(--ds-border-default);
   background: var(--ds-bg-panel);
   color: var(--ds-text-muted);
 }
 
-.theme-toggle-button {
+.theme-toggle-button,
+.window-control-button {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   place-items: center;
   border-radius: 4px;
   transition:
@@ -221,19 +280,27 @@ const handleThemeToggle = async (event: MouseEvent): Promise<void> => {
     transform 160ms ease;
 }
 
-.theme-toggle-button:hover {
+.theme-toggle-button:hover,
+.window-control-button:hover {
   border-color: var(--ds-border-strong);
   background: var(--ds-hover-bg);
   color: var(--ds-brand);
 }
 
-.theme-toggle-button:active {
+.theme-toggle-button:active,
+.window-control-button:active {
   transform: translateY(1px);
 }
 
 .theme-toggle-button:disabled {
   cursor: not-allowed;
   color: var(--ds-text-disabled);
+}
+
+.window-control-button.is-close:hover {
+  border-color: rgb(232 125 99 / 0.42);
+  background: rgb(232 125 99 / 0.14);
+  color: var(--ds-error);
 }
 
 .heartbeat-icon {

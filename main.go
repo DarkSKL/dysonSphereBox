@@ -39,9 +39,10 @@ func main() {
 	services := append([]interface{}{app}, service.RegisterServices()...)
 
 	err := wails.Run(&options.App{
-		Title:  "戴森球盒子",
-		Width:  1024,
-		Height: 768,
+		Title:     "戴森球盒子",
+		Width:     1024,
+		Height:    768,
+		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

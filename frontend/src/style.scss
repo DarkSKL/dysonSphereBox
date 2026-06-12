@@ -85,6 +85,22 @@ body {
   font-family: "Nunito", "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 
+html,
+body,
+#app,
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#app::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 ::selection {
   background: var(--ds-pressed-bg);
   color: var(--ds-text-primary);
