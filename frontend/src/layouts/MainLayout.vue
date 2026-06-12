@@ -18,6 +18,7 @@ import {useMessage} from 'naive-ui'
 import {computed, onMounted} from 'vue'
 import {useRoute} from 'vue-router'
 import {Quit, WindowMinimise, WindowToggleMaximise} from '../../wailsjs/runtime/runtime'
+import dysonSphereProgramLogo from '../assets/images/dyson-sphere-program-logo.png'
 import {useAppVersion} from '../composables/useAppVersion'
 import {useThemeMode} from '../composables/useThemeMode'
 
@@ -85,10 +86,14 @@ const closeWindow = (): void => {
 <template>
   <div class="app-shell h-screen overflow-hidden">
     <aside class="app-sidebar fixed inset-y-0 left-0 z-20 flex w-48 flex-col">
-      <div class="app-sidebar-header flex h-16 items-center justify-between px-4">
-        <RouterLink to="/" class="min-w-0">
-          <p class="app-brand-title truncate text-lg font-semibold">戴森球盒子</p>
-          <p class="app-brand-subtitle text-[11px]">戴森球计划工具合集</p>
+      <div class="app-sidebar-header flex h-16 items-center justify-center px-4">
+        <!-- ~ 应用品牌入口 -->
+        <!-- * 说明：展示戴森球计划官方字标，替代普通文字品牌名 -->
+        <!-- * 交互：点击后返回首页，保留侧栏固定宽度内的可点击区域 -->
+        <!-- * 依赖：依赖本地化的 Steam 官方静态 Logo 资源 -->
+        <!-- * 边界：图片加载失败时通过 aria-label 保留可访问名称，不阻塞导航渲染 -->
+        <RouterLink to="/" class="app-brand-link min-w-0" aria-label="戴森球计划">
+          <img :src="dysonSphereProgramLogo" alt="" class="app-brand-logo" />
         </RouterLink>
       </div>
 
@@ -202,7 +207,6 @@ const closeWindow = (): void => {
 }
 
 .app-sidebar-status {
-  border-top: 1px solid var(--ds-border-subtle);
   border-bottom: 0;
 }
 
@@ -222,14 +226,49 @@ const closeWindow = (): void => {
   --wails-draggable: no-drag;
 }
 
-.app-brand-title,
 .app-header-title {
   color: var(--ds-text-primary);
 }
 
-.app-brand-subtitle,
 .app-muted-text {
   color: var(--ds-text-muted);
+}
+
+.app-brand-link {
+  display: flex;
+  width: 100%;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.app-brand-logo {
+  width: min(168px, 100%);
+  height: 58px;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0.9;
+  filter:
+    brightness(0)
+    saturate(100%)
+    invert(10%)
+    sepia(10%)
+    saturate(426%)
+    hue-rotate(201deg)
+    brightness(92%)
+    contrast(94%)
+    drop-shadow(0 1px 1px rgb(255 255 255 / 0.42));
+  transition:
+    filter 180ms ease,
+    opacity 180ms ease;
+}
+
+:root[data-theme='dark'] .app-brand-logo {
+  opacity: 1;
+  filter:
+    drop-shadow(0 1px 2px rgb(0 0 0 / 0.5))
+    drop-shadow(0 0 8px rgb(255 255 255 / 0.12));
 }
 
 .app-secondary-text {
@@ -237,8 +276,8 @@ const closeWindow = (): void => {
 }
 
 .app-status-panel {
-  border: 1px solid var(--ds-border-subtle);
-  background: var(--ds-bg-panel);
+  border: 0;
+  background: transparent;
 }
 
 .app-nav-link {

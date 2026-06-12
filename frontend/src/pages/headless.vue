@@ -28,6 +28,7 @@ import {contract, system} from '../../wailsjs/go/models'
 import {ListLogs} from '../../wailsjs/go/system/LogService'
 import ServerHeroLottie from '../components/headless/server-hero-lottie.vue'
 import ServiceStatusLottie from '../components/headless/service-status-lottie.vue'
+import {useThemeMode} from '../composables/useThemeMode'
 import {
   getHeadlessEnvironmentStatus,
   saveHeadlessSettings,
@@ -76,6 +77,7 @@ interface HeadlessServiceStatusView {
 
 const message = useMessage()
 const router = useRouter()
+const {isDarkMode} = useThemeMode()
 const status = ref<contract.HeadlessEnvironmentStatus | null>(null)
 const recentLogs = ref<system.LogDTO[]>([])
 const isLoading = ref(false)
@@ -341,6 +343,19 @@ const chartOption = computed<EChartsOption>(() => {
   const uploadData = samples.length ? samples.map((sample) => Number(sample.uploadMBps.toFixed(3))) : [0]
   const downloadData = samples.length ? samples.map((sample) => Number(sample.downloadMBps.toFixed(3))) : [0]
   const maxValue = Math.max(...uploadData, ...downloadData, 0.1)
+  const chartTheme = isDarkMode.value
+    ? {
+        tooltipBorder: 'rgb(229 204 143 / 0.18)',
+        tooltipBackground: 'rgb(16 23 19 / 0.96)',
+        tooltipText: 'rgb(225 232 218 / 0.76)',
+        splitLine: 'rgb(229 204 143 / 0.1)',
+      }
+    : {
+        tooltipBorder: '#e4e4e7',
+        tooltipBackground: '#ffffff',
+        tooltipText: '#334155',
+        splitLine: '#eef2f6',
+      }
 
   return {
     animation: true,
@@ -356,10 +371,10 @@ const chartOption = computed<EChartsOption>(() => {
     tooltip: {
       trigger: 'axis',
       borderWidth: 1,
-      borderColor: '#e4e4e7',
-      backgroundColor: '#ffffff',
+      borderColor: chartTheme.tooltipBorder,
+      backgroundColor: chartTheme.tooltipBackground,
       textStyle: {
-        color: '#334155',
+        color: chartTheme.tooltipText,
         fontSize: 12,
       },
       valueFormatter: (value: unknown) => {
@@ -387,7 +402,7 @@ const chartOption = computed<EChartsOption>(() => {
       axisLabel: {show: false},
       splitLine: {
         lineStyle: {
-          color: '#eef2f6',
+          color: chartTheme.splitLine,
           width: 1,
         },
       },
