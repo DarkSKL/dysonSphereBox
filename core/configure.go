@@ -9,6 +9,11 @@ package core
 // 使用：通过 GLOBAL.Configure 向 service/helper 暴露稳定配置访问入口。
 // 边界：只聚合访问器，不缓存配置值，不直接决定业务默认值。
 type Configure struct {
+	// AppTheme 访问应用日夜主题配置。
+	// 职责：保存用户选择的界面主题模式。
+	// 使用：前端启动和主题切换时通过配置服务读写该配置。
+	// 边界：只保存 light/dark 文本，不在后端参与界面渲染或样式校验。
+	AppTheme *ConfigUnit
 	// GameStartFilePath 访问游戏启动文件路径配置。
 	// 职责：定位戴森球计划安装目录相关配置。
 	// 使用：环境检测、BepInEx 和无头服务器流程读取该配置。
@@ -32,6 +37,7 @@ type Configure struct {
 // 边界：不读取数据库，不创建默认配置记录。
 func InitConfigure() *Configure {
 	return &Configure{
+		AppTheme:          InitConfigUnit("System", "AppTheme"),
 		GameStartFilePath: InitConfigUnit("Game", "StartupFilePath"),
 		BaseURL:           InitConfigUnit("System", "BaseURL"),
 		GameServerArchive: InitConfigUnit("Game", "ServerArchive"),

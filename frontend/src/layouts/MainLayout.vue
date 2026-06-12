@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import {Activity, Home, Info, Package, PencilRuler, ScrollText, Server, Settings} from '@lucide/vue'
+import {Activity, Home, Info, Moon, Package, PencilRuler, ScrollText, Server, Settings, Sun} from '@lucide/vue'
+import {useMessage} from 'naive-ui'
 import {computed, onMounted} from 'vue'
 import {useRoute} from 'vue-router'
 import {useAppVersion} from '../composables/useAppVersion'
+import {useThemeMode} from '../composables/useThemeMode'
 
 const route = useRoute()
+const message = useMessage()
 const {appVersion, loadAppVersion} = useAppVersion()
+const {isDarkMode, isSavingThemeMode, loadThemeMode, toggleThemeMode} = useThemeMode()
 
 const navItems = [
   {label: '首页', to: '/', icon: Home},
@@ -18,19 +22,44 @@ const navItems = [
 ]
 
 const title = computed(() => route.meta.title || '戴森球盒子')
+const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模式' : '切换到夜间模式'))
 
 onMounted(() => {
   void loadAppVersion()
+  void loadThemeMode()
 })
+
+// =============== 主题切换交互 ===============
+// 说明：从右上角图标按钮中心触发圆形扩散切换，主题值由 useThemeMode 负责持久化。
+const handleThemeToggle = async (event: MouseEvent): Promise<void> => {
+  if (isSavingThemeMode.value) {
+    return
+  }
+
+  const target = event.currentTarget as HTMLElement | null
+  const rect = target?.getBoundingClientRect()
+  try {
+    await toggleThemeMode(
+      rect
+        ? {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          }
+        : undefined,
+    )
+  } catch (error) {
+    message.error(`主题保存失败：${error instanceof Error ? error.message : String(error || '未知错误')}`)
+  }
+}
 </script>
 
 <template>
-  <div class="h-screen overflow-hidden bg-[#fbfbfc] text-zinc-950">
-    <aside class="fixed inset-y-0 left-0 z-20 flex w-48 flex-col border-r border-zinc-200 bg-[#f7f7f8]">
-      <div class="flex h-16 items-center justify-between border-b border-zinc-200 px-4">
+  <div class="app-shell h-screen overflow-hidden">
+    <aside class="app-sidebar fixed inset-y-0 left-0 z-20 flex w-48 flex-col">
+      <div class="app-sidebar-header flex h-16 items-center justify-between px-4">
         <RouterLink to="/" class="min-w-0">
-          <p class="truncate text-lg font-semibold text-zinc-950">戴森球盒子</p>
-          <p class="text-[11px] text-zinc-400">戴森球计划工具合集</p>
+          <p class="app-brand-title truncate text-lg font-semibold">戴森球盒子</p>
+          <p class="app-brand-subtitle text-[11px]">戴森球计划工具合集</p>
         </RouterLink>
       </div>
 
@@ -44,8 +73,8 @@ onMounted(() => {
           v-for="item in navItems"
           :key="item.to"
           :to="item.to"
-          class="flex h-10 items-center gap-3 rounded border border-transparent px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-200 hover:bg-white hover:text-zinc-950"
-          active-class="border-blue-200 bg-white text-blue-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+          class="app-nav-link flex h-10 items-center gap-3 rounded border px-3 text-sm font-medium transition"
+          active-class="app-nav-link-active"
         >
           <component :is="item.icon" :size="16" :stroke-width="1.8" class="shrink-0" />
           <span class="truncate">{{ item.label }}</span>
@@ -57,13 +86,13 @@ onMounted(() => {
       <!-- * 交互：该区域只做状态展示，不承载操作入口 -->
       <!-- * 依赖：依赖前端运行时渲染，不连接后端健康检查接口 -->
       <!-- * 边界：这不是服务器探活结果，只表示本地界面正在运行 -->
-      <div class="mt-auto border-t border-zinc-200 p-3">
-        <div class="rounded    px-3 py-2">
+      <div class="app-sidebar-status mt-auto p-3">
+        <div class="app-status-panel rounded px-3 py-2">
           <div class="flex items-center justify-between gap-2">
-            <span class="text-xs text-zinc-500">运行状态</span>
-            <Activity :size="15" :stroke-width="2.2" class="heartbeat-icon text-emerald-500" />
+            <span class="app-muted-text text-xs">运行状态</span>
+            <Activity :size="15" :stroke-width="2.2" class="heartbeat-icon" />
           </div>
-          <p class="mt-1 text-xs text-zinc-800">应用运行中</p>
+          <p class="app-secondary-text mt-1 text-xs">应用运行中</p>
         </div>
       </div>
     </aside>
@@ -74,13 +103,29 @@ onMounted(() => {
       <!-- * 交互：右侧展示当前版本号，不承担页面操作 -->
       <!-- * 依赖：依赖路由 meta.title 生成标题 -->
       <!-- * 边界：未配置标题时回退到应用名称 -->
-      <header class="flex h-16 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-8">
+      <header class="app-header flex h-16 shrink-0 items-center justify-between px-8">
         <div>
-          <p class="text-sm font-semibold text-zinc-950">{{ title }}</p>
-          <p class="text-xs text-zinc-500">戴森球盒子</p>
+          <p class="app-header-title text-sm font-semibold">{{ title }}</p>
+          <p class="app-muted-text text-xs">戴森球盒子</p>
         </div>
         <div class="flex items-center gap-2">
-          <span class="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-500">{{ appVersion }}</span>
+          <!-- ~ 日夜模式切换 -->
+          <!-- * 说明：在版本信息旁提供无文字图标按钮，用于切换日间和夜间模式 -->
+          <!-- * 交互：点击后从按钮中心触发圆形扩散动画，并将结果写入 System/AppTheme 配置 -->
+          <!-- * 依赖：依赖 useThemeMode、ConfigurationService.GetConfig/SetConfig 与 View Transitions API -->
+          <!-- * 边界：动画不可用或减少动态时直接切换；保存中禁用按钮防止重复写入 -->
+          <button
+            type="button"
+            class="theme-toggle-button"
+            :title="themeToggleTitle"
+            :aria-label="themeToggleTitle"
+            :disabled="isSavingThemeMode"
+            @click="handleThemeToggle"
+          >
+            <Sun v-if="isDarkMode" :size="16" :stroke-width="1.9" />
+            <Moon v-else :size="16" :stroke-width="1.9" />
+          </button>
+          <span class="app-version-pill rounded px-2 py-1 text-xs">{{ appVersion }}</span>
         </div>
       </header>
 
@@ -92,8 +137,108 @@ onMounted(() => {
 </template>
 
 <style scoped lang="scss">
+.app-shell {
+  background:
+    radial-gradient(circle at 72% 18%, var(--ds-glow-gold), transparent 26%),
+    radial-gradient(circle at 24% 78%, var(--ds-glow-teal), transparent 32%),
+    var(--ds-bg-shell);
+  color: var(--ds-text-primary);
+}
+
+.app-sidebar {
+  border-right: 1px solid var(--ds-border-subtle);
+  background: var(--ds-bg-sidebar);
+}
+
+.app-sidebar-header,
+.app-sidebar-status,
+.app-header {
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.app-sidebar-status {
+  border-top: 1px solid var(--ds-border-subtle);
+  border-bottom: 0;
+}
+
+.app-header {
+  background: var(--ds-bg-header);
+}
+
+.app-brand-title,
+.app-header-title {
+  color: var(--ds-text-primary);
+}
+
+.app-brand-subtitle,
+.app-muted-text {
+  color: var(--ds-text-muted);
+}
+
+.app-secondary-text {
+  color: var(--ds-text-secondary);
+}
+
+.app-status-panel {
+  border: 1px solid var(--ds-border-subtle);
+  background: var(--ds-bg-panel);
+}
+
+.app-nav-link {
+  border-color: transparent;
+  color: var(--ds-nav-text);
+}
+
+.app-nav-link:hover {
+  border-color: var(--ds-border-subtle);
+  background: var(--ds-hover-bg);
+  color: var(--ds-text-primary);
+}
+
+.app-nav-link-active {
+  border-color: var(--ds-border-strong) !important;
+  background: var(--ds-active-bg) !important;
+  color: var(--ds-text-primary) !important;
+}
+
+.app-version-pill,
+.theme-toggle-button {
+  border: 1px solid var(--ds-border-default);
+  background: var(--ds-bg-panel);
+  color: var(--ds-text-muted);
+}
+
+.theme-toggle-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 4px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.theme-toggle-button:hover {
+  border-color: var(--ds-border-strong);
+  background: var(--ds-hover-bg);
+  color: var(--ds-brand);
+}
+
+.theme-toggle-button:active {
+  transform: translateY(1px);
+}
+
+.theme-toggle-button:disabled {
+  cursor: not-allowed;
+  color: var(--ds-text-disabled);
+}
+
 .heartbeat-icon {
-  filter: drop-shadow(0 0 5px rgb(16 185 129 / 0.24));
+  color: var(--ds-success);
+  filter: drop-shadow(0 0 5px rgb(124 212 131 / 0.24));
 }
 
 .heartbeat-icon :deep(path) {
