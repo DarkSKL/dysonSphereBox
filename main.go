@@ -42,6 +42,8 @@ func main() {
 		Title:     "戴森球盒子",
 		Width:     1024,
 		Height:    768,
+		MinWidth:  1024,
+		MinHeight: 768,
 		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
