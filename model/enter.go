@@ -5,6 +5,7 @@ package model
 // 边界：不包含远端接口 DTO、服务编排或文件系统操作。
 
 import (
+	"DysonSphereBox/model/environment"
 	"DysonSphereBox/model/modDependence"
 	"DysonSphereBox/model/system"
 )
@@ -24,6 +25,8 @@ type ModelGroup struct {
 	SystemModelGroup system.ModelGroup
 	// ModDependenceModelGroup 职责：聚合 Mod 依赖领域模型注册器；使用：RegisterModels 收集安装、依赖和文件记录模型时读取；边界：不执行安装状态迁移逻辑。
 	ModDependenceModelGroup modDependence.ModelGroup
+	// EnvironmentModelGroup 职责：聚合环境管理领域模型注册器；使用：RegisterModels 收集资源项目、同步文件和存档索引模型；边界：不执行本机目录扫描。
+	EnvironmentModelGroup environment.ModelGroup
 }
 
 // RegisterModels 返回当前应用需要 AutoMigrate 的全部模型。
@@ -34,6 +37,7 @@ func RegisterModels() []interface{} {
 	models := make([]interface{}, 0)
 	models = append(models, ModelGroupApp.SystemModelGroup.RegisterModels()...)
 	models = append(models, ModelGroupApp.ModDependenceModelGroup.RegisterModels()...)
+	models = append(models, ModelGroupApp.EnvironmentModelGroup.RegisterModels()...)
 
 	return models
 }

@@ -150,7 +150,7 @@ const {
       <!-- * 依赖：依赖 packageList、installedPackageKeys、installingPackageKeys 与后端安装器状态 -->
       <!-- * 边界：首屏加载、空列表和请求失败都有独立反馈，不遮挡游戏路径检查层 -->
       <div
-        class="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
+        class="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
         :class="(isCheckingGamePath || !canOpenModPage) ? 'pointer-events-none select-none blur-sm' : ''"
       >
         <ModPackCard

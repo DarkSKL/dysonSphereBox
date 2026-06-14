@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   Activity,
+  Boxes,
   Home,
   Info,
   Minus,
@@ -31,6 +32,7 @@ const navItems = [
   {label: '首页', to: '/', icon: Home},
   {label: '开服', to: '/headless', icon: Server},
   {label: '模组', to: '/mod', icon: Package},
+  {label: '环境', to: '/environment', icon: Boxes},
   {label: '蓝图', to: '/blueprint-generator', icon: PencilRuler},
   {label: '日志', to: '/log', icon: ScrollText},
   {label: '设置', to: '/settings', icon: Settings},

@@ -647,6 +647,756 @@ export namespace contract {
 
 }
 
+export namespace environment {
+	
+	export class EnvironmentBlueprintBreadcrumb {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentBlueprintBreadcrumb(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
+	export class EnvironmentBlueprintItem {
+	    id: string;
+	    parentId: string;
+	    type: string;
+	    name: string;
+	    state: string;
+	    sizeBytes: number;
+	    updatedAt: time.Time;
+	    relativePath: string;
+	    extension: string;
+	    childCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentBlueprintItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.parentId = source["parentId"];
+	        this.type = source["type"];
+	        this.name = source["name"];
+	        this.state = source["state"];
+	        this.sizeBytes = source["sizeBytes"];
+	        this.updatedAt = this.convertValues(source["updatedAt"], time.Time);
+	        this.relativePath = source["relativePath"];
+	        this.extension = source["extension"];
+	        this.childCount = source["childCount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentBlueprintMigrationEntry {
+	    itemId: string;
+	    name: string;
+	    oldRelativePath: string;
+	    newRelativePath: string;
+	    oldTargetPath: string;
+	    newTargetPath: string;
+	    conflict: boolean;
+	    conflictReason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentBlueprintMigrationEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.name = source["name"];
+	        this.oldRelativePath = source["oldRelativePath"];
+	        this.newRelativePath = source["newRelativePath"];
+	        this.oldTargetPath = source["oldTargetPath"];
+	        this.newTargetPath = source["newTargetPath"];
+	        this.conflict = source["conflict"];
+	        this.conflictReason = source["conflictReason"];
+	    }
+	}
+	export class EnvironmentBlueprintMigrationPreview {
+	    itemId: string;
+	    operation: string;
+	    targetParentId: string;
+	    targetName: string;
+	    requiresConfirmation: boolean;
+	    enabledBlueprints: number;
+	    conflicts: number;
+	    entries: EnvironmentBlueprintMigrationEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentBlueprintMigrationPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.operation = source["operation"];
+	        this.targetParentId = source["targetParentId"];
+	        this.targetName = source["targetName"];
+	        this.requiresConfirmation = source["requiresConfirmation"];
+	        this.enabledBlueprints = source["enabledBlueprints"];
+	        this.conflicts = source["conflicts"];
+	        this.entries = this.convertValues(source["entries"], EnvironmentBlueprintMigrationEntry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentBlueprintMigrationRequest {
+	    itemId: string;
+	    operation: string;
+	    targetParentId: string;
+	    targetName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentBlueprintMigrationRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.operation = source["operation"];
+	        this.targetParentId = source["targetParentId"];
+	        this.targetName = source["targetName"];
+	    }
+	}
+	export class EnvironmentBlueprintPage {
+	    parentId: string;
+	    breadcrumbs: EnvironmentBlueprintBreadcrumb[];
+	    items: EnvironmentBlueprintItem[];
+	    totalBlueprints: number;
+	    totalFolders: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentBlueprintPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.parentId = source["parentId"];
+	        this.breadcrumbs = this.convertValues(source["breadcrumbs"], EnvironmentBlueprintBreadcrumb);
+	        this.items = this.convertValues(source["items"], EnvironmentBlueprintItem);
+	        this.totalBlueprints = source["totalBlueprints"];
+	        this.totalFolders = source["totalFolders"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentInitialSyncPreview {
+	    kind: string;
+	    mods: number;
+	    blueprints: number;
+	    saves: number;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentInitialSyncPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.mods = source["mods"];
+	        this.blueprints = source["blueprints"];
+	        this.saves = source["saves"];
+	        this.message = source["message"];
+	    }
+	}
+	export class EnvironmentInitialSyncRequest {
+	    kind: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentInitialSyncRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	    }
+	}
+	export class EnvironmentLibraryCounts {
+	    mods: number;
+	    blueprints: number;
+	    blueprintFolders: number;
+	    saves: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentLibraryCounts(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mods = source["mods"];
+	        this.blueprints = source["blueprints"];
+	        this.blueprintFolders = source["blueprintFolders"];
+	        this.saves = source["saves"];
+	    }
+	}
+	export class RootResolution {
+	    path: string;
+	    source: string;
+	    confidence: string;
+	    needConfirm: boolean;
+	    exists: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RootResolution(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.source = source["source"];
+	        this.confidence = source["confidence"];
+	        this.needConfirm = source["needConfirm"];
+	        this.exists = source["exists"];
+	        this.message = source["message"];
+	    }
+	}
+	export class EnvironmentOverview {
+	    appDataRoot: string;
+	    modRoot: RootResolution;
+	    blueprintRoot: RootResolution;
+	    saveRoot: RootResolution;
+	    libraryCounts: EnvironmentLibraryCounts;
+	    initialSync: EnvironmentInitialSyncPreview;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentOverview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.appDataRoot = source["appDataRoot"];
+	        this.modRoot = this.convertValues(source["modRoot"], RootResolution);
+	        this.blueprintRoot = this.convertValues(source["blueprintRoot"], RootResolution);
+	        this.saveRoot = this.convertValues(source["saveRoot"], RootResolution);
+	        this.libraryCounts = this.convertValues(source["libraryCounts"], EnvironmentLibraryCounts);
+	        this.initialSync = this.convertValues(source["initialSync"], EnvironmentInitialSyncPreview);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentInitialSyncResult {
+	    kind: string;
+	    syncedMods: number;
+	    syncedBlueprints: number;
+	    indexedSaves: number;
+	    failures: string[];
+	    overview: EnvironmentOverview;
+	    operationId: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentInitialSyncResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.syncedMods = source["syncedMods"];
+	        this.syncedBlueprints = source["syncedBlueprints"];
+	        this.indexedSaves = source["indexedSaves"];
+	        this.failures = source["failures"];
+	        this.overview = this.convertValues(source["overview"], EnvironmentOverview);
+	        this.operationId = source["operationId"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class EnvironmentManagedStateIssue {
+	    itemId: string;
+	    kind: string;
+	    state: string;
+	    reason: string;
+	    message: string;
+	    relativePath: string;
+	    targetPath: string;
+	    expectedRoot: string;
+	    recordedRoot: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentManagedStateIssue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.kind = source["kind"];
+	        this.state = source["state"];
+	        this.reason = source["reason"];
+	        this.message = source["message"];
+	        this.relativePath = source["relativePath"];
+	        this.targetPath = source["targetPath"];
+	        this.expectedRoot = source["expectedRoot"];
+	        this.recordedRoot = source["recordedRoot"];
+	    }
+	}
+	export class EnvironmentManagedStateSummary {
+	    kind: string;
+	    checkedRecords: number;
+	    checkedItems: number;
+	    changedItems: number;
+	    conflictItems: number;
+	    missingItems: number;
+	    issues: EnvironmentManagedStateIssue[];
+	    operationId: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentManagedStateSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.checkedRecords = source["checkedRecords"];
+	        this.checkedItems = source["checkedItems"];
+	        this.changedItems = source["changedItems"];
+	        this.conflictItems = source["conflictItems"];
+	        this.missingItems = source["missingItems"];
+	        this.issues = this.convertValues(source["issues"], EnvironmentManagedStateIssue);
+	        this.operationId = source["operationId"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentModDependency {
+	    name: string;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentModDependency(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.version = source["version"];
+	    }
+	}
+	export class EnvironmentModDetail {
+	    id: string;
+	    name: string;
+	    version: string;
+	    author: string;
+	    description: string;
+	    websiteUrl: string;
+	    dependencies: EnvironmentModDependency[];
+	    libraryPath: string;
+	    supported: boolean;
+	    warning: string;
+	    rawManifest: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentModDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.version = source["version"];
+	        this.author = source["author"];
+	        this.description = source["description"];
+	        this.websiteUrl = source["websiteUrl"];
+	        this.dependencies = this.convertValues(source["dependencies"], EnvironmentModDependency);
+	        this.libraryPath = source["libraryPath"];
+	        this.supported = source["supported"];
+	        this.warning = source["warning"];
+	        this.rawManifest = source["rawManifest"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentModItem {
+	    id: string;
+	    name: string;
+	    version: string;
+	    author: string;
+	    description: string;
+	    state: string;
+	    sizeBytes: number;
+	    updatedAt: time.Time;
+	    libraryPath: string;
+	    supported: boolean;
+	    warning: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentModItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.version = source["version"];
+	        this.author = source["author"];
+	        this.description = source["description"];
+	        this.state = source["state"];
+	        this.sizeBytes = source["sizeBytes"];
+	        this.updatedAt = this.convertValues(source["updatedAt"], time.Time);
+	        this.libraryPath = source["libraryPath"];
+	        this.supported = source["supported"];
+	        this.warning = source["warning"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentOperation {
+	    id: number;
+	    operation: string;
+	    kind: string;
+	    itemId: string;
+	    status: string;
+	    message: string;
+	    detail: number[];
+	    createdAt: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentOperation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.operation = source["operation"];
+	        this.kind = source["kind"];
+	        this.itemId = source["itemId"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	        this.detail = source["detail"];
+	        this.createdAt = this.convertValues(source["createdAt"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentSaveItem {
+	    id: string;
+	    name: string;
+	    fileName: string;
+	    relativePath: string;
+	    sizeBytes: number;
+	    lastModifiedAt: time.Time;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentSaveItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.fileName = source["fileName"];
+	        this.relativePath = source["relativePath"];
+	        this.sizeBytes = source["sizeBytes"];
+	        this.lastModifiedAt = this.convertValues(source["lastModifiedAt"], time.Time);
+	        this.status = source["status"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentOperationResult {
+	    message: string;
+	    operationId: number;
+	    mod?: EnvironmentModItem;
+	    mods?: EnvironmentModItem[];
+	    blueprintPage?: EnvironmentBlueprintPage;
+	    saves?: EnvironmentSaveItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentOperationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.message = source["message"];
+	        this.operationId = source["operationId"];
+	        this.mod = this.convertValues(source["mod"], EnvironmentModItem);
+	        this.mods = this.convertValues(source["mods"], EnvironmentModItem);
+	        this.blueprintPage = this.convertValues(source["blueprintPage"], EnvironmentBlueprintPage);
+	        this.saves = this.convertValues(source["saves"], EnvironmentSaveItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class EnvironmentPathSelection {
+	    paths: string[];
+	    canceled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentPathSelection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.paths = source["paths"];
+	        this.canceled = source["canceled"];
+	    }
+	}
+	export class EnvironmentRecoverySummary {
+	    pendingOperations: number;
+	    recoveredOperations: number;
+	    failedOperations: number;
+	    removedPaths: string[];
+	    failedPaths: string[];
+	    managedState?: EnvironmentManagedStateSummary;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentRecoverySummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pendingOperations = source["pendingOperations"];
+	        this.recoveredOperations = source["recoveredOperations"];
+	        this.failedOperations = source["failedOperations"];
+	        this.removedPaths = source["removedPaths"];
+	        this.failedPaths = source["failedPaths"];
+	        this.managedState = this.convertValues(source["managedState"], EnvironmentManagedStateSummary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvironmentRootDirectoryResult {
+	    kind: string;
+	    root: RootResolution;
+	    overview: EnvironmentOverview;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentRootDirectoryResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.root = this.convertValues(source["root"], RootResolution);
+	        this.overview = this.convertValues(source["overview"], EnvironmentOverview);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+
+}
+
 export namespace modDependence {
 	
 	export class ModDependencyDTO {

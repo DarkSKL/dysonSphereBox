@@ -12,6 +12,7 @@ import (
 	legacyMigration "DysonSphereBox/helper/modDependence/installer/migration/legacy"
 	v2Installer "DysonSphereBox/helper/modDependence/installer/v2"
 	systemHelper "DysonSphereBox/helper/system"
+	environmentService "DysonSphereBox/service/environment"
 	"DysonSphereBox/utils/dysonsphere"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -52,6 +53,10 @@ func (a *App) startup(ctx context.Context) {
 	}
 	if err := v2Installer.RecoverInterruptedRemotePackageInstalls(); err != nil {
 		fmt.Printf("recover interrupted mod installs: %v\n", err)
+	}
+	environmentManagerService := environmentService.EnvironmentManagerService{}
+	if _, err := environmentManagerService.RecoverInterruptedOperations(); err != nil {
+		fmt.Printf("recover interrupted environment operations: %v\n", err)
 	}
 }
 
