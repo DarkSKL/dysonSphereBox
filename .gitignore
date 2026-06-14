@@ -4,3 +4,4 @@ frontend/dist
 deploy
 remotion
 .gocache
+.cache

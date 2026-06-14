@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
 // assets 是打包进桌面程序的前端构建产物。
@@ -47,6 +48,11 @@ func main() {
 		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
+		},
+		Windows: &windows.Options{
+			IsZoomControlEnabled: false,
+			ZoomFactor:           1,
+			DisablePinchZoom:     true,
 		},
 		OnStartup:  app.startup,
 		OnShutdown: app.shutdown,

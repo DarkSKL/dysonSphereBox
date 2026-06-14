@@ -189,6 +189,13 @@ All backend package directories should remain single-responsibility:
 - Examples: `helper/modDependence/audit/` for log/audit helpers, `helper/modDependence/installer/` for installer implementation details, `service/modDependence/marketplace/` for marketplace service workflows, `apiDefinition/modDependence/thunderstore/` for Thunderstore contracts, `model/modDependence/installed/` for installed-record models, `constant/modDependence/install/` for install state/stage constants, or `utils/path/` when generic path utilities grow into multiple files.
 - A subdirectory must have one responsibility and one reason to change. If it grows into multiple concerns, split it one level deeper rather than adding broad catch-all files.
 
+API definitions:
+
+- Put every external API path, request DTO, response DTO, and API-only URL builder under `apiDefinition/`; do not define API paths in `service/` or `helper/`.
+- Define static API paths as documented constants. Use the `APIURLPackageList` / `APIURLDownloadRecord` style: each constant stores only a relative path and has Chinese `职责`、`使用`、`边界` comments.
+- Define dynamic path parameters in templates such as `/api/{{UserID}}/{{TestID}}`. The placeholder name must match an exported field name on the parameter struct passed by the caller.
+- Use `utils.ResolveAPIPath(pathTemplate, params)` to replace dynamic path parameters before sending a request. The utility owns reflection-based field lookup and path escaping; query strings and HTTP request behavior remain the caller's responsibility.
+
 Helper packages assist services:
 
 - Put reusable support code in `helper/<domain>` or `helper/<topic>.go`.
