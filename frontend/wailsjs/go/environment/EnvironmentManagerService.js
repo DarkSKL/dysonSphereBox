@@ -46,6 +46,10 @@ export function ExportSave(arg1, arg2) {
   return window['go']['environment']['EnvironmentManagerService']['ExportSave'](arg1, arg2);
 }
 
+export function GetBlueprintDetail(arg1) {
+  return window['go']['environment']['EnvironmentManagerService']['GetBlueprintDetail'](arg1);
+}
+
 export function GetModDetail(arg1) {
   return window['go']['environment']['EnvironmentManagerService']['GetModDetail'](arg1);
 }
@@ -90,12 +94,28 @@ export function OpenBlueprintLibraryDir() {
   return window['go']['environment']['EnvironmentManagerService']['OpenBlueprintLibraryDir']();
 }
 
+export function OpenBlueprintRealDir() {
+  return window['go']['environment']['EnvironmentManagerService']['OpenBlueprintRealDir']();
+}
+
 export function OpenModLibraryDir() {
   return window['go']['environment']['EnvironmentManagerService']['OpenModLibraryDir']();
 }
 
+export function OpenModRealDir() {
+  return window['go']['environment']['EnvironmentManagerService']['OpenModRealDir']();
+}
+
 export function OpenSaveDir() {
   return window['go']['environment']['EnvironmentManagerService']['OpenSaveDir']();
+}
+
+export function OpenSaveLibraryDir() {
+  return window['go']['environment']['EnvironmentManagerService']['OpenSaveLibraryDir']();
+}
+
+export function OpenSaveRealDir() {
+  return window['go']['environment']['EnvironmentManagerService']['OpenSaveRealDir']();
 }
 
 export function PreviewBlueprintMigration(arg1, arg2, arg3, arg4) {

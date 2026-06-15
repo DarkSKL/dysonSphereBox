@@ -24,6 +24,8 @@ export function ExportBlueprint(arg1:string,arg2:string):Promise<environment.Env
 
 export function ExportSave(arg1:string,arg2:string):Promise<environment.EnvironmentOperationResult>;
 
+export function GetBlueprintDetail(arg1:string):Promise<environment.EnvironmentBlueprintDetail>;
+
 export function GetModDetail(arg1:string):Promise<environment.EnvironmentModDetail>;
 
 export function GetOperation(arg1:number):Promise<environment.EnvironmentOperation>;
@@ -46,9 +48,17 @@ export function MoveBlueprintItem(arg1:string,arg2:string):Promise<environment.E
 
 export function OpenBlueprintLibraryDir():Promise<void>;
 
+export function OpenBlueprintRealDir():Promise<void>;
+
 export function OpenModLibraryDir():Promise<void>;
 
+export function OpenModRealDir():Promise<void>;
+
 export function OpenSaveDir():Promise<void>;
+
+export function OpenSaveLibraryDir():Promise<void>;
+
+export function OpenSaveRealDir():Promise<void>;
 
 export function PreviewBlueprintMigration(arg1:string,arg2:string,arg3:string,arg4:string):Promise<environment.EnvironmentBlueprintMigrationPreview>;
 

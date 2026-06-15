@@ -6,19 +6,21 @@ import {
   FolderOpen,
   Layers,
   Package,
+  PencilRuler,
   Search,
 } from '@lucide/vue'
 import type {DropdownOption} from 'naive-ui'
 import {useMessage} from 'naive-ui'
-import {computed, nextTick, onMounted, ref, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useEnvironmentState} from '../composables/useEnvironmentState'
 import {environment} from '../../wailsjs/go/models'
+import {OnFileDrop, OnFileDropOff} from '../../wailsjs/runtime/runtime'
 
 definePage({
   meta: {
     layout: 'main',
     keepAlive: true,
-    title: '环境',
+    title: '资源',
   },
 })
 
@@ -26,6 +28,7 @@ const {
   activeTab,
   mods,
   selectedModDetail,
+  selectedBlueprintDetail,
   blueprintPage,
   saves,
   modSearch,
@@ -34,8 +37,10 @@ const {
   currentBlueprintParentId,
   isLoadingMods,
   isLoadingModDetail,
+  isLoadingBlueprintDetail,
   isLoadingBlueprints,
   isLoadingSaves,
+  isRunningInitialSync,
   operatingEnvResourceIds,
   enabledModCount,
   disabledModCount,
@@ -46,11 +51,15 @@ const {
   loadMods,
   loadModDetail,
   closeModDetail,
+  loadBlueprintDetail,
+  closeBlueprintDetail,
   loadBlueprints,
   loadSaves,
   enterBlueprintFolder,
   backToBlueprintRoot,
   toggleMod,
+  importMod,
+  selectAndImportModFiles,
   selectAndImportModDirectory,
   deleteMod,
   toggleBlueprint,
@@ -69,8 +78,12 @@ const {
   restoreGameFromClientMirror,
   unlinkSyncRecord,
   openModLibraryDir,
+  openModRealDir,
   openBlueprintLibraryDir,
+  openBlueprintRealDir,
+  openSaveLibraryDir,
   openSaveDir,
+  runInitialSync,
   syncEnvironmentResources,
   selectAndSetEnvironmentRootDirectory,
 } = useEnvironmentState()
@@ -106,11 +119,21 @@ const activeTabSummary = computed(() => {
 const draggedBlueprintResourceId = ref('')
 const blueprintDropTargetId = ref<string | null>(null)
 const isDroppingBlueprint = ref(false)
+const isModZipDragActive = ref(false)
+const modZipDragDepth = ref(0)
+const isImportingDroppedModZip = ref(false)
 let environmentSearchTimer: ReturnType<typeof window.setTimeout> | null = null
 onMounted(async () => {
+  OnFileDrop((_, __, paths) => {
+    void importDroppedModZipPaths(paths)
+  }, false)
   await recoverInterruptedOperations()
   await loadOverview()
   await loadMods()
+})
+
+onBeforeUnmount(() => {
+  OnFileDropOff()
 })
 
 watch(modSearch, () => {
@@ -168,6 +191,17 @@ const formatDate = (value: unknown): string => {
   })
 }
 
+const formatOptionalDate = (value?: string): string => {
+  if (!value) {
+    return '未知时间'
+  }
+  return formatDate(value)
+}
+
+const itemGroupLabel = (itemGroup: environment.BlueprintItemGroup): string => {
+  return itemGroup.itemName || `物品 ${itemGroup.itemId}`
+}
+
 const stateLabel = (state: string): string => {
   if (state === 'enabled') {
     return '已启用'
@@ -182,6 +216,81 @@ const stateLabel = (state: string): string => {
     return '不可用'
   }
   return '默认'
+}
+
+// =============== 模组压缩包拖入 ===============
+// 说明：支持把本地 zip 压缩包拖入模组子页面，复用后端 ImportMod 解析和导入规则。
+// 边界：真实文件路径只信任 Wails OnFileDrop 回调；DOM drop 只负责清理拖入蒙版，非 zip 路径不会提交给后端。
+
+const hasDraggedFile = (event: DragEvent): boolean => {
+  return Array.from(event.dataTransfer?.types ?? []).includes('Files')
+}
+
+const modZipPathsOnly = (paths: string[]): string[] => {
+  return paths.filter((path) => path.toLowerCase().endsWith('.zip'))
+}
+
+const importDroppedModZipPaths = async (paths: string[]): Promise<void> => {
+  if (activeTab.value !== 'mods') {
+    return
+  }
+  if (isImportingDroppedModZip.value) {
+    return
+  }
+  const zipPaths = modZipPathsOnly(paths)
+  if (zipPaths.length === 0) {
+    return
+  }
+  isImportingDroppedModZip.value = true
+  try {
+    await importMod(zipPaths)
+  } finally {
+    window.setTimeout(() => {
+      isImportingDroppedModZip.value = false
+    }, 300)
+  }
+}
+
+const markModZipDrag = (event: DragEvent): void => {
+  if (activeTab.value !== 'mods' || !hasDraggedFile(event)) {
+    return
+  }
+  event.preventDefault()
+  modZipDragDepth.value += 1
+  isModZipDragActive.value = true
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+const keepModZipDrag = (event: DragEvent): void => {
+  if (activeTab.value !== 'mods' || !hasDraggedFile(event)) {
+    return
+  }
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+const clearModZipDrag = (event: DragEvent): void => {
+  if (activeTab.value !== 'mods' || !hasDraggedFile(event)) {
+    return
+  }
+  event.preventDefault()
+  modZipDragDepth.value = Math.max(0, modZipDragDepth.value - 1)
+  if (modZipDragDepth.value === 0) {
+    isModZipDragActive.value = false
+  }
+}
+
+const dropModZipFiles = async (event: DragEvent): Promise<void> => {
+  if (activeTab.value !== 'mods') {
+    return
+  }
+  event.preventDefault()
+  modZipDragDepth.value = 0
+  isModZipDragActive.value = false
 }
 
 // =============== 蓝图拖拽移动 ===============
@@ -251,9 +360,11 @@ const dropBlueprintToParent = async (event: DragEvent, targetParentId: string): 
 type EnvContextMenuKind = 'mod-space' | 'mod' | 'blueprint-space' | 'blueprint-folder' | 'blueprint-file' | 'save-space' | 'save'
 type EnvContextMenuAction =
   | 'mod-import'
+  | 'mod-import-zip'
   | 'mod-sync'
   | 'mod-detail'
   | 'mod-open-dir'
+  | 'mod-open-real-dir'
   | 'mod-update-client'
   | 'mod-restore-game'
   | 'mod-unlink-sync'
@@ -262,7 +373,9 @@ type EnvContextMenuAction =
   | 'blueprint-import'
   | 'blueprint-quick-import'
   | 'blueprint-sync'
+  | 'blueprint-detail'
   | 'blueprint-open-dir'
+  | 'blueprint-open-real-dir'
   | 'blueprint-select-dir'
   | 'blueprint-enter-folder'
   | 'blueprint-rename'
@@ -273,6 +386,7 @@ type EnvContextMenuAction =
   | 'blueprint-delete'
   | 'save-import'
   | 'save-sync'
+  | 'save-open-library-dir'
   | 'save-select-dir'
   | 'save-rename'
   | 'save-export'
@@ -363,6 +477,15 @@ const selectedModDetailVisible = computed({
   },
 })
 
+const selectedBlueprintDetailVisible = computed({
+  get: () => selectedBlueprintDetail.value !== null || isLoadingBlueprintDetail.value,
+  set: (visible: boolean) => {
+    if (!visible) {
+      closeBlueprintDetail()
+    }
+  },
+})
+
 const conflictMenuOptions = (prefix: 'mod' | 'blueprint'): DropdownOption[] => [
   {type: 'divider', key: `${prefix}-conflict-divider`},
   {label: '用游戏侧更新客户端镜像', key: `${prefix}-update-client`},
@@ -375,6 +498,7 @@ const modMaintenanceMenuOptions = (): DropdownOption[] => [
   {label: '同步模组', key: 'mod-sync'},
   {type: 'divider', key: 'mod-directory-divider'},
   {label: '打开资源库目录', key: 'mod-open-dir'},
+  {label: '打开真实资源目录', key: 'mod-open-real-dir'},
 ]
 
 const blueprintMaintenanceMenuOptions = (): DropdownOption[] => [
@@ -382,6 +506,7 @@ const blueprintMaintenanceMenuOptions = (): DropdownOption[] => [
   {label: '同步蓝图', key: 'blueprint-sync'},
   {type: 'divider', key: 'blueprint-directory-divider'},
   {label: '打开资源库目录', key: 'blueprint-open-dir'},
+  {label: '打开真实资源目录', key: 'blueprint-open-real-dir'},
   {label: '选择蓝图目录', key: 'blueprint-select-dir'},
 ]
 
@@ -389,7 +514,8 @@ const saveMaintenanceMenuOptions = (): DropdownOption[] => [
   {type: 'divider', key: 'save-state-divider'},
   {label: '同步存档', key: 'save-sync'},
   {type: 'divider', key: 'save-directory-divider'},
-  {label: '打开存档目录', key: 'save-open-dir'},
+  {label: '打开资源库目录', key: 'save-open-library-dir'},
+  {label: '打开真实资源目录', key: 'save-open-dir'},
   {label: '选择存档目录', key: 'save-select-dir'},
 ]
 
@@ -401,6 +527,7 @@ const envContextMenuOptions = computed<DropdownOption[]>(() => {
 
   if (target.kind === 'mod-space') {
     return [
+      {label: '导入 zip 压缩包', key: 'mod-import-zip'},
       {label: '导入模组目录', key: 'mod-import'},
       ...modMaintenanceMenuOptions(),
     ]
@@ -437,6 +564,7 @@ const envContextMenuOptions = computed<DropdownOption[]>(() => {
 
   if (target.kind === 'blueprint-file') {
     return [
+      {label: '查看详情', key: 'blueprint-detail'},
       {label: '重命名', key: 'blueprint-rename'},
       {label: '导出蓝图', key: 'blueprint-export'},
       ...(shouldShowSyncRepairMenu(target.blueprint?.state) ? conflictMenuOptions('blueprint') : []),
@@ -687,6 +815,10 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
     await selectAndImportModDirectory()
     return
   }
+  if (action === 'mod-import-zip') {
+    await selectAndImportModFiles()
+    return
+  }
   if (action === 'mod-sync') {
     await syncEnvironmentResources('mod')
     return
@@ -697,6 +829,10 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
   }
   if (action === 'mod-open-dir') {
     await openModLibraryDir()
+    return
+  }
+  if (action === 'mod-open-real-dir') {
+    await openModRealDir()
     return
   }
   if (action === 'mod-update-client' && target.mod) {
@@ -731,8 +867,16 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
     await syncEnvironmentResources('blueprint')
     return
   }
+  if (action === 'blueprint-detail' && target.blueprint) {
+    await loadBlueprintDetail(target.blueprint.id)
+    return
+  }
   if (action === 'blueprint-open-dir') {
     await openBlueprintLibraryDir()
+    return
+  }
+  if (action === 'blueprint-open-real-dir') {
+    await openBlueprintRealDir()
     return
   }
   if (action === 'blueprint-select-dir') {
@@ -773,6 +917,10 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
   }
   if (action === 'save-sync') {
     await syncEnvironmentResources('save')
+    return
+  }
+  if (action === 'save-open-library-dir') {
+    await openSaveLibraryDir()
     return
   }
   if (action === 'save-select-dir') {
@@ -834,10 +982,28 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
           </n-input>
         </div>
 
-        <div class="environment-grid-scroll" @contextmenu="openEnvContextMenu($event, {kind: 'mod-space'})">
+        <div
+          class="environment-grid-scroll mod-drop-zone"
+          @dragenter="markModZipDrag"
+          @dragover="keepModZipDrag"
+          @dragleave="clearModZipDrag"
+          @drop="dropModZipFiles"
+          @contextmenu="openEnvContextMenu($event, {kind: 'mod-space'})"
+        >
+          <div v-if="isModZipDragActive" class="mod-zip-drop-mask">
+            <div>
+              <Package :size="34" :stroke-width="1.7" />
+              <strong>导入解析 Mod</strong>
+              <span>松开后解析 zip 压缩包</span>
+            </div>
+          </div>
           <div v-if="!isLoadingMods && mods.length === 0" class="environment-empty">
             <Package :size="30" :stroke-width="1.7" />
-            <p>资源库里还没有模组。</p>
+            <p>
+              资源库里还没有模组，点击
+              <button type="button" :disabled="isRunningInitialSync" @click="runInitialSync('mod')">一键同步</button>
+              纳管本机模组。
+            </p>
           </div>
           <div v-else class="environment-grid">
             <button
@@ -922,7 +1088,12 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
         >
           <div v-if="!isLoadingBlueprints && blueprintResources.length === 0" class="environment-empty">
             <Layers :size="30" :stroke-width="1.7" />
-            <p>{{ blueprintSearch ? '未找到匹配的蓝图。' : '这个蓝图文件夹是空的。' }}</p>
+            <p v-if="blueprintSearch">未找到匹配的蓝图。</p>
+            <p v-else>
+              这个蓝图文件夹是空的，点击
+              <button type="button" :disabled="isRunningInitialSync" @click="runInitialSync('blueprint')">一键同步</button>
+              纳管本机蓝图。
+            </p>
           </div>
           <div v-else class="environment-grid">
             <button
@@ -961,7 +1132,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
               @contextmenu="openEnvContextMenu($event, {kind: 'blueprint-file', blueprint})"
             >
               <n-spin :show="isEnvResourceOperating(blueprint.id)" size="small">
-                <Layers :size="30" :stroke-width="1.7" />
+                <PencilRuler :size="30" :stroke-width="1.7" />
               </n-spin>
               <span class="resource-name">{{ blueprint.name }}</span>
               <span class="resource-meta">
@@ -979,7 +1150,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
       <!-- ~ 存档目录 -->
       <!-- * 说明：直接展示真实 SaveRoot 下的存档文件扫描结果 -->
       <!-- * 交互：搜索过滤；左键重命名，右键打开操作菜单 -->
-      <!-- * 依赖：依赖 EnvironmentManagerService.ListSaves 与 OpenSaveDir -->
+      <!-- * 依赖：依赖 EnvironmentManagerService.ListSaves、OpenSaveLibraryDir 与 OpenSaveRealDir -->
       <!-- * 边界：存档不进入客户端虚拟目录，页面以真实目录当前状态为准 -->
       <section v-else class="environment-tab-panel">
         <div class="environment-toolbar">
@@ -1127,6 +1298,81 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
       <p class="pt-2 text-sm leading-6 text-zinc-600">{{ envConfirmDialog.content }}</p>
     </n-modal>
 
+    <!-- ~ 蓝图详情抽屉 -->
+    <!-- * 说明：展示右键蓝图文件解析出的元信息、区域、建筑统计和建筑样例 -->
+    <!-- * 交互：右侧滑出只读查看；关闭后清空当前蓝图详情，避免展示旧数据 -->
+    <!-- * 依赖：依赖 EnvironmentManagerService.GetBlueprintDetail 返回的解析 DTO -->
+    <!-- * 边界：解析失败由 toast 提示并保持抽屉关闭，不在前端重新解析蓝图编码 -->
+    <n-drawer
+      v-model:show="selectedBlueprintDetailVisible"
+      width="520"
+      placement="right"
+      :trap-focus="false"
+    >
+      <n-drawer-content
+        title="蓝图详情"
+        closable
+      >
+        <n-spin :show="isLoadingBlueprintDetail" size="small">
+          <div v-if="selectedBlueprintDetail" class="blueprint-detail-drawer">
+            <div class="blueprint-detail-title">
+              <PencilRuler :size="22" :stroke-width="1.8" />
+              <div>
+                <h3>{{ selectedBlueprintDetail.item.name }}</h3>
+                <p>{{ selectedBlueprintDetail.libraryPath }}</p>
+              </div>
+            </div>
+
+            <div class="blueprint-summary-grid">
+              <div>
+                <span>建筑</span>
+                <strong>{{ selectedBlueprintDetail.parsed.summary.buildingCount }}</strong>
+              </div>
+              <div>
+                <span>区域</span>
+                <strong>{{ selectedBlueprintDetail.parsed.summary.areaCount }}</strong>
+              </div>
+              <div>
+                <span>连接</span>
+                <strong>{{ selectedBlueprintDetail.parsed.summary.connectionCount }}</strong>
+              </div>
+              <div>
+                <span>参数化</span>
+                <strong>{{ selectedBlueprintDetail.parsed.summary.parameterizedCount }}</strong>
+              </div>
+            </div>
+
+            <div class="environment-detail-grid">
+              <span>标题</span>
+              <strong>{{ selectedBlueprintDetail.parsed.meta.title || selectedBlueprintDetail.item.name }}</strong>
+              <span>游戏版本</span>
+              <strong>{{ selectedBlueprintDetail.parsed.meta.gameVersion || '未知版本' }}</strong>
+              <span>创建时间</span>
+              <strong>{{ formatOptionalDate(selectedBlueprintDetail.parsed.meta.createdAt) }}</strong>
+              <span>校验尾部</span>
+              <strong>{{ selectedBlueprintDetail.parsed.meta.checksum || '未提供' }}</strong>
+              <span>描述</span>
+              <strong>{{ selectedBlueprintDetail.parsed.meta.description || '暂无说明' }}</strong>
+            </div>
+
+            <div class="environment-detail-section">
+              <span>建筑组成</span>
+              <div v-if="selectedBlueprintDetail.parsed.summary.itemGroups.length > 0" class="blueprint-item-groups">
+                <div
+                  v-for="itemGroup in selectedBlueprintDetail.parsed.summary.itemGroups"
+                  :key="itemGroup.itemId"
+                >
+                  <span>{{ itemGroupLabel(itemGroup) }}</span>
+                  <strong>{{ itemGroup.count }}</strong>
+                </div>
+              </div>
+              <strong v-else>未解析到建筑</strong>
+            </div>
+          </div>
+        </n-spin>
+      </n-drawer-content>
+    </n-drawer>
+
     <!-- ~ 模组详情弹窗 -->
     <!-- * 说明：展示当前扫描到的模组 manifest 详情，和右键“查看详情”保持一致入口 -->
     <!-- * 交互：只读查看，关闭后清空选中模组 -->
@@ -1165,7 +1411,12 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
         </div>
         <div class="environment-detail-section">
           <span>原始 Manifest</span>
-          <pre>{{ selectedModDetail.rawManifest || '{}' }}</pre>
+          <n-code
+            class="environment-manifest-code"
+            :code="selectedModDetail.rawManifest || '{}'"
+            language="json"
+            show-line-numbers
+          />
         </div>
       </div>
       </n-spin>
@@ -1308,6 +1559,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
 }
 
 .environment-grid-scroll {
+  position: relative;
   min-height: 0;
   flex: 1;
   overflow: auto;
@@ -1316,6 +1568,43 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
 
   &.blueprint-drop-active {
     background: color-mix(in srgb, var(--env-info) 8%, transparent);
+  }
+}
+
+.mod-drop-zone {
+  --wails-drop-target: drop;
+}
+
+.mod-zip-drop-mask {
+  position: absolute;
+  z-index: 5;
+  inset: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed color-mix(in srgb, var(--env-brand) 58%, var(--env-border));
+  background: color-mix(in srgb, var(--env-bg) 82%, transparent);
+  color: var(--env-text);
+  pointer-events: none;
+
+  div {
+    display: grid;
+    place-items: center;
+    gap: 6px;
+    padding: 18px 24px;
+  }
+
+  svg {
+    color: var(--env-brand);
+  }
+
+  strong {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  span {
+    color: var(--env-text-muted);
+    font-size: 0.75rem;
   }
 }
 
@@ -1472,17 +1761,13 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
     font-weight: 500;
   }
 
-  pre {
+  .environment-manifest-code {
+    display: block;
     max-height: 220px;
     overflow: auto;
     border: 1px solid var(--env-border-soft);
     background: var(--env-surface-raised);
     padding: 10px;
-    color: var(--env-text);
-    font-size: 0.75rem;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
   }
 }
 
@@ -1500,6 +1785,100 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
   em {
     color: var(--env-text-muted);
     font-style: normal;
+  }
+}
+
+.blueprint-detail-drawer {
+  display: grid;
+  gap: 18px;
+  color: var(--env-text);
+}
+
+.blueprint-detail-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--env-border-soft);
+  padding-bottom: 14px;
+  color: var(--env-brand);
+
+  h3 {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--env-text);
+    font-size: 1rem;
+    font-weight: 650;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  p {
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+    color: var(--env-text-muted);
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+}
+
+.blueprint-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--env-border-soft);
+  background: var(--env-surface-raised);
+
+  div {
+    display: grid;
+    gap: 4px;
+    border-right: 1px solid var(--env-border-soft);
+    padding: 10px;
+
+    &:last-child {
+      border-right: 0;
+    }
+  }
+
+  span {
+    color: var(--env-text-muted);
+    font-size: 0.6875rem;
+  }
+
+  strong {
+    color: var(--env-text);
+    font-size: 1rem;
+    font-weight: 650;
+  }
+}
+
+.blueprint-item-groups {
+  display: grid;
+  gap: 8px;
+}
+
+.blueprint-item-groups {
+  div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--env-border-soft);
+    padding-bottom: 8px;
+    font-size: 0.8125rem;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--env-text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: var(--env-text);
+    font-weight: 650;
   }
 }
 
@@ -1547,6 +1926,28 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
   border: 1px dashed var(--env-border);
   color: var(--env-text-muted);
   font-size: 0.875rem;
+
+  p {
+    max-width: 28rem;
+    text-align: center;
+    line-height: 1.7;
+  }
+
+  button {
+    color: var(--env-brand);
+    font-weight: 650;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+
+    &:hover {
+      color: var(--env-info);
+    }
+
+    &:disabled {
+      cursor: wait;
+      opacity: 0.62;
+    }
+  }
 }
 
 @media (max-width: 860px) {

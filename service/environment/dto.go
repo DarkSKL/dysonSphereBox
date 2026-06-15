@@ -410,6 +410,19 @@ type EnvironmentBlueprintItem struct {
 	ChildCount int `json:"childCount"`
 }
 
+// EnvironmentBlueprintDetail 描述单个蓝图文件详情。
+// 职责：把资源库扫描摘要、文件位置和解析后的蓝图结构返回给前端。
+// 使用：环境页蓝图右键“查看详情”打开 Drawer 时调用 GetBlueprintDetail。
+// 边界：只读客户端蓝图镜像文件，不返回完整蓝图编码，不修改文件或启用状态。
+type EnvironmentBlueprintDetail struct {
+	// Item 职责：保存当前蓝图卡片摘要；使用：详情标题、路径和状态展示；边界：来自当前扫描结果，资源被移动后可能变化。
+	Item EnvironmentBlueprintItem `json:"item"`
+	// LibraryPath 职责：保存相对客户端资源库的路径；使用：诊断和 UI 展示；边界：不暴露 AppData 绝对路径。
+	LibraryPath string `json:"libraryPath"`
+	// Parsed 职责：保存蓝图编码解析结果；使用：详情 Drawer 展示元信息、区域和建筑统计；边界：解析失败时服务方法直接返回错误。
+	Parsed environmentHelper.BlueprintDecodeResult `json:"parsed"`
+}
+
 // EnvironmentSaveItem 描述存档卡片数据。
 // 职责：向前端提供真实 SaveRoot 文件摘要。
 // 使用：ListSaves 和 RefreshSaves 返回。

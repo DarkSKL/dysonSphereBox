@@ -54,6 +54,10 @@ func main() {
 			ZoomFactor:           1,
 			DisablePinchZoom:     true,
 		},
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop:     true,
+			DisableWebViewDrop: true,
+		},
 		OnStartup:  app.startup,
 		OnShutdown: app.shutdown,
 		Bind:       services,

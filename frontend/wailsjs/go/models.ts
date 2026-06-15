@@ -649,6 +649,306 @@ export namespace contract {
 
 export namespace environment {
 	
+	export class BlueprintArea {
+	    index: number;
+	    parentIndex: number;
+	    tropicAnchor: number;
+	    areaSegments: number;
+	    anchorLocalOffsetX: number;
+	    anchorLocalOffsetY: number;
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintArea(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.parentIndex = source["parentIndex"];
+	        this.tropicAnchor = source["tropicAnchor"];
+	        this.areaSegments = source["areaSegments"];
+	        this.anchorLocalOffsetX = source["anchorLocalOffsetX"];
+	        this.anchorLocalOffsetY = source["anchorLocalOffsetY"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	    }
+	}
+	export class BlueprintPointFloat {
+	    x: number;
+	    y: number;
+	    z: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintPointFloat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	    }
+	}
+	export class BlueprintBuilding {
+	    num: number;
+	    index: number;
+	    itemId: number;
+	    itemName: string;
+	    modelIndex: number;
+	    areaIndex: number;
+	    localOffset: BlueprintPointFloat;
+	    yaw: number;
+	    tilt?: number;
+	    pitch?: number;
+	    localOffset2?: BlueprintPointFloat;
+	    yaw2?: number;
+	    tilt2?: number;
+	    pitch2?: number;
+	    outputObjIdx: number;
+	    inputObjIdx: number;
+	    outputToSlot: number;
+	    inputFromSlot: number;
+	    outputFromSlot: number;
+	    inputToSlot: number;
+	    outputOffset: number;
+	    inputOffset: number;
+	    recipeId: number;
+	    filterId: number;
+	    parameters: number[];
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintBuilding(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.num = source["num"];
+	        this.index = source["index"];
+	        this.itemId = source["itemId"];
+	        this.itemName = source["itemName"];
+	        this.modelIndex = source["modelIndex"];
+	        this.areaIndex = source["areaIndex"];
+	        this.localOffset = this.convertValues(source["localOffset"], BlueprintPointFloat);
+	        this.yaw = source["yaw"];
+	        this.tilt = source["tilt"];
+	        this.pitch = source["pitch"];
+	        this.localOffset2 = this.convertValues(source["localOffset2"], BlueprintPointFloat);
+	        this.yaw2 = source["yaw2"];
+	        this.tilt2 = source["tilt2"];
+	        this.pitch2 = source["pitch2"];
+	        this.outputObjIdx = source["outputObjIdx"];
+	        this.inputObjIdx = source["inputObjIdx"];
+	        this.outputToSlot = source["outputToSlot"];
+	        this.inputFromSlot = source["inputFromSlot"];
+	        this.outputFromSlot = source["outputFromSlot"];
+	        this.inputToSlot = source["inputToSlot"];
+	        this.outputOffset = source["outputOffset"];
+	        this.inputOffset = source["inputOffset"];
+	        this.recipeId = source["recipeId"];
+	        this.filterId = source["filterId"];
+	        this.parameters = source["parameters"];
+	        this.content = source["content"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BlueprintPointInt {
+	    x: number;
+	    y: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintPointInt(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	    }
+	}
+	export class BlueprintBinary {
+	    version: number;
+	    cursorOffset: BlueprintPointInt;
+	    cursorTargetArea: number;
+	    dragBoxSize: BlueprintPointInt;
+	    primaryAreaIdx: number;
+	    areas: BlueprintArea[];
+	    buildings: BlueprintBuilding[];
+	    trailingBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintBinary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.cursorOffset = this.convertValues(source["cursorOffset"], BlueprintPointInt);
+	        this.cursorTargetArea = source["cursorTargetArea"];
+	        this.dragBoxSize = this.convertValues(source["dragBoxSize"], BlueprintPointInt);
+	        this.primaryAreaIdx = source["primaryAreaIdx"];
+	        this.areas = this.convertValues(source["areas"], BlueprintArea);
+	        this.buildings = this.convertValues(source["buildings"], BlueprintBuilding);
+	        this.trailingBytes = source["trailingBytes"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class BlueprintItemGroup {
+	    itemId: number;
+	    itemName: string;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintItemGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.itemName = source["itemName"];
+	        this.count = source["count"];
+	    }
+	}
+	export class BlueprintSummary {
+	    areaCount: number;
+	    buildingCount: number;
+	    connectionCount: number;
+	    parameterizedCount: number;
+	    contentCount: number;
+	    itemGroups: BlueprintItemGroup[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.areaCount = source["areaCount"];
+	        this.buildingCount = source["buildingCount"];
+	        this.connectionCount = source["connectionCount"];
+	        this.parameterizedCount = source["parameterizedCount"];
+	        this.contentCount = source["contentCount"];
+	        this.itemGroups = this.convertValues(source["itemGroups"], BlueprintItemGroup);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BlueprintMeta {
+	    rawFields: string[];
+	    title: string;
+	    description: string;
+	    gameVersion: string;
+	    createdAt: string;
+	    checksum: string;
+	    icons: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintMeta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rawFields = source["rawFields"];
+	        this.title = source["title"];
+	        this.description = source["description"];
+	        this.gameVersion = source["gameVersion"];
+	        this.createdAt = source["createdAt"];
+	        this.checksum = source["checksum"];
+	        this.icons = source["icons"];
+	    }
+	}
+	export class BlueprintDecodeResult {
+	    meta: BlueprintMeta;
+	    binary: BlueprintBinary;
+	    summary: BlueprintSummary;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintDecodeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.meta = this.convertValues(source["meta"], BlueprintMeta);
+	        this.binary = this.convertValues(source["binary"], BlueprintBinary);
+	        this.summary = this.convertValues(source["summary"], BlueprintSummary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+	
 	export class EnvironmentBlueprintBreadcrumb {
 	    id: string;
 	    name: string;
@@ -711,6 +1011,41 @@ export namespace environment {
 		    return a;
 		}
 	}
+	export class EnvironmentBlueprintDetail {
+	    item: EnvironmentBlueprintItem;
+	    libraryPath: string;
+	    parsed: BlueprintDecodeResult;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvironmentBlueprintDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.item = this.convertValues(source["item"], EnvironmentBlueprintItem);
+	        this.libraryPath = source["libraryPath"];
+	        this.parsed = this.convertValues(source["parsed"], BlueprintDecodeResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class EnvironmentBlueprintMigrationEntry {
 	    itemId: string;
 	    name: string;

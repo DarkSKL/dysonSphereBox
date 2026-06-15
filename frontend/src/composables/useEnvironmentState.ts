@@ -13,6 +13,7 @@ import {
   enableEnvironmentMod,
   exportEnvironmentBlueprint,
   exportEnvironmentSave,
+  getEnvironmentBlueprintDetail,
   getEnvironmentModDetail,
   getEnvironmentOverview,
   importEnvironmentBlueprintFiles,
@@ -23,8 +24,11 @@ import {
   listEnvironmentSaves,
   moveEnvironmentBlueprintItem,
   openEnvironmentBlueprintLibraryDir,
+  openEnvironmentBlueprintRealDir,
   openEnvironmentModLibraryDir,
-  openEnvironmentSaveDir,
+  openEnvironmentModRealDir,
+  openEnvironmentSaveLibraryDir,
+  openEnvironmentSaveRealDir,
   previewEnvironmentInitialSync,
   quickImportEnvironmentBlueprint,
   recoverEnvironmentInterruptedOperations,
@@ -57,6 +61,7 @@ export function useEnvironmentState() {
   const overview = ref<environment.EnvironmentOverview | null>(null)
   const mods = ref<environment.EnvironmentModItem[]>([])
   const selectedModDetail = ref<environment.EnvironmentModDetail | null>(null)
+  const selectedBlueprintDetail = ref<environment.EnvironmentBlueprintDetail | null>(null)
   const blueprintPage = ref<environment.EnvironmentBlueprintPage | null>(null)
   const saves = ref<environment.EnvironmentSaveItem[]>([])
   const modSearch = ref('')
@@ -66,6 +71,7 @@ export function useEnvironmentState() {
   const isLoadingOverview = ref(false)
   const isLoadingMods = ref(false)
   const isLoadingModDetail = ref(false)
+  const isLoadingBlueprintDetail = ref(false)
   const isLoadingBlueprints = ref(false)
   const isLoadingSaves = ref(false)
   const initialSyncPreview = ref<environment.EnvironmentInitialSyncPreview | null>(null)
@@ -146,6 +152,21 @@ export function useEnvironmentState() {
     selectedModDetail.value = null
   }
 
+  const loadBlueprintDetail = async (itemId: string): Promise<void> => {
+    isLoadingBlueprintDetail.value = true
+    try {
+      selectedBlueprintDetail.value = await getEnvironmentBlueprintDetail(itemId)
+    } catch (error) {
+      message.error(`读取蓝图详情失败：${formatEnvironmentError(error)}`)
+    } finally {
+      isLoadingBlueprintDetail.value = false
+    }
+  }
+
+  const closeBlueprintDetail = (): void => {
+    selectedBlueprintDetail.value = null
+  }
+
   const loadBlueprints = async (): Promise<void> => {
     isLoadingBlueprints.value = true
     try {
@@ -212,7 +233,15 @@ export function useEnvironmentState() {
     try {
       await openEnvironmentModLibraryDir()
     } catch (error) {
-      message.error(`打开模组目录失败：${formatEnvironmentError(error)}`)
+      message.error(`打开模组资源库目录失败：${formatEnvironmentError(error)}`)
+    }
+  }
+
+  const openModRealDir = async (): Promise<void> => {
+    try {
+      await openEnvironmentModRealDir()
+    } catch (error) {
+      message.error(`打开模组真实资源目录失败：${formatEnvironmentError(error)}`)
     }
   }
 
@@ -220,15 +249,31 @@ export function useEnvironmentState() {
     try {
       await openEnvironmentBlueprintLibraryDir()
     } catch (error) {
-      message.error(`打开蓝图目录失败：${formatEnvironmentError(error)}`)
+      message.error(`打开蓝图资源库目录失败：${formatEnvironmentError(error)}`)
+    }
+  }
+
+  const openBlueprintRealDir = async (): Promise<void> => {
+    try {
+      await openEnvironmentBlueprintRealDir()
+    } catch (error) {
+      message.error(`打开蓝图真实资源目录失败：${formatEnvironmentError(error)}`)
+    }
+  }
+
+  const openSaveLibraryDir = async (): Promise<void> => {
+    try {
+      await openEnvironmentSaveLibraryDir()
+    } catch (error) {
+      message.error(`打开存档资源库目录失败：${formatEnvironmentError(error)}`)
     }
   }
 
   const openSaveDir = async (): Promise<void> => {
     try {
-      await openEnvironmentSaveDir()
+      await openEnvironmentSaveRealDir()
     } catch (error) {
-      message.error(`打开存档目录失败：${formatEnvironmentError(error)}`)
+      message.error(`打开存档真实资源目录失败：${formatEnvironmentError(error)}`)
     }
   }
 
@@ -245,22 +290,26 @@ export function useEnvironmentState() {
     }
   }
 
-  const refreshManagedState = async (kind: string = 'all'): Promise<void> => {
+  const refreshManagedState = async (kind: string = 'all', showToast = true): Promise<environment.EnvironmentManagedStateSummary | null> => {
     if (isRefreshingManagedState.value) {
-      return
+      return null
     }
     isRefreshingManagedState.value = true
     try {
       const summary = await refreshEnvironmentManagedState(kind)
       managedStateSummary.value = summary
-      if (summary.changedItems > 0) {
-        message.warning(`同步完成：${summary.changedItems} 个资源状态变化，${summary.conflictItems} 个冲突。`)
-      } else {
-        message.success(`同步完成：${summary.checkedItems} 个资源状态一致。`)
+      if (showToast) {
+        if (summary.changedItems > 0) {
+          message.warning(`同步完成：${summary.changedItems} 个资源状态变化，${summary.conflictItems} 个冲突。`)
+        } else {
+          message.success(`同步完成：${summary.checkedItems} 个资源状态一致。`)
+        }
       }
       await refreshActiveTab()
+      return summary
     } catch (error) {
       message.error(`同步状态失败：${formatEnvironmentError(error)}`)
+      return null
     } finally {
       isRefreshingManagedState.value = false
     }
@@ -271,7 +320,29 @@ export function useEnvironmentState() {
       await refreshSaveList()
       return
     }
-    await refreshManagedState(kind)
+    if (isRunningInitialSync.value || isRefreshingManagedState.value) {
+      return
+    }
+    const initialResult = await runInitialSyncInternal(kind, false)
+    if (!initialResult) {
+      return
+    }
+    const stateSummary = await refreshManagedState(kind, false)
+    if (!stateSummary) {
+      return
+    }
+    const syncedCount = kind === 'mod'
+      ? initialResult.syncedMods
+      : initialResult.syncedBlueprints
+    if (initialResult?.failures.length) {
+      message.warning(`同步完成：已纳管 ${syncedCount} 个资源，${initialResult.failures.length} 个失败。`)
+      return
+    }
+    if (stateSummary.changedItems > 0) {
+      message.warning(`同步完成：已纳管 ${syncedCount} 个资源，${stateSummary.changedItems} 个状态变化，${stateSummary.conflictItems} 个冲突。`)
+      return
+    }
+    message.success(`同步完成：已纳管 ${syncedCount} 个资源，${stateSummary.checkedItems} 个资源状态一致。`)
   }
 
   const selectAndSetEnvironmentRootDirectory = async (kind: 'blueprint' | 'save'): Promise<void> => {
@@ -322,25 +393,36 @@ export function useEnvironmentState() {
     }
   }
 
-  const runInitialSync = async (kind: string = 'all'): Promise<void> => {
+  const runInitialSyncInternal = async (
+    kind: string = 'all',
+    showToast = true,
+  ): Promise<environment.EnvironmentInitialSyncResult | null> => {
     if (isRunningInitialSync.value) {
-      return
+      return null
     }
     isRunningInitialSync.value = true
     try {
       const result = await runEnvironmentInitialSync(kind)
       overview.value = result.overview
       initialSyncPreview.value = result.overview.initialSync
-      message.success(`已纳管 ${result.syncedMods} 个模组、${result.syncedBlueprints} 个蓝图，索引 ${result.indexedSaves} 个存档。`)
-      if (result.failures.length > 0) {
-        message.warning(`部分资源同步失败：${result.failures.slice(0, 2).join('；')}`)
+      if (showToast) {
+        message.success(`已纳管 ${result.syncedMods} 个模组、${result.syncedBlueprints} 个蓝图，索引 ${result.indexedSaves} 个存档。`)
+        if (result.failures.length > 0) {
+          message.warning(`部分资源同步失败：${result.failures.slice(0, 2).join('；')}`)
+        }
       }
       await refreshActiveTab()
+      return result
     } catch (error) {
       message.error(`同步本机内容失败：${formatEnvironmentError(error)}`)
+      return null
     } finally {
       isRunningInitialSync.value = false
     }
+  }
+
+  const runInitialSync = async (kind: string = 'all'): Promise<void> => {
+    await runInitialSyncInternal(kind, true)
   }
 
   const toggleMod = async (mod: environment.EnvironmentModItem): Promise<void> => {
@@ -752,6 +834,7 @@ export function useEnvironmentState() {
     overview,
     mods,
     selectedModDetail,
+    selectedBlueprintDetail,
     blueprintPage,
     saves,
     modSearch,
@@ -761,6 +844,7 @@ export function useEnvironmentState() {
     isLoadingOverview,
     isLoadingMods,
     isLoadingModDetail,
+    isLoadingBlueprintDetail,
     isLoadingBlueprints,
     isLoadingSaves,
     initialSyncPreview,
@@ -780,6 +864,8 @@ export function useEnvironmentState() {
     loadMods,
     loadModDetail,
     closeModDetail,
+    loadBlueprintDetail,
+    closeBlueprintDetail,
     loadBlueprints,
     loadSaves,
     refreshActiveTab,
@@ -813,7 +899,10 @@ export function useEnvironmentState() {
     restoreGameFromClientMirror,
     unlinkSyncRecord,
     openModLibraryDir,
+    openModRealDir,
     openBlueprintLibraryDir,
+    openBlueprintRealDir,
+    openSaveLibraryDir,
     openSaveDir,
     refreshSaveList,
     refreshManagedState,

@@ -13,14 +13,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	environmentHelper "DysonSphereBox/helper/environment"
 	"DysonSphereBox/helper/modDependence/fileops"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"gorm.io/gorm"
 )
 
@@ -223,6 +224,59 @@ func (service *EnvironmentManagerService) ListBlueprints(parentId string, query 
 		Items:           items,
 		TotalBlueprints: totalBlueprints,
 		TotalFolders:    totalFolders,
+	}, nil
+}
+
+// GetBlueprintDetail 返回客户端蓝图文件详情。
+// 职责：按蓝图 ID 定位 AppData/blueprints 中的单个蓝图文件，读取编码并解析为结构化信息。
+// 使用：环境页蓝图卡片右键“查看详情”打开 Drawer 时调用。
+// 边界：只读客户端镜像文件；文件夹、缺失文件、非 BLUEPRINT 文本或暂不支持格式会返回错误。
+// 逻辑流：1. 扫描资源库定位蓝图 => 2. 校验文件仍在蓝图资源库根内 => 3. 读取文本并解析 => 4. 返回资源摘要与解析结果。
+func (service *EnvironmentManagerService) GetBlueprintDetail(itemId string) (EnvironmentBlueprintDetail, error) {
+	resolver := environmentHelper.Resolver{}
+	libraryRoot, err := resolver.LibraryRoot("blueprints")
+	if err != nil {
+		return EnvironmentBlueprintDetail{}, err
+	}
+	resources, err := environmentHelper.ScanBlueprints(libraryRoot)
+	if err != nil {
+		return EnvironmentBlueprintDetail{}, err
+	}
+	resource, ok := findBlueprintResource(resources, itemId)
+	if !ok {
+		return EnvironmentBlueprintDetail{}, fmt.Errorf("未找到蓝图资源")
+	}
+	if resource.Type != "blueprint" {
+		return EnvironmentBlueprintDetail{}, fmt.Errorf("只能查看蓝图文件详情")
+	}
+
+	blueprintPath := filepath.Join(libraryRoot, filepath.FromSlash(resource.RelativePath))
+	if !fileops.IsSubPath(libraryRoot, blueprintPath) {
+		return EnvironmentBlueprintDetail{}, fmt.Errorf("蓝图路径越界")
+	}
+	content, err := os.ReadFile(blueprintPath)
+	if err != nil {
+		return EnvironmentBlueprintDetail{}, fmt.Errorf("读取蓝图文件失败: %w", err)
+	}
+	parsed, err := environmentHelper.ParseBlueprintCode(string(content))
+	if err != nil {
+		return EnvironmentBlueprintDetail{}, err
+	}
+
+	return EnvironmentBlueprintDetail{
+		Item: EnvironmentBlueprintItem{
+			ID:           resource.ID,
+			ParentID:     resource.ParentID,
+			Type:         resource.Type,
+			Name:         resource.Name,
+			State:        resource.State,
+			SizeBytes:    resource.SizeBytes,
+			UpdatedAt:    resource.UpdatedAt,
+			RelativePath: resource.RelativePath,
+			Extension:    resource.Extension,
+		},
+		LibraryPath: filepath.ToSlash(filepath.Join("blueprints", filepath.FromSlash(resource.RelativePath))),
+		Parsed:      parsed,
 	}, nil
 }
 
@@ -861,39 +915,31 @@ func (service *EnvironmentManagerService) disableBlueprintWithoutOperation(itemI
 }
 
 // RenameBlueprintItem 重命名客户端蓝图文件或文件夹。
-// 职责：创建环境操作记录，并在客户端镜像资源库中执行安全重命名。
+// 职责：创建环境操作记录，并在客户端镜像资源库中执行安全重命名；已启用蓝图同步迁移游戏侧文件和同步记录。
 // 使用：蓝图右键或内联重命名时调用。
-// 边界：已启用蓝图重命名迁移第一版不自动处理游戏侧旧文件，需先禁用后重命名。
+// 边界：目标名称冲突、真实目录未确认或旧目标被外部修改时返回错误，不要求用户先禁用。
 func (service *EnvironmentManagerService) RenameBlueprintItem(itemId string, name string) (EnvironmentOperationResult, error) {
 	return service.runRecordedEnvironmentOperation("rename", "blueprint", itemId, map[string]interface{}{
 		"itemId": itemId,
 		"name":   name,
 	}, func() (EnvironmentOperationResult, error) {
-		return service.renameBlueprintItemWithoutOperation(itemId, name)
+		return service.confirmBlueprintMigrationWithoutOperation(itemId, "rename", "", name)
 	})
 }
 
 // renameBlueprintItemWithoutOperation 执行蓝图重命名的真实文件操作。
-// 职责：校验启用状态和 Windows 名称后重命名客户端镜像节点。
+// 职责：复用蓝图迁移流程重命名客户端镜像节点，并在已启用时同步游戏侧文件和同步记录。
 // 使用：RenameBlueprintItem 的 operation wrapper 调用。
-// 边界：不创建 operation 记录，不迁移游戏侧文件。
+// 边界：不创建 operation 记录；同步冲突、真实目录未确认或旧目标被外部修改时返回错误。
 func (service *EnvironmentManagerService) renameBlueprintItemWithoutOperation(itemId string, name string) (EnvironmentOperationResult, error) {
-	parentId, err := service.renameBlueprintLibraryNode(itemId, name, false)
-	if err != nil {
-		return EnvironmentOperationResult{}, err
-	}
-	page, err := service.ListBlueprints(parentId, "")
-	if err != nil {
-		return EnvironmentOperationResult{}, err
-	}
-	return EnvironmentOperationResult{Message: "蓝图资源已重命名", BlueprintPage: &page}, nil
+	return service.confirmBlueprintMigrationWithoutOperation(itemId, "rename", "", name)
 }
 
 // renameBlueprintLibraryNode 重命名客户端蓝图镜像节点。
-// 职责：封装蓝图文件或文件夹的名称校验、启用状态限制和真实 os.Rename 调用。
-// 使用：普通重命名传入 allowEnabledMigration=false，确认迁移流程传入 true 以允许已启用蓝图迁移。
+// 职责：封装蓝图文件或文件夹的名称校验和真实 os.Rename 调用。
+// 使用：确认迁移流程在游戏侧文件和同步记录准备完成后调用。
 // 边界：只移动客户端镜像，不写同步记录、不删除游戏侧旧目标；目标名称存在时返回错误。
-func (service *EnvironmentManagerService) renameBlueprintLibraryNode(itemId string, name string, allowEnabledMigration bool) (string, error) {
+func (service *EnvironmentManagerService) renameBlueprintLibraryNode(itemId string, name string) (string, error) {
 	resolver := environmentHelper.Resolver{}
 	libraryRoot, err := resolver.LibraryRoot("blueprints")
 	if err != nil {
@@ -912,13 +958,6 @@ func (service *EnvironmentManagerService) renameBlueprintLibraryNode(itemId stri
 	}
 	if selected == nil {
 		return "", fmt.Errorf("未找到蓝图资源")
-	}
-	states, err := service.loadItemStates("blueprint")
-	if err != nil {
-		return "", err
-	}
-	if !allowEnabledMigration && states[itemId] == environmentHelper.EnvironmentStateEnabled {
-		return "", fmt.Errorf("已启用蓝图需要先禁用后再重命名")
 	}
 	safeName, err := safeWindowsName(name)
 	if err != nil {
@@ -1468,17 +1507,64 @@ func (service *EnvironmentManagerService) OpenBlueprintLibraryDir() error {
 	return openDirectory(path)
 }
 
-// OpenSaveDir 打开真实存档目录。
+// OpenSaveLibraryDir 打开客户端存档资源库目录。
+// 职责：在系统文件管理器中打开环境管理用于保存存档快照的 AppData/environment/snapshots/save。
+// 使用：环境页存档右键“打开资源库目录”调用，用于查看被安全移入快照区的存档文件。
+// 边界：只创建并打开客户端快照目录，不打开游戏真实存档目录。
+func (service *EnvironmentManagerService) OpenSaveLibraryDir() error {
+	resolver := environmentHelper.Resolver{}
+	path, err := resolver.LibraryRoot("environment", "snapshots", "save")
+	if err != nil {
+		return err
+	}
+	return openDirectory(path)
+}
+
+// OpenModRealDir 打开游戏真实 Mod 目录。
+// 职责：在系统文件管理器中打开当前游戏目录下的 BepInEx/plugins。
+// 使用：环境页模组右键“打开真实资源目录”调用，用于查看实际被游戏加载的 Mod 文件。
+// 边界：目录不存在时返回错误，不创建 BepInEx 或 plugins 目录，避免误导用户已安装前置框架。
+func (service *EnvironmentManagerService) OpenModRealDir() error {
+	resolver := environmentHelper.Resolver{}
+	modRoot := resolver.ResolveModRoot()
+	if modRoot.Path == "" || !modRoot.Exists {
+		return fmt.Errorf("未找到真实 Mod 目录")
+	}
+	return openExistingDirectory(modRoot.Path)
+}
+
+// OpenBlueprintRealDir 打开游戏真实蓝图目录。
+// 职责：在系统文件管理器中打开当前解析出的真实 BlueprintRoot。
+// 使用：环境页蓝图右键“打开真实资源目录”调用，用于查看游戏实际读取的蓝图文件。
+// 边界：目录未确认或不存在时返回错误，不创建默认蓝图目录。
+func (service *EnvironmentManagerService) OpenBlueprintRealDir() error {
+	resolver := environmentHelper.Resolver{}
+	blueprintRoot := resolver.ResolveBlueprintRoot()
+	if blueprintRoot.Path == "" || !blueprintRoot.Exists {
+		return fmt.Errorf("未找到真实蓝图目录")
+	}
+	return openExistingDirectory(blueprintRoot.Path)
+}
+
+// OpenSaveRealDir 打开游戏真实存档目录。
 // 职责：在系统文件管理器中打开当前解析出的 SaveRoot。
-// 使用：环境页存档工具栏“打开目录”调用。
+// 使用：环境页存档右键“打开真实资源目录”调用，用于查看游戏实际存档文件。
 // 边界：目录未定位或不存在时返回错误，不创建存档目录。
-func (service *EnvironmentManagerService) OpenSaveDir() error {
+func (service *EnvironmentManagerService) OpenSaveRealDir() error {
 	resolver := environmentHelper.Resolver{}
 	saveRoot := resolver.ResolveSaveRoot()
 	if saveRoot.Path == "" || !saveRoot.Exists {
 		return fmt.Errorf("未找到存档目录")
 	}
 	return openExistingDirectory(saveRoot.Path)
+}
+
+// OpenSaveDir 兼容旧前端绑定打开真实存档目录。
+// 职责：保留旧方法名并委托给 OpenSaveRealDir。
+// 使用：旧版本前端或未刷新绑定时调用。
+// 边界：不再承载新菜单语义，新代码应调用 OpenSaveLibraryDir 或 OpenSaveRealDir。
+func (service *EnvironmentManagerService) OpenSaveDir() error {
+	return service.OpenSaveRealDir()
 }
 
 // libraryCounts 统计客户端资源库和真实存档目录数量。
@@ -1543,7 +1629,7 @@ func (service *EnvironmentManagerService) loadItemStates(kind string) (map[strin
 // upsertScannedModItems 写入已扫描 Mod 的默认资源记录。
 // 职责：导入 Mod 后把资源库扫描结果保存到 EnvItem，便于关闭应用后恢复状态。
 // 使用：ImportMod 调用。
-// 边界：只保存支持的目录型 Mod；不创建同步文件记录，不写入游戏目录。
+// 边界：只保存支持的目录型 Mod；已有资源只刷新元数据不覆盖启用状态，不创建同步文件记录，不写入游戏目录。
 func (service *EnvironmentManagerService) upsertScannedModItems(libraryRoot string, state string, sourceType string) error {
 	if core.GLOBAL.DB == nil {
 		return nil
@@ -1559,9 +1645,27 @@ func (service *EnvironmentManagerService) upsertScannedModItems(libraryRoot stri
 				continue
 			}
 			item := modResourceToEnvItem(mod, state, sourceType)
+			existing := environmentModel.EnvItem{}
+			err := tx.Where("id = ? AND kind = ?", item.ID, item.Kind).First(&existing).Error
+			if err == nil {
+				if err := tx.Model(&existing).Updates(map[string]interface{}{
+					"name":          item.Name,
+					"source_type":   item.SourceType,
+					"library_path":  item.LibraryPath,
+					"size_bytes":    item.SizeBytes,
+					"metadata_json": item.MetadataJSON,
+					"updated_at":    now,
+				}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if err != nil && err != gorm.ErrRecordNotFound {
+				return err
+			}
 			item.CreatedAt = now
 			item.UpdatedAt = now
-			if err := tx.Save(&item).Error; err != nil {
+			if err := tx.Create(&item).Error; err != nil {
 				return err
 			}
 		}
@@ -1761,6 +1865,7 @@ func (service *EnvironmentManagerService) syncExistingMods(resolver environmentH
 		}
 		sourcePath := filepath.Join(modRoot.Path, entry.Name())
 		targetPath := filepath.Join(libraryRoot, entry.Name())
+		wasManaged := pathExists(targetPath)
 		plans, err := environmentHelper.CopyDirectoryMirrorSafely(sourcePath, targetPath)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", entry.Name(), err))
@@ -1780,7 +1885,9 @@ func (service *EnvironmentManagerService) syncExistingMods(resolver environmentH
 				failures = append(failures, fmt.Sprintf("%s: %v", entry.Name(), err))
 				continue
 			}
-			synced++
+			if !wasManaged {
+				synced++
+			}
 			break
 		}
 	}
@@ -1816,6 +1923,7 @@ func (service *EnvironmentManagerService) syncExistingBlueprints(resolver enviro
 			return nil
 		}
 		targetPath := filepath.Join(libraryRoot, relativePath)
+		wasManaged := pathExists(targetPath)
 		plan, err := environmentHelper.CopySingleFileSafely(sourcePath, targetPath, relativePath)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", entry.Name(), err))
@@ -1836,7 +1944,9 @@ func (service *EnvironmentManagerService) syncExistingBlueprints(resolver enviro
 				failures = append(failures, fmt.Sprintf("%s: %v", entry.Name(), err))
 				return nil
 			}
-			synced++
+			if !wasManaged {
+				synced++
+			}
 			break
 		}
 		return nil
@@ -1935,10 +2045,6 @@ func (service *EnvironmentManagerService) previewBlueprintMigrationWithoutOperat
 	if err != nil {
 		return EnvironmentBlueprintMigrationPreview{}, err
 	}
-	blueprintRoot := resolver.ResolveBlueprintRoot()
-	if blueprintRoot.Path == "" || blueprintRoot.NeedConfirm {
-		return EnvironmentBlueprintMigrationPreview{}, fmt.Errorf("蓝图目录尚未确认")
-	}
 	resources, err := environmentHelper.ScanBlueprints(libraryRoot)
 	if err != nil {
 		return EnvironmentBlueprintMigrationPreview{}, err
@@ -1964,6 +2070,13 @@ func (service *EnvironmentManagerService) previewBlueprintMigrationWithoutOperat
 		return EnvironmentBlueprintMigrationPreview{}, err
 	}
 	affectedResources := blueprintMigrationAffectedResources(resources, selected, states)
+	if len(affectedResources) == 0 {
+		return preview, nil
+	}
+	blueprintRoot := resolver.ResolveBlueprintRoot()
+	if blueprintRoot.Path == "" || blueprintRoot.NeedConfirm {
+		return EnvironmentBlueprintMigrationPreview{}, fmt.Errorf("蓝图目录尚未确认")
+	}
 	for _, blueprintResource := range affectedResources {
 		oldRelativePath := filepath.ToSlash(filepath.Clean(blueprintResource.RelativePath))
 		newRelativePath := remapBlueprintRelativePath(selected, oldRelativePath, newBaseRelativePath)
@@ -2136,7 +2249,7 @@ func (service *EnvironmentManagerService) applyBlueprintLibraryMigrationNode(ite
 		return blueprintLibraryMigrationResult{OldPath: beforePath, NewPath: afterPath, RefreshParentID: refreshParentID, Changed: changed}, nil
 	case "rename":
 		afterPath, changed := service.renamedBlueprintLibraryPath(beforePath, targetName)
-		refreshParentID, err := service.renameBlueprintLibraryNode(itemId, targetName, true)
+		refreshParentID, err := service.renameBlueprintLibraryNode(itemId, targetName)
 		if err != nil {
 			return blueprintLibraryMigrationResult{}, err
 		}
@@ -2614,7 +2727,7 @@ func normalizeSyncRecordKind(kind string) (string, error) {
 
 // openDirectory 创建并打开指定目录。
 // 职责：为环境页目录入口提供统一打开行为。
-// 使用：OpenModLibraryDir、OpenBlueprintLibraryDir 和 OpenSaveDir 调用。
+// 使用：OpenModLibraryDir、OpenBlueprintLibraryDir 和 OpenSaveLibraryDir 调用。
 // 边界：只创建客户端资源库目录；调用方需要在真实游戏目录缺失时提前返回错误。
 func openDirectory(path string) error {
 	if path == "" {
@@ -2627,13 +2740,12 @@ func openDirectory(path string) error {
 	if err != nil {
 		return fmt.Errorf("解析目录失败: %w", err)
 	}
-	runtime.BrowserOpenURL(core.GLOBAL.RuntimeContext, "file:///"+filepath.ToSlash(absolutePath))
-	return nil
+	return openDirectoryInFileManager(absolutePath)
 }
 
 // openExistingDirectory 打开已经存在的目录。
 // 职责：为真实游戏目录入口提供不创建目录的打开行为。
-// 使用：OpenSaveDir 等必须以本机真实目录存在为前提的入口调用。
+// 使用：OpenModRealDir、OpenBlueprintRealDir 和 OpenSaveRealDir 等真实目录入口调用。
 // 边界：目录不存在或不是目录时返回错误，不尝试创建或修复。
 func openExistingDirectory(path string) error {
 	if path == "" {
@@ -2650,7 +2762,28 @@ func openExistingDirectory(path string) error {
 	if err != nil {
 		return fmt.Errorf("解析目录失败: %w", err)
 	}
-	runtime.BrowserOpenURL(core.GLOBAL.RuntimeContext, "file:///"+filepath.ToSlash(absolutePath))
+	return openDirectoryInFileManager(absolutePath)
+}
+
+// openDirectoryInFileManager 使用系统文件管理器打开目录。
+// 职责：绕过 Wails URL scheme 限制，直接交给操作系统打开本地目录。
+// 使用：openDirectory 和 openExistingDirectory 完成路径校验后调用。
+// 边界：只打开目录，不创建、不删除、不定位具体文件；未知平台返回可读错误。
+func openDirectoryInFileManager(path string) error {
+	var command *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		command = exec.Command("explorer.exe", path)
+	case "darwin":
+		command = exec.Command("open", path)
+	case "linux":
+		command = exec.Command("xdg-open", path)
+	default:
+		return fmt.Errorf("当前平台不支持打开目录: %s", runtime.GOOS)
+	}
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("打开目录失败: %w", err)
+	}
 	return nil
 }
 

@@ -10,6 +10,7 @@ import {
   EnableMod as enableModBinding,
   ExportBlueprint as exportBlueprintBinding,
   ExportSave as exportSaveBinding,
+  GetBlueprintDetail as getBlueprintDetailBinding,
   ImportBlueprintFiles as importBlueprintFilesBinding,
   ImportMod as importModBinding,
   ImportSaves as importSavesBinding,
@@ -21,8 +22,11 @@ import {
   ListSaves as listSavesBinding,
   MoveBlueprintItem as moveBlueprintItemBinding,
   OpenBlueprintLibraryDir as openBlueprintLibraryDirBinding,
+  OpenBlueprintRealDir as openBlueprintRealDirBinding,
   OpenModLibraryDir as openModLibraryDirBinding,
-  OpenSaveDir as openSaveDirBinding,
+  OpenModRealDir as openModRealDirBinding,
+  OpenSaveLibraryDir as openSaveLibraryDirBinding,
+  OpenSaveRealDir as openSaveRealDirBinding,
   PreviewBlueprintMigration as previewBlueprintMigrationBinding,
   PreviewInitialSync as previewInitialSyncBinding,
   QuickImportBlueprint as quickImportBlueprintBinding,
@@ -57,6 +61,7 @@ interface EnvironmentBridgeWindow extends Window {
 type EnvironmentBridgeMethod =
   | 'GetOverview'
   | 'GetModDetail'
+  | 'GetBlueprintDetail'
   | 'GetOperation'
   | 'ListMods'
   | 'ListBlueprints'
@@ -90,7 +95,10 @@ type EnvironmentBridgeMethod =
   | 'UnlinkEnvironmentSyncRecord'
   | 'OpenModLibraryDir'
   | 'OpenBlueprintLibraryDir'
-  | 'OpenSaveDir'
+  | 'OpenSaveLibraryDir'
+  | 'OpenModRealDir'
+  | 'OpenBlueprintRealDir'
+  | 'OpenSaveRealDir'
   | 'SelectModImportPaths'
   | 'SelectModImportDirectory'
   | 'SelectBlueprintImportFiles'
@@ -127,6 +135,13 @@ export const getEnvironmentModDetail = async (
 ): Promise<environment.EnvironmentModDetail> => {
   assertEnvironmentBridgeReady('GetModDetail')
   return getModDetailBinding(itemId)
+}
+
+export const getEnvironmentBlueprintDetail = async (
+  itemId: string,
+): Promise<environment.EnvironmentBlueprintDetail> => {
+  assertEnvironmentBridgeReady('GetBlueprintDetail')
+  return getBlueprintDetailBinding(itemId)
 }
 
 export const listEnvironmentMods = async (query: string): Promise<environment.EnvironmentModItem[]> => {
@@ -362,9 +377,24 @@ export const openEnvironmentBlueprintLibraryDir = async (): Promise<void> => {
   return openBlueprintLibraryDirBinding()
 }
 
-export const openEnvironmentSaveDir = async (): Promise<void> => {
-  assertEnvironmentBridgeReady('OpenSaveDir')
-  return openSaveDirBinding()
+export const openEnvironmentSaveLibraryDir = async (): Promise<void> => {
+  assertEnvironmentBridgeReady('OpenSaveLibraryDir')
+  return openSaveLibraryDirBinding()
+}
+
+export const openEnvironmentModRealDir = async (): Promise<void> => {
+  assertEnvironmentBridgeReady('OpenModRealDir')
+  return openModRealDirBinding()
+}
+
+export const openEnvironmentBlueprintRealDir = async (): Promise<void> => {
+  assertEnvironmentBridgeReady('OpenBlueprintRealDir')
+  return openBlueprintRealDirBinding()
+}
+
+export const openEnvironmentSaveRealDir = async (): Promise<void> => {
+  assertEnvironmentBridgeReady('OpenSaveRealDir')
+  return openSaveRealDirBinding()
 }
 
 export const selectEnvironmentModImportPaths = async (): Promise<environment.EnvironmentPathSelection> => {
