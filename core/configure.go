@@ -4,6 +4,8 @@ package core
 // 使用：由启动流程初始化后挂载到 GLOBAL.Configure，service/helper 在运行期读取对应配置访问器。
 // 边界：只聚合访问器，不读写数据库、不实现具体业务用例、不直接处理 Mod 安装或市场查询。
 
+import modThunderstoreConstant "DysonSphereBox/constant/modDependence/thunderstore"
+
 // Configure 聚合应用运行时使用的配置单元。
 // 职责：集中保存数据库驱动的配置访问器，避免服务层硬编码配置分组和键名。
 // 使用：通过 GLOBAL.Configure 向 service/helper 暴露稳定配置访问入口。
@@ -29,6 +31,11 @@ type Configure struct {
 	// 使用：无头服务器启动命令构造时读取该配置。
 	// 边界：不验证存档文件是否存在。
 	GameServerArchive *ConfigUnit
+	// ThunderstoreIndexMode 访问 Thunderstore 索引优先模式配置。
+	// 职责：保存用户选择的新旧 Thunderstore 索引链路优先级。
+	// 使用：市场索引适配器读取该配置后决定先尝试新版分片链路还是旧版完整链路。
+	// 边界：只保存访问器，不校验远端链路可用性；值为空或非法时由适配器使用默认新版优先。
+	ThunderstoreIndexMode *ConfigUnit
 }
 
 // InitConfigure 初始化应用配置单元集合。
@@ -41,5 +48,9 @@ func InitConfigure() *Configure {
 		GameStartFilePath: InitConfigUnit("Game", "StartupFilePath"),
 		BaseURL:           InitConfigUnit("System", "BaseURL"),
 		GameServerArchive: InitConfigUnit("Game", "ServerArchive"),
+		ThunderstoreIndexMode: InitConfigUnit(
+			modThunderstoreConstant.IndexModeConfigGroup,
+			modThunderstoreConstant.IndexModeConfigKey,
+		),
 	}
 }

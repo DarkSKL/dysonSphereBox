@@ -4,11 +4,23 @@ package thunderstore
 // 使用：由 helper/modDependence/marketplace 与 BepInEx 包解析逻辑解码 Thunderstore 包索引。
 // 边界：只描述外部 API 响应结构，不发起 HTTP 请求、不筛选 DSP 适配包、不执行安装逻辑。
 
-// IndexURL 是 Thunderstore 戴森球计划包索引接口地址。
-// 职责：集中保存 Thunderstore DSP 社区包索引的稳定 URL。
-// 使用：marketplace 子包读取市场列表、BepInEx 包解析器读取最新版本时使用。
-// 边界：只描述远端接口地址，不执行 HTTP 请求，不决定缓存或失败兜底策略。
-const IndexURL = "https://thunderstore.io/c/dyson-sphere-program/api/v1/package/"
+const (
+	// ChunkedIndexURL 是 Thunderstore 戴森球计划新版分片包索引入口。
+	// 职责：集中保存 package-listing-index 主链路 URL，供索引适配器读取 chunk 列表。
+	// 使用：helper/modDependence/marketplace/thunderstoreindex 的新版 provider 发起索引请求时使用。
+	// 边界：只描述远端接口地址，不解压 gzip、不拉取 chunk、不决定缓存或失败兜底策略。
+	ChunkedIndexURL = "https://thunderstore.io/c/dyson-sphere-program/api/v1/package-listing-index/"
+	// LegacyIndexURL 是 Thunderstore 戴森球计划旧版完整包索引接口地址。
+	// 职责：保留旧 api/v1/package 链路作为新版索引失败后的兼容兜底。
+	// 使用：helper/modDependence/marketplace/thunderstoreindex 的旧版 provider 在新版 provider 失败后使用。
+	// 边界：该接口当前可能返回 404，不能作为业务层直接依赖的主链路。
+	LegacyIndexURL = "https://thunderstore.io/c/dyson-sphere-program/api/v1/package/"
+	// IndexURL 是 Thunderstore 戴森球计划旧索引接口兼容别名。
+	// 职责：兼容尚未迁移的内部调用点，语义等同 LegacyIndexURL。
+	// 使用：新增代码应优先通过 thunderstoreindex 适配器选择 provider，不应直接使用该别名请求远端。
+	// 边界：保留该常量不代表旧接口可用，失败兜底必须由适配器承担。
+	IndexURL = LegacyIndexURL
+)
 
 // Package 表示 Thunderstore 包索引中的单个包。
 // 职责：承载 Thunderstore 包级元数据和版本列表。

@@ -26,6 +26,7 @@ const isSelectingGamePath = ref(false)
 const isLoadingGamePath = ref(false)
 const isSavingGamePath = ref(false)
 const isSavingBaseURL = ref(false)
+const isSavingThunderstoreIndexMode = ref(false)
 const isLoadingBepInExStatus = ref(false)
 const isCheckingBepInEx = ref(false)
 const isUninstallingBepInEx = ref(false)
@@ -34,6 +35,8 @@ const uninstallBepInExVisible = ref(false)
 const savedGamePath = ref(gamePath.value)
 const baseURL = ref('')
 const savedBaseURL = ref('')
+const thunderstoreIndexMode = ref('chunked')
+const savedThunderstoreIndexMode = ref('chunked')
 const message = useMessage()
 const bepinExStatus = ref<contract.BepInExStatus | null>(null)
 const {
@@ -63,6 +66,17 @@ const baseURLValidationMessage = computed(() => {
 })
 const hasPendingBaseURLChange = computed(() => baseURL.value.trim() !== savedBaseURL.value.trim())
 const canSaveBaseURL = computed(() => hasPendingBaseURLChange.value && !baseURLValidationMessage.value)
+const thunderstoreIndexModeOptions = [
+  {
+    label: '新版分片索引优先',
+    value: 'chunked',
+  },
+  {
+    label: '旧版完整索引优先',
+    value: 'legacy',
+  },
+]
+const hasPendingThunderstoreIndexModeChange = computed(() => thunderstoreIndexMode.value !== savedThunderstoreIndexMode.value)
 const bepinExSummary = computed(() => {
   if (!bepinExStatus.value) {
     return '尚未检查 BepInEx'
@@ -95,6 +109,10 @@ onMounted(async () => {
     const configuredBaseURL = await GetConfig('System', 'BaseURL')
     baseURL.value = configuredBaseURL
     savedBaseURL.value = configuredBaseURL
+
+    const configuredThunderstoreIndexMode = await GetConfig('ModDependence', 'ThunderstoreIndexMode')
+    thunderstoreIndexMode.value = normalizeThunderstoreIndexMode(configuredThunderstoreIndexMode)
+    savedThunderstoreIndexMode.value = thunderstoreIndexMode.value
 
     const configuredPath = await GetConfig('Game', 'StartupFilePath')
     if (configuredPath) {
@@ -195,6 +213,28 @@ const confirmBaseURL = async (): Promise<void> => {
     message.error(`保存连接地址失败：${formatErrorMessage(error)}`)
   } finally {
     isSavingBaseURL.value = false
+  }
+}
+
+// =============== Thunderstore 索引模式 ===============
+// 说明：保存 ModDependence/ThunderstoreIndexMode 配置，控制后端 Thunderstore 适配器优先尝试新版或旧版链路。
+// 边界：这里只保存优先级；实际失败兜底和日志记录由后端 thunderstoreindex 统一处理。
+const confirmThunderstoreIndexMode = async (): Promise<void> => {
+  if (isSavingThunderstoreIndexMode.value || !hasPendingThunderstoreIndexModeChange.value) {
+    return
+  }
+
+  isSavingThunderstoreIndexMode.value = true
+  try {
+    const nextMode = normalizeThunderstoreIndexMode(thunderstoreIndexMode.value)
+    await SetConfig('ModDependence', 'ThunderstoreIndexMode', nextMode)
+    thunderstoreIndexMode.value = nextMode
+    savedThunderstoreIndexMode.value = nextMode
+    message.success('Thunderstore 索引模式已保存')
+  } catch (error) {
+    message.error(`保存 Thunderstore 索引模式失败：${formatErrorMessage(error)}`)
+  } finally {
+    isSavingThunderstoreIndexMode.value = false
   }
 }
 
@@ -331,6 +371,13 @@ const formatErrorMessage = (error: unknown): string => {
 
   return String(error || '未知错误')
 }
+
+// =============== Thunderstore 索引模式归一化 ===============
+// 说明：前端读取配置时把空值和非法值统一回新版优先，避免保存页展示未知状态。
+// 边界：后端仍会再次兜底校验，这里只负责设置页展示一致性。
+const normalizeThunderstoreIndexMode = (mode: string): string => {
+  return mode === 'legacy' ? 'legacy' : 'chunked'
+}
 </script>
 
 <template>
@@ -392,6 +439,44 @@ const formatErrorMessage = (error: unknown): string => {
         <p v-else-if="hasPendingBaseURLChange" class="mt-2 text-xs text-amber-600">保存后会同步更新全局 HTTP 客户端。</p>
         <p v-else-if="savedBaseURL" class="mt-2 text-xs text-zinc-500">当前全局 HTTP 客户端会以该地址作为 BaseURL。</p>
         <p v-else class="mt-2 text-xs text-zinc-500">未配置时不会主动请求远程服务。</p>
+      </section>
+
+      <!-- ~ Thunderstore 索引模式 -->
+      <!-- * 说明：控制 Thunderstore 市场和安装链路优先使用新版分片索引或旧版完整索引 -->
+      <!-- * 交互：用户切换后需要保存，下一次市场刷新、依赖解析或 BepInEx 远端解析会使用新优先级 -->
+      <!-- * 依赖：依赖 ConfigurationService.GetConfig 与 ConfigurationService.SetConfig -->
+      <!-- * 边界：这里只控制优先级；任一链路失败时后端仍会自动尝试另一链路并记录日志 -->
+      <section>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <label class="text-sm font-semibold text-zinc-950">Thunderstore 索引模式</label>
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <n-radio-group
+              v-model:value="thunderstoreIndexMode"
+              name="thunderstore-index-mode"
+            >
+              <n-radio-button
+                v-for="option in thunderstoreIndexModeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </n-radio-button>
+            </n-radio-group>
+            <n-button
+              type="primary"
+              :disabled="!hasPendingThunderstoreIndexModeChange"
+              :loading="isSavingThunderstoreIndexMode"
+              @click="confirmThunderstoreIndexMode"
+            >
+              <template #icon>
+                <Save :size="16" :stroke-width="1.8" />
+              </template>
+              保存
+            </n-button>
+          </div>
+        </div>
+        <p v-if="hasPendingThunderstoreIndexModeChange" class="mt-2 text-xs text-amber-600">保存后会影响下一次 Thunderstore 市场刷新和安装依赖解析。</p>
+        <p v-else class="mt-2 text-xs text-zinc-500">当前链路失败时会自动尝试另一种模式，并在系统日志中记录失败原因。</p>
       </section>
 
       <section>
