@@ -2025,6 +2025,130 @@ export namespace modDependence {
 
 }
 
+export namespace overlay {
+	
+	export class OverlayProcessStatusDTO {
+	    running: boolean;
+	    pid: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OverlayProcessStatusDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.running = source["running"];
+	        this.pid = source["pid"];
+	    }
+	}
+	export class WindowRectDTO {
+	    left: number;
+	    top: number;
+	    right: number;
+	    bottom: number;
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new WindowRectDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.left = source["left"];
+	        this.top = source["top"];
+	        this.right = source["right"];
+	        this.bottom = source["bottom"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	    }
+	}
+	export class WindowSnapshotDTO {
+	    found: boolean;
+	    hwnd: any;
+	    pid: number;
+	    title: string;
+	    processName: string;
+	    exePath: string;
+	    visible: boolean;
+	    minimized: boolean;
+	    foreground: boolean;
+	    rect: WindowRectDTO;
+	    attachedRect: WindowRectDTO;
+	
+	    static createFrom(source: any = {}) {
+	        return new WindowSnapshotDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.found = source["found"];
+	        this.hwnd = source["hwnd"];
+	        this.pid = source["pid"];
+	        this.title = source["title"];
+	        this.processName = source["processName"];
+	        this.exePath = source["exePath"];
+	        this.visible = source["visible"];
+	        this.minimized = source["minimized"];
+	        this.foreground = source["foreground"];
+	        this.rect = this.convertValues(source["rect"], WindowRectDTO);
+	        this.attachedRect = this.convertValues(source["attachedRect"], WindowRectDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class WindowCandidateDTO {
+	    snapshot: WindowSnapshotDTO;
+	    score: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new WindowCandidateDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.snapshot = this.convertValues(source["snapshot"], WindowSnapshotDTO);
+	        this.score = source["score"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+
+}
+
 export namespace system {
 	
 	export class ConfigUnitInfo {

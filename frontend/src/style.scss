@@ -85,6 +85,22 @@ body {
   font-family: "Nunito", "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 
+// =============== Overlay 透明运行态 ===============
+// 说明：悬浮窗附进程使用同一份前端资源，但窗口背景必须完全透明，只让 HUD 面板本身绘制颜色。
+// 使用：/overlay 页面挂载时写入 data-overlay-runtime 标记，离开页面时移除。
+// 边界：该规则只在 Overlay 路由运行期生效，避免影响主程序窗口背景和主题。
+:root[data-overlay-runtime='true'],
+body[data-overlay-runtime='true'],
+:root[data-overlay-runtime='true'] body,
+:root[data-overlay-runtime='true'] #app,
+:root[data-overlay-runtime='true'] .n-config-provider {
+  background: transparent !important;
+}
+
+:root[data-overlay-runtime='true'] body {
+  color: #f4ead0;
+}
+
 html,
 body,
 #app,

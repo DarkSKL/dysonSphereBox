@@ -4,6 +4,7 @@ import { computed, onMounted } from 'vue'
 import {useRoute} from 'vue-router'
 import BlankLayout from './layouts/BlankLayout.vue'
 import MainLayout from './layouts/MainLayout.vue'
+import OverlayLayout from './layouts/OverlayLayout.vue'
 import { useThemeMode } from './composables/useThemeMode'
 
 const route = useRoute()
@@ -12,6 +13,7 @@ const { isDarkMode, loadThemeMode } = useThemeMode()
 const layouts = {
   main: MainLayout,
   blank: BlankLayout,
+  overlay: OverlayLayout,
 }
 
 const layoutComponent = computed(() => layouts[route.meta.layout || 'main'])

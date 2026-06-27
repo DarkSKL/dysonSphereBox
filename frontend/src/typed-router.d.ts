@@ -79,6 +79,20 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/overlay': RouteRecordInfo<
+      '/overlay',
+      '/overlay',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/overlay-demo': RouteRecordInfo<
+      '/overlay-demo',
+      '/overlay-demo',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/settings': RouteRecordInfo<
       '/settings',
       '/settings',
@@ -144,6 +158,18 @@ declare module 'vue-router/auto-routes' {
     'src/pages/mod.vue': {
       routes:
         | '/mod'
+      views:
+        | never
+    }
+    'src/pages/overlay.vue': {
+      routes:
+        | '/overlay'
+      views:
+        | never
+    }
+    'src/pages/overlay-demo.vue': {
+      routes:
+        | '/overlay-demo'
       views:
         | never
     }

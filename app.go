@@ -13,6 +13,7 @@ import (
 	v2Installer "DysonSphereBox/helper/modDependence/installer/v2"
 	systemHelper "DysonSphereBox/helper/system"
 	environmentService "DysonSphereBox/service/environment"
+	overlayService "DysonSphereBox/service/overlay"
 	"DysonSphereBox/utils/dysonsphere"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -65,6 +66,9 @@ func (a *App) startup(ctx context.Context) {
 // 使用：Wails 框架在应用退出时自动调用。
 // 边界：关闭失败只记录到控制台，避免退出流程二次 panic。
 func (a *App) shutdown(ctx context.Context) {
+	if _, err := overlayService.OverlayManager.Stop(); err != nil {
+		fmt.Printf("stop overlay process: %v\n", err)
+	}
 	if err := core.CloseDatabase(); err != nil {
 		fmt.Printf("close database: %v\n", err)
 	}

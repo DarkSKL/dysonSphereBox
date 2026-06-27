@@ -1,4 +1,5 @@
 build/bin
+DysonSphereBox.exe
 node_modules
 frontend/dist
 deploy

@@ -7,6 +7,7 @@ package service
 import (
 	"DysonSphereBox/service/environment"
 	"DysonSphereBox/service/modDependence"
+	"DysonSphereBox/service/overlay"
 	"DysonSphereBox/service/system"
 )
 
@@ -27,6 +28,8 @@ type ServiceGroup struct {
 	ModDependenceServiceGroup modDependence.ServiceGroup
 	// EnvironmentServiceGroup 职责：聚合环境管理领域 Wails 服务；使用：RegisterServices 收集本地资源库扫描和目录入口服务；边界：不执行环境扫描。
 	EnvironmentServiceGroup environment.ServiceGroup
+	// OverlayServiceGroup 职责：聚合悬浮窗原型领域 Wails 服务；使用：RegisterServices 收集 Overlay 启停和窗口检测服务；边界：不启动附进程。
+	OverlayServiceGroup overlay.ServiceGroup
 }
 
 // RegisterServices 返回需要绑定到 Wails 的全部服务实例。
@@ -39,6 +42,7 @@ func RegisterServices() []interface{} {
 		ServiceGroupApp.SystemServiceGroup.RegisterServices()...)
 	services = append(services, ServiceGroupApp.ModDependenceServiceGroup.RegisterServices()...)
 	services = append(services, ServiceGroupApp.EnvironmentServiceGroup.RegisterServices()...)
+	services = append(services, ServiceGroupApp.OverlayServiceGroup.RegisterServices()...)
 
 	return services
 }
