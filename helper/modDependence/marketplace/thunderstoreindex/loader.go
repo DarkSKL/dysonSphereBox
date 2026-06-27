@@ -6,6 +6,7 @@ package thunderstoreindex
 
 import (
 	thunderstoreAPI "DysonSphereBox/apiDefinition/modDependence/thunderstore"
+	"DysonSphereBox/core"
 	marketplaceCache "DysonSphereBox/helper/modDependence/marketplace/cache"
 	"context"
 	"encoding/json"
@@ -26,7 +27,7 @@ func LoadPackages(ctx context.Context, useCache bool) ([]thunderstoreAPI.Package
 		}
 	}
 
-	client := http.Client{Timeout: 60 * time.Second}
+	client := core.NewHTTPStandardClient(60 * time.Second)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, thunderstoreAPI.IndexURL, nil)
 	if err != nil {
 		return nil, err

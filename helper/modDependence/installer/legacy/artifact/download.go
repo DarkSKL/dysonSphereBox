@@ -6,6 +6,7 @@ package artifact
 
 import (
 	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
+	"DysonSphereBox/core"
 	"DysonSphereBox/helper/modDependence/fileops"
 	legacyValue "DysonSphereBox/helper/modDependence/installer/legacy/value"
 	"DysonSphereBox/helper/modDependence/installer/shared"
@@ -57,7 +58,7 @@ func downloadDependencyZip(bufferDir string, dependency modDependenceResponse.Mo
 		return "", false, err
 	}
 
-	client := http.Client{Timeout: 180 * time.Second}
+	client := core.NewHTTPStandardClient(180 * time.Second)
 	response, err := client.Do(request)
 	if err != nil {
 		return "", false, err

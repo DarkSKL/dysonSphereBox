@@ -7,13 +7,13 @@ package remote
 import (
 	thunderstoreAPI "DysonSphereBox/apiDefinition/modDependence/thunderstore"
 	bepinexConstant "DysonSphereBox/constant/modDependence/bepinex"
+	"DysonSphereBox/core"
 	"DysonSphereBox/helper/modDependence/bepinex/contract"
 	"DysonSphereBox/helper/modDependence/fileops"
 	"DysonSphereBox/helper/modDependence/marketplace/thunderstoremeta"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -58,14 +58,14 @@ func ResolveLatestBepInExPackage() (*contract.BepInExPackage, error) {
 // 使用：ResolveLatestBepInExPackage 选择 BepInEx 版本前调用。
 // 边界：HTTP 非 2xx 或 JSON 解析失败时返回错误，不写入缓存。
 func fetchThunderstorePackages() ([]thunderstoreAPI.Package, error) {
-	client := http.Client{Timeout: 60 * time.Second}
+	client := core.NewHTTPStandardClient(60 * time.Second)
 	response, err := client.Get(thunderstoreAPI.IndexURL)
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("Thunderstore returned HTTP %d", response.StatusCode)
 	}
 
@@ -101,14 +101,14 @@ func DownloadPackage(bufferDir string, pkg *contract.BepInExPackage) (string, er
 		return "", err
 	}
 
-	client := http.Client{Timeout: 180 * time.Second}
+	client := core.NewHTTPStandardClient(180 * time.Second)
 	response, err := client.Get(pkg.DownloadURL)
 	if err != nil {
 		return "", err
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return "", fmt.Errorf("download %s/%s returned HTTP %d", pkg.Owner, pkg.Name, response.StatusCode)
 	}
 
