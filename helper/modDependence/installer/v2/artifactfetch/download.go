@@ -5,6 +5,13 @@ package artifactfetch
 // 边界：不解析本地 artifact、不解压 zip、不复制文件、不写 installed 模型；失败时清理 partial 文件。
 
 import (
+	"DysonSphereBox/core"
+	"DysonSphereBox/helper/modDependence/fileops"
+	"DysonSphereBox/helper/modDependence/installer/shared"
+	v2Artifact "DysonSphereBox/helper/modDependence/installer/v2/artifact"
+	"DysonSphereBox/helper/modDependence/installer/v2/cancel"
+	progressEvent "DysonSphereBox/helper/modDependence/installer/v2/progress/event"
+	progressReader "DysonSphereBox/helper/modDependence/installer/v2/progress/reader"
 	"context"
 	"fmt"
 	"io"
@@ -12,13 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"DysonSphereBox/helper/modDependence/fileops"
-	"DysonSphereBox/helper/modDependence/installer/shared"
-	v2Artifact "DysonSphereBox/helper/modDependence/installer/v2/artifact"
-	"DysonSphereBox/helper/modDependence/installer/v2/cancel"
-	progressEvent "DysonSphereBox/helper/modDependence/installer/v2/progress/event"
-	progressReader "DysonSphereBox/helper/modDependence/installer/v2/progress/reader"
 )
 
 // downloadRemoteArtifact 下载远端 artifact zip 到缓存目录。
@@ -57,7 +57,7 @@ func downloadRemoteArtifact(ctx context.Context, bufferDir string, artifact v2Ar
 	if err != nil {
 		return "", err
 	}
-	client := http.Client{Timeout: 180 * time.Second}
+	client := core.NewHTTPStandardClient(180 * time.Second)
 	response, err := client.Do(request)
 	if err != nil {
 		return "", err

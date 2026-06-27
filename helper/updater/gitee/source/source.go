@@ -5,6 +5,7 @@ package source
 // 边界：只负责对象构造和内存缓存初始化，不访问网络、不下载附件、不应用更新文件。
 
 import (
+	"DysonSphereBox/core"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -53,7 +54,7 @@ func NewSource(config Config) (*Source, error) {
 	}
 	httpClient := config.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+		httpClient = core.NewHTTPStandardClient(defaultHTTPTimeout)
 	}
 	return &Source{apiBaseURL: apiBaseURL, token: strings.TrimSpace(config.Token), httpClient: httpClient, assets: make(map[int64]giteeAsset)}, nil
 }

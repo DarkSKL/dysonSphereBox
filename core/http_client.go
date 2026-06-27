@@ -44,9 +44,7 @@ func NewHTTPClient(baseURL string) (*HTTPClient, error) {
 	}
 
 	return &HTTPClient{
-		client: &http.Client{
-			Timeout: defaultHTTPTimeout,
-		},
+		client:  NewHTTPStandardClient(defaultHTTPTimeout),
 		baseURL: parsedBaseURL,
 	}, nil
 }
