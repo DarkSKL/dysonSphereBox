@@ -11,11 +11,12 @@ import {
 } from '@lucide/vue'
 import type {DropdownOption} from 'naive-ui'
 import {useMessage} from 'naive-ui'
-import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useEnvironmentState} from '../composables/useEnvironmentState'
 import {environment} from '../../wailsjs/go/models'
 import {OnFileDrop, OnFileDropOff} from '../../wailsjs/runtime/runtime'
 import BlueprintViewerPanel from '../components/blueprint/viewer-panel.vue'
+import {usePageTutorial} from '../composables/usePageTutorial'
 
 definePage({
   meta: {
@@ -90,6 +91,7 @@ const {
 } = useEnvironmentState()
 
 const message = useMessage()
+const {tryAutoStartTutorial} = usePageTutorial('environment')
 
 // =============== 标签与状态展示 ===============
 // 说明：维护环境页顶部标签和状态语义，供模板复用统一文案与颜色。
@@ -131,6 +133,11 @@ onMounted(async () => {
   await recoverInterruptedOperations()
   await loadOverview()
   await loadMods()
+  void tryAutoStartTutorial()
+})
+
+onActivated(() => {
+  void tryAutoStartTutorial()
 })
 
 onBeforeUnmount(() => {
@@ -941,7 +948,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
 
 <template>
   <section class="environment-page flex h-full flex-col overflow-hidden">
-    <div class="environment-tabs flex shrink-0 items-center border-b px-6">
+    <div class="environment-tabs flex shrink-0 items-center border-b px-6" data-tour="environment-tabs">
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -953,7 +960,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
         <component :is="tab.icon" :size="15" :stroke-width="1.8" />
         <span>{{ tab.label }}</span>
       </button>
-      <span class="environment-tab-summary">{{ activeTabSummary }}</span>
+      <span class="environment-tab-summary" data-tour="environment-summary">{{ activeTabSummary }}</span>
     </div>
 
     <div class="min-h-0 flex-1 overflow-hidden">
@@ -963,12 +970,13 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
       <!-- * 依赖：依赖 EnvironmentManagerService.ListMods 与 OpenModLibraryDir -->
       <!-- * 边界：不扫描远端市场，不复制到游戏目录，不支持裸 DLL 管理 -->
       <section v-if="activeTab === 'mods'" class="environment-tab-panel">
-        <div class="environment-toolbar">
+        <div class="environment-toolbar" data-tour="environment-toolbar">
           <n-input
             v-model:value="modSearch"
             class="environment-search"
             size="small"
             placeholder="搜索模组"
+            data-tour="environment-search"
           >
             <template #prefix>
               <Search :size="14" :stroke-width="1.8" class="text-zinc-400" />
@@ -983,8 +991,9 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
           @dragleave="clearModZipDrag"
           @drop="dropModZipFiles"
           @contextmenu="openEnvContextMenu($event, {kind: 'mod-space'})"
+          data-tour="environment-grid"
         >
-          <div v-if="isModZipDragActive" class="mod-zip-drop-mask">
+          <div v-if="isModZipDragActive" class="mod-zip-drop-mask" data-tour="environment-mod-drop">
             <div>
               <Package :size="34" :stroke-width="1.7" />
               <strong>导入解析 Mod</strong>
@@ -1005,6 +1014,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
               :key="mod.id"
               type="button"
               class="environment-resource-card"
+              data-tour="environment-card"
               :class="[mod.state, {unsupported: !mod.supported}]"
               :title="mod.warning || mod.description || mod.name"
               :aria-disabled="!canToggleMod(mod)"
@@ -1033,19 +1043,20 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
       <!-- * 依赖：依赖 EnvironmentManagerService.ListBlueprints 与当前 parentId -->
       <!-- * 边界：移动会直接提交迁移；目标冲突、复制失败或删除失败由后端阻止 -->
       <section v-else-if="activeTab === 'blueprints'" class="environment-tab-panel">
-        <div class="environment-toolbar">
+        <div class="environment-toolbar" data-tour="environment-toolbar">
           <n-input
             v-model:value="blueprintSearch"
             class="environment-search"
             size="small"
             placeholder="搜索蓝图"
+            data-tour="environment-search"
           >
             <template #prefix>
               <Search :size="14" :stroke-width="1.8" class="text-zinc-400" />
             </template>
           </n-input>
 
-          <div class="environment-breadcrumb">
+          <div class="environment-breadcrumb" data-tour="environment-breadcrumb">
             <button
               type="button"
               :class="{'drop-target': isBlueprintDropTarget('')}"
@@ -1079,6 +1090,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
           @dragleave="clearBlueprintDropTarget($event)"
           @drop="dropBlueprintToParent($event, currentBlueprintParentId)"
           @contextmenu="openEnvContextMenu($event, {kind: 'blueprint-space'})"
+          data-tour="environment-grid"
         >
           <div v-if="!isLoadingBlueprints && blueprintResources.length === 0" class="environment-empty">
             <Layers :size="30" :stroke-width="1.7" />
@@ -1095,6 +1107,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
               :key="folder.id"
               type="button"
               class="environment-resource-card folder"
+              data-tour="environment-card"
               :class="{
                 'dragging': draggedBlueprintResourceId === folder.id,
                 'drop-target': isBlueprintDropTarget(folder.id),
@@ -1117,6 +1130,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
               :key="blueprint.id"
               type="button"
               class="environment-resource-card"
+              data-tour="environment-card"
               :class="blueprint.state"
               draggable="true"
               :aria-disabled="!canToggleBlueprint(blueprint)"
@@ -1147,12 +1161,13 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
       <!-- * 依赖：依赖 EnvironmentManagerService.ListSaves、OpenSaveLibraryDir 与 OpenSaveRealDir -->
       <!-- * 边界：存档不进入客户端虚拟目录，页面以真实目录当前状态为准 -->
       <section v-else class="environment-tab-panel">
-        <div class="environment-toolbar">
+        <div class="environment-toolbar" data-tour="environment-toolbar">
           <n-input
             v-model:value="saveSearch"
             class="environment-search"
             size="small"
             placeholder="搜索存档"
+            data-tour="environment-search"
           >
             <template #prefix>
               <Search :size="14" :stroke-width="1.8" class="text-zinc-400" />
@@ -1160,7 +1175,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
           </n-input>
         </div>
 
-        <div class="environment-grid-scroll" @contextmenu="openEnvContextMenu($event, {kind: 'save-space'})">
+        <div class="environment-grid-scroll" data-tour="environment-grid" @contextmenu="openEnvContextMenu($event, {kind: 'save-space'})">
           <div v-if="!isLoadingSaves && saves.length === 0" class="environment-empty">
             <Archive :size="30" :stroke-width="1.7" />
             <p>没有找到存档文件。</p>
@@ -1171,6 +1186,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
               :key="save.id"
               type="button"
               class="environment-resource-card save"
+              data-tour="environment-card"
               :aria-disabled="!canRenameSave(save)"
               @click="canRenameSave(save) && openSaveRenameDialog(save.id, save.name)"
               @contextmenu="openEnvContextMenu($event, {kind: 'save', save})"
@@ -1207,6 +1223,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
       :keyboard="false"
       @clickoutside="closeEnvContextMenu"
       @select="handleEnvContextMenuSelect"
+      data-tour="environment-context-menu"
     />
 
     <!-- ~ 单字段输入弹窗 -->
@@ -1247,6 +1264,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
       title="快速导入"
       positive-text="导入"
       negative-text="取消"
+      data-tour="environment-quick-import"
       :positive-button-props="{type: 'primary', loading: envQuickImportDialog.isSubmitting, disabled: envQuickImportDialog.isSubmitting}"
       :negative-button-props="{disabled: envQuickImportDialog.isSubmitting}"
       :mask-closable="!envQuickImportDialog.isSubmitting"
@@ -1302,6 +1320,7 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
       width="50vw"
       placement="right"
       :trap-focus="false"
+      data-tour="environment-detail-drawer"
     >
       <n-drawer-content
         closable

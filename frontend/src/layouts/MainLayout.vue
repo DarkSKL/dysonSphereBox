@@ -20,13 +20,16 @@ import {computed, onMounted} from 'vue'
 import {useRoute} from 'vue-router'
 import {Quit, WindowMinimise, WindowToggleMaximise} from '../../wailsjs/runtime/runtime'
 import dysonSphereProgramLogo from '../assets/images/dyson-sphere-program-logo.png'
+import TutorialLauncher from '../components/tutorial/launcher.vue'
 import {useAppVersion} from '../composables/useAppVersion'
+import {usePageTutorial} from '../composables/usePageTutorial'
 import {useThemeMode} from '../composables/useThemeMode'
 
 const route = useRoute()
 const message = useMessage()
 const {appVersion, loadAppVersion} = useAppVersion()
 const {isDarkMode, isSavingThemeMode, loadThemeMode, toggleThemeMode} = useThemeMode()
+const {tryAutoStartTutorial: tryAutoStartGlobalTutorial} = usePageTutorial('global')
 
 const navItems = [
   {label: '首页', to: '/', icon: Home},
@@ -45,6 +48,7 @@ const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模�
 onMounted(() => {
   void loadAppVersion()
   void loadThemeMode()
+  void tryAutoStartGlobalTutorial()
 })
 
 // =============== 主题切换交互 ===============
@@ -94,7 +98,7 @@ const closeWindow = (): void => {
         <!-- * 交互：点击后返回首页，保留侧栏固定宽度内的可点击区域 -->
         <!-- * 依赖：依赖本地化的 Steam 官方静态 Logo 资源 -->
         <!-- * 边界：图片加载失败时通过 aria-label 保留可访问名称，不阻塞导航渲染 -->
-        <RouterLink to="/" class="app-brand-link min-w-0" aria-label="戴森球计划">
+        <RouterLink to="/" class="app-brand-link min-w-0" aria-label="戴森球计划" data-tour="main-brand">
           <img :src="dysonSphereProgramLogo" alt="" class="app-brand-logo" />
         </RouterLink>
       </div>
@@ -104,7 +108,7 @@ const closeWindow = (): void => {
       <!-- * 交互：点击后切换到对应页面，并高亮当前路由 -->
       <!-- * 依赖：依赖 navItems 与 Vue Router 自动路由 -->
       <!-- * 边界：较长导航名称会截断，避免挤压图标和侧边栏宽度 -->
-      <nav class="grid gap-1 p-2">
+      <nav class="grid gap-1 p-2" data-tour="main-nav">
         <RouterLink
           v-for="item in navItems"
           :key="item.to"
@@ -141,11 +145,12 @@ const closeWindow = (): void => {
       <!-- * 边界：未配置标题时回退到应用名称 -->
       <header class="app-header flex h-16 shrink-0 items-center justify-between pl-8 pr-4">
         <div class="app-drag-region min-w-0 flex-1">
-          <p class="app-header-title text-sm font-semibold">{{ title }}</p>
+          <p class="app-header-title text-sm font-semibold" data-tour="main-header-title">{{ title }}</p>
           <p class="app-muted-text text-xs">戴森球盒子</p>
         </div>
         <div class="app-window-controls flex items-center gap-2">
-          <span class="app-version-pill inline-flex h-10 items-center rounded px-3 text-xs">{{ appVersion }}</span>
+          <span class="app-version-pill inline-flex h-10 items-center rounded px-3 text-xs" data-tour="main-app-version">{{ appVersion }}</span>
+          <TutorialLauncher />
           <!-- ~ 日夜模式切换 -->
           <!-- * 说明：在版本信息旁提供无文字图标按钮，用于切换日间和夜间模式 -->
           <!-- * 交互：点击后从按钮中心触发圆形扩散动画，并将结果写入 System/AppTheme 配置 -->
@@ -157,6 +162,7 @@ const closeWindow = (): void => {
             :title="themeToggleTitle"
             :aria-label="themeToggleTitle"
             :disabled="isSavingThemeMode"
+            data-tour="main-theme-toggle"
             @click="handleThemeToggle"
           >
             <Sun v-if="isDarkMode" :size="16" :stroke-width="1.9" />
@@ -167,7 +173,7 @@ const closeWindow = (): void => {
           <!-- * 交互：点击后调用 Wails runtime 窗口 API -->
           <!-- * 依赖：依赖 WindowMinimise、WindowToggleMaximise 与 Quit -->
           <!-- * 边界：按钮区域禁止窗口拖拽，避免点击时触发移动窗口 -->
-          <div class="window-control-group flex items-center gap-1">
+          <div class="window-control-group flex items-center gap-1" data-tour="main-window-controls">
             <button class="window-control-button" type="button" title="最小化" aria-label="最小化" @click="minimizeWindow">
               <Minus :size="15" :stroke-width="1.9" />
             </button>

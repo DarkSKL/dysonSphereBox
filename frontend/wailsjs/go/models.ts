@@ -2161,6 +2161,26 @@ export namespace system {
 	        this.pageSize = source["pageSize"];
 	    }
 	}
+	export class TutorialProgressDTO {
+	    pageKey: string;
+	    tutorialVersion: number;
+	    status: string;
+	    completed: boolean;
+	    skipped: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TutorialProgressDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pageKey = source["pageKey"];
+	        this.tutorialVersion = source["tutorialVersion"];
+	        this.status = source["status"];
+	        this.completed = source["completed"];
+	        this.skipped = source["skipped"];
+	    }
+	}
 
 }
 

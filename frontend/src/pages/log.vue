@@ -2,9 +2,10 @@
 import {AlertCircle, AlertTriangle, Bug, ClipboardCopy, Download, Info, ListFilter, RefreshCw, X} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import type {SelectOption} from 'naive-ui'
-import {computed, onMounted, ref, watch} from 'vue'
+import {computed, onActivated, onMounted, ref, watch} from 'vue'
 import {system} from '../../wailsjs/go/models'
 import {ListLogs} from '../../wailsjs/go/system/LogService'
+import {usePageTutorial} from '../composables/usePageTutorial'
 
 definePage({
   meta: {
@@ -42,6 +43,7 @@ interface LogTypeConfig {
 }
 
 const message = useMessage()
+const {tryAutoStartTutorial} = usePageTutorial('log')
 const logs = ref<system.LogDTO[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -507,6 +509,11 @@ watch([page, pageSize], () => {
 
 onMounted(() => {
   void loadLogs()
+  void tryAutoStartTutorial()
+})
+
+onActivated(() => {
+  void tryAutoStartTutorial()
 })
 </script>
 
@@ -517,27 +524,27 @@ onMounted(() => {
     <!-- * 交互：点击刷新会重新读取当前条件下的日志，导出会按当前筛选条件批量下载日志文本 -->
     <!-- * 依赖：依赖 LogService.ListLogs 与当前页面分页状态 -->
     <!-- * 边界：筛选面板悬浮在按钮下方，不参与页面滚动布局，避免展开时挤压日志列表 -->
-    <div class="sticky top-0 z-20 -mx-8 -mt-8 border-b border-zinc-200 bg-[#fbfbfc] px-8 py-2">
+    <div class="sticky top-0 z-20 -mx-8 -mt-8 border-b border-zinc-200 bg-[#fbfbfc] px-8 py-2" data-tour="log-toolbar">
       <div class="flex h-9 items-center justify-between gap-3">
         <p class="text-xs text-zinc-500">
           共 <span class="font-medium text-zinc-900">{{ total }}</span> 条日志
         </p>
 
         <div class="flex items-center gap-2">
-          <n-button secondary size="small" :loading="isExporting" :disabled="exportableLogCount === 0" @click="exportLogs">
+          <n-button secondary size="small" :loading="isExporting" :disabled="exportableLogCount === 0" data-tour="log-export" @click="exportLogs">
             <template #icon>
               <Download :size="15" :stroke-width="1.8" />
             </template>
             导出
           </n-button>
-          <n-button secondary size="small" :loading="isLoading" @click="loadLogs">
+          <n-button secondary size="small" :loading="isLoading" data-tour="log-refresh" @click="loadLogs">
             <template #icon>
               <RefreshCw :size="15" :stroke-width="1.8" />
             </template>
             刷新
           </n-button>
           <div class="relative">
-            <n-button secondary size="small" @click="showFilters = !showFilters">
+            <n-button secondary size="small" data-tour="log-filter" @click="showFilters = !showFilters">
               <template #icon>
                 <ListFilter :size="15" :stroke-width="1.8" />
               </template>
@@ -602,7 +609,7 @@ onMounted(() => {
     <!-- * 交互：分页切换会重新请求后端，错误状态提供重试按钮 -->
     <!-- * 依赖：依赖 logs、total、page、pageSize 与 LogDTO 字段 -->
     <!-- * 边界：metadata 只做通用键值展示，不引入端口、进程等业务专属字段 -->
-    <section class="mt-4">
+    <section class="mt-4" data-tour="log-timeline">
       <n-spin :show="isLoading">
         <div v-if="loadError" class="rounded border border-red-200 bg-red-50 px-4 py-4">
           <div class="flex items-start justify-between gap-4">
@@ -651,7 +658,7 @@ onMounted(() => {
                     </div>
                     <n-tooltip trigger="hover">
                       <template #trigger>
-                        <n-button quaternary circle size="tiny" @click="copyLog(log)">
+                        <n-button quaternary circle size="tiny" data-tour="log-copy" @click="copyLog(log)">
                           <template #icon>
                             <ClipboardCopy :size="14" :stroke-width="1.8" />
                           </template>
@@ -698,7 +705,7 @@ onMounted(() => {
     <!-- * 交互：页码或每页数量变化会触发后端分页查询 -->
     <!-- * 依赖：依赖 total、page、pageSize 与 pageSizeOptions -->
     <!-- * 边界：没有日志时隐藏分页控件，避免无效操作 -->
-    <footer v-if="total > 0" class="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 pt-4">
+    <footer v-if="total > 0" class="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 pt-4" data-tour="log-pagination">
       <span class="text-xs text-zinc-500">{{ pageRangeText }}</span>
       <n-pagination
         v-model:page="page"

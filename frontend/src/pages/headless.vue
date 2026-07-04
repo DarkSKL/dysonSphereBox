@@ -28,6 +28,7 @@ import {contract, system} from '../../wailsjs/go/models'
 import {ListLogs} from '../../wailsjs/go/system/LogService'
 import ServerHeroLottie from '../components/headless/server-hero-lottie.vue'
 import ServiceStatusLottie from '../components/headless/service-status-lottie.vue'
+import {usePageTutorial} from '../composables/usePageTutorial'
 import {useThemeMode} from '../composables/useThemeMode'
 import {
   getHeadlessEnvironmentStatus,
@@ -78,6 +79,7 @@ interface HeadlessServiceStatusView {
 const message = useMessage()
 const router = useRouter()
 const {isDarkMode} = useThemeMode()
+const {tryAutoStartTutorial} = usePageTutorial('headless')
 const status = ref<contract.HeadlessEnvironmentStatus | null>(null)
 const recentLogs = ref<system.LogDTO[]>([])
 const isLoading = ref(false)
@@ -769,10 +771,12 @@ const formatErrorMessage = (error: unknown): string => {
 
 onMounted(() => {
   void refreshStatus()
+  void tryAutoStartTutorial()
   startAutoRefresh()
 })
 onActivated(() => {
   void refreshStatus()
+  void tryAutoStartTutorial()
   startAutoRefresh()
 })
 onDeactivated(() => {
@@ -790,7 +794,7 @@ onBeforeUnmount(() => {
     <!-- * 交互：启动按钮会先准备基础环境，再在状态就绪时启动无头进程；刷新只读状态，日志进入日志页 -->
     <!-- * 依赖：依赖 HeadlessService 状态与启动接口 -->
     <!-- * 边界：绑定未注入或游戏路径缺失时在错误条展示明确原因 -->
-    <div class="h-[164px] rounded border border-zinc-200 bg-white">
+    <div class="h-[164px] rounded border border-zinc-200 bg-white" data-tour="headless-hero">
       <div class="grid h-full grid-cols-[96px_minmax(0,1fr)_128px] items-center gap-5 px-8">
         <div class="relative grid h-24 w-24 place-items-center">
           <div class="relative grid h-[96px] w-[96px] place-items-center">
@@ -816,6 +820,7 @@ onBeforeUnmount(() => {
             class="headless-hero-action"
             :class="status?.processRunning || isStarting ? 'bg-emerald-700 text-white' : headlessPrerequisiteBlocked ? 'bg-white text-zinc-400' : 'bg-white text-zinc-700 hover:bg-emerald-50 hover:text-emerald-700'"
             :disabled="isStarting || status?.processRunning || headlessPrerequisiteBlocked"
+            data-tour="headless-start"
             @click="startEnvironment"
           >
             <RefreshCw v-if="isStarting" :size="17" :stroke-width="1.8" class="animate-spin" />
@@ -826,17 +831,18 @@ onBeforeUnmount(() => {
             class="headless-hero-action"
             :class="status && !status.processRunning || isStopping ? 'bg-red-700 text-white' : 'bg-white text-zinc-700 hover:bg-red-50 hover:text-red-700'"
             :disabled="isStopping || !status?.processRunning"
+            data-tour="headless-stop"
             @click="stopEnvironment"
           >
             <RefreshCw v-if="isStopping" :size="17" :stroke-width="1.8" class="animate-spin" />
             <Square v-else :size="15" :stroke-width="2" />
             <span>停止</span>
           </button>
-          <button class="headless-hero-action text-zinc-700" @click="router.push('/log')">
+          <button class="headless-hero-action text-zinc-700" data-tour="headless-log-shortcut" @click="router.push('/log')">
             <FileText :size="17" :stroke-width="1.8" />
             <span>日志</span>
           </button>
-          <button class="headless-hero-action text-zinc-700" @click="openSettingsDialog">
+          <button class="headless-hero-action text-zinc-700" data-tour="headless-settings" @click="openSettingsDialog">
             <Settings :size="17" :stroke-width="1.8" />
             <span>设置</span>
           </button>
@@ -854,7 +860,7 @@ onBeforeUnmount(() => {
     <!-- * 交互：随刷新和启动动作同步 -->
     <!-- * 依赖：依赖 HeadlessEnvironmentStatus 聚合字段 -->
     <!-- * 边界：未加载时展示默认占位，保持布局稳定 -->
-    <div class="mt-4 grid grid-cols-4 gap-4">
+    <div class="mt-4 grid grid-cols-4 gap-4" data-tour="headless-metrics">
       <article v-for="metric in metricCards" :key="metric.label" class="h-[104px] overflow-hidden rounded border border-zinc-200 bg-white px-4">
         <div class="grid h-full grid-cols-[40px_minmax(0,1fr)] items-center gap-3">
           <div class="grid h-9 w-9 shrink-0 place-items-center rounded-md border" :class="metricToneClass(metric.tone)">
@@ -875,7 +881,7 @@ onBeforeUnmount(() => {
       <!-- * 交互：刷新状态会追加真实采样点，ECharts 使用当前后端样本渲染折线图 -->
       <!-- * 依赖：依赖 HeadlessEnvironmentStatus.network 与 vue-echarts -->
       <!-- * 边界：首次采样没有差值时显示 0，读取失败时显示空态提示，不使用模拟数据 -->
-      <div class="h-[390px] min-w-0 rounded border border-zinc-200 bg-white p-4">
+      <div class="h-[390px] min-w-0 rounded border border-zinc-200 bg-white p-4" data-tour="headless-network">
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-2">
             <h2 class="text-sm font-semibold leading-5 text-zinc-950">网络速率</h2>
@@ -942,7 +948,7 @@ onBeforeUnmount(() => {
         <!-- * 交互：启动、停止和刷新后同步读取最新日志 -->
         <!-- * 依赖：依赖 LogService.ListLogs 与 recentEvents -->
         <!-- * 边界：日志读取失败时展示错误，不再用前端模拟事件兜底 -->
-        <div class="h-[228px] min-w-0 overflow-hidden rounded border border-zinc-200 bg-white p-4">
+        <div class="h-[228px] min-w-0 overflow-hidden rounded border border-zinc-200 bg-white p-4" data-tour="headless-events">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold leading-5 text-zinc-950">最近事件</h2>
             <RefreshCw v-if="isRecentLogLoading" :size="14" :stroke-width="1.8" class="animate-spin text-zinc-400" />
@@ -974,7 +980,7 @@ onBeforeUnmount(() => {
     <!-- * 交互：根据缺失项跳转设置页、模组页或重新检测 -->
     <!-- * 依赖：依赖 HeadlessService 聚合状态中的 gameDir、BepInEx 与 Nebula 依赖字段 -->
     <!-- * 边界：无头进程已经运行时不遮挡，避免异常状态下无法停止服务 -->
-    <div v-if="headlessPrerequisiteBlocked" class="absolute inset-0 z-20 grid place-items-center bg-white/65 backdrop-blur-sm">
+    <div v-if="headlessPrerequisiteBlocked" class="absolute inset-0 z-20 grid place-items-center bg-white/65 backdrop-blur-sm" data-tour="headless-gate">
       <div class="max-w-md px-6 text-center">
         <h1 class="text-xl font-semibold text-zinc-950">{{ headlessGateTitle }}</h1>
         <p class="mt-3 text-sm leading-6 text-zinc-500">{{ headlessGateDescription }}</p>

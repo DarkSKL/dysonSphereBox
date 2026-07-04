@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref} from 'vue'
+import {usePageTutorial} from '../composables/usePageTutorial'
 
 definePage({
   meta: {
@@ -12,6 +13,7 @@ definePage({
 // =============== 蓝图来源 ===============
 // 说明：集中维护内嵌页面地址，方便后续切换到镜像站或本地托管版本。
 const blueprintGeneratorUrl = 'https://sgwswordemperor.github.io/'
+const {tryAutoStartTutorial} = usePageTutorial('blueprint')
 
 // =============== 内嵌视口尺寸 ===============
 // 说明：外部蓝图工具是信息密度较高的桌面工具，过窄时保留最小工作宽度并交给外层滚动容器处理。
@@ -186,6 +188,7 @@ const markEmbeddedPageLoaded = (): void => {
 
 onMounted(() => {
   void preloadBlueprintGenerator()
+  void tryAutoStartTutorial()
 })
 
 onBeforeUnmount(() => {
@@ -194,13 +197,36 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="flex h-full min-h-[calc(100vh-4rem)] flex-col bg-zinc-100">
+  <section class="relative flex h-full min-h-[calc(100vh-4rem)] flex-col bg-zinc-100">
+    <!-- ~ 蓝图引导锚点 -->
+    <!-- * 说明：为 Driver.js 提供独立定位目标，避免直接高亮 iframe 或滚动容器 -->
+    <!-- * 交互：锚点只服务教程定位，不参与蓝图生成器本身的鼠标与键盘操作 -->
+    <!-- * 依赖：依赖当前 section 的可视尺寸，与下方滚动工作区保持同屏覆盖 -->
+    <!-- * 边界：不得把 data-tour 重新挂到 iframe 或 overflow-auto 容器上，避免引导时改变工作区滚动状态 -->
+    <div aria-hidden="true" class="pointer-events-none absolute inset-0 z-0">
+      <div
+        class="absolute left-1/2 top-1/2 h-[min(24rem,52vh)] w-[min(42rem,76vw)] -translate-x-1/2 -translate-y-1/2"
+        data-tour="blueprint-embed"
+      ></div>
+      <div
+        v-if="loadStage !== 'ready'"
+        class="absolute left-1/2 top-1/2 h-48 w-[min(36rem,72vw)] -translate-x-1/2 -translate-y-1/2"
+        data-tour="blueprint-loading"
+      ></div>
+      <div
+        v-if="loadStage === 'error'"
+        class="absolute left-1/2 top-[calc(50%+5rem)] h-11 w-32 -translate-x-1/2"
+        data-tour="blueprint-retry"
+      ></div>
+      <div class="absolute inset-x-4 bottom-4 h-12" data-tour="blueprint-workspace"></div>
+    </div>
+
     <!-- ~ 蓝图内嵌页 -->
     <!-- * 说明：直接承载外部蓝图页面，保留原站点完整交互能力 -->
     <!-- * 交互：用户在嵌入页面内完成蓝图编辑与生成操作；窗口较窄时外层提供横向滚动 -->
     <!-- * 依赖：依赖 sgwswordemperor.github.io 可访问，并由 WebView 承载 iframe -->
     <!-- * 边界：外部站点不可访问或主动拒绝嵌入时，浏览器会在 iframe 内展示加载失败状态；小窗口下不压缩外部工具布局 -->
-    <div class="relative min-h-0 flex-1 overflow-auto">
+    <div class="relative z-10 min-h-0 flex-1 overflow-auto">
       <iframe
         v-if="iframeUrl"
         :key="iframeRenderKey"

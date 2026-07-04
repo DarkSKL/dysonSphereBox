@@ -106,6 +106,78 @@ body::-webkit-scrollbar,
   color: var(--ds-text-primary);
 }
 
+.driver-popover.driverjs-theme-dsb {
+  max-width: min(360px, calc(100vw - 32px));
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  background: var(--ds-bg-panel-elevated);
+  color: var(--ds-text-primary);
+  box-shadow: 0 18px 42px rgb(15 23 42 / 0.18);
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-title {
+  color: var(--ds-text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-description {
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-progress-text {
+  color: var(--ds-text-muted);
+  font-size: 12px;
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-close-btn {
+  color: var(--ds-text-muted);
+  font-size: 22px;
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-close-btn:hover {
+  color: var(--ds-brand);
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-navigation-btns {
+  gap: 8px;
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-prev-btn,
+.driver-popover.driverjs-theme-dsb .driver-popover-next-btn {
+  border: 1px solid var(--ds-border-default);
+  border-radius: 4px;
+  padding: 5px 11px;
+  text-shadow: none;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-prev-btn {
+  background: var(--ds-bg-panel);
+  color: var(--ds-text-secondary);
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-next-btn {
+  border-color: var(--ds-brand);
+  background: var(--ds-brand);
+  color: #fff;
+}
+
+:root[data-theme='dark'] .driver-popover.driverjs-theme-dsb .driver-popover-next-btn {
+  color: #050806;
+}
+
+.driver-popover.driverjs-theme-dsb .driver-popover-prev-btn:hover,
+.driver-popover.driverjs-theme-dsb .driver-popover-next-btn:hover {
+  border-color: var(--ds-brand-hover);
+  background: var(--ds-hover-bg);
+  color: var(--ds-brand);
+}
+
 @supports (view-transition-name: root) {
   ::view-transition-old(root),
   ::view-transition-new(root) {

@@ -3,6 +3,7 @@ import {Copy, ExternalLink, GitFork, MessageCircle} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import {onMounted} from 'vue'
 import {useAppVersion} from '../composables/useAppVersion'
+import {usePageTutorial} from '../composables/usePageTutorial'
 
 definePage({
   meta: {
@@ -60,6 +61,7 @@ const {
   appVersion,
   loadAppVersion,
 } = useAppVersion()
+const {tryAutoStartTutorial} = usePageTutorial('about')
 
 // =============== 复制反馈 ===============
 // 说明：优先使用浏览器剪贴板 API，失败时用输入框选中方案兜底。
@@ -97,6 +99,7 @@ const copyContact = async (contact: (typeof contacts)[number]): Promise<void> =>
 
 onMounted(() => {
   void loadAppVersion()
+  void tryAutoStartTutorial()
 })
 </script>
 
@@ -105,17 +108,17 @@ onMounted(() => {
     <h1 class="mb-6 text-xl font-semibold text-zinc-950">关于我们</h1>
 
     <div class="grid gap-8">
-      <section>
+      <section data-tour="about-version">
         <p class="text-sm text-zinc-500">版本</p>
         <p class="mt-1 text-zinc-950">{{ appVersion }}</p>
       </section>
 
-      <section>
+      <section data-tour="about-links">
         <p class="text-sm text-zinc-500">开发者</p>
         <p class="mt-1 text-zinc-950">DarkSKL</p>
       </section>
 
-      <section>
+      <section data-tour="about-contacts">
         <p class="mb-3 text-sm text-zinc-500">项目主页与反馈</p>
         <div class="grid gap-3">
           <a
@@ -134,7 +137,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <section>
+      <section data-tour="about-credits">
         <p class="mb-3 text-sm text-zinc-500">联系方式</p>
         <div class="grid gap-3">
           <!-- ~ 联系方式复制 -->
@@ -177,7 +180,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <section class="border-t border-zinc-200 pt-6">
+      <section class="border-t border-zinc-200 pt-6" data-tour="about-disclaimer">
         <p class="mb-2 text-sm text-zinc-500">免责声明</p>
         <p class="text-sm leading-7 text-zinc-500">
           本工具仅提供模组安装便利，模组版权归原作者所有。使用模组可能影响游戏稳定性，请自行承担风险。

@@ -8,6 +8,7 @@ import {contract, updater} from '../../wailsjs/go/models'
 import {GetConfig, SetConfig} from '../../wailsjs/go/system/ConfigurationService'
 import {LoadOrInitDysonSphereExe} from '../../wailsjs/go/system/EnvironmentService'
 import {useAppUpdateState} from '../composables/useAppUpdateState'
+import {usePageTutorial} from '../composables/usePageTutorial'
 import {useWorkshopState} from '../composables/useWorkshopState'
 
 definePage({
@@ -43,6 +44,7 @@ const {
   checkAppUpdate: checkAppUpdateState,
   updateAppSelf,
 } = useAppUpdateState()
+const {tryAutoStartTutorial} = usePageTutorial('settings')
 const hasPendingGamePathChange = computed(() => gamePath.value.trim() !== savedGamePath.value.trim())
 const baseURLValidationMessage = computed(() => {
   const nextBaseURL = baseURL.value.trim()
@@ -89,6 +91,7 @@ const appUpdateSummary = computed(() => {
 const canUpdateApp = computed(() => Boolean(appUpdateInfo.value?.hasUpdate) && !isUpdatingApp.value)
 
 onMounted(async () => {
+  void tryAutoStartTutorial()
   void checkAppUpdate({silentWhenNoUpdate: true, force: false})
 
   try {
@@ -338,24 +341,24 @@ const formatErrorMessage = (error: unknown): string => {
     <h1 class="mb-6 text-xl font-semibold text-zinc-950">设置</h1>
 
     <div class="space-y-8">
-      <section>
+      <section data-tour="settings-game-path">
         <label class="mb-2 block text-sm font-semibold text-zinc-950">游戏路径</label>
         <div class="flex gap-2">
           <n-input v-model:value="gamePath" placeholder="请选择游戏安装目录" />
-          <n-button secondary :loading="isSelectingGamePath" @click="selectGamePath">
+          <n-button secondary :loading="isSelectingGamePath" data-tour="settings-select-game" @click="selectGamePath">
             <template #icon>
               <FolderOpen :size="16" :stroke-width="1.8" />
             </template>
             选择
           </n-button>
-          <n-button secondary :loading="isLoadingGamePath" @click="loadGamePathFromEnvironment">
+          <n-button secondary :loading="isLoadingGamePath" data-tour="settings-auto-game" @click="loadGamePathFromEnvironment">
             <template #icon>
               <Search :size="16" :stroke-width="1.8" />
             </template>
             自动获取
           </n-button>
         </div>
-        <div v-if="hasPendingGamePathChange" class="mt-3 flex items-center gap-3">
+        <div v-if="hasPendingGamePathChange" class="mt-3 flex items-center gap-3" data-tour="settings-save-game">
           <n-button type="primary" :loading="isSavingGamePath" @click="confirmGamePath">确认修改游戏路径</n-button>
           <span class="text-xs text-zinc-500">确认后会同步保存到 GameStartFilePath。</span>
         </div>
@@ -368,7 +371,7 @@ const formatErrorMessage = (error: unknown): string => {
       <!-- * 交互：地址变化后显示保存按钮，保存成功后同步刷新后端全局客户端 -->
       <!-- * 依赖：依赖 ConfigurationService.GetConfig 与 ConfigurationService.SetConfig -->
       <!-- * 边界：允许清空地址；非空地址必须包含 http/https 协议与主机名 -->
-      <section>
+      <section data-tour="settings-base-url">
         <label class="mb-2 block text-sm font-semibold text-zinc-950">连接地址</label>
         <div class="flex gap-2">
           <n-input
@@ -394,7 +397,7 @@ const formatErrorMessage = (error: unknown): string => {
         <p v-else class="mt-2 text-xs text-zinc-500">未配置时不会主动请求远程服务。</p>
       </section>
 
-      <section>
+      <section data-tour="settings-bepinex">
         <label class="mb-2 block text-sm font-semibold text-zinc-950">BepInEx</label>
         <div class="flex gap-2">
           <n-input :value="bepinExSummary" readonly />
@@ -421,7 +424,7 @@ const formatErrorMessage = (error: unknown): string => {
       <!-- * 交互：用户先检查更新，发现新版本后可打开确认弹窗并执行自更新 -->
       <!-- * 依赖：依赖 UpdateService.CheckAppUpdate 与 UpdateService.UpdateAppSelf -->
       <!-- * 边界：更新完成后需要用户重启应用，开发版构建会被正式 Release 视为可更新 -->
-      <section>
+      <section data-tour="settings-update">
         <label class="mb-2 block text-sm font-semibold text-zinc-950">应用更新</label>
         <div class="flex gap-2">
           <n-input :value="appUpdateSummary" readonly />

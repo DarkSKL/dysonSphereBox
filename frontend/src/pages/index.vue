@@ -1,9 +1,18 @@
 <script setup lang="ts">
+import {onMounted} from 'vue'
+import {usePageTutorial} from '../composables/usePageTutorial'
+
 definePage({
   meta: {
     layout: 'main',
     title: '首页',
   },
+})
+
+const {tryAutoStartTutorial} = usePageTutorial('home')
+
+onMounted(() => {
+  void tryAutoStartTutorial()
 })
 </script>
 
@@ -14,7 +23,7 @@ definePage({
     <!-- * 交互：当前不提供操作入口，只展示临时状态 -->
     <!-- * 依赖：依赖静态文案，不连接后端数据 -->
     <!-- * 边界：后续首页功能明确后可整体替换该区域 -->
-    <div class="grid min-h-[24rem] place-items-center">
+    <div class="grid min-h-[24rem] place-items-center" data-tour="home-placeholder">
       <p class="text-sm text-zinc-400">暂时没想好首页放什么 (。・∀・)ノ゛</p>
     </div>
   </section>

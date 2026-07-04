@@ -17,6 +17,8 @@ type ServiceGroup struct {
 	UpdateService
 	// LogService 职责：暴露系统日志查询、补充记录和清理服务；使用：RegisterServices 绑定给日志页；边界：注册时不查询或写入日志。
 	LogService
+	// TutorialService 职责：暴露首次使用引导教程进度服务；使用：RegisterServices 绑定给前端教程模块；边界：注册时不查询或写入教程状态。
+	TutorialService
 }
 
 // RegisterServices 返回系统领域需要绑定给前端的服务实例。
@@ -29,5 +31,6 @@ func (serviceGroup *ServiceGroup) RegisterServices() []interface{} {
 		&serviceGroup.ConfigurationService,
 		&serviceGroup.UpdateService,
 		&serviceGroup.LogService,
+		&serviceGroup.TutorialService,
 	}
 }

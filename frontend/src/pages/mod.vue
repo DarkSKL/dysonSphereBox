@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { AlertCircle, CheckCircle2, Database, RefreshCw, Search } from '@lucide/vue'
 import { useModPageState } from '../composables/useModPageState'
+import {onActivated, onMounted} from 'vue'
+import {usePageTutorial} from '../composables/usePageTutorial'
 
 definePage({
   meta: {
@@ -50,6 +52,15 @@ const {
   installBepInExFromModPage,
   resolveCoverUrl,
 } = useModPageState()
+const {tryAutoStartTutorial} = usePageTutorial('mod')
+
+onMounted(() => {
+  void tryAutoStartTutorial()
+})
+
+onActivated(() => {
+  void tryAutoStartTutorial()
+})
 </script>
 
 <template>
@@ -63,11 +74,13 @@ const {
       <div
         class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
         :class="(isCheckingGamePath || !canOpenModPage) ? 'pointer-events-none select-none blur-sm' : ''"
+        data-tour="mod-toolbar"
       >
         <div
           v-if="canOpenModPage"
           class="flex h-[34px] min-w-0 flex-1 items-center justify-between gap-4 border px-3"
           :class="isBepInExInstalled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'"
+          data-tour="mod-bepinex-status"
         >
           <div class="flex h-full min-w-0 flex-1 items-center gap-2">
             <CheckCircle2
@@ -101,7 +114,7 @@ const {
         <!-- * 交互：输入后自动刷新列表，清空后恢复当前来源的默认分页 -->
         <!-- * 依赖：依赖 searchKeyword 与 MarketplaceService 的 keyword 参数 -->
         <!-- * 边界：桌面宽度固定占工具栏 30%，不参与左右组件的空间分配 -->
-        <div v-if="canOpenModPage" class="w-full md:basis-[30%] md:max-w-[30%] md:shrink-0">
+        <div v-if="canOpenModPage" class="w-full md:basis-[30%] md:max-w-[30%] md:shrink-0" data-tour="mod-search">
           <n-input
             v-model:value="searchKeyword"
             class="mod-search-input"
@@ -122,7 +135,7 @@ const {
             trigger="click"
             @update:value="handleSourceChange"
           >
-            <n-button class="h-[34px] shrink-0" secondary>
+            <n-button class="h-[34px] shrink-0" secondary data-tour="mod-source">
               <template #icon>
                 <Database :size="16" :stroke-width="1.8" />
               </template>
@@ -134,6 +147,7 @@ const {
             secondary
             :loading="isLoadingPackages"
             :disabled="isManualSource"
+            data-tour="mod-refresh"
             @click="() => refreshPackages()"
           >
             <template #icon>
@@ -152,6 +166,7 @@ const {
       <div
         class="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
         :class="(isCheckingGamePath || !canOpenModPage) ? 'pointer-events-none select-none blur-sm' : ''"
+        data-tour="mod-package-grid"
       >
         <ModPackCard
           v-for="pack in packageList"
@@ -203,6 +218,7 @@ const {
       <div
         class="pb-8"
         :class="(isCheckingGamePath || !canOpenModPage) ? 'pointer-events-none select-none blur-sm' : ''"
+        data-tour="mod-list-status"
       >
         <div
           v-if="packageLoadError && packageList.length === 0"
@@ -243,7 +259,7 @@ const {
       <!-- * 交互：路径缺失时提供跳转设置页入口 -->
       <!-- * 依赖：依赖 CheckDysonSphereExe 与 settings 页保存的 Game/StartupFilePath -->
       <!-- * 边界：检查失败按不可用处理，避免在错误目录下继续安装 -->
-      <div v-if="isCheckingGamePath || !canOpenModPage" class="absolute inset-0 z-10 grid place-items-center bg-white/65 backdrop-blur-sm">
+      <div v-if="isCheckingGamePath || !canOpenModPage" class="absolute inset-0 z-10 grid place-items-center bg-white/65 backdrop-blur-sm" data-tour="mod-game-path-gate">
         <div class="max-w-md px-6 text-center">
           <h1 class="text-xl font-semibold text-zinc-950">{{ isCheckingGamePath ? '正在检测游戏路径' : '无法开启模组' }}</h1>
           <p class="mt-3 text-sm leading-6 text-zinc-500">
