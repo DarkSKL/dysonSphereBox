@@ -1014,6 +1014,7 @@ export namespace environment {
 	export class EnvironmentBlueprintDetail {
 	    item: EnvironmentBlueprintItem;
 	    libraryPath: string;
+	    code: string;
 	    parsed: BlueprintDecodeResult;
 	
 	    static createFrom(source: any = {}) {
@@ -1024,6 +1025,7 @@ export namespace environment {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.item = this.convertValues(source["item"], EnvironmentBlueprintItem);
 	        this.libraryPath = source["libraryPath"];
+	        this.code = source["code"];
 	        this.parsed = this.convertValues(source["parsed"], BlueprintDecodeResult);
 	    }
 	

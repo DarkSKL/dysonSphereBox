@@ -15,6 +15,7 @@ import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useEnvironmentState} from '../composables/useEnvironmentState'
 import {environment} from '../../wailsjs/go/models'
 import {OnFileDrop, OnFileDropOff} from '../../wailsjs/runtime/runtime'
+import BlueprintViewerPanel from '../components/blueprint/viewer-panel.vue'
 
 definePage({
   meta: {
@@ -189,17 +190,6 @@ const formatDate = (value: unknown): string => {
     month: '2-digit',
     day: '2-digit',
   })
-}
-
-const formatOptionalDate = (value?: string): string => {
-  if (!value) {
-    return '未知时间'
-  }
-  return formatDate(value)
-}
-
-const itemGroupLabel = (itemGroup: environment.BlueprintItemGroup): string => {
-  return itemGroup.itemName || `物品 ${itemGroup.itemId}`
 }
 
 const stateLabel = (state: string): string => {
@@ -485,6 +475,10 @@ const selectedBlueprintDetailVisible = computed({
     }
   },
 })
+const selectedBlueprintDetailName = computed(() => selectedBlueprintDetail.value?.item.name || '未选择蓝图')
+const selectedBlueprintBuildingCount = computed(() => (
+  selectedBlueprintDetail.value?.parsed.summary.buildingCount ?? 0
+))
 
 const conflictMenuOptions = (prefix: 'mod' | 'blueprint'): DropdownOption[] => [
   {type: 'divider', key: `${prefix}-conflict-divider`},
@@ -1299,75 +1293,45 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
     </n-modal>
 
     <!-- ~ 蓝图详情抽屉 -->
-    <!-- * 说明：展示右键蓝图文件解析出的元信息、区域、建筑统计和建筑样例 -->
-    <!-- * 交互：右侧滑出只读查看；关闭后清空当前蓝图详情，避免展示旧数据 -->
-    <!-- * 依赖：依赖 EnvironmentManagerService.GetBlueprintDetail 返回的解析 DTO -->
-    <!-- * 边界：解析失败由 toast 提示并保持抽屉关闭，不在前端重新解析蓝图编码 -->
+    <!-- * 说明：在当前抽屉内嵌入模型预览块，按蓝图编码渲染 3D 模型 -->
+    <!-- * 交互：右侧滑出后可在模型区拖拽与缩放；关闭后清空当前蓝图详情，避免展示旧数据 -->
+    <!-- * 依赖：依赖 EnvironmentManagerService.GetBlueprintDetail 返回原始 BLUEPRINT 编码 -->
+    <!-- * 边界：详情抽屉只做只读预览，不再渲染蓝图标题、版本、校验、描述和建筑组成信息 -->
     <n-drawer
       v-model:show="selectedBlueprintDetailVisible"
-      width="520"
+      width="50vw"
       placement="right"
       :trap-focus="false"
     >
       <n-drawer-content
-        title="蓝图详情"
         closable
+        body-content-style="padding: 0; height: 100%; overflow: hidden;"
       >
-        <n-spin :show="isLoadingBlueprintDetail" size="small">
+        <template #header>
+          <div class="blueprint-detail-header">
+            <strong>蓝图详情</strong>
+            <div v-if="selectedBlueprintDetail" class="blueprint-detail-header-meta">
+              <span class="blueprint-detail-header-chip name" :title="selectedBlueprintDetailName">
+                <em>名称</em>
+                <strong>{{ selectedBlueprintDetailName }}</strong>
+              </span>
+              <span class="blueprint-detail-header-chip">
+                <em>建筑</em>
+                <strong>{{ selectedBlueprintBuildingCount }}</strong>
+              </span>
+            </div>
+          </div>
+        </template>
+        <n-spin
+          :show="isLoadingBlueprintDetail"
+          size="small"
+          class="blueprint-detail-spin"
+          content-style="height: 100%;"
+        >
           <div v-if="selectedBlueprintDetail" class="blueprint-detail-drawer">
-            <div class="blueprint-detail-title">
-              <PencilRuler :size="22" :stroke-width="1.8" />
-              <div>
-                <h3>{{ selectedBlueprintDetail.item.name }}</h3>
-                <p>{{ selectedBlueprintDetail.libraryPath }}</p>
-              </div>
-            </div>
-
-            <div class="blueprint-summary-grid">
-              <div>
-                <span>建筑</span>
-                <strong>{{ selectedBlueprintDetail.parsed.summary.buildingCount }}</strong>
-              </div>
-              <div>
-                <span>区域</span>
-                <strong>{{ selectedBlueprintDetail.parsed.summary.areaCount }}</strong>
-              </div>
-              <div>
-                <span>连接</span>
-                <strong>{{ selectedBlueprintDetail.parsed.summary.connectionCount }}</strong>
-              </div>
-              <div>
-                <span>参数化</span>
-                <strong>{{ selectedBlueprintDetail.parsed.summary.parameterizedCount }}</strong>
-              </div>
-            </div>
-
-            <div class="environment-detail-grid">
-              <span>标题</span>
-              <strong>{{ selectedBlueprintDetail.parsed.meta.title || selectedBlueprintDetail.item.name }}</strong>
-              <span>游戏版本</span>
-              <strong>{{ selectedBlueprintDetail.parsed.meta.gameVersion || '未知版本' }}</strong>
-              <span>创建时间</span>
-              <strong>{{ formatOptionalDate(selectedBlueprintDetail.parsed.meta.createdAt) }}</strong>
-              <span>校验尾部</span>
-              <strong>{{ selectedBlueprintDetail.parsed.meta.checksum || '未提供' }}</strong>
-              <span>描述</span>
-              <strong>{{ selectedBlueprintDetail.parsed.meta.description || '暂无说明' }}</strong>
-            </div>
-
-            <div class="environment-detail-section">
-              <span>建筑组成</span>
-              <div v-if="selectedBlueprintDetail.parsed.summary.itemGroups.length > 0" class="blueprint-item-groups">
-                <div
-                  v-for="itemGroup in selectedBlueprintDetail.parsed.summary.itemGroups"
-                  :key="itemGroup.itemId"
-                >
-                  <span>{{ itemGroupLabel(itemGroup) }}</span>
-                  <strong>{{ itemGroup.count }}</strong>
-                </div>
-              </div>
-              <strong v-else>未解析到建筑</strong>
-            </div>
+            <BlueprintViewerPanel
+              :code="selectedBlueprintDetail.code"
+            />
           </div>
         </n-spin>
       </n-drawer-content>
@@ -1788,97 +1752,74 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
   }
 }
 
-.blueprint-detail-drawer {
-  display: grid;
-  gap: 18px;
-  color: var(--env-text);
-}
-
-.blueprint-detail-title {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+.blueprint-detail-header {
+  display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid var(--env-border-soft);
-  padding-bottom: 14px;
-  color: var(--env-brand);
+  justify-content: space-between;
+  gap: 16px;
 
-  h3 {
-    min-width: 0;
-    overflow: hidden;
+  > strong {
+    flex: 0 0 auto;
     color: var(--env-text);
-    font-size: 1rem;
-    font-weight: 650;
-    line-height: 1.3;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  p {
-    margin-top: 2px;
-    overflow-wrap: anywhere;
-    color: var(--env-text-muted);
-    font-size: 0.75rem;
-    line-height: 1.4;
-  }
-}
-
-.blueprint-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid var(--env-border-soft);
-  background: var(--env-surface-raised);
-
-  div {
-    display: grid;
-    gap: 4px;
-    border-right: 1px solid var(--env-border-soft);
-    padding: 10px;
-
-    &:last-child {
-      border-right: 0;
-    }
-  }
-
-  span {
-    color: var(--env-text-muted);
-    font-size: 0.6875rem;
-  }
-
-  strong {
-    color: var(--env-text);
-    font-size: 1rem;
+    font-size: 0.9375rem;
     font-weight: 650;
   }
 }
 
-.blueprint-item-groups {
-  display: grid;
+.blueprint-detail-header-meta {
+  display: flex;
+  min-width: 0;
+  max-width: min(28rem, 70%);
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
-.blueprint-item-groups {
-  div {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 10px;
-    border-bottom: 1px solid var(--env-border-soft);
-    padding-bottom: 8px;
-    font-size: 0.8125rem;
+.blueprint-detail-header-chip {
+  display: inline-flex;
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--env-border-soft);
+  background: color-mix(in srgb, var(--env-surface-raised) 86%, transparent);
+  padding: 0 9px;
+  color: var(--env-text);
+  font-size: 0.75rem;
+  line-height: 1;
+
+  &.name {
+    max-width: min(18rem, 58%);
   }
 
-  span {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--env-text-secondary);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  em {
+    flex: 0 0 auto;
+    color: var(--env-text-muted);
+    font-style: normal;
   }
 
   strong {
-    color: var(--env-text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.blueprint-detail-drawer {
+  height: 100%;
+  min-height: 360px;
+  color: var(--env-text);
+}
+
+.blueprint-detail-spin {
+  height: 100%;
+
+  :deep(.n-spin-container) {
+    height: 100%;
   }
 }
 
@@ -1962,6 +1903,17 @@ const handleEnvContextMenuSelect = async (key: string | number): Promise<void> =
   .environment-breadcrumb {
     max-width: 100%;
     margin-left: 0;
+  }
+
+  .blueprint-detail-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .blueprint-detail-header-meta {
+    max-width: 100%;
+    justify-content: flex-start;
   }
 }
 </style>

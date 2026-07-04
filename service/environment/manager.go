@@ -231,7 +231,7 @@ func (service *EnvironmentManagerService) ListBlueprints(parentId string, query 
 // 职责：按蓝图 ID 定位 AppData/blueprints 中的单个蓝图文件，读取编码并解析为结构化信息。
 // 使用：环境页蓝图卡片右键“查看详情”打开 Drawer 时调用。
 // 边界：只读客户端镜像文件；文件夹、缺失文件、非 BLUEPRINT 文本或暂不支持格式会返回错误。
-// 逻辑流：1. 扫描资源库定位蓝图 => 2. 校验文件仍在蓝图资源库根内 => 3. 读取文本并解析 => 4. 返回资源摘要与解析结果。
+// 逻辑流：1. 扫描资源库定位蓝图 => 2. 校验文件仍在蓝图资源库根内 => 3. 读取文本并解析 => 4. 返回资源摘要、原始编码与解析结果。
 func (service *EnvironmentManagerService) GetBlueprintDetail(itemId string) (EnvironmentBlueprintDetail, error) {
 	resolver := environmentHelper.Resolver{}
 	libraryRoot, err := resolver.LibraryRoot("blueprints")
@@ -258,7 +258,8 @@ func (service *EnvironmentManagerService) GetBlueprintDetail(itemId string) (Env
 	if err != nil {
 		return EnvironmentBlueprintDetail{}, fmt.Errorf("读取蓝图文件失败: %w", err)
 	}
-	parsed, err := environmentHelper.ParseBlueprintCode(string(content))
+	blueprintCode := string(content)
+	parsed, err := environmentHelper.ParseBlueprintCode(blueprintCode)
 	if err != nil {
 		return EnvironmentBlueprintDetail{}, err
 	}
@@ -276,6 +277,7 @@ func (service *EnvironmentManagerService) GetBlueprintDetail(itemId string) (Env
 			Extension:    resource.Extension,
 		},
 		LibraryPath: filepath.ToSlash(filepath.Join("blueprints", filepath.FromSlash(resource.RelativePath))),
+		Code:        blueprintCode,
 		Parsed:      parsed,
 	}, nil
 }

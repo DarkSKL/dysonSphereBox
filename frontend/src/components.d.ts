@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    BlueprintViewerPanel: typeof import('./components/blueprint/viewer-panel.vue')['default']
     HeadlessServerHeroLottie: typeof import('./components/headless/server-hero-lottie.vue')['default']
     HeadlessServiceStatusLottie: typeof import('./components/headless/service-status-lottie.vue')['default']
     ModPackCard: typeof import('./components/mod/pack-card.vue')['default']
