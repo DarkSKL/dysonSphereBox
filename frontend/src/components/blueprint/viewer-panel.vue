@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import * as Vue from 'vue'
 import {nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {useThemeMode, type ThemeMode} from '../../composables/useThemeMode'
 import blueprintEditorScriptUrl from '../../packages/dsp-blueprint-editor/dsp-blueprint-editor.js?url'
+
+type BlueprintViewerTheme = ThemeMode | 'auto'
 
 interface BlueprintViewerPanelProps {
   code: string
@@ -9,7 +12,7 @@ interface BlueprintViewerPanelProps {
 
 interface BlueprintViewerConstructorOptions {
   container: HTMLElement
-  theme?: 'dark' | 'light' | 'auto'
+  theme?: BlueprintViewerTheme
   width?: number
   height?: number
 }
@@ -18,6 +21,7 @@ interface BlueprintViewerInstance {
   loadBlueprint: (code: string) => void
   resetCamera: () => void
   setSize: (width: number, height: number) => void
+  setTheme?: (theme: BlueprintViewerTheme) => void
   dispose: () => void
 }
 
@@ -59,7 +63,13 @@ declare global {
   }
 }
 
+interface AppThemeSnapshot {
+  readonly rootThemeMode: ThemeMode | null
+  readonly blueprintEditorStoredTheme: string | null
+}
+
 const props = defineProps<BlueprintViewerPanelProps>()
+const {themeMode, isThemeReady} = useThemeMode()
 
 // =============== 蓝图模型预览状态 ===============
 // 说明：在当前资源详情抽屉内挂载 BlueprintViewer，保持预览区域和页面其它 UI 同源协作。
@@ -70,6 +80,56 @@ const isLoadingViewer = ref(false)
 const viewerError = ref('')
 let resizeObserver: ResizeObserver | null = null
 let pendingLoadFrame = 0
+const blueprintEditorThemeStorageKey = 'dsp-editor-theme'
+
+// =============== 应用主题隔离 ===============
+// 说明：第三方蓝图库加载时会写入 html[data-theme]，这里在每次外部调用后恢复盒子当前主题。
+// 边界：只恢复应用根主题和蓝图库自己的主题缓存，不接管用户在设置页选择主题的业务状态。
+const readRootThemeMode = (): ThemeMode | null => {
+  const rootTheme = document.documentElement.dataset.theme
+  if (rootTheme === 'dark' || rootTheme === 'light') {
+    return rootTheme
+  }
+
+  return null
+}
+
+const captureAppThemeSnapshot = (): AppThemeSnapshot => ({
+  rootThemeMode: readRootThemeMode(),
+  blueprintEditorStoredTheme: localStorage.getItem(blueprintEditorThemeStorageKey),
+})
+
+const restoreAppThemeSnapshot = (snapshot: AppThemeSnapshot): void => {
+  if (snapshot.blueprintEditorStoredTheme === null) {
+    localStorage.removeItem(blueprintEditorThemeStorageKey)
+  } else {
+    localStorage.setItem(blueprintEditorThemeStorageKey, snapshot.blueprintEditorStoredTheme)
+  }
+
+  const restoreThemeMode = isThemeReady.value
+    ? themeMode.value
+    : snapshot.rootThemeMode ?? themeMode.value
+  document.documentElement.dataset.theme = restoreThemeMode
+  document.documentElement.style.colorScheme = restoreThemeMode
+}
+
+const withAppThemeIsolation = <T>(operation: () => T): T => {
+  const snapshot = captureAppThemeSnapshot()
+  try {
+    return operation()
+  } finally {
+    restoreAppThemeSnapshot(snapshot)
+  }
+}
+
+const withAsyncAppThemeIsolation = async <T>(operation: () => Promise<T>): Promise<T> => {
+  const snapshot = captureAppThemeSnapshot()
+  try {
+    return await operation()
+  } finally {
+    restoreAppThemeSnapshot(snapshot)
+  }
+}
 
 // =============== 预览器脚本加载 ===============
 // 说明：按需加载 dsp-blueprint-editor 的 UMD 资源，复用库对外暴露的 BlueprintViewer 构造函数。
@@ -77,10 +137,13 @@ let pendingLoadFrame = 0
 const ensureBlueprintEditor = async (): Promise<DspBlueprintEditorGlobal> => {
   const loadedEditor = resolveBlueprintEditorGlobal()
   if (loadedEditor) {
+    cleanupBlueprintEditorGlobalStyles()
+    document.documentElement.dataset.theme = themeMode.value
+    document.documentElement.style.colorScheme = themeMode.value
     return loadedEditor
   }
 
-  await new Promise<void>((resolve, reject) => {
+  await withAsyncAppThemeIsolation(() => new Promise<void>((resolve, reject) => {
     const existingScript = document.querySelector<HTMLScriptElement>(
       `script[data-dsp-blueprint-editor="true"]`,
     )
@@ -99,15 +162,19 @@ const ensureBlueprintEditor = async (): Promise<DspBlueprintEditorGlobal> => {
     script.addEventListener('load', () => {
       restoreBlueprintEditorGlobals(maskedGlobals)
       cleanupBlueprintEditorInjectedStyles(existingStyleNodes)
+      document.documentElement.dataset.theme = themeMode.value
+      document.documentElement.style.colorScheme = themeMode.value
       resolve()
     }, {once: true})
     script.addEventListener('error', () => {
       restoreBlueprintEditorGlobals(maskedGlobals)
       cleanupBlueprintEditorInjectedStyles(existingStyleNodes)
+      document.documentElement.dataset.theme = themeMode.value
+      document.documentElement.style.colorScheme = themeMode.value
       reject(new Error('蓝图预览脚本加载失败。'))
     }, {once: true})
     document.head.appendChild(script)
-  })
+  }))
 
   const editor = resolveBlueprintEditorGlobal()
   if (!editor) {
@@ -182,6 +249,10 @@ const cleanupBlueprintEditorInjectedStyles = (existingStyleNodes: Set<HTMLStyleE
   })
 }
 
+const cleanupBlueprintEditorGlobalStyles = (): void => {
+  cleanupBlueprintEditorInjectedStyles(new Set<HTMLStyleElement>())
+}
+
 const isBlueprintEditorGlobalStyle = (styleText: string): boolean => {
   const editorStyleSignatures = [
     'body{margin:0;background:var(--bg-body)',
@@ -202,7 +273,8 @@ const isBlueprintEditorGlobalStyle = (styleText: string): boolean => {
 // 说明：初始化、加载蓝图和同步尺寸都集中在这里，详情切换时复用实例刷新模型。
 // 边界：容器不可用或编码为空时不创建实例；组件卸载时释放 WebGL 资源。
 const loadCurrentBlueprint = async (): Promise<void> => {
-  if (!containerRef.value || !props.code) {
+  const container = containerRef.value
+  if (!container || !props.code) {
     return
   }
   if (!hasRenderableSize()) {
@@ -216,15 +288,15 @@ const loadCurrentBlueprint = async (): Promise<void> => {
   try {
     const editor = await ensureBlueprintEditor()
     if (!viewer.value) {
-      viewer.value = new editor.BlueprintViewer({
-        container: containerRef.value,
-        theme: 'dark',
-      })
+      viewer.value = withAppThemeIsolation(() => new editor.BlueprintViewer({
+        container,
+        theme: themeMode.value,
+      }))
     }
 
-    viewer.value.loadBlueprint(props.code)
+    withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
     resizeViewer()
-    viewer.value.resetCamera()
+    withAppThemeIsolation(() => viewer.value?.resetCamera())
   } catch (error) {
     viewerError.value = error instanceof Error ? error.message : String(error || '蓝图模型渲染失败。')
   } finally {
@@ -272,6 +344,14 @@ onMounted(async () => {
 
 watch(() => props.code, () => {
   void loadCurrentBlueprint()
+})
+
+watch(themeMode, (mode) => {
+  if (!viewer.value?.setTheme) {
+    return
+  }
+
+  withAppThemeIsolation(() => viewer.value?.setTheme?.(mode))
 })
 
 onBeforeUnmount(() => {
