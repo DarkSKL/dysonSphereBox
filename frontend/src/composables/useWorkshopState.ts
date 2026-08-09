@@ -16,7 +16,7 @@ export interface ModPackage {
   mods: ModItem[]
 }
 
-const gamePath = ref('D:\\SteamLibrary\\steamapps\\common\\Dyson Sphere Program')
+const gamePath = ref('')
 const downloadServer = ref('aliyun')
 const autoStart = ref(false)
 const checkUpdate = ref(true)
@@ -67,10 +67,6 @@ export const modPackages: ModPackage[] = [
 
 let timers: Partial<Record<ModPackageKey, number>> = {}
 
-const isGamePathValid = computed(() => {
-  return gamePath.value.includes('DSPGAME.exe') || gamePath.value.includes('Dyson Sphere Program')
-})
-
 const isModEnvironmentInstalled = computed(() => {
   return installedPackages.value.nebula || installedPackages.value.qol
 })
@@ -103,7 +99,7 @@ const uninstallPackage = (key: ModPackageKey): void => {
 }
 
 const resetGamePath = (): void => {
-  gamePath.value = 'D:\\SteamLibrary\\steamapps\\common\\Dyson Sphere Program'
+  gamePath.value = ''
 }
 
 export const useWorkshopState = () => ({
@@ -114,7 +110,6 @@ export const useWorkshopState = () => ({
   installedPackages,
   installingPackages,
   packageProgress,
-  isGamePathValid,
   isModEnvironmentInstalled,
   installPackage,
   uninstallPackage,

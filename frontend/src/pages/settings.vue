@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import {Download, FolderOpen, RefreshCw, Save, Search, Trash2} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
-import {computed, onMounted, ref} from 'vue'
+import {computed, onMounted, ref, watch} from 'vue'
 import {SelectDysonSphereDirectory} from '../../wailsjs/go/main/App'
 import {SearchAndLoadBepInEx, Uninstall} from '../../wailsjs/go/modDependence/BepInExService'
 import {contract, updater} from '../../wailsjs/go/models'
 import {GetConfig, SetConfig} from '../../wailsjs/go/system/ConfigurationService'
-import {LoadOrInitDysonSphereExe} from '../../wailsjs/go/system/EnvironmentService'
+import {CheckDysonSphereExe, LoadOrInitDysonSphereExe} from '../../wailsjs/go/system/EnvironmentService'
 import {useAppUpdateState} from '../composables/useAppUpdateState'
 import {usePageTutorial} from '../composables/usePageTutorial'
 import {useWorkshopState} from '../composables/useWorkshopState'
@@ -18,14 +18,13 @@ definePage({
   },
 })
 
-const {
-  gamePath,
-  isGamePathValid,
-} = useWorkshopState()
+const {gamePath} = useWorkshopState()
 
 const isSelectingGamePath = ref(false)
 const isLoadingGamePath = ref(false)
 const isSavingGamePath = ref(false)
+const isCheckingGamePath = ref(false)
+const isGamePathValid = ref(false)
 const isSavingBaseURL = ref(false)
 const isLoadingBepInExStatus = ref(false)
 const isCheckingBepInEx = ref(false)
@@ -46,6 +45,12 @@ const {
 } = useAppUpdateState()
 const {tryAutoStartTutorial} = usePageTutorial('settings')
 const hasPendingGamePathChange = computed(() => gamePath.value.trim() !== savedGamePath.value.trim())
+const hasGamePathInput = computed(() => Boolean(gamePath.value.trim()))
+const canSaveGamePath = computed(() => (
+  hasPendingGamePathChange.value
+  && isGamePathValid.value
+  && !isCheckingGamePath.value
+))
 const baseURLValidationMessage = computed(() => {
   const nextBaseURL = baseURL.value.trim()
   if (!nextBaseURL) {
@@ -90,6 +95,42 @@ const appUpdateSummary = computed(() => {
 })
 const canUpdateApp = computed(() => Boolean(appUpdateInfo.value?.hasUpdate) && !isUpdatingApp.value)
 
+// =============== 游戏路径校验 ===============
+// 说明：通过后端文件系统检查确认输入是 DSPGAME.exe 或包含该文件的目录。
+// 边界：连续输入产生并发请求时只采用最后一次结果，旧请求不会覆盖当前路径状态。
+let gamePathValidationRequest = 0
+const validateGamePath = async (path: string = gamePath.value): Promise<boolean> => {
+  const requestID = ++gamePathValidationRequest
+  const candidatePath = path.trim()
+  if (!candidatePath) {
+    isGamePathValid.value = false
+    isCheckingGamePath.value = false
+    return false
+  }
+
+  isCheckingGamePath.value = true
+  try {
+    const isValid = await CheckDysonSphereExe(candidatePath)
+    if (requestID === gamePathValidationRequest) {
+      isGamePathValid.value = isValid
+    }
+    return isValid
+  } catch {
+    if (requestID === gamePathValidationRequest) {
+      isGamePathValid.value = false
+    }
+    return false
+  } finally {
+    if (requestID === gamePathValidationRequest) {
+      isCheckingGamePath.value = false
+    }
+  }
+}
+
+watch(gamePath, (path) => {
+  void validateGamePath(path)
+}, {immediate: true})
+
 onMounted(async () => {
   void tryAutoStartTutorial()
   void checkAppUpdate({silentWhenNoUpdate: true, force: false})
@@ -121,14 +162,20 @@ const selectGamePath = async (): Promise<void> => {
   isSelectingGamePath.value = true
   try {
     const selectedPath = await SelectDysonSphereDirectory()
-    if (selectedPath) {
-      gamePath.value = selectedPath
-      await searchAndLoadBepInEx(selectedPath, {showDialog: false, showLoading: false})
-      message.success('已选择游戏路径，并完成 BepInEx 检查')
+    if (!selectedPath) {
+      message.warning('未选择游戏路径，当前配置未改变')
       return
     }
 
-    message.warning('未选择游戏路径，当前配置未改变')
+    if (!await CheckDysonSphereExe(selectedPath)) {
+      message.warning('所选目录中未找到 DSPGAME.exe，请重新选择')
+      return
+    }
+
+    gamePath.value = selectedPath
+    savedGamePath.value = selectedPath
+    await searchAndLoadBepInEx(selectedPath, {showDialog: false, showLoading: false})
+    message.success('已保存游戏路径，并完成 BepInEx 检查')
   } catch (error) {
     message.error(`选择游戏路径失败：${formatErrorMessage(error)}`)
   } finally {
@@ -146,6 +193,7 @@ const loadGamePathFromEnvironment = async (): Promise<void> => {
     const detectedPath = await LoadOrInitDysonSphereExe()
     if (detectedPath) {
       gamePath.value = detectedPath
+      savedGamePath.value = detectedPath
       await searchAndLoadBepInEx(detectedPath, {showDialog: false, showLoading: false})
       message.success('已找到游戏路径，并完成 BepInEx 检查')
       return
@@ -160,17 +208,27 @@ const loadGamePathFromEnvironment = async (): Promise<void> => {
 }
 
 const confirmGamePath = async (): Promise<void> => {
-  if (isSavingGamePath.value || !hasPendingGamePathChange.value) {
+  if (isSavingGamePath.value || !canSaveGamePath.value) {
     return
   }
 
   isSavingGamePath.value = true
   try {
     const nextGamePath = gamePath.value.trim()
+    const isValid = await validateGamePath(nextGamePath)
+    if (nextGamePath !== gamePath.value.trim()) {
+      return
+    }
+    if (!isValid) {
+      message.error('未在指定路径下找到 DSPGAME.exe')
+      return
+    }
+
     await SetConfig('Game', 'StartupFilePath', nextGamePath)
-    gamePath.value = nextGamePath
-    savedGamePath.value = nextGamePath
-    await searchAndLoadBepInEx(nextGamePath, {showDialog: false, showLoading: false})
+    const normalizedGamePath = await LoadOrInitDysonSphereExe()
+    gamePath.value = normalizedGamePath
+    savedGamePath.value = normalizedGamePath
+    await searchAndLoadBepInEx(normalizedGamePath, {showDialog: false, showLoading: false})
     message.success('游戏路径已保存')
   } catch (error) {
     message.error(`保存游戏路径失败：${formatErrorMessage(error)}`)
@@ -359,10 +417,19 @@ const formatErrorMessage = (error: unknown): string => {
           </n-button>
         </div>
         <div v-if="hasPendingGamePathChange" class="mt-3 flex items-center gap-3" data-tour="settings-save-game">
-          <n-button type="primary" :loading="isSavingGamePath" @click="confirmGamePath">确认修改游戏路径</n-button>
-          <span class="text-xs text-zinc-500">确认后会同步保存到 GameStartFilePath。</span>
+          <n-button
+            type="primary"
+            :disabled="!canSaveGamePath"
+            :loading="isSavingGamePath"
+            @click="confirmGamePath"
+          >
+            确认修改游戏路径
+          </n-button>
+          <span class="text-xs text-zinc-500">确认后会同步保存到 Game/StartupFilePath。</span>
         </div>
-        <p v-if="!isGamePathValid" class="mt-2 text-sm text-red-600">未在该目录下找到 DSPGAME.exe</p>
+        <p v-if="isCheckingGamePath" class="mt-2 text-xs text-zinc-500">正在检查 DSPGAME.exe</p>
+        <p v-else-if="hasGamePathInput && !isGamePathValid" class="mt-2 text-sm text-red-600">未在该路径下找到 DSPGAME.exe</p>
+        <p v-else-if="!hasGamePathInput" class="mt-2 text-xs text-zinc-500">尚未配置游戏路径，请选择或输入游戏安装目录。</p>
         <p v-else class="mt-2 text-xs text-zinc-500">已自动检测到游戏路径</p>
       </section>
 
