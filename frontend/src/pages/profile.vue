@@ -2,16 +2,19 @@
 import {Camera, Eye, EyeOff, LogOut, Mail, Pencil, Phone, RefreshCw, Settings, Shield, User, X} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import {computed, onMounted, ref} from 'vue'
+import {storeToRefs} from 'pinia'
 import {account} from '../../wailsjs/go/models'
-import {ChangePassword, GetCaptcha, GetCurrentUserInfo, GetSession, Login, Logout, UpdateSelfInfo, UploadAvatar} from '../../wailsjs/go/account/AccountService'
+import {ChangePassword, GetCaptcha, UpdateSelfInfo, UploadAvatar} from '../../wailsjs/go/account/AccountService'
+import {useAccountStore} from '../stores/account'
 
 definePage({meta: {layout: 'main', title: '个人'}})
 
 type ProfileView = 'login' | 'force-change-password' | 'profile'
 
 const message = useMessage()
-const view = ref<ProfileView>('login')
-const profile = ref<account.UserInfo>({id: 0, uuid: '', userName: '', nickName: '', headerImg: '', authorityId: 0, phone: '', email: '', enable: 0})
+const accountStore = useAccountStore()
+const {authenticated, needChangePassword, profile} = storeToRefs(accountStore)
+const view = ref<ProfileView>(authenticated.value ? (needChangePassword.value ? 'force-change-password' : 'profile') : 'login')
 const captcha = ref<account.CaptchaData>({captchaId: '', picPath: '', captchaLength: 0, openCaptcha: false})
 const loginUsername = ref('')
 const loginPassword = ref('')
@@ -41,21 +44,13 @@ const avatarSource = computed(() => profile.value.headerImg)
 const accountState = computed(() => profile.value.enable === 1 ? '账号正常' : '账号状态未知')
 
 // =============== 账号会话初始化 ===============
-// 说明：恢复后端保存的登录状态，并在有效会话下拉取最新用户资料。
-// 边界：远端资料读取失败时保留登录页或改密页，不使用预置个人资料伪装成已登录。
+// 说明：Pinia 已在应用挂载前从后端 SQLite 恢复资料，本页只决定视图并后台刷新。
+// 边界：刷新失败时保留已缓存资料，只有失效会话才回到登录页。
 const initializeSession = async (): Promise<void> => {
-  isLoading.value = true
-  try {
-    const session = await GetSession()
-    if (!session.authenticated) return
-    profile.value = session.user
-    if (session.needChangePassword) { view.value = 'force-change-password'; return }
-    if (await refreshUserInfo()) {
-      view.value = 'profile'
-    }
-  } catch (error) {
-    message.error(`恢复登录状态失败：${formatError(error)}`)
-  } finally { isLoading.value = false }
+  if (!authenticated.value) return
+  if (needChangePassword.value) { view.value = 'force-change-password'; return }
+  view.value = 'profile'
+  try { await refreshUserInfo() } catch (error) { message.warning(`资料刷新失败，正在使用本地缓存：${formatError(error)}`) }
 }
 
 // =============== 验证码与登录 ===============
@@ -71,10 +66,9 @@ const submitLogin = async (): Promise<void> => {
   if (captcha.value.openCaptcha && !loginCaptcha.value.trim()) { message.warning('请输入验证码'); return }
   isLoading.value = true
   try {
-    const session = await Login({username: loginUsername.value.trim(), password: loginPassword.value, captchaId: captcha.value.captchaId, captcha: loginCaptcha.value.trim()})
-    profile.value = session.user
+    await accountStore.login({username: loginUsername.value.trim(), password: loginPassword.value, captchaId: captcha.value.captchaId, captcha: loginCaptcha.value.trim()})
     loginCaptcha.value = ''
-    if (session.needChangePassword) { view.value = 'force-change-password'; return }
+    if (needChangePassword.value) { view.value = 'force-change-password'; return }
     loginPassword.value = ''
     if (!await refreshUserInfo()) return
     view.value = 'profile'
@@ -85,7 +79,7 @@ const submitLogin = async (): Promise<void> => {
 const refreshUserInfo = async (): Promise<boolean> => {
   // 说明：401 表示后端已使本地 JWT 失效，此时回到登录页属于正常状态迁移。
   // 边界：除 401 和强制改密外的网络、服务端错误仍交给调用方提示，避免吞掉真实故障。
-  try { profile.value = await GetCurrentUserInfo() } catch (error) {
+  try { await accountStore.refreshProfile() } catch (error) {
     const text = formatError(error)
     if (text.includes('HTTP 401')) {
       resetToLogin()
@@ -133,8 +127,8 @@ const changePassword = async (forced = false): Promise<void> => {
   isChangingPassword.value = true
   try { await ChangePassword({password: oldPassword, newPassword: nextPassword}); resetToLogin(); message.success('密码修改成功，请重新登录') } catch (error) { message.error(formatError(error)) } finally { isChangingPassword.value = false }
 }
-const logOut = async (): Promise<void> => { try { await Logout(); resetToLogin() } catch (error) { resetToLogin(); message.warning(formatError(error)) } }
-const resetToLogin = (): void => { settingsVisible.value = false; view.value = 'login'; loginPassword.value = ''; loginCaptcha.value = ''; forcePassword.value = ''; forcePasswordConfirm.value = ''; currentPassword.value = ''; newPassword.value = ''; confirmPassword.value = ''; void refreshCaptcha() }
+const logOut = async (): Promise<void> => { try { await accountStore.logout() } catch (error) { message.warning(formatError(error)) } finally { resetToLogin() } }
+const resetToLogin = (): void => { accountStore.reset(); settingsVisible.value = false; view.value = 'login'; loginPassword.value = ''; loginCaptcha.value = ''; forcePassword.value = ''; forcePasswordConfirm.value = ''; currentPassword.value = ''; newPassword.value = ''; confirmPassword.value = ''; void refreshCaptcha() }
 const readFileBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => { const value = typeof reader.result === 'string' ? reader.result.split(',')[1] : ''; value ? resolve(value) : reject(new Error('无法读取头像文件')) }; reader.onerror = () => reject(reader.error ?? new Error('读取头像文件失败')); reader.readAsDataURL(file) })
 const formatError = (error: unknown): string => error instanceof Error ? error.message : String(error || '未知错误')
 
@@ -145,19 +139,19 @@ onMounted(() => { void initializeSession(); void refreshCaptcha() })
   <section class="profile-page">
     <!-- ~ 登录模块 --><div v-if="view === 'login'" class="login-view"><div class="login-panel"><div class="login-intro"><User :size="24" /><h1>账号登录</h1><p>使用国内服务器账号登录</p></div><div class="form-fields"><label><span>用户名</span><n-input v-model:value="loginUsername" @keyup.enter="submitLogin" /></label><label><span>密码</span><n-input v-model:value="loginPassword" :type="showLoginPassword ? 'text' : 'password'" @keyup.enter="submitLogin"><template #suffix><button type="button" class="field-icon-button" @click="showLoginPassword = !showLoginPassword"><EyeOff v-if="showLoginPassword" :size="15" /><Eye v-else :size="15" /></button></template></n-input></label><label v-if="captcha.openCaptcha"><span>验证码</span><div class="captcha-row"><n-input v-model:value="loginCaptcha" :maxlength="captcha.captchaLength" @keyup.enter="submitLogin" /><button class="captcha" type="button" title="刷新验证码" @click="refreshCaptcha"><img :src="captcha.picPath" alt="验证码" /><RefreshCw :size="14" /></button></div></label><n-button type="primary" block :loading="isLoading" @click="submitLogin">登录</n-button></div></div></div>
     <!-- ~ 强制改密模块 --><div v-else-if="view === 'force-change-password'" class="login-view"><div class="login-panel"><div class="login-intro"><Shield :size="24" /><h1>修改密码</h1><p>请先修改密码后继续使用账号</p></div><div class="form-fields"><label><span>当前密码</span><n-input v-model:value="loginPassword" type="password" /></label><label><span>新密码</span><n-input v-model:value="forcePassword" :type="showForcePassword ? 'text' : 'password'"><template #suffix><button type="button" class="field-icon-button" @click="showForcePassword = !showForcePassword"><EyeOff v-if="showForcePassword" :size="15" /><Eye v-else :size="15" /></button></template></n-input></label><label><span>确认新密码</span><n-input v-model:value="forcePasswordConfirm" :type="showForceConfirm ? 'text' : 'password'" @keyup.enter="() => changePassword(true)"><template #suffix><button type="button" class="field-icon-button" @click="showForceConfirm = !showForceConfirm"><EyeOff v-if="showForceConfirm" :size="15" /><Eye v-else :size="15" /></button></template></n-input></label><n-button type="primary" block :loading="isChangingPassword" @click="() => changePassword(true)">确认修改</n-button></div></div></div>
-    <!-- ~ 个人资料模块 --><div v-else class="profile-view"><section class="profile-hero"><div class="avatar-wrap" :class="{saving: isSavingProfile}" @click="selectAvatar"><img v-if="avatarSource" :src="avatarSource" alt="个人头像" /><User v-else :size="38" /><span class="avatar-cover"><Camera :size="19" /></span><input ref="avatarInput" class="hidden" type="file" accept="image/*" @change="updateAvatar" /></div><div class="profile-summary"><div class="profile-name-row"><template v-if="editingName"><n-input v-model:value="nicknameDraft" size="small" @keyup.enter="saveNickname" /><n-button size="small" type="primary" @click="saveNickname">保存</n-button><button class="icon-button" type="button" @click="editingName = false"><X :size="15" /></button></template><template v-else><h1>{{ displayName }}</h1><button class="icon-button" type="button" @click="nicknameDraft = profile.nickName; editingName = true"><Pencil :size="15" /></button></template></div><div class="badge-row"><span>{{ profile.userName }}</span><span>{{ accountState }}</span></div><div class="profile-meta"><span>邮箱：<b>{{ profile.email || '未填写' }}</b></span><span>手机号：<b>{{ profile.phone || '未填写' }}</b></span></div></div><div class="profile-actions"><n-button secondary @click="openSettings"><template #icon><Settings :size="15" /></template>设置</n-button><n-button secondary type="error" @click="logOut"><template #icon><LogOut :size="15" /></template>退出</n-button></div></section></div>
+    <!-- ~ 个人资料模块 --><div v-else class="profile-view"><section class="profile-hero"><div class="avatar-wrap" :class="{saving: isSavingProfile}" @click="selectAvatar"><img v-if="avatarSource" :src="avatarSource" alt="个人头像" /><User v-else :size="32" /><span class="avatar-cover"><Camera :size="16" /></span><input ref="avatarInput" class="hidden" type="file" accept="image/*" @change="updateAvatar" /></div><div class="profile-summary"><div class="profile-name-row"><template v-if="editingName"><n-input v-model:value="nicknameDraft" size="small" @keyup.enter="saveNickname" /><n-button size="small" type="primary" @click="saveNickname">保存</n-button><button class="icon-button" type="button" @click="editingName = false"><X :size="15" /></button></template><template v-else><h1>{{ displayName }}</h1><button class="icon-button" type="button" @click="nicknameDraft = profile.nickName; editingName = true"><Pencil :size="15" /></button></template></div><div class="badge-row"><span>{{ profile.userName }}</span><span>{{ accountState }}</span></div><div class="profile-meta"><span>邮箱：<b>{{ profile.email || '未填写' }}</b></span><span>手机号：<b>{{ profile.phone || '未填写' }}</b></span></div></div><div class="profile-actions"><n-button secondary @click="openSettings"><template #icon><Settings :size="15" /></template>设置</n-button><n-button secondary type="error" @click="logOut"><template #icon><LogOut :size="15" /></template>退出</n-button></div></section></div>
     <!-- ~ 设置抽屉 --><n-drawer v-model:show="settingsVisible" :width="400" placement="right"><n-drawer-content title="账号设置" closable><div class="settings-body"><section><h3>个人资料</h3><label><span>昵称</span><n-input v-model:value="profileDraft.nickName" /></label><label><span><Mail :size="14" />邮箱</span><n-input v-model:value="profileDraft.email" /></label><label><span><Phone :size="14" />手机号</span><n-input v-model:value="profileDraft.phone" /></label><n-button type="primary" :loading="isSavingProfile" @click="saveProfile">保存资料</n-button></section><section><h3><Shield :size="14" />账号安全</h3><label><span>当前密码</span><n-input v-model:value="currentPassword" :type="showCurrentPassword ? 'text' : 'password'"><template #suffix><button type="button" class="field-icon-button" @click="showCurrentPassword = !showCurrentPassword"><EyeOff v-if="showCurrentPassword" :size="15" /><Eye v-else :size="15" /></button></template></n-input></label><label><span>新密码</span><n-input v-model:value="newPassword" :type="showNewPassword ? 'text' : 'password'"><template #suffix><button type="button" class="field-icon-button" @click="showNewPassword = !showNewPassword"><EyeOff v-if="showNewPassword" :size="15" /><Eye v-else :size="15" /></button></template></n-input></label><label><span>确认新密码</span><n-input v-model:value="confirmPassword" :type="showConfirmPassword ? 'text' : 'password'" @keyup.enter="() => changePassword(false)"><template #suffix><button type="button" class="field-icon-button" @click="showConfirmPassword = !showConfirmPassword"><EyeOff v-if="showConfirmPassword" :size="15" /><Eye v-else :size="15" /></button></template></n-input></label><n-button secondary type="warning" :loading="isChangingPassword" @click="() => changePassword(false)">修改密码</n-button></section></div></n-drawer-content></n-drawer>
   </section>
 </template>
 
 <style scoped lang="scss">
-.profile-page { min-height: 100%; padding: 32px; color: var(--ds-text-primary); }
+.profile-page { min-height: 100%; padding: 20px 32px 32px; color: var(--ds-text-primary); }
 .login-view { display: grid; min-height: calc(100vh - 128px); place-items: center; }
 .login-panel { width: min(100%, 390px); border: 1px solid var(--ds-border-default); background: var(--ds-bg-panel); padding: 28px; }
 .login-intro { display: grid; justify-items: center; gap: 8px; margin-bottom: 26px; text-align: center; color: var(--ds-brand); }
 .login-intro h1 { margin: 0; color: var(--ds-text-primary); font-size: 20px; }.login-intro p { margin: 0; color: var(--ds-text-muted); font-size: 13px; }
 .form-fields, .settings-body, .settings-body section { display: grid; gap: 16px; }.form-fields label, .settings-body label { display: grid; gap: 7px; color: var(--ds-text-secondary); font-size: 13px; }.settings-body h3 { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 14px; }
 .captcha-row { display: grid; grid-template-columns: 1fr 124px; gap: 8px; }.captcha { display: flex; align-items: center; justify-content: space-around; border: 1px solid var(--ds-border-default); background: var(--ds-bg-panel); color: var(--ds-brand); cursor: pointer; }.captcha img { max-width: 88px; height: 30px; object-fit: contain; }
-.profile-view { max-width: 880px; margin: 0 auto; }.profile-hero { display: flex; align-items: center; gap: 22px; border-bottom: 1px solid var(--ds-border-default); padding: 22px 0 28px; }.avatar-wrap { position: relative; display: grid; width: 92px; height: 92px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--ds-border-default); border-radius: 50%; background: var(--ds-bg-panel); cursor: pointer; color: var(--ds-text-muted); }.avatar-wrap img { width: 100%; height: 100%; object-fit: cover; }.avatar-cover { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / .45); color: #fff; opacity: 0; transition: opacity .15s ease; }.avatar-wrap:hover .avatar-cover { opacity: 1; }.avatar-wrap.saving { pointer-events: none; opacity: .65; }.profile-summary { min-width: 0; flex: 1; }.profile-name-row, .badge-row, .profile-meta, .profile-actions { display: flex; align-items: center; gap: 9px; }.profile-name-row h1 { margin: 0; font-size: 24px; }.badge-row { margin-top: 9px; color: var(--ds-text-muted); font-size: 13px; }.badge-row span { border: 1px solid var(--ds-border-default); padding: 3px 7px; }.profile-meta { flex-wrap: wrap; margin-top: 16px; color: var(--ds-text-muted); font-size: 13px; }.profile-meta b { color: var(--ds-text-secondary); font-weight: 500; }.profile-actions { align-self: flex-start; }.icon-button, .field-icon-button { display: grid; border: 0; background: transparent; color: var(--ds-text-muted); cursor: pointer; place-items: center; }.hidden { display: none; }
-@media (max-width: 720px) { .profile-page { padding: 20px; }.profile-hero { align-items: flex-start; flex-wrap: wrap; }.profile-actions { width: 100%; }.profile-actions :deep(.n-button) { flex: 1; } }
+.profile-view { max-width: 880px; margin: 0 auto; }.profile-hero { display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--ds-border-default); padding: 16px 0 20px; }.avatar-wrap { position: relative; display: grid; width: 72px; height: 72px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--ds-border-default); border-radius: 50%; background: var(--ds-bg-panel); cursor: pointer; color: var(--ds-text-muted); }.avatar-wrap img { width: 100%; height: 100%; object-fit: cover; }.avatar-cover { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / .45); color: #fff; opacity: 0; transition: opacity .15s ease; }.avatar-wrap:hover .avatar-cover { opacity: 1; }.avatar-wrap.saving { pointer-events: none; opacity: .65; }.profile-summary { min-width: 0; flex: 1; }.profile-name-row, .badge-row, .profile-meta, .profile-actions { display: flex; align-items: center; gap: 8px; }.profile-name-row h1 { margin: 0; font-size: 20px; }.badge-row { margin-top: 7px; color: var(--ds-text-muted); font-size: 12px; }.badge-row span { border: 1px solid var(--ds-border-default); padding: 2px 6px; }.profile-meta { flex-wrap: wrap; margin-top: 12px; color: var(--ds-text-muted); font-size: 12px; }.profile-meta b { color: var(--ds-text-secondary); font-weight: 500; }.profile-actions { align-self: flex-start; }.profile-actions :deep(.n-button) { font-size: 12px; }.icon-button, .field-icon-button { display: grid; border: 0; background: transparent; color: var(--ds-text-muted); cursor: pointer; place-items: center; }.hidden { display: none; }
+@media (max-width: 720px) { .profile-page { padding: 16px 20px 20px; }.profile-hero { align-items: flex-start; flex-wrap: wrap; }.avatar-wrap { width: 64px; height: 64px; }.profile-actions { width: 100%; }.profile-actions :deep(.n-button) { flex: 1; } }
 </style>

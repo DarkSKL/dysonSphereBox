@@ -5,6 +5,7 @@ package model
 // 边界：不包含远端接口 DTO、服务编排或文件系统操作。
 
 import (
+	"DysonSphereBox/model/account"
 	"DysonSphereBox/model/environment"
 	"DysonSphereBox/model/modDependence"
 	"DysonSphereBox/model/system"
@@ -21,6 +22,8 @@ var ModelGroupApp = new(ModelGroup)
 // 使用：RegisterModels 遍历各领域模型组时读取。
 // 边界：这里只组合领域模型组，不直接声明数据库字段或执行迁移逻辑。
 type ModelGroup struct {
+	// AccountModelGroup 职责：聚合账号会话模型注册器；使用：RegisterModels 收集 SQLite 会话表；边界：不读取或写入账号会话。
+	AccountModelGroup account.ModelGroup
 	// SystemModelGroup 职责：聚合系统领域配置与日志模型注册器；使用：RegisterModels 收集系统模型时读取；边界：不执行系统配置读写。
 	SystemModelGroup system.ModelGroup
 	// ModDependenceModelGroup 职责：聚合 Mod 依赖领域模型注册器；使用：RegisterModels 收集安装、依赖和文件记录模型时读取；边界：不执行安装状态迁移逻辑。
@@ -35,6 +38,7 @@ type ModelGroup struct {
 // 边界：只返回模型指针列表，不执行 AutoMigrate，也不读写数据。
 func RegisterModels() []interface{} {
 	models := make([]interface{}, 0)
+	models = append(models, ModelGroupApp.AccountModelGroup.RegisterModels()...)
 	models = append(models, ModelGroupApp.SystemModelGroup.RegisterModels()...)
 	models = append(models, ModelGroupApp.ModDependenceModelGroup.RegisterModels()...)
 	models = append(models, ModelGroupApp.EnvironmentModelGroup.RegisterModels()...)

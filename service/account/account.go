@@ -18,8 +18,8 @@ import (
 	"time"
 
 	accountDefinition "DysonSphereBox/apiDefinition/account"
-	accountConstant "DysonSphereBox/constant/account"
 	"DysonSphereBox/core"
+	accountHelper "DysonSphereBox/helper/account"
 )
 
 // AccountService 提供当前用户的账号自助能力。
@@ -314,35 +314,7 @@ func (service *AccountService) sendJSON(method string, path string, input interf
 // 使用：GetSession 与所有私有接口创建请求前调用。
 // 边界：缓存 JSON 损坏时返回错误，不猜测用户身份或令牌内容。
 func (service *AccountService) loadSession() (accountDefinition.AccountSession, string, error) {
-	token, err := core.InitConfigUnit(accountConstant.SessionConfigGroup, accountConstant.SessionTokenKey).Get()
-	if err != nil {
-		return accountDefinition.AccountSession{}, "", err
-	}
-	expires, err := core.InitConfigUnit(accountConstant.SessionConfigGroup, accountConstant.SessionExpiresAtKey).Get()
-	if err != nil {
-		return accountDefinition.AccountSession{}, "", err
-	}
-	needChange, err := core.InitConfigUnit(accountConstant.SessionConfigGroup, accountConstant.SessionNeedChangePasswordKey).Get()
-	if err != nil {
-		return accountDefinition.AccountSession{}, "", err
-	}
-	userText, err := core.InitConfigUnit(accountConstant.SessionConfigGroup, accountConstant.SessionUserKey).Get()
-	if err != nil {
-		return accountDefinition.AccountSession{}, "", err
-	}
-	session := accountDefinition.AccountSession{NeedChangePassword: needChange == "true"}
-	if expires != "" {
-		session.ExpiresAt, err = strconv.ParseInt(expires, 10, 64)
-		if err != nil {
-			return accountDefinition.AccountSession{}, "", fmt.Errorf("本地登录过期时间无效: %w", err)
-		}
-	}
-	if userText != "" {
-		if err := json.Unmarshal([]byte(userText), &session.User); err != nil {
-			return accountDefinition.AccountSession{}, "", fmt.Errorf("本地用户资料缓存无效: %w", err)
-		}
-	}
-	return session, token, nil
+	return accountHelper.LoadSession()
 }
 
 // saveSession 保存成功登录后的本地会话。
@@ -350,17 +322,7 @@ func (service *AccountService) loadSession() (accountDefinition.AccountSession, 
 // 使用：Login 校验服务器响应成功后调用。
 // 边界：写入失败时返回错误，不把部分会话视为可用。
 func (service *AccountService) saveSession(session accountDefinition.AccountSession, token string) error {
-	userJSON, err := json.Marshal(session.User)
-	if err != nil {
-		return fmt.Errorf("序列化本地用户资料失败: %w", err)
-	}
-	values := map[string]string{accountConstant.SessionTokenKey: token, accountConstant.SessionExpiresAtKey: strconv.FormatInt(session.ExpiresAt, 10), accountConstant.SessionNeedChangePasswordKey: strconv.FormatBool(session.NeedChangePassword), accountConstant.SessionUserKey: string(userJSON)}
-	for key, value := range values {
-		if err := core.InitConfigUnit(accountConstant.SessionConfigGroup, key).Set(value); err != nil {
-			return fmt.Errorf("保存本地登录状态失败: %w", err)
-		}
-	}
-	return nil
+	return accountHelper.SaveSession(session, token)
 }
 
 // clearSession 清除本地账号会话。
@@ -368,12 +330,7 @@ func (service *AccountService) saveSession(session accountDefinition.AccountSess
 // 使用：注销、令牌过期、401 和改密成功后调用。
 // 边界：只清理本地状态，不替代服务器 JWT 黑名单调用。
 func (service *AccountService) clearSession() error {
-	for _, key := range []string{accountConstant.SessionTokenKey, accountConstant.SessionExpiresAtKey, accountConstant.SessionNeedChangePasswordKey, accountConstant.SessionUserKey} {
-		if err := core.InitConfigUnit(accountConstant.SessionConfigGroup, key).Set(""); err != nil {
-			return fmt.Errorf("清理本地登录状态失败: %w", err)
-		}
-	}
-	return nil
+	return accountHelper.ClearSession()
 }
 
 // setCachedUser 更新本地用户资料缓存。
@@ -381,11 +338,7 @@ func (service *AccountService) clearSession() error {
 // 使用：GetCurrentUserInfo 成功后调用。
 // 边界：只写用户资料，不改动 JWT、过期时间或强制改密状态。
 func (service *AccountService) setCachedUser(user accountDefinition.UserInfo) error {
-	content, err := json.Marshal(user)
-	if err != nil {
-		return err
-	}
-	return core.InitConfigUnit(accountConstant.SessionConfigGroup, accountConstant.SessionUserKey).Set(string(content))
+	return accountHelper.UpdateCachedUser(user)
 }
 
 // setNeedChangePassword 更新本地强制改密状态。
@@ -393,7 +346,7 @@ func (service *AccountService) setCachedUser(user accountDefinition.UserInfo) er
 // 使用：GetCurrentUserInfo 收到 409 或业务码 10001 时调用。
 // 边界：不修改 JWT 或用户资料，也不绕过服务端对改密前操作的限制。
 func (service *AccountService) setNeedChangePassword(value bool) error {
-	return core.InitConfigUnit(accountConstant.SessionConfigGroup, accountConstant.SessionNeedChangePasswordKey).Set(strconv.FormatBool(value))
+	return accountHelper.UpdateNeedChangePassword(value)
 }
 
 // responseError 构造包含 HTTP 与业务码的账号接口错误。
