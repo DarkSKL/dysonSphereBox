@@ -1,3 +1,140 @@
+export namespace account {
+	
+	export class UserInfo {
+	    id: number;
+	    uuid: string;
+	    userName: string;
+	    nickName: string;
+	    headerImg: string;
+	    authorityId: number;
+	    phone: string;
+	    email: string;
+	    enable: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new UserInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.uuid = source["uuid"];
+	        this.userName = source["userName"];
+	        this.nickName = source["nickName"];
+	        this.headerImg = source["headerImg"];
+	        this.authorityId = source["authorityId"];
+	        this.phone = source["phone"];
+	        this.email = source["email"];
+	        this.enable = source["enable"];
+	    }
+	}
+	export class AccountSession {
+	    authenticated: boolean;
+	    expiresAt: number;
+	    needChangePassword: boolean;
+	    user: UserInfo;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountSession(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.authenticated = source["authenticated"];
+	        this.expiresAt = source["expiresAt"];
+	        this.needChangePassword = source["needChangePassword"];
+	        this.user = this.convertValues(source["user"], UserInfo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CaptchaData {
+	    captchaId: string;
+	    picPath: string;
+	    captchaLength: number;
+	    openCaptcha: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CaptchaData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.captchaId = source["captchaId"];
+	        this.picPath = source["picPath"];
+	        this.captchaLength = source["captchaLength"];
+	        this.openCaptcha = source["openCaptcha"];
+	    }
+	}
+	export class ChangePasswordRequest {
+	    password: string;
+	    newPassword: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChangePasswordRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.password = source["password"];
+	        this.newPassword = source["newPassword"];
+	    }
+	}
+	export class LoginRequest {
+	    username: string;
+	    password: string;
+	    captchaId: string;
+	    captcha: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LoginRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.captchaId = source["captchaId"];
+	        this.captcha = source["captcha"];
+	    }
+	}
+	export class SetSelfInfoRequest {
+	    nickName: string;
+	    phone: string;
+	    email: string;
+	    headerImg: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SetSelfInfoRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nickName = source["nickName"];
+	        this.phone = source["phone"];
+	        this.email = source["email"];
+	        this.headerImg = source["headerImg"];
+	    }
+	}
+
+}
+
 export namespace contract {
 	
 	export class BepInExStatus {

@@ -32,8 +32,6 @@ declare module 'vue' {
     NPagination: typeof import('naive-ui')['NPagination']
     NPopselect: typeof import('naive-ui')['NPopselect']
     NProgress: typeof import('naive-ui')['NProgress']
-    NRadioButton: typeof import('naive-ui')['NRadioButton']
-    NRadioGroup: typeof import('naive-ui')['NRadioGroup']
     NSelect: typeof import('naive-ui')['NSelect']
     NSpin: typeof import('naive-ui')['NSpin']
     NTimeline: typeof import('naive-ui')['NTimeline']

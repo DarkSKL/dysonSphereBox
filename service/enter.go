@@ -5,6 +5,7 @@ package service
 // 边界：只负责服务实例注册，不执行业务流程、不访问数据库、不生成前端绑定文件。
 
 import (
+	"DysonSphereBox/service/account"
 	"DysonSphereBox/service/environment"
 	"DysonSphereBox/service/modDependence"
 	"DysonSphereBox/service/system"
@@ -21,6 +22,8 @@ var ServiceGroupApp = new(ServiceGroup)
 // 使用：RegisterServices 遍历各领域服务组时读取。
 // 边界：这里只组合服务组，不放业务流程或 helper 函数。
 type ServiceGroup struct {
+	// AccountServiceGroup 职责：聚合个人账号领域 Wails 服务；使用：RegisterServices 绑定给个人页；边界：注册时不恢复或请求登录态。
+	AccountServiceGroup account.ServiceGroup
 	// SystemServiceGroup 职责：聚合系统领域 Wails 服务；使用：RegisterServices 收集环境、配置、更新和日志服务；边界：不执行系统服务方法。
 	SystemServiceGroup system.ServiceGroup
 	// ModDependenceServiceGroup 职责：聚合 Mod 依赖领域 Wails 服务；使用：RegisterServices 收集 BepInEx、开服、安装器和市场服务；边界：不执行 Mod 业务流程。
@@ -37,6 +40,7 @@ func RegisterServices() []interface{} {
 	services := make([]interface{}, 0)
 	services = append(services,
 		ServiceGroupApp.SystemServiceGroup.RegisterServices()...)
+	services = append(services, ServiceGroupApp.AccountServiceGroup.RegisterServices()...)
 	services = append(services, ServiceGroupApp.ModDependenceServiceGroup.RegisterServices()...)
 	services = append(services, ServiceGroupApp.EnvironmentServiceGroup.RegisterServices()...)
 
