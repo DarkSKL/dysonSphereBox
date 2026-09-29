@@ -1,0 +1,17 @@
+{
+  // 模拟应用前端的编译配置（client/frontend/tsconfig.json），用 TypeScript 4.6 检查 dist 的公开类型声明
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "lib": ["ESNext", "DOM"],
+    "strict": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": false,
+    "noEmit": true,
+    // 不自动加载 node_modules/@types，确认公开声明不依赖 @types/three
+    "types": []
+  },
+  "files": ["test/consumer-ts4.ts"]
+}

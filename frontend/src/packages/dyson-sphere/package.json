@@ -1,0 +1,37 @@
+{
+  "name": "@dyson/sphere",
+  "version": "0.1.0",
+  "private": true,
+  "description": "首页戴森球 3D 动画渲染包（three.js）",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./src": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:types-ts4": "npx -y -p typescript@4.6.4 tsc -p tsconfig.consumer-ts4.json"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "three": "0.186.1",
+    "typescript": "6.0.3"
+  },
+  "peerDependencies": {
+    "three": ">=0.160.0 <0.190.0"
+  }
+}

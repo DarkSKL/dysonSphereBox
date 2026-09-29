@@ -2,74 +2,148 @@
 @tailwind components;
 @tailwind utilities;
 
+// =============== 全局色彩 Token ===============
+// 说明：深空科技风格；日间为白灰黑的无彩色死寂白昼，不使用蓝色；夜间为深邃黑的星云深空，以炫蓝作为强调色。组件只引用 --ds-* 变量，不直接写色值。
+// 边界：App.vue 中的 Naive UI 覆盖、packages/dyson-sphere 的调色板（internal/palette.ts）需与此处色值保持同步。
 :root {
-  --ds-bg-app: #fbfbfc;
-  --ds-bg-shell: #fbfbfc;
-  --ds-bg-sidebar: #f7f7f8;
-  --ds-bg-header: #ffffff;
-  --ds-bg-panel: #ffffff;
-  --ds-bg-panel-elevated: #ffffff;
-  --ds-glow-gold: rgb(226 185 93 / 0);
-  --ds-glow-teal: rgb(126 190 162 / 0);
+  color-scheme: light;
+  // 背景层级：应用底色 < 外壳 < 面板 < 浮起面板；全部为中性灰白，不带色相
+  // 外壳底色与首页戴森球场景的日间背景一致（#ebebeb），切换页面时不跳色
+  --ds-bg-app: #e6e6e6;
+  --ds-bg-shell: #ebebeb;
+  // 快捷栏、侧边栏、标题栏为半透明，叠在整窗宇宙背景上
+  --ds-bg-rail: rgb(226 226 228 / 0.72);
+  --ds-bg-sidebar: rgb(231 231 233 / 0.6);
+  --ds-bg-header: rgb(236 236 238 / 0.55);
+  --ds-bg-panel: #f3f3f3;
+  --ds-bg-panel-elevated: #f8f8f8;
+  // 宇宙背景分层：星点层按 360×320 平铺并缓慢平移；两层星云各自漂移，形成流动感。
+  // 星云层比窗口四周各大 10%，坐标以该放大层为基准换算（视口 v% ≈ 层内 (v + 10) / 1.2 %），漂移时不露边。
+  // 日间：近似首页场景的日间星云（恒星附近的灰色云团 + 淡白云团）与灰色星点
+  --ds-cosmos-stars:
+    radial-gradient(1px 1px at 46px 64px, rgb(90 90 94 / 0.32), transparent) 0 0 / 360px 320px,
+    radial-gradient(1px 1px at 228px 132px, rgb(90 90 94 / 0.24), transparent) 0 0 / 360px 320px,
+    radial-gradient(1.5px 1.5px at 296px 248px, rgb(90 90 94 / 0.2), transparent) 0 0 / 360px 320px,
+    radial-gradient(1px 1px at 132px 226px, rgb(90 90 94 / 0.18), transparent) 0 0 / 360px 320px;
+  --ds-cosmos-nebula-a:
+    radial-gradient(ellipse 41.7% 50% at 66.7% 54.2%, rgb(196 196 200 / 0.42), transparent 70%) no-repeat,
+    radial-gradient(ellipse 37.5% 33.3% at 18.3% 15%, rgb(255 255 255 / 0.45), transparent 70%) no-repeat;
+  --ds-cosmos-nebula-b:
+    radial-gradient(ellipse 33.3% 37.5% at 26.7% 76.7%, rgb(255 255 255 / 0.55), transparent 70%) no-repeat,
+    radial-gradient(ellipse 30% 36% at 84% 22%, rgb(186 186 190 / 0.26), transparent 70%) no-repeat;
+  // 闪烁星点层：由布局单独做透明度动画
+  --ds-bg-twinkle:
+    radial-gradient(1.5px 1.5px at 84px 118px, rgb(80 80 84 / 0.34), transparent) 0 0 / 530px 470px,
+    radial-gradient(1.5px 1.5px at 402px 356px, rgb(80 80 84 / 0.28), transparent) 0 0 / 530px 470px,
+    radial-gradient(2px 2px at 268px 92px, rgb(80 80 84 / 0.22), transparent) 0 0 / 610px 550px;
+  // 首页文字遮罩：左侧淡化场景，保证标题可读
+  --ds-scene-scrim: linear-gradient(90deg, rgb(235 235 235 / 0.72), rgb(235 235 235 / 0) 52%);
 
-  --ds-border-subtle: rgb(228 228 231);
-  --ds-border-default: rgb(212 212 216);
-  --ds-border-strong: rgb(59 130 246 / 0.38);
+  --ds-border-subtle: rgb(0 0 0 / 0.07);
+  --ds-border-default: rgb(0 0 0 / 0.13);
+  --ds-border-strong: rgb(0 0 0 / 0.42);
 
-  --ds-text-primary: #09090b;
-  --ds-text-secondary: rgb(39 39 42 / 0.82);
-  --ds-text-muted: rgb(113 113 122);
-  --ds-text-disabled: rgb(113 113 122 / 0.46);
-  --ds-nav-text: rgb(63 63 70);
+  // 文本：近黑到中灰的无彩色阶梯
+  --ds-text-primary: #18181a;
+  --ds-text-secondary: rgb(24 24 26 / 0.74);
+  --ds-text-muted: #707072;
+  --ds-text-disabled: rgb(24 24 26 / 0.34);
+  --ds-nav-text: #4a4a4d;
 
-  --ds-brand: #2563eb;
-  --ds-brand-hover: #1d4ed8;
-  --ds-brand-pressed: #1e40af;
+  // 主色：石墨黑，以明暗对比代替色彩强调
+  --ds-brand: #1c1c1e;
+  --ds-brand-hover: #3a3a3d;
+  --ds-brand-pressed: #000000;
+  --ds-brand-contrast-text: #f5f5f5;
+  // 品牌渐变与光晕：黑到灰的渐变，仅用于选中指示条、标题栏强调线等少量位置
+  --ds-brand-gradient: linear-gradient(180deg, #1c1c1e, #8a8a8d);
+  --ds-brand-glow: rgb(0 0 0 / 0.16);
+  --ds-active-glow: 0 1px 3px rgb(0 0 0 / 0.08);
 
-  --ds-success: #10b981;
-  --ds-warning: #d97706;
-  --ds-error: #dc2626;
-  --ds-info: #2563eb;
+  // 状态色：保留语义区分，但降低饱和度以贴合无彩色基调；信息色使用中性灰
+  --ds-success: #4a7560;
+  --ds-warning: #94682a;
+  --ds-error: #a8434a;
+  --ds-info: #5a5a5e;
 
-  --ds-active-bg: #ffffff;
-  --ds-hover-bg: #ffffff;
-  --ds-pressed-bg: rgb(37 99 235 / 0.12);
-  --ds-focus-ring: rgb(37 99 235 / 0.28);
+  --ds-success-bg: rgb(74 117 96 / 0.1);
+  --ds-success-border: rgb(74 117 96 / 0.3);
+  --ds-warning-bg: rgb(148 104 42 / 0.1);
+  --ds-warning-border: rgb(148 104 42 / 0.32);
+  --ds-error-bg: rgb(168 67 74 / 0.09);
+  --ds-error-border: rgb(168 67 74 / 0.34);
+
+  --ds-active-bg: rgb(0 0 0 / 0.07);
+  --ds-hover-bg: rgb(0 0 0 / 0.045);
+  --ds-pressed-bg: rgb(0 0 0 / 0.12);
+  --ds-focus-ring: rgb(0 0 0 / 0.32);
+  // 浮层遮罩：卡片安装进度、失败提示等覆盖在图片上的半透明层
+  --ds-overlay-bg: rgb(235 235 235 / 0.88);
 }
 
 :root[data-theme='dark'] {
-  --ds-bg-app: #050806;
-  --ds-bg-shell: #0b100e;
-  --ds-bg-sidebar: #080d0b;
-  --ds-bg-header: #111715;
-  --ds-bg-panel: rgb(16 23 19 / 0.94);
-  --ds-bg-panel-elevated: #17211c;
-  --ds-glow-gold: rgb(230 175 77 / 0.2);
-  --ds-glow-teal: rgb(78 150 127 / 0.18);
+  color-scheme: dark;
+  // 深邃黑底：与首页戴森球场景的夜间背景一致（#03060d），星云与炫蓝强调色是主要色彩来源
+  --ds-bg-app: #020409;
+  --ds-bg-shell: #03060d;
+  --ds-bg-rail: rgb(2 4 9 / 0.72);
+  --ds-bg-sidebar: rgb(6 10 20 / 0.55);
+  --ds-bg-header: rgb(3 6 13 / 0.5);
+  --ds-bg-panel: #0a0f1a;
+  --ds-bg-panel-elevated: #0f1624;
+  // 夜间：近似首页场景的夜间星云（恒星附近的深蓝 #16305e 与洋红紫 #4b1d52 云团）与冷白星点
+  --ds-cosmos-stars:
+    radial-gradient(1px 1px at 38px 52px, rgb(214 230 255 / 0.62), transparent) 0 0 / 360px 320px,
+    radial-gradient(1px 1px at 214px 118px, rgb(214 230 255 / 0.42), transparent) 0 0 / 360px 320px,
+    radial-gradient(1.5px 1.5px at 302px 236px, rgb(214 230 255 / 0.5), transparent) 0 0 / 360px 320px,
+    radial-gradient(1px 1px at 116px 274px, rgb(214 230 255 / 0.34), transparent) 0 0 / 360px 320px;
+  --ds-cosmos-nebula-a:
+    radial-gradient(ellipse 45.8% 50% at 66.7% 51.7%, rgb(22 48 94 / 0.46), transparent 70%) no-repeat,
+    radial-gradient(ellipse 37.5% 33.3% at 23.3% 23.3%, rgb(22 48 94 / 0.24), transparent 70%) no-repeat;
+  --ds-cosmos-nebula-b:
+    radial-gradient(ellipse 33.3% 37.5% at 56.7% 70%, rgb(75 29 82 / 0.42), transparent 70%) no-repeat,
+    radial-gradient(ellipse 29.2% 37.5% at 86.7% 21.7%, rgb(75 29 82 / 0.26), transparent 70%) no-repeat;
+  --ds-bg-twinkle:
+    radial-gradient(1.5px 1.5px at 84px 118px, rgb(214 230 255 / 0.9), transparent) 0 0 / 530px 470px,
+    radial-gradient(1.5px 1.5px at 402px 356px, rgb(214 230 255 / 0.75), transparent) 0 0 / 530px 470px,
+    radial-gradient(2px 2px at 268px 92px, rgb(255 236 210 / 0.7), transparent) 0 0 / 610px 550px;
+  --ds-scene-scrim: linear-gradient(90deg, rgb(3 6 13 / 0.58), rgb(3 6 13 / 0) 52%);
 
-  --ds-border-subtle: rgb(229 204 143 / 0.14);
-  --ds-border-default: rgb(229 204 143 / 0.22);
-  --ds-border-strong: rgb(226 185 93 / 0.38);
+  --ds-border-subtle: rgb(140 170 230 / 0.09);
+  --ds-border-default: rgb(140 170 230 / 0.15);
+  --ds-border-strong: rgb(76 194 255 / 0.48);
 
-  --ds-text-primary: #f4ead0;
-  --ds-text-secondary: rgb(225 232 218 / 0.76);
-  --ds-text-muted: rgb(225 232 218 / 0.52);
-  --ds-text-disabled: rgb(225 232 218 / 0.32);
-  --ds-nav-text: rgb(225 232 218 / 0.7);
+  --ds-text-primary: #eceef8;
+  --ds-text-secondary: rgb(214 216 236 / 0.76);
+  --ds-text-muted: rgb(170 172 200 / 0.6);
+  --ds-text-disabled: rgb(170 172 200 / 0.34);
+  --ds-nav-text: rgb(196 198 224 / 0.72);
 
-  --ds-brand: #e2b95d;
-  --ds-brand-hover: #f0c96e;
-  --ds-brand-pressed: #b98d38;
+  --ds-brand: #4cc2ff;
+  --ds-brand-hover: #7dd4ff;
+  --ds-brand-pressed: #2a9be6;
+  --ds-brand-contrast-text: #03101f;
+  --ds-brand-gradient: linear-gradient(135deg, #4cc2ff, #7a6cff);
+  --ds-brand-glow: rgb(76 194 255 / 0.55);
+  --ds-active-glow: 0 0 0 1px rgb(76 194 255 / 0.06), 0 0 18px rgb(76 194 255 / 0.14);
 
-  --ds-success: #7cd483;
-  --ds-warning: #e2b95d;
-  --ds-error: #e87d63;
-  --ds-info: #7ebea2;
+  --ds-success: #3ee0b0;
+  --ds-warning: #ffc15a;
+  --ds-error: #ff6b7f;
+  --ds-info: #6aa8ff;
 
-  --ds-active-bg: rgb(226 185 93 / 0.16);
-  --ds-hover-bg: rgb(244 234 208 / 0.06);
-  --ds-pressed-bg: rgb(226 185 93 / 0.22);
-  --ds-focus-ring: rgb(226 185 93 / 0.42);
+  --ds-success-bg: rgb(62 224 176 / 0.13);
+  --ds-success-border: rgb(62 224 176 / 0.32);
+  --ds-warning-bg: rgb(255 193 90 / 0.13);
+  --ds-warning-border: rgb(255 193 90 / 0.36);
+  --ds-error-bg: rgb(255 107 127 / 0.13);
+  --ds-error-border: rgb(255 107 127 / 0.4);
+
+  --ds-active-bg: rgb(76 194 255 / 0.11);
+  --ds-hover-bg: rgb(190 190 255 / 0.06);
+  --ds-pressed-bg: rgb(76 194 255 / 0.2);
+  --ds-focus-ring: rgb(76 194 255 / 0.5);
+  --ds-overlay-bg: rgb(3 6 13 / 0.84);
 }
 
 html,
@@ -83,22 +157,29 @@ body {
   background: var(--ds-bg-app);
   color: var(--ds-text-primary);
   font-family: "Nunito", "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-feature-settings: "kern";
 }
 
-html,
-body,
-#app,
 * {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-color: var(--ds-border-default) transparent;
+  scrollbar-width: thin;
 }
 
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-#app::-webkit-scrollbar,
 *::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--ds-border-default);
+  background-clip: padding-box;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--ds-brand);
+  outline-offset: 2px;
 }
 
 ::selection {
@@ -109,10 +190,10 @@ body::-webkit-scrollbar,
 .driver-popover.driverjs-theme-dsb {
   max-width: min(360px, calc(100vw - 32px));
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--ds-bg-panel-elevated);
   color: var(--ds-text-primary);
-  box-shadow: 0 18px 42px rgb(15 23 42 / 0.18);
+  box-shadow: 0 18px 42px rgb(5 20 50 / 0.2), 0 0 0 1px var(--ds-border-subtle);
 }
 
 .driver-popover.driverjs-theme-dsb .driver-popover-title {
@@ -164,11 +245,7 @@ body::-webkit-scrollbar,
 .driver-popover.driverjs-theme-dsb .driver-popover-next-btn {
   border-color: var(--ds-brand);
   background: var(--ds-brand);
-  color: #fff;
-}
-
-:root[data-theme='dark'] .driver-popover.driverjs-theme-dsb .driver-popover-next-btn {
-  color: #050806;
+  color: var(--ds-brand-contrast-text);
 }
 
 .driver-popover.driverjs-theme-dsb .driver-popover-prev-btn:hover,
@@ -220,7 +297,7 @@ body::-webkit-scrollbar,
   .bg-white\/65,
   .bg-white\/75,
   .bg-white\/90 {
-    background-color: rgb(16 23 19 / 0.78) !important;
+    background-color: rgb(10 15 26 / 0.8) !important;
   }
 
   .border-zinc-100,
@@ -276,27 +353,27 @@ body::-webkit-scrollbar,
 
   .text-red-600,
   .text-red-700 {
-    color: #ffd6cc !important;
+    color: var(--ds-error) !important;
   }
 
   .bg-blue-50,
   .bg-sky-50,
   .bg-violet-50,
   .bg-indigo-50 {
-    background-color: rgb(126 190 162 / 0.14) !important;
+    background-color: var(--ds-active-bg) !important;
   }
 
   .bg-amber-50,
   .bg-orange-50 {
-    background-color: rgb(226 185 93 / 0.14) !important;
+    background-color: var(--ds-warning-bg) !important;
   }
 
   .bg-emerald-50 {
-    background-color: rgb(124 212 131 / 0.14) !important;
+    background-color: var(--ds-success-bg) !important;
   }
 
   .bg-red-50 {
-    background-color: rgb(232 125 99 / 0.14) !important;
+    background-color: var(--ds-error-bg) !important;
   }
 
   .border-blue-100,
@@ -304,22 +381,22 @@ body::-webkit-scrollbar,
   .border-sky-200,
   .border-violet-100,
   .border-indigo-100 {
-    border-color: rgb(126 190 162 / 0.32) !important;
+    border-color: var(--ds-border-strong) !important;
   }
 
   .border-amber-100,
   .border-amber-200,
   .border-orange-100 {
-    border-color: var(--ds-border-strong) !important;
+    border-color: var(--ds-warning-border) !important;
   }
 
   .border-emerald-100,
   .border-emerald-200 {
-    border-color: rgb(124 212 131 / 0.32) !important;
+    border-color: var(--ds-success-border) !important;
   }
 
   .border-red-100,
   .border-red-200 {
-    border-color: rgb(232 125 99 / 0.32) !important;
+    border-color: var(--ds-error-border) !important;
   }
 }

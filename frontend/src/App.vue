@@ -16,75 +16,90 @@ const layouts = {
 
 const layoutComponent = computed(() => layouts[route.meta.layout || 'main'])
 const naiveTheme = computed(() => (isDarkMode.value ? darkTheme : null))
-const naiveThemeOverrides = computed<GlobalThemeOverrides>(() =>
-  isDarkMode.value
-    ? {
-        common: {
-          primaryColor: '#e2b95d',
-          primaryColorHover: '#f0c96e',
-          primaryColorPressed: '#b98d38',
-          primaryColorSuppl: '#e2b95d',
-          successColor: '#7cd483',
-          infoColor: '#7ebea2',
-          warningColor: '#e2b95d',
-          errorColor: '#e87d63',
-          bodyColor: '#050806',
-          cardColor: '#101713',
-          modalColor: '#17211c',
-          popoverColor: '#17211c',
-          tableColor: '#101713',
-          baseColor: '#050806',
-          borderColor: 'rgb(229 204 143 / 0.22)',
-          dividerColor: 'rgb(229 204 143 / 0.14)',
-          textColorBase: '#f4ead0',
-          textColor1: '#f4ead0',
-          textColor2: 'rgb(225 232 218 / 0.76)',
-          textColor3: 'rgb(225 232 218 / 0.52)',
-          placeholderColor: 'rgb(225 232 218 / 0.32)',
-          inputColor: 'rgb(5 8 6 / 0.72)',
-          inputColorDisabled: 'rgb(16 23 19 / 0.72)',
-          hoverColor: 'rgb(244 234 208 / 0.06)',
-        },
-        Button: {
-          borderRadiusMedium: '4px',
-          borderRadiusSmall: '4px',
-          textColorPrimary: '#050806',
-          textColorHoverPrimary: '#050806',
-          textColorPressedPrimary: '#050806',
-          colorPrimary: '#e2b95d',
-          colorHoverPrimary: '#f0c96e',
-          colorPressedPrimary: '#b98d38',
-          borderPrimary: '1px solid #e2b95d',
-          borderHoverPrimary: '1px solid #f0c96e',
-          borderPressedPrimary: '1px solid #b98d38',
-        },
-        Card: {
-          borderRadius: '4px',
-          color: 'rgb(16 23 19 / 0.94)',
-          borderColor: 'rgb(229 204 143 / 0.18)',
-          titleTextColor: '#f4ead0',
-          textColor: 'rgb(225 232 218 / 0.76)',
-        },
-        Input: {
-          borderRadius: '4px',
-          color: 'rgb(5 8 6 / 0.72)',
-          colorFocus: 'rgb(5 8 6 / 0.72)',
-          border: '1px solid rgb(229 204 143 / 0.22)',
-          borderHover: '1px solid rgb(226 185 93 / 0.38)',
-          borderFocus: '1px solid #e2b95d',
-          boxShadowFocus: '0 0 0 2px rgb(226 185 93 / 0.42)',
-          textColor: '#f4ead0',
-          placeholderColor: 'rgb(225 232 218 / 0.32)',
-        },
-        Dialog: {
-          borderRadius: '4px',
-          color: '#17211c',
-          titleTextColor: '#f4ead0',
-          textColor: 'rgb(225 232 218 / 0.76)',
-        },
-      }
-    : {},
-)
+// =============== 主题组件映射 ===============
+// 说明：让 Naive UI 控件跟随全局色彩（日间白灰黑无彩色、夜间深邃黑加炫蓝），色值需与 style.scss 中的 --ds-* Token 保持同步。
+const naiveThemeOverrides = computed<GlobalThemeOverrides>(() => {
+  const dark = isDarkMode.value
+  const brand = dark ? '#4cc2ff' : '#1c1c1e'
+  const brandHover = dark ? '#7dd4ff' : '#3a3a3d'
+  const brandPressed = dark ? '#2a9be6' : '#000000'
+  const brandContrast = dark ? '#03101f' : '#f5f5f5'
+  const textPrimary = dark ? '#eceef8' : '#18181a'
+  const textSecondary = dark ? 'rgb(214 216 236 / 0.76)' : 'rgb(24 24 26 / 0.74)'
+  const textMuted = dark ? 'rgb(170 172 200 / 0.6)' : '#707072'
+  const border = dark ? 'rgb(140 170 230 / 0.15)' : 'rgb(0 0 0 / 0.13)'
+  const surface = dark ? '#0a0f1a' : '#f3f3f3'
+  const surfaceRaised = dark ? '#0f1624' : '#f8f8f8'
+  const page = dark ? '#03060d' : '#ebebeb'
+  const input = dark ? '#060a13' : '#f8f8f8'
+
+  return {
+    common: {
+      primaryColor: brand,
+      primaryColorHover: brandHover,
+      primaryColorPressed: brandPressed,
+      primaryColorSuppl: brand,
+      successColor: dark ? '#3ee0b0' : '#4a7560',
+      infoColor: dark ? '#6aa8ff' : '#5a5a5e',
+      warningColor: dark ? '#ffc15a' : '#94682a',
+      errorColor: dark ? '#ff6b7f' : '#a8434a',
+      bodyColor: page,
+      cardColor: surface,
+      modalColor: surfaceRaised,
+      popoverColor: surfaceRaised,
+      tableColor: surface,
+      baseColor: page,
+      borderColor: border,
+      dividerColor: dark ? 'rgb(140 170 230 / 0.09)' : 'rgb(0 0 0 / 0.07)',
+      textColorBase: textPrimary,
+      textColor1: textPrimary,
+      textColor2: textSecondary,
+      textColor3: textMuted,
+      placeholderColor: dark ? 'rgb(170 172 200 / 0.4)' : 'rgb(24 24 26 / 0.4)',
+      inputColor: input,
+      inputColorDisabled: surface,
+      hoverColor: dark ? 'rgb(190 190 255 / 0.06)' : 'rgb(0 0 0 / 0.045)',
+    },
+    Button: {
+      borderRadiusMedium: '4px',
+      borderRadiusSmall: '4px',
+      textColorPrimary: brandContrast,
+      textColorHoverPrimary: brandContrast,
+      textColorPressedPrimary: brandContrast,
+      textColorFocusPrimary: brandContrast,
+      colorPrimary: brand,
+      colorHoverPrimary: brandHover,
+      colorPressedPrimary: brandPressed,
+      borderPrimary: `1px solid ${brand}`,
+      borderHoverPrimary: `1px solid ${brandHover}`,
+      borderPressedPrimary: `1px solid ${brandPressed}`,
+    },
+    Card: {
+      borderRadius: '4px',
+      color: surface,
+      borderColor: border,
+      titleTextColor: textPrimary,
+      textColor: textSecondary,
+    },
+    Input: {
+      borderRadius: '4px',
+      color: input,
+      colorFocus: input,
+      border: `1px solid ${border}`,
+      borderHover: `1px solid ${dark ? 'rgb(76 194 255 / 0.45)' : 'rgb(0 0 0 / 0.36)'}`,
+      borderFocus: `1px solid ${brand}`,
+      boxShadowFocus: `0 0 0 2px ${dark ? 'rgb(76 194 255 / 0.28)' : 'rgb(0 0 0 / 0.12)'}`,
+      textColor: textPrimary,
+      placeholderColor: textMuted,
+    },
+    Dialog: {
+      borderRadius: '4px',
+      color: surfaceRaised,
+      titleTextColor: textPrimary,
+      textColor: textSecondary,
+    },
+  }
+})
 
 onMounted(() => {
   void loadThemeMode()

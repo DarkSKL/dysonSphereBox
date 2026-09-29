@@ -30,58 +30,72 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/about': RouteRecordInfo<
-      '/about',
-      '/about',
+    '/dysonSphere/': RouteRecordInfo<
+      '/dysonSphere/',
+      '/dysonSphere',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/blueprint-generator': RouteRecordInfo<
-      '/blueprint-generator',
-      '/blueprint-generator',
+    '/dysonSphere/blueprint-generator': RouteRecordInfo<
+      '/dysonSphere/blueprint-generator',
+      '/dysonSphere/blueprint-generator',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/dashboard': RouteRecordInfo<
-      '/dashboard',
-      '/dashboard',
+    '/dysonSphere/environment': RouteRecordInfo<
+      '/dysonSphere/environment',
+      '/dysonSphere/environment',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/environment': RouteRecordInfo<
-      '/environment',
-      '/environment',
+    '/dysonSphere/headless': RouteRecordInfo<
+      '/dysonSphere/headless',
+      '/dysonSphere/headless',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/headless': RouteRecordInfo<
-      '/headless',
-      '/headless',
+    '/dysonSphere/mod': RouteRecordInfo<
+      '/dysonSphere/mod',
+      '/dysonSphere/mod',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/log': RouteRecordInfo<
-      '/log',
-      '/log',
+    '/dysonSphere/settings': RouteRecordInfo<
+      '/dysonSphere/settings',
+      '/dysonSphere/settings',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/mod': RouteRecordInfo<
-      '/mod',
-      '/mod',
+    '/system/about': RouteRecordInfo<
+      '/system/about',
+      '/system/about',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/settings': RouteRecordInfo<
-      '/settings',
-      '/settings',
+    '/system/dashboard': RouteRecordInfo<
+      '/system/dashboard',
+      '/system/dashboard',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/system/log': RouteRecordInfo<
+      '/system/log',
+      '/system/log',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/system/settings': RouteRecordInfo<
+      '/system/settings',
+      '/system/settings',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -105,51 +119,63 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/about.vue': {
+    'src/pages/dysonSphere/index.vue': {
       routes:
-        | '/about'
+        | '/dysonSphere/'
       views:
         | never
     }
-    'src/pages/blueprint-generator.vue': {
+    'src/pages/dysonSphere/blueprint-generator.vue': {
       routes:
-        | '/blueprint-generator'
+        | '/dysonSphere/blueprint-generator'
       views:
         | never
     }
-    'src/pages/dashboard.vue': {
+    'src/pages/dysonSphere/environment.vue': {
       routes:
-        | '/dashboard'
+        | '/dysonSphere/environment'
       views:
         | never
     }
-    'src/pages/environment.vue': {
+    'src/pages/dysonSphere/headless.vue': {
       routes:
-        | '/environment'
+        | '/dysonSphere/headless'
       views:
         | never
     }
-    'src/pages/headless.vue': {
+    'src/pages/dysonSphere/mod.vue': {
       routes:
-        | '/headless'
+        | '/dysonSphere/mod'
       views:
         | never
     }
-    'src/pages/log.vue': {
+    'src/pages/dysonSphere/settings.vue': {
       routes:
-        | '/log'
+        | '/dysonSphere/settings'
       views:
         | never
     }
-    'src/pages/mod.vue': {
+    'src/pages/system/about.vue': {
       routes:
-        | '/mod'
+        | '/system/about'
       views:
         | never
     }
-    'src/pages/settings.vue': {
+    'src/pages/system/dashboard.vue': {
       routes:
-        | '/settings'
+        | '/system/dashboard'
+      views:
+        | never
+    }
+    'src/pages/system/log.vue': {
+      routes:
+        | '/system/log'
+      views:
+        | never
+    }
+    'src/pages/system/settings.vue': {
+      routes:
+        | '/system/settings'
       views:
         | never
     }

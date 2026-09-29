@@ -1,63 +1,24 @@
 <script setup lang="ts">
 import { CircleHelp } from '@lucide/vue';
-import { computed } from 'vue';
-import { useRoute } from 'vue-router';
-
 import { usePageTutorial } from '../../composables/usePageTutorial';
-import type { TutorialPageKey } from '../../tutorials/types';
 
-const route = useRoute();
-
-type RoutedTutorialPageKey = Exclude<TutorialPageKey, 'global'>;
-
-// =============== 路由映射 ===============
-// 说明：把当前主导航路由映射到教程 pageKey，供顶部重看入口使用。
-const routeTutorialMap: Record<string, RoutedTutorialPageKey> = {
-  '/': 'home',
-  '/headless': 'headless',
-  '/mod': 'mod',
-  '/blueprint-generator': 'blueprint',
-  '/environment': 'environment',
-  '/log': 'log',
-  '/settings': 'settings',
-  '/about': 'about',
-};
-
-const tutorialControllers = {
-  home: usePageTutorial('home'),
-  headless: usePageTutorial('headless'),
-  mod: usePageTutorial('mod'),
-  blueprint: usePageTutorial('blueprint'),
-  environment: usePageTutorial('environment'),
-  log: usePageTutorial('log'),
-  settings: usePageTutorial('settings'),
-  about: usePageTutorial('about'),
-} satisfies Record<RoutedTutorialPageKey, ReturnType<typeof usePageTutorial>>;
-
-const currentPageKey = computed<RoutedTutorialPageKey | null>(() => routeTutorialMap[route.path] ?? null);
-const currentTutorial = computed(() => (
-  currentPageKey.value ? tutorialControllers[currentPageKey.value] ?? null : null
-));
-const canLaunchTutorial = computed(() => currentTutorial.value !== null);
+// =============== 全局教程入口 ===============
+// 说明：页面内容处于占位阶段时，只保留应用框架教程，避免教程指向已经移除的业务控件。
+const { restartTutorial } = usePageTutorial('global');
 
 // =============== 手动重看 ===============
-// 说明：忽略数据库状态，直接启动当前页面教程；完成或关闭后仍会覆盖当前版本状态。
+// 说明：忽略数据库状态，直接重新启动应用框架教程。
 const restartCurrentTutorial = async (): Promise<void> => {
-  if (!currentTutorial.value) {
-    return;
-  }
-
-  await currentTutorial.value.restartTutorial();
+  await restartTutorial();
 };
 </script>
 
 <template>
   <button
-    v-if="canLaunchTutorial"
     type="button"
     class="tutorial-launcher-button"
-    title="查看本页教程"
-    aria-label="查看本页教程"
+    title="查看应用教程"
+    aria-label="查看应用教程"
     data-tour="main-tutorial-launcher"
     @click="restartCurrentTutorial"
   >
