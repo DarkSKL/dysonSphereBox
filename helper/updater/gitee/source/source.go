@@ -30,7 +30,7 @@ type Source struct {
 	// httpClient 是更新源专用 HTTP 客户端。
 	// 职责：执行 Release 列表和附件下载请求。
 	// 使用：ListReleases 与 DownloadReleaseAsset 调用 Do。
-	// 边界：不替代 core.GLOBAL.HTTPClient，因为自更新源需要符合 go-selfupdate.Source 接口。
+	// 边界：只实现 go-selfupdate.Source 所需的数据访问，不提供 Mod 市场或账号 API。
 	httpClient *http.Client
 	// assets 缓存最近一次 Release 列表中的附件。
 	// 职责：让 DownloadReleaseAsset 可通过 go-selfupdate 回传的 assetID 找到下载地址。

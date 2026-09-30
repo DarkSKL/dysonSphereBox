@@ -21,7 +21,7 @@ type ComponentSnapshot struct {
 	Source string `json:"source"`
 	// SourceDependencyID 职责：保存历史来源侧依赖标识；使用：恢复组件记录；边界：为空时仍以 ComponentKey 为准。
 	SourceDependencyID string `json:"sourceDependencyId"`
-	// Namespace 职责：保存历史来源命名空间；使用：恢复展示和诊断字段；边界：官方源可能为空。
+	// Namespace 职责：保存历史来源命名空间；使用：恢复展示和诊断字段；边界：manual 来源可能为空。
 	Namespace string `json:"namespace"`
 	// Name 职责：保存历史组件名；使用：恢复组件记录；边界：前端展示可使用 DisplayName。
 	Name string `json:"name"`

@@ -1,16 +1,13 @@
 package modDependence
 
-// 文件职责：提供 Mod 整合包安装、卸载、取消、冲突继续和进度恢复的 Wails 服务。
-// 使用：Mod 市场页和已安装列表通过生成绑定触发传统整合包或 V2 远端包工作流。
+// 文件职责：提供 Mod 包安装、卸载、取消、冲突继续和进度恢复的 Wails 服务。
+// 使用：Mod 市场页和已安装列表通过生成绑定触发远端包安装工作流。
 // 边界：服务层负责入参转发和审计日志；下载、解压、复制、回滚和数据库记录由 helper 子包负责。
 
 import (
 	ModDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
 	installAudit "DysonSphereBox/helper/modDependence/audit/install"
 	"DysonSphereBox/helper/modDependence/installer/contract"
-	legacyInstall "DysonSphereBox/helper/modDependence/installer/legacy/install"
-	legacyQuery "DysonSphereBox/helper/modDependence/installer/legacy/query"
-	legacyUninstall "DysonSphereBox/helper/modDependence/installer/legacy/uninstallpkg"
 	v2Installer "DysonSphereBox/helper/modDependence/installer/v2"
 	v2Cancel "DysonSphereBox/helper/modDependence/installer/v2/cancel"
 	v2InstallError "DysonSphereBox/helper/modDependence/installer/v2/installerror"
@@ -20,16 +17,16 @@ import (
 	v2UninstallEntry "DysonSphereBox/helper/modDependence/installer/v2/uninstall/entry"
 )
 
-// InstallerService 提供前端可调用的 Mod 整合包安装能力。
-// 职责：编排传统整合包和 V2 远端包的安装、卸载、取消和进度恢复服务。
+// InstallerService 提供前端可调用的 Mod 包安装能力。
+// 职责：编排统一来源 Mod 包的安装、卸载、取消和进度恢复服务。
 // 使用：Mod 市场卡片点击安装、卸载、继续冲突或恢复进度时由前端调用。
 // 边界：服务层只做 Wails 入参与 helper 转发，下载、解压、文件删除和数据库写入由 helper 承接。
 type InstallerService struct {
 }
 
-// InstallRemotePackage 安装 Thunderstore Mod 包。
-// 职责：触发 V2 远端包安装并记录成功或失败日志。
-// 使用：Mod 页 V2 来源列表选择安装时调用；支持国内源、Thunderstore 与手动导入模型。
+// InstallRemotePackage 安装统一来源 Mod 包。
+// 职责：触发远端包安装并记录成功或失败日志。
+// 使用：Mod 页来源列表选择安装时调用；支持 Thunderstore 与手动导入来源。
 // 边界：冲突和取消错误由 helper 保持特殊状态，服务层不把它们记录为普通失败。
 // 逻辑流：1. 调用远端安装 helper => 2. 判断取消/冲突/失败分支 => 3. 记录安装成功或失败日志 => 4. 返回安装结果给前端。
 func (service *InstallerService) InstallRemotePackage(pack ModDependenceResponse.RemoteModPackageDTO) (*contract.PackageInstallResult, error) {
@@ -45,7 +42,7 @@ func (service *InstallerService) InstallRemotePackage(pack ModDependenceResponse
 	return result, nil
 }
 
-// ContinueRemotePackageInstall 按用户选择继续处理 Thunderstore 安装冲突。
+// ContinueRemotePackageInstall 按用户选择继续处理 Mod 包安装冲突。
 // 职责：把前端冲突决策传回 V2 安装器继续执行。
 // 使用：前端卡片显示修复按钮后，用户选择覆盖、跳过或失败时调用。
 // 边界：只处理处于 conflict 状态的安装包；非法 action 由 helper 返回错误。
@@ -59,7 +56,7 @@ func (service *InstallerService) ContinueRemotePackageInstall(packageKey string,
 	return result, nil
 }
 
-// CancelRemotePackageInstall 取消当前进程中正在执行的 Thunderstore Mod 包安装。
+// CancelRemotePackageInstall 取消当前进程中正在执行的 Mod 包安装。
 // 职责：请求取消正在运行的 V2 安装上下文。
 // 使用：Mod 卡片下载进度不再变化或用户想停止安装时调用。
 // 边界：只能取消当前进程内注册的安装任务；已完成或未注册任务由 helper 返回对应结果。
@@ -98,42 +95,4 @@ func (service *InstallerService) ListInstalledPackageKeys() ([]string, error) {
 // 边界：只返回可恢复状态，不主动重启安装任务。
 func (service *InstallerService) ListInstallProgressSnapshots() ([]contract.InstallProgressSnapshot, error) {
 	return v2ProgressSnapshot.List()
-}
-
-// InstallPackage 安装一个远端市场返回的整合包。
-// 职责：兼容旧官方整合包安装流程并记录审计日志。
-// 使用：前端把选中的 ModDependencyPackageDTO 原样传入；安装器会先确保 BepInEx 可用。
-// 边界：返回包含游戏目录、插件根目录、依赖安装明细和 BepInEx 状态；具体下载、解压和数据库写入由 helper 负责。
-func (service *InstallerService) InstallPackage(pack ModDependenceResponse.ModDependencyPackageDTO) (*contract.PackageInstallResult, error) {
-	result, err := legacyInstall.InstallModDependencyPackage(pack)
-	if err != nil {
-		installAudit.RecordPackageInstallFailure(pack, err)
-		return nil, err
-	}
-
-	installAudit.RecordPackageInstallSuccess(result)
-	return result, nil
-}
-
-// UninstallPackage 卸载指定 ID 的本地整合包记录和可安全移除的插件目录。
-// 职责：兼容旧官方整合包卸载流程并记录审计日志。
-// 使用：前端对旧整合包已安装卡片点击卸载时调用。
-// 边界：若依赖仍被其它已安装整合包引用，则保留该依赖插件目录。
-func (service *InstallerService) UninstallPackage(packageID uint) (*contract.PackageInstallResult, error) {
-	result, err := legacyUninstall.UninstallModDependencyPackage(packageID)
-	if err != nil {
-		installAudit.RecordPackageUninstallFailure(packageID, err)
-		return nil, err
-	}
-
-	installAudit.RecordPackageUninstallSuccess(result)
-	return result, nil
-}
-
-// ListInstalledPackageIds 返回本地已安装整合包 ID。
-// 职责：提供旧官方整合包的本地安装状态索引。
-// 使用：前端刷新市场列表后调用，用于把远端卡片映射成本地安装状态。
-// 边界：只读取本地 SQLite，不访问远端接口。
-func (service *InstallerService) ListInstalledPackageIds() ([]uint, error) {
-	return legacyQuery.ListInstalledPackageIds()
 }

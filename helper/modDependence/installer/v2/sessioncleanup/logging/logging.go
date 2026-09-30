@@ -18,7 +18,7 @@ import (
 // 使用：sessioncleanup/entry.CleanupInterrupted 在执行文件清理前调用。
 // 边界：只写审计日志，不影响清理流程；日志失败由底层静默处理。
 func RecordStart(record installedModel.ModInstalledPackage, status string, manifest sessionstate.Manifest) {
-	recordRemotePackageCleanupLog("cleanupRemotePackageInstallStart", system.LogLevelInfo, "开始清理未完成的 Thunderstore Mod 包安装", nil, map[string]interface{}{
+	recordRemotePackageCleanupLog("cleanupRemotePackageInstallStart", system.LogLevelInfo, "开始清理未完成的 Mod 包安装", nil, map[string]interface{}{
 		"packageKey":              record.PackageKey,
 		"packageName":             record.DisplayName,
 		"source":                  record.Source,
@@ -45,7 +45,7 @@ func RecordItem(packageKey string, kind string, target string, action string, re
 		level = system.LogLevelError
 		success = false
 	}
-	content := fmt.Sprintf("Thunderstore Mod 包清理：%s %s", action, kind)
+	content := fmt.Sprintf("Mod 包清理：%s %s", action, kind)
 	recordRemotePackageCleanupLog("cleanupRemotePackageInstallItem", level, content, err, map[string]interface{}{
 		"packageKey": packageKey,
 		"kind":       kind,
@@ -73,11 +73,11 @@ func FlushItems(items []sessionstate.CleanupLogItem) {
 func RecordDone(packageKey string, status string, manifest sessionstate.Manifest, err error) {
 	level := system.LogLevelInfo
 	event := "cleanupRemotePackageInstallDone"
-	content := "Thunderstore Mod 包未完成安装清理完成"
+	content := "Mod 包未完成安装清理完成"
 	if err != nil {
 		level = system.LogLevelError
 		event = "cleanupRemotePackageInstallFailed"
-		content = "Thunderstore Mod 包未完成安装清理失败"
+		content = "Mod 包未完成安装清理失败"
 	}
 	recordRemotePackageCleanupLog(event, level, content, err, map[string]interface{}{
 		"packageKey":              packageKey,

@@ -25,9 +25,6 @@ const displayComponents = computed(() => {
   if (!props.pack) {
     return []
   }
-  if (props.pack.source === 'official') {
-    return dependencies.value
-  }
 
   return [
     {

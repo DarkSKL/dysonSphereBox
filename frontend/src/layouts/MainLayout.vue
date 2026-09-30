@@ -17,11 +17,17 @@ import {Quit, WindowMinimise, WindowToggleMaximise} from '../../wailsjs/runtime/
 import {useAppVersion} from '../composables/useAppVersion'
 import {usePageTutorial} from '../composables/usePageTutorial'
 import {useThemeMode} from '../composables/useThemeMode'
+import AccountModal from '../components/layout/account-modal.vue'
 import {gameNavigationRegistry, globalNavigationEntries} from '../navigation/registry'
+import {accountIsAuthenticated, accountUser, restoreAccountSession} from '../services/account'
 
 const route = useRoute()
 const message = useMessage()
 const isGlobalMenuOpen = ref(false)
+const isAccountModalOpen = ref(false)
+const isAccountAuthenticated = accountIsAuthenticated
+const accountDisplayName = computed(() => accountUser.value?.nickName || accountUser.value?.userName || '已登录')
+const accountEntryTitle = computed(() => isAccountAuthenticated.value ? accountDisplayName.value : '登录或注册账号')
 const globalMenuTrigger = ref<HTMLButtonElement | null>(null)
 const globalMenuRoot = ref<HTMLDivElement | null>(null)
 const {appVersion, loadAppVersion} = useAppVersion()
@@ -92,9 +98,9 @@ onBeforeUnmount(() => {
 })
 
 // =============== 用户入口 ===============
-// 说明：账号系统尚未接入，点击头像仅提示当前为未登录状态。
+// 说明：打开账号弹窗；账号状态与提交逻辑由独立组件管理。
 const handleUserEntry = (): void => {
-  message.info('账号登录功能暂未开放')
+  isAccountModalOpen.value = true
 }
 
 const title = computed(() => route.meta.title || '戴森球盒子')
@@ -102,6 +108,7 @@ const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模�
 
 onMounted(() => {
   void loadAppVersion()
+  void restoreAccountSession()
   void loadThemeMode()
   void tryAutoStartGlobalTutorial()
 })
@@ -162,13 +169,13 @@ const closeWindow = (): void => {
     <!-- * 说明：快捷栏承载用户、游戏切换、全局页面和全局设置入口 -->
     <!-- * 交互：点击游戏标签切换到对应首页；全局页面不占用游戏第二层菜单 -->
     <!-- * 依赖：依赖游戏注册表、全局导航入口、Vue Router 与 Lucide 图标 -->
-    <!-- * 边界：账号系统尚未接入，头像固定展示未登录状态；当前仅支持戴森球计划 -->
+    <!-- * 边界：会话信息不可用时头像仍可打开登录弹窗；当前仅支持戴森球计划 -->
     <aside class="app-quick-rail" aria-label="快捷入口">
       <button
         type="button"
         class="app-rail-avatar"
-        title="未登录"
-        aria-label="用户登录（未登录）"
+        :title="accountEntryTitle"
+        :aria-label="accountEntryTitle"
         @click="handleUserEntry"
       >
         <UserRound :size="20" :stroke-width="1.7" />
@@ -240,6 +247,8 @@ const closeWindow = (): void => {
         </Transition>
       </div>
     </aside>
+
+    <AccountModal :open="isAccountModalOpen" @close="isAccountModalOpen = false" />
 
     <section class="app-workspace">
       <!-- ~ 无边框窗口标题栏 -->

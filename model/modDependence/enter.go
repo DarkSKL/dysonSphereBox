@@ -6,7 +6,6 @@ package modDependence
 
 import (
 	installedModel "DysonSphereBox/model/modDependence/installed"
-	legacyModel "DysonSphereBox/model/modDependence/legacy"
 )
 
 // ModelGroup 聚合 Mod 依赖领域的 GORM 模型。
@@ -14,16 +13,6 @@ import (
 // 使用：根 model.RegisterModels 调用本组 RegisterModels 后交给 core.AutoMigrate。
 // 边界：只组合模型结构，不执行迁移、不读写数据、不包含 API DTO。
 type ModelGroup struct {
-	// ModDependency 是旧官方源单个 Mod 依赖模型。
-	// 职责：参与 AutoMigrate 注册并保留旧整合包依赖表结构。
-	// 使用：RegisterModels 返回其指针给 core 数据库初始化流程。
-	// 边界：真实模型定义在 legacy 子包，此处只聚合迁移对象。
-	ModDependency legacyModel.ModDependency
-	// ModDependencyPackage 是旧官方源整合包模型。
-	// 职责：参与 AutoMigrate 注册并保留旧整合包表结构。
-	// 使用：RegisterModels 返回其指针给 core 数据库初始化流程。
-	// 边界：真实模型定义在 legacy 子包，此处不执行安装逻辑。
-	ModDependencyPackage legacyModel.ModDependencyPackage
 	// ModInstalledPackage 是 V2 已安装包模型。
 	// 职责：聚合 installed 子包中的安装包表结构。
 	// 使用：RegisterModels 返回其指针给 GORM 自动迁移。
@@ -57,8 +46,6 @@ type ModelGroup struct {
 // 边界：只返回持久化模型，不包含外部 API DTO 或前端响应结构。
 func (modelGroup *ModelGroup) RegisterModels() []interface{} {
 	return []interface{}{
-		&modelGroup.ModDependency,
-		&modelGroup.ModDependencyPackage,
 		&modelGroup.ModInstalledPackage,
 		&modelGroup.ModInstalledComponent,
 		&modelGroup.ModInstalledPackageComponent,

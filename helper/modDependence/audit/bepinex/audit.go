@@ -40,12 +40,11 @@ func RecordBepInExUninstallSuccess(result *bepinexContract.BepInExUninstallResul
 		Type:      systemModel.LogTypeInstallation,
 		Content:   "BepInEx 状态：已安装 -> " + resultText,
 		Metadata: map[string]interface{}{
-			"gameDir":        result.GameDir,
-			"removed":        result.Removed,
-			"skipped":        result.Skipped,
-			"removedCount":   len(result.RemovedPaths),
-			"clearedRecords": result.ClearedRecords,
-			"message":        result.Message,
+			"gameDir":      result.GameDir,
+			"removed":      result.Removed,
+			"skipped":      result.Skipped,
+			"removedCount": len(result.RemovedPaths),
+			"message":      result.Message,
 		},
 	})
 }

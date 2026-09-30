@@ -19,11 +19,11 @@ type ModInstalledPackage struct {
 	ID uint `json:"id" gorm:"primaryKey;comment:本地主键ID;column:id;"`
 	// PackageKey 职责：保存跨来源安装包唯一标识；使用：安装、卸载、冲突恢复和前端状态映射定位主包；边界：不能为空且必须稳定。
 	PackageKey string `json:"packageKey" gorm:"uniqueIndex;size:255;not null;comment:跨来源安装包唯一标识;column:package_key;"`
-	// Source 职责：保存安装包来源；使用：查询和展示 official/thunderstore/manual 来源；边界：只存来源枚举文本，不验证来源可用性。
+	// Source 职责：保存安装包来源；使用：查询和展示 thunderstore/manual 来源；边界：只存来源枚举文本，不验证来源可用性。
 	Source string `json:"source" gorm:"index;size:32;not null;comment:安装包来源;column:source;"`
-	// SourcePackageID 职责：保存来源侧包标识；使用：回溯远端数据和兼容旧官方 ID；边界：为空时仍以 PackageKey 为准。
+	// SourcePackageID 职责：保存来源侧包标识；使用：回溯远端数据；边界：为空时仍以 PackageKey 为准。
 	SourcePackageID string `json:"sourcePackageId" gorm:"size:255;comment:来源侧包标识;column:source_package_id;"`
-	// Namespace 职责：保存来源命名空间；使用：Thunderstore 展示和回溯；边界：官方源可能为空。
+	// Namespace 职责：保存来源命名空间；使用：Thunderstore 展示和回溯；边界：manual 来源可能为空。
 	Namespace string `json:"namespace" gorm:"size:128;comment:来源命名空间;column:namespace;"`
 	// Name 职责：保存来源侧机器友好包名；使用：调试、回溯和搜索；边界：前端展示优先使用 DisplayName。
 	Name string `json:"name" gorm:"size:255;comment:来源包名称;column:name;"`
@@ -53,7 +53,7 @@ type ModInstalledPackage struct {
 	PackageSize int64 `json:"packageSize" gorm:"comment:包大小;column:package_size;"`
 	// Tags 职责：保存来源标签 JSON；使用：前端展示和后续筛选扩展；边界：模型层不解析标签语义。
 	Tags datatypes.JSON `json:"tags" gorm:"comment:标签;column:tags;"`
-	// GameVersions 职责：保存来源适配游戏版本 JSON；使用：展示或兼容旧官方结构；边界：模型层不解析版本格式。
+	// GameVersions 职责：保存来源适配游戏版本 JSON；使用：展示来源侧原始结构；边界：模型层不解析版本格式。
 	GameVersions datatypes.JSON `json:"gameVersions" gorm:"comment:游戏版本;column:game_versions;"`
 	// Trustworthiness 职责：保存来源可信度或评分快照；使用：展示和诊断；边界：不作为安全校验依据。
 	Trustworthiness int64 `json:"trustworthiness" gorm:"comment:可信度;column:trustworthiness;"`

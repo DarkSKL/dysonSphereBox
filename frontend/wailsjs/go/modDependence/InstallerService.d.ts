@@ -7,16 +7,10 @@ export function CancelRemotePackageInstall(arg1:string):Promise<void>;
 
 export function ContinueRemotePackageInstall(arg1:string,arg2:string):Promise<contract.PackageInstallResult>;
 
-export function InstallPackage(arg1:modDependence.ModDependencyPackageDTO):Promise<contract.PackageInstallResult>;
-
 export function InstallRemotePackage(arg1:modDependence.RemoteModPackageDTO):Promise<contract.PackageInstallResult>;
 
 export function ListInstallProgressSnapshots():Promise<Array<contract.InstallProgressSnapshot>>;
 
-export function ListInstalledPackageIds():Promise<Array<number>>;
-
 export function ListInstalledPackageKeys():Promise<Array<string>>;
-
-export function UninstallPackage(arg1:number):Promise<contract.PackageInstallResult>;
 
 export function UninstallRemotePackage(arg1:string):Promise<contract.PackageInstallResult>;

@@ -16,13 +16,13 @@ import (
 type RemotePackageListData struct {
 	// List 职责：保存当前分页内的统一远端包 DTO 列表；使用：前端市场列表直接渲染；边界：空列表不代表来源不可用，需结合 Total 和错误判断。
 	List []RemoteModPackageDTO `json:"list"`
-	// Total 职责：保存符合查询条件的远端包总数；使用：前端分页器计算页数；边界：Thunderstore 本地分页由 helper 计算，官方源沿用远端返回值。
+	// Total 职责：保存符合查询条件的远端包总数；使用：前端分页器计算页数；边界：Thunderstore 本地分页由 helper 计算。
 	Total int `json:"total"`
 	// Page 职责：保存当前页码；使用：前端同步分页状态；边界：由服务层归一化后返回，调用方不应假设原始入参一定有效。
 	Page int `json:"page"`
 	// PageSize 职责：保存当前分页大小；使用：前端分页器和列表请求复用；边界：实际值可能被后端上限裁剪。
 	PageSize int `json:"pageSize"`
-	// Source 职责：标记当前列表对应的统一来源；使用：前端区分 official、thunderstore 或 manual 结果；边界：不代表每个包已安装或可直接下载。
+	// Source 职责：标记当前列表对应的统一来源；使用：前端区分 Thunderstore 或 manual 结果；边界：不代表每个包已安装或可直接下载。
 	Source sourceConstant.ModSource `json:"source"`
 }
 
@@ -31,13 +31,13 @@ type RemotePackageListData struct {
 // 使用：安装器解析依赖链、前端展示依赖明细时使用。
 // 边界：Key 是跨来源稳定身份；Raw 保留原始依赖声明，便于排查来源解析问题。
 type RemoteModDependencyDTO struct {
-	// Key 职责：保存跨来源稳定依赖身份；使用：安装器递归解析和本地记录关联；边界：不得用旧数字 ID 替代该字段。
+	// Key 职责：保存跨来源稳定依赖身份；使用：安装器递归解析和本地记录关联；边界：本地唯一性只以该字段为准。
 	Key string `json:"key"`
 	// Source 职责：标记依赖来自哪个市场来源；使用：Provider 和安装器选择解析策略；边界：未知来源应由上层返回错误。
 	Source sourceConstant.ModSource `json:"source"`
-	// SourceDependencyID 职责：保存来源侧依赖原始 ID；使用：调试、兼容旧官方依赖和回溯来源数据；边界：为空时仍以 Key 为准。
+	// SourceDependencyID 职责：保存来源侧依赖原始 ID；使用：调试和回溯来源数据；边界：为空时仍以 Key 为准。
 	SourceDependencyID string `json:"sourceDependencyId"`
-	// Namespace 职责：保存来源侧命名空间；使用：Thunderstore 依赖匹配和展示作者/团队信息；边界：官方源可能为空。
+	// Namespace 职责：保存来源侧命名空间；使用：Thunderstore 依赖匹配和展示作者/团队信息；边界：manual 来源可能为空。
 	Namespace string `json:"namespace"`
 	// Name 职责：保存来源侧机器友好名称；使用：生成路径、key 或调试显示；边界：展示优先使用 DisplayName。
 	Name string `json:"name"`
@@ -64,17 +64,15 @@ type RemoteModDependencyDTO struct {
 // RemoteModPackageDTO 表示 Thunderstore 等来源适配后的可安装 Mod 包。
 // 职责：描述统一来源市场中可安装的主包及其依赖信息。
 // 使用：前端市场卡片展示和 V2 安装器安装入参均使用该结构。
-// 边界：保留 LegacyID 只用于兼容旧国内源状态；新逻辑必须以 Key 为唯一身份。
+// 边界：Key 是唯一身份；SourcePackageID 只用于回溯来源数据。
 type RemoteModPackageDTO struct {
-	// Key 职责：保存跨来源稳定包身份；使用：前端安装状态映射、安装器主键和冲突恢复；边界：新逻辑不得依赖 LegacyID 做唯一身份。
+	// Key 职责：保存跨来源稳定包身份；使用：前端安装状态映射、安装器主键和冲突恢复；边界：格式为 `<source>:...`，不同来源的 key 不会冲突。
 	Key string `json:"key"`
-	// LegacyID 职责：保存旧官方源数字 ID；使用：兼容旧安装流程、官方下载计数和历史状态映射；边界：Thunderstore 与 manual 来源可能为 0。
-	LegacyID uint `json:"legacyId"`
 	// Source 职责：标记包来自哪个统一来源；使用：服务层和 helper 选择查询、安装或刷新策略；边界：未知来源由调用方返回错误。
 	Source sourceConstant.ModSource `json:"source"`
 	// SourcePackageID 职责：保存来源侧原始包 ID；使用：调试、回溯来源数据和兼容不同市场；边界：本地唯一性仍以 Key 为准。
 	SourcePackageID string `json:"sourcePackageId"`
-	// Namespace 职责：保存来源侧命名空间；使用：Thunderstore 包识别和作者/团队展示；边界：官方源可能为空。
+	// Namespace 职责：保存来源侧命名空间；使用：Thunderstore 包识别和作者/团队展示；边界：manual 来源可能为空。
 	Namespace string `json:"namespace"`
 	// Name 职责：保存来源侧机器友好名称；使用：key 生成、路径规划或调试；边界：用户界面优先展示 DisplayName。
 	Name string `json:"name"`

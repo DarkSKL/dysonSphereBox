@@ -44,7 +44,7 @@ func (artifact Artifact) InstallRecordPackageKey() string {
 // SourceDependencyID 从统一 key 中提取来源侧依赖标识。
 // 职责：从 componentKey 中提取较短的来源依赖 ID。
 // 使用：目录名兜底和候选值生成时调用。
-// 边界：显示名缺失时作为目录名兜底，避免直接生成 official-4-0.5.1 这类完整 key 目录。
+// 边界：显示名缺失时作为目录名兜底，避免直接生成 thunderstore-owner-name-1.0.0 这类完整 key 目录。
 func (artifact Artifact) SourceDependencyID() string {
 	return artifactlayout.SourceDependencyID(artifact.ComponentKey)
 }

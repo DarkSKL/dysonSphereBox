@@ -8,14 +8,12 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-
-	"DysonSphereBox/core"
 )
 
 // resolveDownloadURL 解析 artifact 下载地址。
-// 职责：兼容绝对 URL 与项目 HTTPClient 可解析的相对 URL。
+// 职责：校验 artifact 提供的绝对 HTTP(S) 下载 URL。
 // 使用：downloadRemoteArtifact 发起请求前调用。
-// 边界：空地址、解析失败或 HTTPClient 未初始化时返回错误。
+// 边界：空地址、相对地址、非 HTTP(S) 地址或缺少主机时返回错误。
 func resolveDownloadURL(rawURL string) (string, error) {
 	trimmedURL := strings.TrimSpace(rawURL)
 	if trimmedURL == "" {
@@ -25,11 +23,8 @@ func resolveDownloadURL(rawURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse download url: %w", err)
 	}
-	if parsedURL.Scheme != "" && parsedURL.Host != "" {
+	if (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") && parsedURL.Host != "" {
 		return parsedURL.String(), nil
 	}
-	if core.GLOBAL.HTTPClient == nil {
-		return "", fmt.Errorf("http client is not initialized")
-	}
-	return core.GLOBAL.HTTPClient.ResolveURL(trimmedURL)
+	return "", fmt.Errorf("download url must be an absolute HTTP(S) URL")
 }

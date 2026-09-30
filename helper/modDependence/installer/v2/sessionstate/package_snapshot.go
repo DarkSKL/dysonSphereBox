@@ -19,7 +19,7 @@ type PackageSnapshot struct {
 	Source string `json:"source"`
 	// SourcePackageID 职责：保存历史来源侧包标识；使用：恢复主包来源字段；边界：为空时仍以 PackageKey 定位记录。
 	SourcePackageID string `json:"sourcePackageId"`
-	// Namespace 职责：保存历史来源命名空间；使用：恢复展示与诊断字段；边界：官方源可能为空。
+	// Namespace 职责：保存历史来源命名空间；使用：恢复展示与诊断字段；边界：manual 来源可能为空。
 	Namespace string `json:"namespace"`
 	// Name 职责：保存历史来源包名；使用：恢复主包记录；边界：前端展示可使用 DisplayName。
 	Name string `json:"name"`

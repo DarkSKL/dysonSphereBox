@@ -103,7 +103,7 @@ func Cancel(packageKey string, timeoutCallback func(error)) error {
 	return nil
 }
 
-// CancelRemotePackageInstall 取消当前进程内正在执行的 Thunderstore 安装。
+// CancelRemotePackageInstall 取消当前进程内正在执行的 Mod 包安装。
 // 职责：根据 packageKey 触发运行中安装任务的 cancel，并在后台清理超时时推送运行时进度。
 // 使用：InstallerService.CancelRemotePackageInstall 在前端请求取消安装时调用。
 // 边界：只能取消当前进程内仍注册的安装；应用重启后的遗留 running 由恢复流程处理。

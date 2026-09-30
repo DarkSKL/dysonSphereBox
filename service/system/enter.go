@@ -19,6 +19,10 @@ type ServiceGroup struct {
 	LogService
 	// TutorialService 职责：暴露首次使用引导教程进度服务；使用：RegisterServices 绑定给前端教程模块；边界：注册时不查询或写入教程状态。
 	TutorialService
+	// ServerService 职责：暴露服务器地址连接测试服务；使用：RegisterServices 绑定给全局设置页；边界：注册时不发起网络请求。
+	ServerService
+	// AccountService 职责：暴露账号认证与资料服务；使用：RegisterServices 绑定给前端账号模块；边界：注册时不发起网络请求、不读取 token。
+	AccountService
 }
 
 // RegisterServices 返回系统领域需要绑定给前端的服务实例。
@@ -32,5 +36,7 @@ func (serviceGroup *ServiceGroup) RegisterServices() []interface{} {
 		&serviceGroup.UpdateService,
 		&serviceGroup.LogService,
 		&serviceGroup.TutorialService,
+		&serviceGroup.ServerService,
+		&serviceGroup.AccountService,
 	}
 }

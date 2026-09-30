@@ -19,11 +19,11 @@ type ModInstalledComponent struct {
 	ID uint `json:"id" gorm:"primaryKey;comment:本地主键ID;column:id;"`
 	// ComponentKey 职责：保存跨来源组件唯一标识；使用：文件归属、共享判断和依赖关联；边界：不能为空且必须稳定。
 	ComponentKey string `json:"componentKey" gorm:"uniqueIndex;size:255;not null;comment:跨来源组件唯一标识;column:component_key;"`
-	// Source 职责：保存组件来源；使用：查询和展示 official/thunderstore/manual 来源；边界：只存来源文本。
+	// Source 职责：保存组件来源；使用：查询和展示 thunderstore/manual 来源；边界：只存来源文本。
 	Source string `json:"source" gorm:"index;size:32;not null;comment:组件来源;column:source;"`
 	// SourceDependencyID 职责：保存来源侧依赖标识；使用：回溯远端依赖数据；边界：为空时仍以 ComponentKey 为准。
 	SourceDependencyID string `json:"sourceDependencyId" gorm:"size:255;comment:来源侧依赖标识;column:source_dependency_id;"`
-	// Namespace 职责：保存来源命名空间；使用：Thunderstore 展示和依赖诊断；边界：官方源可能为空。
+	// Namespace 职责：保存来源命名空间；使用：Thunderstore 展示和依赖诊断；边界：manual 来源可能为空。
 	Namespace string `json:"namespace" gorm:"size:128;comment:来源命名空间;column:namespace;"`
 	// Name 职责：保存来源侧机器友好组件名；使用：调试和搜索；边界：前端展示优先使用 DisplayName。
 	Name string `json:"name" gorm:"size:255;comment:组件名称;column:name;"`

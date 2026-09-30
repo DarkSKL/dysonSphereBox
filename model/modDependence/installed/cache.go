@@ -17,7 +17,7 @@ import (
 type ModRemotePackageCache struct {
 	// ID 职责：保存本地数据库自增主键；使用：GORM 维护缓存记录；边界：缓存身份以 Source 和 CacheKey 唯一索引为准。
 	ID uint `json:"id" gorm:"primaryKey;comment:本地主键ID;column:id;"`
-	// Source 职责：保存远端来源；使用：按 official/thunderstore/manual 区分缓存；边界：不代表来源当前可用。
+	// Source 职责：保存远端来源；使用：按 thunderstore/manual 区分缓存；边界：不代表来源当前可用。
 	Source string `json:"source" gorm:"uniqueIndex:idx_mod_remote_cache;size:32;not null;comment:来源;column:source;"`
 	// CacheKey 职责：保存来源内缓存键；使用：区分包列表、详情或后续扩展缓存；边界：由 helper 定义，不在模型层解释。
 	CacheKey string `json:"cacheKey" gorm:"uniqueIndex:idx_mod_remote_cache;size:255;not null;comment:缓存键;column:cache_key;"`

@@ -29,7 +29,6 @@ func completeRemotePackageInstall(ctx context.Context, pack modDependenceRespons
 	progressEvent.Package(pack.Key, "done", "安装完成", 100)
 	return &contract.PackageInstallResult{
 		PackageKey:    pack.Key,
-		PackageID:     pack.LegacyID,
 		PackageName:   pack.DisplayName,
 		GameDir:       preparation.gameDir,
 		PluginRoot:    filepath.Join(preparation.gameDir, "BepInEx", "plugins"),

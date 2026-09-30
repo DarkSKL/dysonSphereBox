@@ -30,11 +30,11 @@ type Global struct {
 	// 使用：service/helper 读取或写入系统配置时访问。
 	// 边界：依赖 DB 初始化，不缓存配置值。
 	Configure *Configure
-	// HTTPClient 是基于 Configure.BaseURL 创建的全局 HTTP 客户端。
-	// 职责：复用全局 HTTP 连接与基础地址。
-	// 使用：需要访问统一后端接口的服务或 helper 调用。
-	// 边界：BaseURL 无效时请求阶段返回错误，不在这里处理业务重试。
-	HTTPClient *HTTPClient
+	// ServerClient 是基于 Configure.ServerAddress 创建的私有应用服务器客户端。
+	// 职责：复用访问应用服务器的连接与基础地址，是客户端后端与应用服务器通信的唯一出口。
+	// 使用：账号等需要访问应用服务器的 service/helper 调用；Thunderstore、Gitee 等第三方地址不得经过该客户端。
+	// 边界：地址未配置时使用默认服务器地址；保存新地址时由 ConfigurationService.SetConfig 整体替换，不在这里处理业务重试。
+	ServerClient *HTTPClient
 	// RuntimeContext 是 Wails 运行时上下文，用于服务层向前端发送事件。
 	// 职责：保存 Wails runtime 事件发送上下文。
 	// 使用：进度事件、状态事件等 helper 发送前端通知时读取。

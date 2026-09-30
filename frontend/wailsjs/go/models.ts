@@ -106,7 +106,6 @@ export namespace contract {
 	    skipped: boolean;
 	    message: string;
 	    removedPaths: string[];
-	    clearedRecords: boolean;
 	    status: BepInExStatus;
 	
 	    static createFrom(source: any = {}) {
@@ -120,7 +119,6 @@ export namespace contract {
 	        this.skipped = source["skipped"];
 	        this.message = source["message"];
 	        this.removedPaths = source["removedPaths"];
-	        this.clearedRecords = source["clearedRecords"];
 	        this.status = this.convertValues(source["status"], BepInExStatus);
 	    }
 	
@@ -144,7 +142,6 @@ export namespace contract {
 	}
 	export class DependencyInstallResult {
 	    key: string;
-	    id: number;
 	    name: string;
 	    version: string;
 	    pluginDir: string;
@@ -161,7 +158,6 @@ export namespace contract {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
-	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.version = source["version"];
 	        this.pluginDir = source["pluginDir"];
@@ -596,7 +592,6 @@ export namespace contract {
 	}
 	export class PackageInstallResult {
 	    packageKey: string;
-	    packageId: number;
 	    packageName: string;
 	    gameDir: string;
 	    pluginRoot: string;
@@ -614,7 +609,6 @@ export namespace contract {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.packageKey = source["packageKey"];
-	        this.packageId = source["packageId"];
 	        this.packageName = source["packageName"];
 	        this.gameDir = source["gameDir"];
 	        this.pluginRoot = source["pluginRoot"];
@@ -1736,140 +1730,6 @@ export namespace environment {
 
 export namespace modDependence {
 	
-	export class ModDependencyDTO {
-	    id: number;
-	    modName?: string;
-	    modVersion?: string;
-	    modDescription?: string;
-	    gameVersions: any;
-	    updateTime?: string;
-	    source?: string;
-	    url?: string;
-	    trustworthiness?: number;
-	    config?: string;
-	    ex?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ModDependencyDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.modName = source["modName"];
-	        this.modVersion = source["modVersion"];
-	        this.modDescription = source["modDescription"];
-	        this.gameVersions = source["gameVersions"];
-	        this.updateTime = source["updateTime"];
-	        this.source = source["source"];
-	        this.url = source["url"];
-	        this.trustworthiness = source["trustworthiness"];
-	        this.config = source["config"];
-	        this.ex = source["ex"];
-	    }
-	}
-	export class ModDependencyPackageDTO {
-	    id: number;
-	    packageName?: string;
-	    packageVersion?: string;
-	    packageDescription?: string;
-	    packageSize?: number;
-	    downloadCount?: number;
-	    dependencyCount?: number;
-	    gameVersions: any;
-	    tags: any;
-	    source?: string;
-	    url?: string;
-	    coverUrl?: string;
-	    author?: string;
-	    status?: number;
-	    trustworthiness?: number;
-	    updateTime?: string;
-	    config?: string;
-	    ex?: string;
-	    dependencies: ModDependencyDTO[];
-	
-	    static createFrom(source: any = {}) {
-	        return new ModDependencyPackageDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.packageName = source["packageName"];
-	        this.packageVersion = source["packageVersion"];
-	        this.packageDescription = source["packageDescription"];
-	        this.packageSize = source["packageSize"];
-	        this.downloadCount = source["downloadCount"];
-	        this.dependencyCount = source["dependencyCount"];
-	        this.gameVersions = source["gameVersions"];
-	        this.tags = source["tags"];
-	        this.source = source["source"];
-	        this.url = source["url"];
-	        this.coverUrl = source["coverUrl"];
-	        this.author = source["author"];
-	        this.status = source["status"];
-	        this.trustworthiness = source["trustworthiness"];
-	        this.updateTime = source["updateTime"];
-	        this.config = source["config"];
-	        this.ex = source["ex"];
-	        this.dependencies = this.convertValues(source["dependencies"], ModDependencyDTO);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class PackageListData {
-	    list: ModDependencyPackageDTO[];
-	    total: number;
-	    page: number;
-	    pageSize: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new PackageListData(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.list = this.convertValues(source["list"], ModDependencyPackageDTO);
-	        this.total = source["total"];
-	        this.page = source["page"];
-	        this.pageSize = source["pageSize"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class RemoteModDependencyDTO {
 	    key: string;
 	    source: string;
@@ -1910,7 +1770,6 @@ export namespace modDependence {
 	}
 	export class RemoteModPackageDTO {
 	    key: string;
-	    legacyId: number;
 	    source: string;
 	    sourcePackageId: string;
 	    namespace: string;
@@ -1942,7 +1801,6 @@ export namespace modDependence {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
-	        this.legacyId = source["legacyId"];
 	        this.source = source["source"];
 	        this.sourcePackageId = source["sourcePackageId"];
 	        this.namespace = source["namespace"];
@@ -2027,7 +1885,197 @@ export namespace modDependence {
 
 }
 
+export namespace server {
+	
+	export class ProbeResult {
+	    ok: boolean;
+	    latencyMs: number;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProbeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.latencyMs = source["latencyMs"];
+	        this.message = source["message"];
+	    }
+	}
+
+}
+
 export namespace system {
+	
+	export class AccountCaptcha {
+	    captchaId: string;
+	    picPath: string;
+	    captchaLength: number;
+	    openCaptcha: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountCaptcha(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.captchaId = source["captchaId"];
+	        this.picPath = source["picPath"];
+	        this.captchaLength = source["captchaLength"];
+	        this.openCaptcha = source["openCaptcha"];
+	    }
+	}
+	export class AccountChangePasswordRequest {
+	    password: string;
+	    newPassword: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountChangePasswordRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.password = source["password"];
+	        this.newPassword = source["newPassword"];
+	    }
+	}
+	export class AccountLoginRequest {
+	    username: string;
+	    password: string;
+	    captcha?: string;
+	    captchaId?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountLoginRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.captcha = source["captcha"];
+	        this.captchaId = source["captchaId"];
+	    }
+	}
+	export class AccountUser {
+	    ID: number;
+	    uuid: string;
+	    userName: string;
+	    nickName: string;
+	    headerImg: string;
+	    phone: string;
+	    email: string;
+	    authorityId: number;
+	    enable: number;
+	    originSetting: Record<string, any>;
+	    passwordUpdatedAt?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountUser(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.uuid = source["uuid"];
+	        this.userName = source["userName"];
+	        this.nickName = source["nickName"];
+	        this.headerImg = source["headerImg"];
+	        this.phone = source["phone"];
+	        this.email = source["email"];
+	        this.authorityId = source["authorityId"];
+	        this.enable = source["enable"];
+	        this.originSetting = source["originSetting"];
+	        this.passwordUpdatedAt = source["passwordUpdatedAt"];
+	    }
+	}
+	export class AccountLoginResult {
+	    user: AccountUser;
+	    expiresAt: number;
+	    needChangePassword: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountLoginResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.user = this.convertValues(source["user"], AccountUser);
+	        this.expiresAt = source["expiresAt"];
+	        this.needChangePassword = source["needChangePassword"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AccountRegisterRequest {
+	    username: string;
+	    password: string;
+	    captcha: string;
+	    captchaId: string;
+	    nickName?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountRegisterRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.captcha = source["captcha"];
+	        this.captchaId = source["captchaId"];
+	        this.nickName = source["nickName"];
+	    }
+	}
+	export class AccountSelfInfoRequest {
+	    nickName?: string;
+	    headerImg?: string;
+	    phone?: string;
+	    email?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountSelfInfoRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nickName = source["nickName"];
+	        this.headerImg = source["headerImg"];
+	        this.phone = source["phone"];
+	        this.email = source["email"];
+	    }
+	}
+	export class AccountSessionState {
+	    authenticated: boolean;
+	    needChangePassword: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountSessionState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.authenticated = source["authenticated"];
+	        this.needChangePassword = source["needChangePassword"];
+	    }
+	}
 	
 	export class ConfigUnitInfo {
 	    name: string;

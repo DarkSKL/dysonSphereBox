@@ -3,7 +3,7 @@ package v2
 // 文件职责：串联 V2 远端包安装前置准备阶段。
 // 使用：InstallRemoteModPackageWithOptions 注册取消上下文后调用，获取 BepInEx 状态、缓存目录和待安装 artifact 队列。
 // 边界：不复制 artifact 文件、不保存组件记录、不保存主包完成状态；BepInEx 和 artifact 队列准备由同包独立文件维护。
-// 逻辑流：1. 捕获旧安装快照 => 2. 保存 running 状态并重置 manifest => 3. 准备 BepInEx 和缓存目录 => 4. 解析并记录计划 artifact => 5. 记录官方源下载预备信息。
+// 逻辑流：1. 捕获旧安装快照 => 2. 保存 running 状态并重置 manifest => 3. 准备 BepInEx 和缓存目录 => 4. 解析并记录计划 artifact。
 
 import (
 	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
@@ -37,7 +37,7 @@ type installPreparation struct {
 // prepareRemotePackageInstall 准备远端包安装环境。
 // 职责：初始化安装状态、准备 BepInEx、解析 artifact 队列并记录计划。
 // 使用：InstallRemoteModPackageWithOptions 注册取消上下文后调用。
-// 边界：不会复制文件或保存组件记录；官方源下载记录失败会触发会话清理。
+// 边界：不会复制文件或保存组件记录；准备阶段失败会触发会话清理。
 func prepareRemotePackageInstall(ctx context.Context, pack modDependenceResponse.RemoteModPackageDTO, options contract.InstallRemotePackageOptions) (*installPreparation, error) {
 	previousPackage, err := capturePreviousPackageIfNeeded(pack, options)
 	if err != nil {
@@ -62,7 +62,7 @@ func prepareRemotePackageInstall(ctx context.Context, pack modDependenceResponse
 		return nil, err
 	}
 
-	bufferDir, artifacts, err := prepareArtifactsForRemoteInstall(ctx, pack, options)
+	bufferDir, artifacts, err := prepareArtifactsForRemoteInstall(ctx, pack)
 	if err != nil {
 		return nil, err
 	}

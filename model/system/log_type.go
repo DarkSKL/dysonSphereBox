@@ -21,7 +21,7 @@ const (
 	LogTypeOperation LogType = 1
 	// LogTypeConfiguration 表示配置读取、写入或刷新。
 	// 职责：标记配置相关日志。
-	// 使用：配置保存、BaseURL 刷新、游戏路径初始化等场景。
+	// 使用：配置保存、游戏路径初始化等场景。
 	// 边界：不用于安装文件变更事件。
 	LogTypeConfiguration LogType = 2
 	// LogTypeInstallation 表示安装、卸载、更新等会修改本地文件或数据库的操作。

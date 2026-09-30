@@ -11,7 +11,7 @@ import "time"
 // 使用：前端页面刷新或重新激活后恢复正在安装、失败、冲突等待处理等临时状态。
 // 边界：该快照不是安装记录模型；应用重启后的真实安装状态仍以 SQLite 安装记录为准。
 type InstallProgressSnapshot struct {
-	// PackageKey 职责：记录进度所属包 key；使用：前端定位卡片和继续冲突安装；边界：旧官方包可能为空。
+	// PackageKey 职责：记录进度所属包 key；使用：前端定位卡片和继续冲突安装；边界：与 RemoteModPackageDTO.Key 一致。
 	PackageKey string `json:"packageKey"`
 	// Stage 职责：记录当前安装阶段；使用：前端展示下载、解压、复制、记录等阶段；边界：只作展示和排查。
 	Stage string `json:"stage"`

@@ -12,6 +12,8 @@ interface AppUpdateCheckResult {
 }
 
 const appUpdateInfo = ref<updater.CheckResult | null>(null)
+// 最近一次成功取得检查结果的时间，与检查结果同属程序周期缓存
+const appUpdateCheckedAt = ref<Date | null>(null)
 const isCheckingAppUpdate = ref(false)
 const isUpdatingApp = ref(false)
 let hasCheckedAppUpdateInProgramSession = false
@@ -38,6 +40,7 @@ export const useAppUpdateState = () => {
       appUpdateCheckPromise = CheckAppUpdate()
         .then((result) => {
           appUpdateInfo.value = result
+          appUpdateCheckedAt.value = new Date()
           return result
         })
         .finally(() => {
@@ -70,6 +73,7 @@ export const useAppUpdateState = () => {
 
   return {
     appUpdateInfo,
+    appUpdateCheckedAt,
     isCheckingAppUpdate,
     isUpdatingApp,
     checkAppUpdate,

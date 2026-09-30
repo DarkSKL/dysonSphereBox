@@ -1,7 +1,7 @@
 package core
 
-// 文件职责：定义应用全局 HTTP 客户端基础类型和构造逻辑。
-// 使用：启动流程初始化 GLOBAL.HTTPClient，service/helper 运行期复用该客户端访问统一后端接口。
+// 文件职责：定义带 BaseURL 的 HTTP 客户端基础类型和构造逻辑。
+// 使用：启动流程据此初始化 GLOBAL.ServerClient，service/helper 运行期复用该客户端访问应用服务器。
 // 边界：只封装 BaseURL 与标准库客户端，不解析业务响应、不处理 Mod 安装或市场查询。
 
 import (
@@ -16,9 +16,9 @@ import (
 // 边界：只影响通过 core.HTTPClient 发出的请求，不覆盖第三方库内部超时。
 const defaultHTTPTimeout = 30 * time.Second
 
-// HTTPClient 封装带 BaseURL 的全局 HTTP 客户端。
+// HTTPClient 封装带 BaseURL 的 HTTP 客户端。
 // 职责：组合标准 http.Client 与可配置 BaseURL。
-// 使用：服务层需要访问统一后端接口时，通过 GLOBAL.HTTPClient 复用连接与基础地址。
+// 使用：服务层需要访问应用服务器时，通过 GLOBAL.ServerClient 复用连接与基础地址。
 // 边界：BaseURL 允许为空以保证应用可启动，真正发起请求时会返回明确错误。
 type HTTPClient struct {
 	// client 是实际发起请求的标准库 HTTP 客户端。
@@ -35,7 +35,7 @@ type HTTPClient struct {
 
 // NewHTTPClient 根据传入的 BaseURL 创建 HTTP 客户端。
 // 职责：解析基础地址并配置标准库 HTTP 客户端。
-// 使用：InitHTTPClient 或测试需要构造独立客户端时调用。
+// 使用：InitServerClient 或测试需要构造独立客户端时调用。
 // 边界：空 BaseURL 会创建可保存的客户端；发起请求前仍需要配置有效地址。
 func NewHTTPClient(baseURL string) (*HTTPClient, error) {
 	parsedBaseURL, err := parseBaseURL(baseURL)

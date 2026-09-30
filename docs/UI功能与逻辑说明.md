@@ -13,8 +13,8 @@ DysonSphereBox 是《戴森球计划》的桌面辅助工具，当前功能分�
 | 领域 | 作用 | 主要页面 |
 | --- | --- | --- |
 | 应用壳层 | 页面导航、窗口控制、主题配置、首次使用引导 | 所有页面 |
-| 游戏环境配置 | 设置游戏目录、连接地址和 BepInEx 状态 | 设置、模组、开服 |
-| 模组市场与安装 | 浏览远程整合包，安装、取消、冲突处理、卸载模组 | 模组 |
+| 游戏环境配置 | 设置游戏目录和 BepInEx 状态 | 设置、模组、开服 |
+| 模组市场与安装 | 浏览 Thunderstore 包，安装、取消、冲突处理、卸载模组 | 模组 |
 | 无头服务器 | 检测 Nebula 开服条件，保存端口和存档，启动/停止服务 | 开服 |
 | 本地资源管理 | 管理 Mod、蓝图和存档，导入、启用、同步、移动、导出和删除 | 资源 |
 | 蓝图工具 | 预加载并嵌入外部蓝图生成器 | 蓝图 |
@@ -35,7 +35,7 @@ DysonSphereBox 是《戴森球计划》的桌面辅助工具，当前功能分�
 | 蓝图 | `/blueprint-generator` | 外部蓝图生成器内嵌工具 | 是 |
 | 资源 | `/environment` | 本地 Mod、蓝图、存档资源库 | 是 |
 | 日志 | `/log` | 系统操作日志 | 否 |
-| 设置 | `/settings` | 游戏目录、API 地址、BepInEx、应用更新 | 否 |
+| 设置 | `/settings` | 游戏目录、BepInEx、应用更新 | 否 |
 | 关于我们 | `/about` | 版本、项目链接、联系方式和致谢 | 否 |
 
 `/dashboard` 是缓存测试页面，不在主导航中，不属于用户主流程。它只验证页面离开后内部计数是否保留。
@@ -56,7 +56,6 @@ DysonSphereBox 是《戴森球计划》的桌面辅助工具，当前功能分�
 flowchart TD
     Config[配置
     Game/StartupFilePath
-    System/BaseURL
     System/AppTheme] --> GameDir[有效游戏目录]
     GameDir --> BepInEx[BepInEx 状态]
     BepInEx --> ModMarket[模组市场安装许可]
@@ -76,7 +75,6 @@ flowchart TD
 
 - `Game/StartupFilePath` 实际保存的是经过归一化的游戏目录。目录必须能找到 `DSPGAME.exe`；只有通过校验后才允许保存。
 - 模组页和开服页都依赖设置页保存的游戏目录。没有有效游戏目录时，模组市场安装和开服动作不能继续。
-- `System/BaseURL` 为空时不主动请求远端服务；非空值必须是包含主机名的 HTTP 或 HTTPS 地址。保存成功后会替换全局 HTTP 客户端。
 - 蓝图真实目录和存档真实目录可以在资源页单独选择并保存。选择器取消时不修改配置。
 - 资源库是客户端管理目录，游戏侧 Mod、蓝图和存档目录是实际运行目录；两者不能在逻辑上混为一个目录。
 
@@ -164,9 +162,9 @@ flowchart TD
 
 #### 市场浏览
 
-- 当前来源由来源选择器控制，前端支持 `official`、`thunderstore`、`manual` 等来源值。
+- 当前来源由来源选择器控制，前端支持 `thunderstore` 和 `manual` 来源。
 - 搜索关键词改变时，当前来源从第一页重新查询。
-- 官方和 Thunderstore 来源支持分页和滚动到底部加载下一页。
+- Thunderstore 来源支持分页和滚动到底部加载下一页。
 - 手动来源当前只保留入口状态，不支持普通远端分页。
 - 刷新动作重新请求当前来源；请求失败时保留已经加载的列表，并允许重试。
 - 整合包详情弹窗展示名称、描述、作者、来源、封面、依赖数量和依赖明细。
@@ -365,12 +363,6 @@ flowchart TD
 5. 手动输入只有在路径变化且校验通过后才显示确认保存动作。
 6. 保存成功后同步更新模组、开服和资源页使用的游戏目录。
 
-#### 连接地址
-
-- 读取并保存 `System/BaseURL`。
-- 非空值必须是完整 HTTP/HTTPS 地址；空值表示不主动请求远程服务。
-- 保存成功后后端验证并替换全局 HTTP 客户端；验证失败时保留原配置。
-
 #### BepInEx
 
 - 读取当前游戏目录下的 BepInEx 安装状态和版本。
@@ -443,7 +435,7 @@ flowchart TD
 
 以下流程都会由后端记录操作日志，然后由日志页统一查询：
 
-- 游戏路径和 BaseURL 配置。
+- 游戏路径配置。
 - BepInEx 安装、检查、卸载。
 - 模组下载、安装、冲突、取消、卸载。
 - 开服环境准备、设置保存、启动、停止、端口和进程状态。
@@ -490,7 +482,7 @@ flowchart TD
 | 服务 | 主要方法 | 被哪些功能使用 |
 | --- | --- | --- |
 | `system.EnvironmentService` | `LoadOrInitDysonSphereExe`、`CheckDysonSphereExe` | 设置、模组前置检查 |
-| `system.ConfigurationService` | `GetConfig`、`SetConfig` | 游戏目录、BaseURL、主题及其他配置 |
+| `system.ConfigurationService` | `GetConfig`、`SetConfig` | 游戏目录、主题及其他配置 |
 | `modDependence.BepInExService` | `Install`、`Uninstall`、`GetStatus`、`SearchAndLoadBepInEx` | 设置、模组、开服准备 |
 | `modDependence.MarketplaceService` | `GetRemotePackageList`、`RefreshRemotePackageList` | 模组市场 |
 | `modDependence.InstallerService` | `InstallRemotePackage`、`ContinueRemotePackageInstall`、`CancelRemotePackageInstall`、`UninstallRemotePackage`、进度/已安装查询 | 模组安装状态 |
@@ -508,3 +500,7 @@ flowchart TD
 - 不应将“猜测出的路径”当作已经授权的真实目录；真实目录需要存在性、来源和确认状态分开处理。
 - 模组安装的来源 key、安装进度、冲突和取消是独立概念，不能把冲突或取消统一显示为普通失败。
 - 存档属于真实目录索引资源，不应按 Mod/蓝图的客户端镜像规则推断其存储关系。
+
+## 账号认证接口
+
+账号流程由前端直接调用认证服务，字段、令牌和业务响应处理遵循 [`docs/ex/auth-account-api.md`](ex/auth-account-api.md)。接口当前连接本机 `127.0.0.1:8888`；Vite 开发环境使用 `/api` 代理。已接入验证码、注册、登录、获取当前用户、修改资料、保存个人设置、修改密码和注销；收到 `new-token` 时更新本地 token，HTTP 401 清理会话，HTTP 409 且 code 为 10001 进入强制改密流程。

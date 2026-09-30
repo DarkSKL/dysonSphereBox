@@ -12,15 +12,15 @@ import (
 	"strings"
 )
 
-// InstallRemoteModPackage 安装 Thunderstore Mod 包。
+// InstallRemoteModPackage 安装统一来源 Mod 包。
 // 职责：以默认重置会话模式启动 V2 远端包安装。
-// 使用：支持国内源、Thunderstore 与手动导入模型；Thunderstore 会先递归安装依赖。
+// 使用：支持 Thunderstore 与手动导入来源；Thunderstore 会先递归安装依赖。
 // 边界：所有写入文件都会记录清单，便于卸载时精确清理 patchers、plugins 与 config。
 func InstallRemoteModPackage(pack modDependenceResponse.RemoteModPackageDTO) (*contract.PackageInstallResult, error) {
 	return InstallRemoteModPackageWithOptions(pack, contract.InstallRemotePackageOptions{ResetSession: true})
 }
 
-// InstallRemoteModPackageWithOptions 带用户冲突决策安装 Thunderstore Mod 包。
+// InstallRemoteModPackageWithOptions 带用户冲突决策安装统一来源 Mod 包。
 // 职责：编排 BepInEx 准备、依赖解析、artifact 下载/解压/复制、记录持久化和失败清理。
 // 使用：首次安装不传决策；用户处理冲突后传入具体文件的覆盖、跳过或失败选择继续安装。
 // 边界：遇到冲突时保存 manifest 并返回可恢复错误；取消或失败时按会话清理已写文件。

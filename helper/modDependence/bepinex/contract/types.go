@@ -77,13 +77,13 @@ type BepInExInstallResult struct {
 }
 
 // BepInExUninstallResult 表示 BepInEx 卸载后的本地清理结果。
-// 职责：返回 BepInEx 卸载和旧本地 Mod 记录清理结果。
+// 职责：返回 BepInEx 注入文件卸载结果。
 // 使用：服务层记录卸载审计日志并透传给设置页展示。
-// 边界：只删除 BepInEx 注入相关文件和本地 Mod 安装记录，不触碰游戏本体目录。
+// 边界：只删除 BepInEx 注入相关文件，不触碰游戏本体目录。
 type BepInExUninstallResult struct {
 	// GameDir 职责：记录卸载目标游戏目录；使用：日志和前端展示；边界：路径已在卸载前校验。
 	GameDir string `json:"gameDir"`
-	// Removed 职责：表示本次调用是否删除过文件或记录；使用：前端区分已卸载和无操作；边界：数据库清理也会使其为 true。
+	// Removed 职责：表示本次调用是否删除过文件；使用：前端区分已卸载和无操作；边界：BepInEx 已安装但无文件可删时同样为 true。
 	Removed bool `json:"removed"`
 	// Skipped 职责：表示未发现可卸载内容；使用：前端展示跳过提示；边界：跳过不代表错误。
 	Skipped bool `json:"skipped"`
@@ -91,8 +91,6 @@ type BepInExUninstallResult struct {
 	Message string `json:"message"`
 	// RemovedPaths 职责：记录已删除的本地路径；使用：审计日志统计和排查；边界：只包含游戏目录内允许删除的目标。
 	RemovedPaths []string `json:"removedPaths"`
-	// ClearedRecords 职责：表示是否清理旧版 Mod 依赖数据库记录；使用：日志说明本地状态变化；边界：只覆盖旧版依赖表。
-	ClearedRecords bool `json:"clearedRecords"`
 	// Status 职责：保存卸载后的最新 BepInEx 检测状态；使用：前端刷新状态卡片；边界：状态只反映卸载完成时刻。
 	Status BepInExStatus `json:"status"`
 }

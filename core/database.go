@@ -23,7 +23,7 @@ const databaseFileName = "dyson-sphere-box.db"
 // 职责：创建数据库文件、打开 GORM、执行迁移并初始化依赖数据库的全局资源。
 // 使用：应用启动时传入 main.go go:embed 的 databaseTemplate 调用一次。
 // 边界：失败时关闭已打开连接并保持 GLOBAL 不指向半初始化资源。
-// 逻辑流：1. 解析运行期数据库路径 => 2. 确保模板库文件存在 => 3. 打开 SQLite/GORM => 4. 执行兼容迁移和 AutoMigrate => 5. 初始化 Configure 与 HTTPClient。
+// 逻辑流：1. 解析运行期数据库路径 => 2. 确保模板库文件存在 => 3. 打开 SQLite/GORM => 4. 执行兼容迁移和 AutoMigrate => 5. 初始化 Configure 与 ServerClient。
 func InitDatabase(databaseTemplate []byte) error {
 	dbPath, err := databasePath()
 	if err != nil {
@@ -82,21 +82,21 @@ func InitDatabase(databaseTemplate []byte) error {
 	GLOBAL.DBPath = dbPath
 	GLOBAL.Configure = InitConfigure()
 
-	httpClient, err := InitHTTPClient()
+	serverClient, err := InitServerClient()
 	if err != nil {
 		_ = closeDatabase(db)
 		GLOBAL.DB = nil
 		GLOBAL.DBPath = ""
 		GLOBAL.Configure = nil
-		return fmt.Errorf("init http client: %w", err)
+		return fmt.Errorf("init server client: %w", err)
 	}
 
-	GLOBAL.HTTPClient = httpClient
+	GLOBAL.ServerClient = serverClient
 	return nil
 }
 
 // CloseDatabase 关闭全局 SQLite 连接并清理依赖数据库的全局资源。
-// 职责：释放数据库连接并清空 Configure/HTTPClient 等数据库派生资源。
+// 职责：释放数据库连接并清空 Configure/ServerClient 等数据库派生资源。
 // 使用：应用退出或测试清理时调用。
 // 边界：数据库未初始化时直接返回 nil；不删除数据库文件。
 func CloseDatabase() error {
@@ -108,6 +108,6 @@ func CloseDatabase() error {
 	GLOBAL.DB = nil
 	GLOBAL.DBPath = ""
 	GLOBAL.Configure = nil
-	GLOBAL.HTTPClient = nil
+	GLOBAL.ServerClient = nil
 	return err
 }

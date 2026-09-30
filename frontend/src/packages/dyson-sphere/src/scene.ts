@@ -463,7 +463,7 @@ export class DysonSphereScene implements DysonSphereController {
     window.addEventListener('keydown', this.onKeyDown);
     document.addEventListener('visibilitychange', this.onVisibility);
 
-    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver = new ResizeObserver(() => this.onContainerResize());
     this.resizeObserver.observe(root);
     this.intersectionObserver = new IntersectionObserver((entries) => {
       this.inView = entries[entries.length - 1].isIntersecting;
@@ -531,6 +531,23 @@ export class DysonSphereScene implements DysonSphereController {
   // -------------------------------------------------------------------------
   // 尺寸与相机
   // -------------------------------------------------------------------------
+
+  /**
+   * 容器尺寸变化（如侧边栏展开 / 收起的宽度过渡）。
+   * 调整画布尺寸会清空绘图缓冲，而 ResizeObserver 回调晚于本帧的 rAF 渲染、早于绘制，
+   * 若不立即重绘，浏览器会把空白画布绘制上屏，表现为连续闪烁。
+   */
+  private onContainerResize(): void {
+    if (this.disposed) return;
+    const w = Math.max(this.container.clientWidth, 1);
+    const h = Math.max(this.container.clientHeight, 1);
+    if (w === this.width && h === this.height) return;
+    this.resize();
+    if (this.running) {
+      this.post.render(0);
+      this.overlay.update(this.screenOf, this.width, this.height);
+    }
+  }
 
   private resize(): void {
     const w = Math.max(this.container.clientWidth, 1);

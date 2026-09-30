@@ -146,6 +146,16 @@
   --ds-overlay-bg: rgb(3 6 13 / 0.84);
 }
 
+// =============== 页面布局 Token ===============
+// 说明：统一功能页内容区的外边距，所有页面根容器都应引用这些变量，不单独写死边距数值。
+// 边界：只描述页面级留白，不影响布局壳层（快捷栏、侧边栏、标题栏）；首页等全屏场景页可不使用。
+:root {
+  --ds-page-padding-x: clamp(20px, 2.4vw, 32px);
+  --ds-page-padding-top: clamp(16px, 2vw, 24px);
+  --ds-page-padding-bottom: 40px;
+  --ds-page-max-width: 960px;
+}
+
 html,
 body,
 #app {

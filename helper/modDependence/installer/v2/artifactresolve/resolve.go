@@ -3,7 +3,7 @@ package artifactresolve
 // 文件职责：解析远端包及其依赖为 V2 安装器内部 artifact 列表。
 // 使用：安装入口在准备好 BepInEx 后调用，用于决定后续下载、解压和复制顺序。
 // 边界：只做依赖解析和 DTO 转换，不下载文件、不写数据库、不做文件冲突判断。
-// 逻辑流：1. 判断来源 => 2. 官方包转换依赖 DTO => 3. Thunderstore 递归展开依赖并追加主包 => 4. 手动来源仅安装主包。
+// 逻辑流：1. 判断来源 => 2. Thunderstore 递归展开依赖并追加主包 => 3. 手动来源仅安装主包。
 
 import (
 	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
@@ -15,17 +15,11 @@ import (
 )
 
 // ResolveInstallArtifacts 根据包来源解析需要安装的 artifact 队列。
-// 职责：兼容官方依赖列表、Thunderstore 递归依赖和手动导入包。
+// 职责：展开 Thunderstore 递归依赖或手动导入包。
 // 使用：InstallRemoteModPackageWithOptions 在安装执行前调用。
 // 边界：Thunderstore 会跳过 BepInEx 依赖；未知来源返回错误。
 func ResolveInstallArtifacts(pack modDependenceResponse.RemoteModPackageDTO) ([]v2Artifact.Artifact, error) {
 	switch pack.Source {
-	case sourceConstant.ModSourceOfficial:
-		artifacts := make([]v2Artifact.Artifact, 0, len(pack.Dependencies))
-		for _, dependency := range pack.Dependencies {
-			artifacts = append(artifacts, v2Artifact.FromDependency(pack.Key, dependency))
-		}
-		return artifacts, nil
 	case sourceConstant.ModSourceThunderstore:
 		visited := map[string]struct{}{}
 		artifacts := make([]v2Artifact.Artifact, 0)

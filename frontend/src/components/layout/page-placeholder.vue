@@ -43,7 +43,7 @@ withDefaults(defineProps<PagePlaceholderProps>(), {
   display: grid;
   align-content: start;
   min-height: 100%;
-  padding: clamp(32px, 6vw, 92px) clamp(24px, 7vw, 120px);
+  padding: var(--ds-page-padding-top) var(--ds-page-padding-x) var(--ds-page-padding-bottom);
 }
 
 .page-placeholder-copy { max-width: 620px; }

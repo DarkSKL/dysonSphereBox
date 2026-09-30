@@ -6,7 +6,7 @@ package contract
 
 import "fmt"
 
-// ArtifactInstallError 表示 Thunderstore 安装包中某个组件的安装失败。
+// ArtifactInstallError 表示 Mod 包中某个组件的安装失败。
 // 职责：携带失败阶段、组件信息、下载地址和原始错误，供上层审计和提示使用。
 // 使用：安装 artifact 的下载、解压、规划、复制和记录阶段通过该错误包装底层失败。
 // 边界：该错误不执行回滚，回滚由调用链捕获错误后统一处理。

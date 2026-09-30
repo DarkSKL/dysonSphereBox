@@ -27,7 +27,7 @@ func RecordSetConfigSuccess(group string, key string) {
 
 // RecordSetConfigFailure 记录配置保存失败事件。
 // 职责：写入配置保存失败的系统审计日志。
-// 使用：ConfigurationService.SetConfig 在 ConfigUnit.Set 或 BaseURL 校验失败后调用。
+// 使用：ConfigurationService.SetConfig 在配置校验或 ConfigUnit.Set 失败后调用。
 // 边界：只记录 group/key 和错误文本，不重试保存。
 func RecordSetConfigFailure(group string, key string, err error) {
 	RecordLogSilently(LogEntry{

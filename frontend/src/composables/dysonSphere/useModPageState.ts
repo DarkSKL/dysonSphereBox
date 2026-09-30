@@ -19,7 +19,6 @@ import { useWorkshopState } from './useWorkshopState'
 export const useModPageState = () => {
   const pageSize = 20
   const sourceOptions = [
-  {label: '国内服务器', value: 'official'},
   {label: 'Thunderstore', value: 'thunderstore'},
   {label: '手动导入', value: 'manual'},
 ]
@@ -30,7 +29,7 @@ export const useModPageState = () => {
 } = useWorkshopState()
 
   const selectedPackKey = ref('')
-  const selectedSource = ref('official')
+  const selectedSource = ref('thunderstore')
   const searchKeyword = ref('')
   const dialogVisible = ref(false)
   const isCheckingGamePath = ref(true)
@@ -39,7 +38,6 @@ export const useModPageState = () => {
   const canOpenModPage = ref(false)
   const isBepInExInstalled = ref(false)
   const bepInExVersion = ref('')
-  const baseURL = ref('')
   const packageList = ref<modDependence.RemoteModPackageDTO[]>([])
   const currentPage = ref(0)
   const totalPackages = ref(0)
@@ -600,7 +598,7 @@ export const useModPageState = () => {
 }
 
   // =============== 来源切换 ===============
-// 说明：切换来源时重置分页与选中状态，统一使用 V2 key 映射安装状态。
+// 说明：切换来源时重置分页与选中状态，统一使用包 key 映射安装状态。
   const handleSourceChange = async (): Promise<void> => {
   selectedPackKey.value = ''
   dialogVisible.value = false
@@ -648,8 +646,8 @@ export const useModPageState = () => {
 }
 
   // =============== 封面地址 ===============
-// 说明：根据 System/BaseURL 与接口 coverUrl 拼出可直接访问的封面图片地址。
-// 边界：任一端为空时返回空字符串；绝对地址直接使用接口值。
+// 说明：返回 Thunderstore API 提供的绝对封面地址。
+// 边界：空值或相对地址返回空字符串，不再拼接本项目服务器地址。
   const resolveCoverUrl = (coverUrl?: string): string => {
   const trimmedCoverUrl = (coverUrl || '').trim()
   if (!trimmedCoverUrl) {
@@ -659,12 +657,7 @@ export const useModPageState = () => {
     return trimmedCoverUrl
   }
 
-  const trimmedBaseURL = baseURL.value.trim()
-  if (!trimmedBaseURL) {
-    return ''
-  }
-
-  return `${trimmedBaseURL.replace(/\/+$/, '')}/${trimmedCoverUrl.replace(/^\/+/, '')}`
+  return ''
 }
 
   // =============== 游戏与前置框架检查 ===============
@@ -672,7 +665,6 @@ export const useModPageState = () => {
   const refreshGamePathAvailability = async (): Promise<void> => {
   isCheckingGamePath.value = true
   try {
-    baseURL.value = await GetConfig('System', 'BaseURL')
     const configuredPath = await GetConfig('Game', 'StartupFilePath')
     const nextGamePath = configuredPath || gamePath.value
     if (configuredPath) {

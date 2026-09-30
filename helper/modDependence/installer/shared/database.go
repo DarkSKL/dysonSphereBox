@@ -1,7 +1,7 @@
 package shared
 
 // 文件职责：提供安装器子包共用的数据库访问入口。
-// 使用：V2 安装器、旧官方整合包安装器在进入持久化读写前调用 RequireDatabase。
+// 使用：安装器及历史路径迁移子包在进入持久化读写前调用 RequireDatabase。
 // 边界：只校验 core.GLOBAL.DB 是否可用，不定义模型、不发起事务、不承载任何安装业务。
 
 import (

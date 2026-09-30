@@ -1,0 +1,241 @@
+package system
+
+// 文件职责：定义应用账号服务的外部接口路径与请求/响应契约。
+// 使用：helper/system/account 通过 core.GLOBAL.ServerClient 请求这些接口；service/system/AccountService 把响应 DTO 返回给前端。
+// 边界：只描述接口形状，不发起 HTTP 请求、不处理 token；字段与行为以 docs/ex/auth-account-api.md 为准。
+
+import "encoding/json"
+
+// 账号服务接口路径常量组。
+// 职责：集中保存账号服务相对路径，避免在 helper/service 中出现魔法字符串。
+// 使用：helper/system/account 构造请求时引用，由 GLOBAL.ServerClient 拼接服务器基础地址。
+// 边界：只保存路径，不决定请求方法、鉴权与错误处理策略。
+const (
+	// APIURLCaptcha 是获取验证码的接口路径（POST，公开）。
+	// 职责：描述 `POST /base/captcha` 接口的相对路径。
+	// 使用：账号验证码获取与服务器连接测试请求该接口。
+	// 边界：接口无需鉴权且不会修改账号数据。
+	APIURLCaptcha = "/base/captcha"
+	// APIURLRegister 是注册账号的接口路径（POST，公开）。
+	// 职责：描述 `POST /base/register` 接口的相对路径。
+	// 使用：AccountService.Register 调用。
+	// 边界：注册成功不会签发 token。
+	APIURLRegister = "/base/register"
+	// APIURLLogin 是登录的接口路径（POST，公开）。
+	// 职责：描述 `POST /base/login` 接口的相对路径。
+	// 使用：AccountService.Login 调用。
+	// 边界：成功响应包含 token，由后端保存，不返回给前端。
+	APIURLLogin = "/base/login"
+	// APIURLGetUserInfo 是获取当前用户的接口路径（GET，需 x-token）。
+	// 职责：描述 `GET /user/getUserInfo` 接口的相对路径。
+	// 使用：AccountService.GetCurrentUser 调用。
+	// 边界：只返回 token 对应的用户。
+	APIURLGetUserInfo = "/user/getUserInfo"
+	// APIURLSetSelfInfo 是修改个人资料的接口路径（PUT，需 x-token）。
+	// 职责：描述 `PUT /user/setSelfInfo` 接口的相对路径。
+	// 使用：AccountService.SetSelfInfo 调用。
+	// 边界：空字符串字段会被服务端忽略。
+	APIURLSetSelfInfo = "/user/setSelfInfo"
+	// APIURLSetSelfSetting 是保存个人界面配置的接口路径（PUT，需 x-token）。
+	// 职责：描述 `PUT /user/setSelfSetting` 接口的相对路径。
+	// 使用：AccountService.SetSelfSetting 调用。
+	// 边界：服务端整体覆盖 originSetting，调用方负责合并。
+	APIURLSetSelfSetting = "/user/setSelfSetting"
+	// APIURLChangePassword 是修改密码的接口路径（POST，需 x-token）。
+	// 职责：描述 `POST /user/changePassword` 接口的相对路径。
+	// 使用：AccountService.ChangePassword 调用。
+	// 边界：成功后应注销并重新登录。
+	APIURLChangePassword = "/user/changePassword"
+	// APIURLLogout 是注销 token 的接口路径（POST，需 x-token）。
+	// 职责：描述 `POST /jwt/jsonInBlacklist` 接口的相对路径。
+	// 使用：AccountService.Logout 调用。
+	// 边界：无论接口结果如何，调用方都应清除本地 token。
+	APIURLLogout = "/jwt/jsonInBlacklist"
+)
+
+// 账号服务约定的业务状态码与响应头常量组。
+// 职责：描述统一响应结构中的成功码、强制改密码以及 token 相关请求/响应头。
+// 使用：helper/system/account 解析响应与附加鉴权头时读取。
+// 边界：只描述协议约定，不决定错误展示文案。
+const (
+	// AccountCodeSuccess 职责：标记业务成功；使用：判断响应是否成功；边界：成功只看 code，不只看 HTTP 状态。
+	AccountCodeSuccess = 0
+	// AccountCodeNeedChangePassword 职责：标记需要先修改密码（HTTP 409）；使用：设置会话的强制改密状态；边界：此时只能调用改密、获取信息与注销。
+	AccountCodeNeedChangePassword = 10001
+	// AccountTokenHeader 职责：请求鉴权头名称；使用：已登录请求附加 token；边界：`/base/*` 公开接口不附加。
+	AccountTokenHeader = "x-token"
+	// AccountNewTokenHeader 职责：静默续期响应头名称；使用：收到后替换已保存 token；边界：只在剩余有效期不足时出现。
+	AccountNewTokenHeader = "new-token"
+)
+
+// AccountResponse 是账号服务统一响应外壳 `{code,data,msg}`。
+// 职责：承载业务状态码、原始数据与提示消息。
+// 使用：helper/system/account 解码响应后按 code 判断成功，再把 Data 解码到具体 DTO。
+// 边界：Data 保持原始 JSON，失败响应（如 401 的 null、409 的改密标志）不按成功结构解码。
+type AccountResponse struct {
+	// Code 职责：业务状态码；使用：0 表示成功；边界：HTTP 200 但 code 非 0 仍为失败。
+	Code int `json:"code"`
+	// Data 职责：业务数据原文；使用：成功时解码为具体 DTO；边界：失败或无数据接口可能为 null。
+	Data json.RawMessage `json:"data"`
+	// Msg 职责：服务端提示消息；使用：失败时直接展示给用户；边界：成功时仅作参考。
+	Msg string `json:"msg"`
+}
+
+// AccountCaptcha 是验证码接口返回的数据。
+// 职责：描述验证码图片、ID、位数与登录是否需要验证码。
+// 使用：前端账号弹窗展示验证码并在登录/注册时回传 CaptchaID。
+// 边界：验证码一次性，提交校验一次即作废。
+type AccountCaptcha struct {
+	// CaptchaID 职责：验证码 ID；使用：登录/注册提交时回传；边界：约 180 秒过期。
+	CaptchaID string `json:"captchaId"`
+	// PicPath 职责：验证码图片 data URL；使用：直接作为 img src；边界：不落盘。
+	PicPath string `json:"picPath"`
+	// CaptchaLength 职责：验证码位数；使用：限制输入框长度；边界：纯数字。
+	CaptchaLength int `json:"captchaLength"`
+	// OpenCaptcha 职责：登录是否需要验证码；使用：前端决定登录表单是否显示验证码；边界：注册始终需要验证码。
+	OpenCaptcha bool `json:"openCaptcha"`
+}
+
+// AccountUser 是服务端 SysUser 中客户端需要的字段。
+// 职责：描述当前用户的身份与资料信息。
+// 使用：登录、注册与获取当前用户接口返回给前端展示。
+// 边界：只声明客户端使用的字段，其余字段在解码时忽略；服务端不会返回 password。
+type AccountUser struct {
+	// ID 职责：用户主键；使用：标识当前用户；边界：服务端字段名为大写 ID。
+	ID uint `json:"ID"`
+	// UUID 职责：用户 UUID；使用：展示或关联；边界：可为空。
+	UUID string `json:"uuid"`
+	// UserName 职责：登录名；使用：展示账号名；边界：注意与登录请求的 username 大小写不同。
+	UserName string `json:"userName"`
+	// NickName 职责：昵称；使用：界面优先展示；边界：可为空。
+	NickName string `json:"nickName"`
+	// HeaderImg 职责：头像 URL；使用：展示头像；边界：可为空。
+	HeaderImg string `json:"headerImg"`
+	// Phone 职责：手机号；使用：资料展示；边界：可为空。
+	Phone string `json:"phone"`
+	// Email 职责：邮箱；使用：资料展示；边界：可为空。
+	Email string `json:"email"`
+	// AuthorityID 职责：当前角色 ID；使用：诊断权限问题；边界：注册用户为 1001。
+	AuthorityID uint `json:"authorityId"`
+	// Enable 职责：账号状态；使用：1 正常，2 冻结；边界：不在客户端做权限判断。
+	Enable int `json:"enable"`
+	// OriginSetting 职责：个人界面配置；使用：读取后合并再整体保存；边界：可为 null。
+	OriginSetting map[string]interface{} `json:"originSetting"`
+	// PasswordUpdatedAt 职责：密码最后修改时间文本；使用：资料展示；边界：可为 null，不解析时间格式。
+	PasswordUpdatedAt *string `json:"passwordUpdatedAt"`
+}
+
+// AccountRegisterRequest 是注册接口请求体。
+// 职责：描述注册所需用户名、密码与验证码。
+// 使用：前端经 AccountService.Register 传入，后端原样转发。
+// 边界：格式校验以服务端为准，前端本地校验只做提前提示。
+type AccountRegisterRequest struct {
+	// Username 职责：用户名；使用：注册登录名；边界：字段为全小写 username。
+	Username string `json:"username"`
+	// Password 职责：密码；使用：注册密码；边界：不记录日志。
+	Password string `json:"password"`
+	// Captcha 职责：验证码；使用：服务端校验；边界：必填。
+	Captcha string `json:"captcha"`
+	// CaptchaID 职责：验证码 ID；使用：服务端校验；边界：必填。
+	CaptchaID string `json:"captchaId"`
+	// NickName 职责：昵称；使用：缺省等于用户名；边界：可选。
+	NickName string `json:"nickName,omitempty"`
+}
+
+// AccountRegisterData 是注册接口返回的数据。
+// 职责：承载新建用户信息。
+// 使用：helper 解码注册响应。
+// 边界：注册成功不签发 token。
+type AccountRegisterData struct {
+	// User 职责：新建用户；使用：返回给前端；边界：不代表已登录。
+	User AccountUser `json:"user"`
+}
+
+// AccountLoginRequest 是登录接口请求体。
+// 职责：描述登录所需用户名、密码与可选验证码。
+// 使用：前端经 AccountService.Login 传入，后端原样转发。
+// 边界：openCaptcha 为 false 时验证码字段可省略。
+type AccountLoginRequest struct {
+	// Username 职责：用户名；使用：登录名；边界：字段为全小写 username。
+	Username string `json:"username"`
+	// Password 职责：密码；使用：登录密码；边界：不记录日志。
+	Password string `json:"password"`
+	// Captcha 职责：验证码；使用：服务端校验；边界：可选。
+	Captcha string `json:"captcha,omitempty"`
+	// CaptchaID 职责：验证码 ID；使用：服务端校验；边界：可选。
+	CaptchaID string `json:"captchaId,omitempty"`
+}
+
+// AccountLoginData 是登录接口返回的原始数据。
+// 职责：承载用户、token、过期时间与强制改密标志。
+// 使用：helper 解码登录响应后保存 token，并转换为不含 token 的 AccountLoginResult 返回前端。
+// 边界：Token 不离开后端。
+type AccountLoginData struct {
+	// User 职责：登录用户；使用：返回给前端；边界：无。
+	User AccountUser `json:"user"`
+	// Token 职责：会话 token；使用：后端保存并随后续请求发送；边界：不返回给前端。
+	Token string `json:"token"`
+	// ExpiresAt 职责：token 过期毫秒时间戳；使用：返回给前端参考；边界：单位是毫秒。
+	ExpiresAt int64 `json:"expiresAt"`
+	// NeedChangePassword 职责：是否需要先修改密码；使用：前端切换到改密模式；边界：为 true 时大部分接口返回 409。
+	NeedChangePassword bool `json:"needChangePassword"`
+}
+
+// AccountLoginResult 是返回给前端的登录结果。
+// 职责：在不暴露 token 的前提下告知登录用户、过期时间与强制改密状态。
+// 使用：AccountService.Login 返回。
+// 边界：token 由后端持有。
+type AccountLoginResult struct {
+	// User 职责：登录用户；使用：前端展示；边界：无。
+	User AccountUser `json:"user"`
+	// ExpiresAt 职责：token 过期毫秒时间戳；使用：前端参考；边界：静默续期后可能变化。
+	ExpiresAt int64 `json:"expiresAt"`
+	// NeedChangePassword 职责：是否需要先修改密码；使用：前端切换到改密模式；边界：无。
+	NeedChangePassword bool `json:"needChangePassword"`
+}
+
+// AccountCurrentUserData 是获取当前用户接口返回的数据。
+// 职责：承载 userInfo 外壳。
+// 使用：helper 解码当前用户响应。
+// 边界：无。
+type AccountCurrentUserData struct {
+	// UserInfo 职责：当前用户；使用：返回给前端；边界：无。
+	UserInfo AccountUser `json:"userInfo"`
+}
+
+// AccountSelfInfoRequest 是修改个人资料接口请求体。
+// 职责：描述可修改的资料字段。
+// 使用：前端经 AccountService.SetSelfInfo 传入。
+// 边界：空字符串会被服务端忽略，无法用来清空字段。
+type AccountSelfInfoRequest struct {
+	// NickName 职责：昵称；使用：更新资料；边界：可选。
+	NickName string `json:"nickName,omitempty"`
+	// HeaderImg 职责：头像 URL；使用：更新资料；边界：可选。
+	HeaderImg string `json:"headerImg,omitempty"`
+	// Phone 职责：手机号；使用：更新资料；边界：可选。
+	Phone string `json:"phone,omitempty"`
+	// Email 职责：邮箱；使用：更新资料；边界：可选。
+	Email string `json:"email,omitempty"`
+}
+
+// AccountChangePasswordRequest 是修改密码接口请求体。
+// 职责：描述旧密码与新密码。
+// 使用：前端经 AccountService.ChangePassword 传入。
+// 边界：不记录日志。
+type AccountChangePasswordRequest struct {
+	// Password 职责：当前密码；使用：服务端校验；边界：必填。
+	Password string `json:"password"`
+	// NewPassword 职责：新密码；使用：服务端按安全策略校验；边界：必填。
+	NewPassword string `json:"newPassword"`
+}
+
+// AccountSessionState 是返回给前端的本地会话状态。
+// 职责：告知前端是否持有 token 以及是否处于强制改密状态。
+// 使用：AccountService.GetSessionState 返回，前端在每次账号调用后同步。
+// 边界：Authenticated 只表示后端保存了 token，不保证 token 仍被服务端接受。
+type AccountSessionState struct {
+	// Authenticated 职责：是否持有 token；使用：前端展示登录态；边界：401 后会被清除。
+	Authenticated bool `json:"authenticated"`
+	// NeedChangePassword 职责：是否需要先修改密码；使用：前端切换到改密模式；边界：只在本进程内有效。
+	NeedChangePassword bool `json:"needChangePassword"`
+}
