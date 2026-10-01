@@ -11,7 +11,9 @@ package artifactlayout
 type ArtifactDescriptor struct {
 	// ComponentKey 职责：记录组件唯一 key；使用：目录命名兜底和前缀识别；边界：可为空但会降低命名质量。
 	ComponentKey string
-	// Name 职责：记录组件原始名称；使用：DisplayName 为空时作为目录名候选；边界：会经过路径片段清洗。
+	// Namespace 职责：记录来源命名空间（Thunderstore owner）；使用：与 Name 组成 R2 同款 Owner-Name 目录名；边界：为空时尝试从 ComponentKey 解析。
+	Namespace string
+	// Name 职责：记录组件原始名称；使用：与 Namespace 组成目录名，或在无命名空间时作为目录名候选；边界：会经过路径片段清洗。
 	Name string
 	// DisplayName 职责：记录用户可读组件名称；使用：优先作为插件目录名候选；边界：不保证唯一。
 	DisplayName string

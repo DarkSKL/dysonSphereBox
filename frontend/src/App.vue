@@ -109,6 +109,7 @@ onMounted(() => {
 <template>
   <n-config-provider :theme="naiveTheme" :theme-overrides="naiveThemeOverrides">
     <n-message-provider>
+      <n-dialog-provider>
       <component :is="layoutComponent">
         <!-- ~ 路由页面渲染 -->
         <!-- * 说明：根据路由 meta.keepAlive 决定页面是否进入缓存 -->
@@ -122,6 +123,7 @@ onMounted(() => {
           <component :is="Component" v-if="route.meta.keepAlive !== true" :key="route.fullPath" />
         </RouterView>
       </component>
+      </n-dialog-provider>
     </n-message-provider>
   </n-config-provider>
 </template>

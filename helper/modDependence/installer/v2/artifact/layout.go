@@ -16,6 +16,7 @@ import (
 func (artifact Artifact) Descriptor() artifactlayout.ArtifactDescriptor {
 	return artifactlayout.ArtifactDescriptor{
 		ComponentKey: artifact.ComponentKey,
+		Namespace:    artifact.Namespace,
 		Name:         artifact.Name,
 		DisplayName:  artifact.DisplayName,
 		Version:      artifact.Version,

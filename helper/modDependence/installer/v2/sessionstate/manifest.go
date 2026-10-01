@@ -19,16 +19,28 @@ type Manifest struct {
 	StartedAt string `json:"startedAt,omitempty"`
 	// PlannedComponents 职责：记录计划处理的组件和安装目录；使用：失败清理补充目录清理目标；边界：可能早于实际文件写入。
 	PlannedComponents []ComponentPlan `json:"plannedComponents,omitempty"`
+	// ResolvedDependencies 职责：记录实际选中版本的组件依赖边；使用：升级时向旧使用方传递完整引用；边界：不使用远端声明版本代替本地复用版本。
+	ResolvedDependencies map[string][]string `json:"resolvedDependencies,omitempty"`
 	// PlannedTargetDirs 职责：记录计划创建或使用的目标目录；使用：中断清理空目录；边界：不会单独决定删除非空目录。
 	PlannedTargetDirs []string `json:"plannedTargetDirs,omitempty"`
 	// InstalledComponents 职责：记录已完成保存的组件 key；使用：恢复时判断哪些组件需要数据库回滚；边界：不代表所有文件都仍存在。
 	InstalledComponents []string `json:"installedComponents,omitempty"`
-	// InstalledFiles 职责：记录本次会话已复制文件及备份信息；使用：失败、取消和中断恢复；边界：只记录安装器管理文件。
+	// ReusedComponents 职责：记录本次只建立引用而未写文件的组件；使用：失败清理排除其原有文件清单；边界：依然需要移除本次新增的组件关联。
+	ReusedComponents []string `json:"reusedComponents,omitempty"`
+	// InstalledFiles 职责：按写入顺序记录受管文件的恢复证据；使用：失败、取消和中断逆序恢复；边界：复制前持久化，不表示写入已经成功。
 	InstalledFiles []File `json:"installedFiles,omitempty"`
+	// UntrackedFiles 职责：保存配置写入前的恢复证据；使用：失败时按写入逆序恢复；边界：不进入卸载清单或共享归属。
+	UntrackedFiles []File `json:"untrackedFiles,omitempty"`
+	// RemovedVersionFiles 职责：保存已移除旧版本文件的备份；使用：失败恢复旧文件和成功清理备份；边界：旧文件数据库记录保留到最终提交。
+	RemovedVersionFiles []File `json:"removedVersionFiles,omitempty"`
+	// VersionReplacements 职责：记录待提交的旧组件到新组件映射；使用：成功安装后切换所有共享引用；边界：提交前不改变其它包的关联。
+	VersionReplacements []VersionReplacement `json:"versionReplacements,omitempty"`
 	// PreviousPackage 职责：保存覆盖安装前的主包快照；使用：失败清理后恢复历史安装状态；边界：首次安装可为空。
 	PreviousPackage *PackageSnapshot `json:"previousPackage,omitempty"`
 	// PreviousComponents 职责：保存覆盖安装前的组件快照；使用：失败清理后恢复组件记录；边界：只包含当前会话涉及组件。
 	PreviousComponents []ComponentSnapshot `json:"previousComponents,omitempty"`
+	// PreviousPackageComponents 职责：保存会话开始前的包组件关联；使用：重新安装失败时恢复共享依赖引用；边界：历史 manifest 可缺失，不表示本次新增关联。
+	PreviousPackageComponents []string `json:"previousPackageComponents,omitempty"`
 	// CleanedAt 职责：记录清理完成时间；使用：避免重复清理和诊断；边界：空值表示尚未完成清理。
 	CleanedAt string `json:"cleanedAt,omitempty"`
 }

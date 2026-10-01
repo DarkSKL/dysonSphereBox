@@ -17,7 +17,16 @@ import (
 // 边界：不清理目标中已有的额外文件；调用方必须先确认目标目录安全。
 // 逻辑流：1. 遍历源目录 => 2. 跳过根目录自身 => 3. 创建目标目录 => 4. 按原文件权限复制文件。
 func CopyDirectoryContents(sourceDir string, destinationDir string) error {
+	return CopyDirectoryContentsWithContext(context.Background(), sourceDir, destinationDir)
+}
+
+// CopyDirectoryContentsWithContext 复制目录树并响应取消。
+// 职责：把前置框架复制纳入安装取消链路；使用：可取消安装流程；边界：部分写入由调用方恢复或后续重装处理。
+func CopyDirectoryContentsWithContext(ctx context.Context, sourceDir string, destinationDir string) error {
 	return filepath.WalkDir(sourceDir, func(sourcePath string, entry os.DirEntry, walkErr error) error {
+		if ctx.Err() != nil {
+			return ErrInstallCancelled
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -40,7 +49,7 @@ func CopyDirectoryContents(sourceDir string, destinationDir string) error {
 			return err
 		}
 
-		return CopyFile(sourcePath, destinationPath, info.Mode())
+		return CopyFileWithContext(ctx, sourcePath, destinationPath, info.Mode())
 	})
 }
 

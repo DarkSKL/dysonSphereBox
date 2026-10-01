@@ -5,7 +5,6 @@ package directory
 // 边界：不允许删除 plugins、patchers、config 根目录本身；不满足条件时只记录跳过日志。
 
 import (
-	"os"
 	"path/filepath"
 
 	"DysonSphereBox/helper/modDependence/fileops"
@@ -25,6 +24,8 @@ func cleanupTargetDir(db *gorm.DB, gameDir string, packageKey string, targetDir 
 		filepath.Join(gameDir, "BepInEx", "plugins"),
 		filepath.Join(gameDir, "BepInEx", "patchers"),
 		filepath.Join(gameDir, "BepInEx", "config"),
+		filepath.Join(gameDir, "BepInEx", "core"),
+		filepath.Join(gameDir, "BepInEx", "monomod"),
 	}
 	allowed := false
 	for _, rootDir := range managedRoots {
@@ -37,7 +38,5 @@ func cleanupTargetDir(db *gorm.DB, gameDir string, packageKey string, targetDir 
 		logging.RecordItem(packageKey, "dir", targetDir, "skip", "目录不在可清理范围内或仍包含已管理文件", nil)
 		return
 	}
-	err := os.RemoveAll(targetDir)
-	logging.RecordItem(packageKey, "dir", targetDir, "remove", "移除本次安装计划涉及的空闲目录", err)
 	v2Uninstall.CleanupEmptyInstallParentDirs(filepath.Join(targetDir, ".cleanup"))
 }

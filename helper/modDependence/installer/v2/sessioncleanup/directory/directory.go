@@ -14,7 +14,6 @@ import (
 	"DysonSphereBox/helper/modDependence/installer/v2/sessionstate"
 	v2Uninstall "DysonSphereBox/helper/modDependence/installer/v2/uninstall"
 	"gorm.io/gorm"
-	"os"
 )
 
 // CleanupPlannedDirs 清理会话计划涉及的空组件目录。
@@ -41,7 +40,7 @@ func cleanupComponentInstallDir(db *gorm.DB, gameDir string, packageKey string, 
 	if installDir == "" {
 		return
 	}
-	for _, rootName := range []string{"plugins", "patchers"} {
+	for _, rootName := range []string{"plugins", "patchers", "core", "monomod"} {
 		rootDir := filepath.Join(gameDir, "BepInEx", rootName)
 		targetDir := filepath.Join(rootDir, installDir)
 		if !fileops.IsSubPath(rootDir, targetDir) {
@@ -51,8 +50,6 @@ func cleanupComponentInstallDir(db *gorm.DB, gameDir string, packageKey string, 
 			logging.RecordItem(packageKey, "dir", targetDir, "skip", "组件目录仍包含其它安装包管理的文件，跳过删除", nil)
 			continue
 		}
-		err := os.RemoveAll(targetDir)
-		logging.RecordItem(packageKey, "dir", targetDir, "remove", "移除本次安装组件目录兜底候选", err)
 		v2Uninstall.CleanupEmptyInstallParentDirs(filepath.Join(targetDir, ".cleanup"))
 	}
 }

@@ -111,13 +111,13 @@ func Uninstall(packageKey string, stage string, status string, percent int) {
 // MarkFailure 将指定包的最近进度标记为失败并通知前端。
 // 职责：把服务层捕获到的错误转换为 failed 进度事件。
 // 使用：Wails 服务捕获卸载或安装器错误后调用，避免页面刷新后丢失失败状态。
-// 边界：err 为空时错误信息为空；该函数只标记进度，不记录审计日志。
+// 边界：仅更新运行时快照，不能因卸载失败或操作忙碌覆盖仍有效的安装记录；err 为空时错误信息为空。
 func MarkFailure(packageKey string, status string, err error) {
 	errorMessage := ""
 	if err != nil {
 		errorMessage = err.Error()
 	}
-	Emit(payload.Payload{
+	RuntimeOnly(payload.Payload{
 		PackageKey:   packageKey,
 		Stage:        "failed",
 		Status:       status,

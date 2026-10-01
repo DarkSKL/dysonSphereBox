@@ -5,6 +5,7 @@ package artifact
 // 边界：不下载文件、不访问数据库、不发送进度事件；DTO 转换和布局辅助方法由同包独立文件维护。
 
 import (
+	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
 	artifactConstant "DysonSphereBox/constant/modDependence/artifact"
 	sourceConstant "DysonSphereBox/constant/modDependence/source"
 )
@@ -22,6 +23,8 @@ type Artifact struct {
 	ComponentKey string
 	// Source 职责：记录组件来源；使用：安装记录和审计日志；边界：不直接决定下载方式，下载方式看 ArtifactKind。
 	Source sourceConstant.ModSource
+	// Namespace 职责：记录来源命名空间（Thunderstore owner）；使用：生成 R2 同款 Owner-Name 目录名与同 Mod 判断；边界：manual 来源可能为空。
+	Namespace string
 	// Name 职责：记录组件原始名称；使用：目录命名和安装记录；边界：显示优先使用 DisplayName。
 	Name string
 	// DisplayName 职责：记录组件展示名称；使用：进度文本和前端明细；边界：不作为唯一标识。
@@ -34,4 +37,8 @@ type Artifact struct {
 	LocalPath string
 	// ArtifactKind 职责：记录 artifact 类型；使用：决定下载、解压和布局策略；边界：未知类型由规划阶段返回错误。
 	ArtifactKind artifactConstant.ArtifactKind
+	// ReuseExisting 职责：标记是否复用本地组件；使用：建立引用并跳过下载和复制；边界：主包与整合包只复用相同版本，手动来源保持可重复导入。
+	ReuseExisting bool
+	// Dependencies 职责：保存当前组件版本的直接依赖；使用：复用组件时继续建立传递依赖关联；边界：nil 表示历史记录尚无清单，空切片表示已知没有依赖。
+	Dependencies []modDependenceResponse.RemoteModDependencyDTO
 }

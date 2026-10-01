@@ -1,17 +1,14 @@
 import { HelpCircle } from '@lucide/vue'
-import { NButton, NTooltip, createDiscreteApi, useMessage } from 'naive-ui'
+import { NButton, NTooltip, useDialog, useMessage } from 'naive-ui'
 import { computed, h, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Install as InstallBepInEx, SearchAndLoadBepInEx } from '../../../wailsjs/go/modDependence/BepInExService'
 import { CancelRemotePackageInstall, ContinueRemotePackageInstall, InstallRemotePackage, ListInstalledPackageKeys, ListInstallProgressSnapshots, UninstallRemotePackage } from '../../../wailsjs/go/modDependence/InstallerService'
 import { GetRemotePackageList, RefreshRemotePackageList } from '../../../wailsjs/go/modDependence/MarketplaceService'
 import { contract, modDependence } from '../../../wailsjs/go/models'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
-import { GetConfig } from '../../../wailsjs/go/system/ConfigurationService'
-import { CheckDysonSphereExe } from '../../../wailsjs/go/system/EnvironmentService'
+import { gameDirectory, getBepInExStatus, installBepInEx, loadGameDirectory } from '../../services/dysonSphere/game'
 import type { InstallConflictAction, InstallProgressPayload } from '../../types/mod'
 import { formatDownloadSpeed, formatErrorMessage } from '../../utils/format'
-import { useWorkshopState } from './useWorkshopState'
 
 // =============== 模组页面状态组合 ===============
 // 说明：集中维护模组市场页的远端列表、安装进度、冲突处理与前置框架状态。
@@ -24,9 +21,6 @@ export const useModPageState = () => {
 ]
 
   const router = useRouter()
-  const {
-  gamePath,
-} = useWorkshopState()
 
   const selectedPackKey = ref('')
   const selectedSource = ref('thunderstore')
@@ -56,7 +50,7 @@ export const useModPageState = () => {
   const packageOperationVersions = ref<Record<string, number>>({})
   const activeConflictDialogKeys = ref<Record<string, string>>({})
   const lastHandledConflictDialogKeys = ref<Record<string, string>>({})
-  const {dialog} = createDiscreteApi(['dialog'])
+  const dialog = useDialog()
   const message = useMessage()
 
   let loadMoreObserver: IntersectionObserver | null = null
@@ -97,14 +91,14 @@ export const useModPageState = () => {
     return '正在确认当前游戏目录下的前置框架状态。'
   }
   if (isBepInExInstalled.value) {
-    return `已检测到 BepInEx ${bepInExVersion.value || '未知版本'}，现在可以安装整合包。`
+    return `已检测到 BepInEx ${bepInExVersion.value || '未知版本'}，现在可以安装模组。`
   }
 
-  return '安装模组整合包前需要先安装 BepInEx 前置框架。'
+  return '安装模组前需要先安装 BepInEx 前置框架。'
 })
 
-  // =============== 整合包列表 ===============
-// 说明：维护远端整合包分页数据，滚动到底部时追加下一页。
+  // =============== 模组列表 ===============
+// 说明：维护远端模组分页数据，滚动到底部时追加下一页。
 // 边界：接口失败时保留已加载数据，首屏失败展示重试入口。
   const loadPackagePage = async (page: number, replace = false, showFeedback = false): Promise<void> => {
   if (isLoadingPackages.value) {
@@ -148,13 +142,13 @@ export const useModPageState = () => {
       nextList.length < pageSize
     )
     if (showFeedback) {
-      message.success(replace ? '整合包列表已刷新' : '已加载下一页整合包')
+      message.success(replace ? '模组列表已刷新' : '已加载下一页模组')
     }
     await syncInstalledPackageKeys()
   } catch (error) {
     packageLoadError.value = formatErrorMessage(error)
     if (showFeedback) {
-      message.error(`整合包加载失败：${packageLoadError.value}`)
+      message.error(`模组加载失败：${packageLoadError.value}`)
     }
   } finally {
     isLoadingPackages.value = false
@@ -276,7 +270,7 @@ export const useModPageState = () => {
   observeLoadMoreTarget()
 }
 
-  // =============== 整合包搜索 ===============
+  // =============== 模组搜索 ===============
 // 说明：搜索框只改变远端列表查询条件，实际匹配由后端按名称、作者、命名空间和描述过滤。
 // 边界：手动导入来源暂不支持数据源，输入变化仍只刷新为空态，不触发导入流程。
   const scheduleSearchRefresh = (): void => {
@@ -297,7 +291,7 @@ export const useModPageState = () => {
 }
 
   // =============== 本地安装状态 ===============
-// 说明：从本地 SQLite 读取已安装整合包 ID，并映射到市场卡片状态。
+// 说明：从本地 SQLite 读取已安装模组 ID，并映射到市场卡片状态。
 // 边界：状态读取失败不阻止市场列表展示，只清空本地安装标记并给出轻提示。
   const syncInstalledPackageKeys = async (): Promise<void> => {
   try {
@@ -333,7 +327,7 @@ export const useModPageState = () => {
   loadMoreObserver.observe(loadMoreTarget.value)
 }
 
-  // =============== 整合包交互 ===============
+  // =============== 模组交互 ===============
 // 说明：安装与卸载均调用后端安装器，并在完成后同步本地 SQLite 安装状态。
   const openPack = (key: string): void => {
   selectedPackKey.value = key
@@ -351,7 +345,7 @@ export const useModPageState = () => {
     failedPackageKeys.value[key] = false
     packageProgress.value[key] = 100
     packageProgressStatus.value[key] = result.message || '卸载完成'
-    message.success(result.message || '整合包已卸载')
+    message.success(result.message || '模组已卸载')
     await syncInstalledPackageKeys()
   } catch (error) {
     failedPackageKeys.value[key] = true
@@ -359,7 +353,7 @@ export const useModPageState = () => {
     packageProgressStatus.value[key] = '卸载失败'
     packageDownloadSpeeds.value[key] = ''
     packageProgress.value[key] = 100
-    message.error(`整合包卸载失败：${formatErrorMessage(error)}`)
+    message.error(`模组卸载失败：${formatErrorMessage(error)}`)
   } finally {
     installingPackageKeys.value[key] = false
   }
@@ -375,8 +369,8 @@ export const useModPageState = () => {
   }
 
   dialog.warning({
-    title: '卸载整合包',
-    content: '将移除该整合包中不再被其它整合包引用的模组插件目录，并删除本地安装记录。',
+    title: '卸载模组',
+    content: '将移除该模组中不再被其它模组引用的插件目录，并删除本地安装记录。',
     positiveText: '卸载',
     negativeText: '取消',
     onPositiveClick: () => {
@@ -416,7 +410,7 @@ export const useModPageState = () => {
     packageConflicts.value[key] = undefined
     packageProgress.value[key] = 100
     packageProgressStatus.value[key] = result.message || '安装完成'
-    message.success(result.message || '整合包安装完成')
+    message.success(result.message || '模组安装完成')
     await syncInstalledPackageKeys()
   } catch (error) {
     if (!isCurrentPackageOperation(key, operationVersion)) {
@@ -431,7 +425,7 @@ export const useModPageState = () => {
     } else {
       markPackageFailure(key, error)
     }
-    message.error(`整合包安装未完成：${formatErrorMessage(error)}`)
+    message.error(`模组安装未完成：${formatErrorMessage(error)}`)
   } finally {
     if (isCurrentPackageOperation(key, operationVersion)) {
       installingPackageKeys.value[key] = false
@@ -461,14 +455,14 @@ export const useModPageState = () => {
     trigger: 'hover',
   }, {
     trigger: () => h(HelpCircle, {
-      class: 'ml-1 inline-block align-[-2px] text-zinc-400',
+      class: 'ml-1 inline-block align-[-2px] mod-conflict-help',
       size: 14,
       strokeWidth: 1.8,
     }),
     default: () => content,
   })
   const renderConflictRow = (label: string, value: string, help: string) => h('p', {}, [
-    h('span', {class: 'font-medium text-zinc-700'}, `${label}：`),
+    h('span', {class: 'font-medium mod-conflict-label'}, `${label}：`),
     h('span', {}, value),
     renderConflictHelp(help),
   ])
@@ -491,14 +485,14 @@ export const useModPageState = () => {
       renderConflictRow(
         '当前已存在版本',
         `${conflict.existingComponentName || conflict.existingPackageName || conflict.existingPackageKey || '本地文件'} ${conflict.existingComponentVersion || '未知版本'}`,
-        '游戏目录里已经存在的文件版本，可能来自其它整合包、之前安装的模组，或手动放入的本地文件。',
+        '游戏目录里已经存在的文件版本，可能来自其它模组、之前安装的模组，或手动放入的本地文件。',
       ),
       renderConflictRow(
         '本次将安装版本',
         `${conflict.componentName || conflict.componentKey} ${conflict.componentVersion || '未知版本'}`,
-        '当前整合包准备写入游戏目录的版本。选择覆盖会用这个版本替换当前已存在文件。',
+        '当前模组准备写入游戏目录的版本。选择覆盖会用这个版本替换当前已存在文件。',
       ),
-      h('p', {class: 'break-all text-xs text-zinc-500'}, `路径：${conflict.targetPath}`),
+      h('p', {class: 'break-all text-xs mod-conflict-path'}, `路径：${conflict.targetPath}`),
     ]),
     onClose: clearActiveConflictDialog,
     onAfterLeave: clearActiveConflictDialog,
@@ -541,13 +535,13 @@ export const useModPageState = () => {
     return
   }
   if (!canInstallPackages.value) {
-    message.warning('需要优先安装 BepInEx 后才能安装整合包。')
+    message.warning('需要优先安装 BepInEx 后才能安装模组。')
     return
   }
 
   const pack = packageList.value.find((item) => item.key === key)
   if (!pack) {
-    message.error('未找到要安装的整合包。')
+    message.error('未找到要安装的模组。')
     return
   }
 
@@ -566,7 +560,7 @@ export const useModPageState = () => {
     packageProgressStatus.value[key] = result.message || '安装完成'
     isBepInExInstalled.value = result.bepInExStatus.installed
     bepInExVersion.value = result.bepInExStatus.installedVersion
-    message.success(result.message || '整合包安装完成')
+    message.success(result.message || '模组安装完成')
     await syncInstalledPackageKeys()
   } catch (error) {
     if (!isCurrentPackageOperation(key, operationVersion)) {
@@ -578,7 +572,7 @@ export const useModPageState = () => {
       message.warning('发现版本冲突，请选择处理方式。')
     } else {
       markPackageFailure(key, error)
-      message.error(`整合包安装失败：${formatErrorMessage(error)}`)
+      message.error(`模组安装失败：${formatErrorMessage(error)}`)
     }
   } finally {
     if (isCurrentPackageOperation(key, operationVersion)) {
@@ -621,7 +615,7 @@ export const useModPageState = () => {
 
   // =============== BepInEx 前置安装 ===============
 // 说明：在模组页直接触发前置框架安装，成功后刷新页面安装许可状态。
-// 边界：安装失败时保留市场浏览能力，但继续阻止整合包安装。
+// 边界：安装失败时保留市场浏览能力，但继续阻止模组安装。
   const installBepInExFromModPage = async (): Promise<void> => {
   if (isInstallingBepInEx.value || isCheckingBepInEx.value) {
     return
@@ -629,7 +623,7 @@ export const useModPageState = () => {
 
   isInstallingBepInEx.value = true
   try {
-    const result = await InstallBepInEx()
+    const result = await installBepInEx()
     isBepInExInstalled.value = result.status.installed
     bepInExVersion.value = result.status.installedVersion
 
@@ -661,19 +655,15 @@ export const useModPageState = () => {
 }
 
   // =============== 游戏与前置框架检查 ===============
-// 说明：沿用设置页保存的游戏路径，并在可打开模组页时同步刷新 BepInEx 状态。
+// 说明：沿用游戏设置页保存的游戏目录，目录有效时同步刷新 BepInEx 状态与本地安装标记。
+// 边界：目录读取失败或已失效时按不可用处理，避免在错误目录下继续安装。
   const refreshGamePathAvailability = async (): Promise<void> => {
   isCheckingGamePath.value = true
   try {
-    const configuredPath = await GetConfig('Game', 'StartupFilePath')
-    const nextGamePath = configuredPath || gamePath.value
-    if (configuredPath) {
-      gamePath.value = configuredPath
-    }
-
-    canOpenModPage.value = await CheckDysonSphereExe(nextGamePath)
+    await loadGameDirectory()
+    canOpenModPage.value = Boolean(gameDirectory.value)
     if (canOpenModPage.value) {
-      await refreshBepInExAvailability(nextGamePath)
+      await refreshBepInExAvailability()
       await syncInstalledPackageKeys()
       if (packageList.value.length === 0 && !isLoadingPackages.value) {
         await refreshPackages(false)
@@ -691,10 +681,10 @@ export const useModPageState = () => {
   }
 }
 
-  const refreshBepInExAvailability = async (path: string = gamePath.value): Promise<void> => {
+  const refreshBepInExAvailability = async (): Promise<void> => {
   isCheckingBepInEx.value = true
   try {
-    const status = await SearchAndLoadBepInEx(path)
+    const status = await getBepInExStatus()
     isBepInExInstalled.value = status.installed
     bepInExVersion.value = status.installedVersion
   } catch {
@@ -759,6 +749,7 @@ export const useModPageState = () => {
     bepinExStatusDescription,
     packageLoadError,
     isLoadingPackages,
+    totalPackages,
     openPack,
     handleUninstall,
     openConflictDialog,

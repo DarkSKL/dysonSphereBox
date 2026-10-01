@@ -24,7 +24,7 @@ func prepareArtifactsForRemoteInstall(ctx context.Context, pack modDependenceRes
 	if err != nil {
 		return "", nil, err
 	}
-	artifacts, err := artifactresolve.ResolveInstallArtifacts(pack)
+	artifacts, err := artifactresolve.ResolveInstallArtifactsWithContext(ctx, pack)
 	if err != nil {
 		return "", nil, err
 	}
@@ -32,9 +32,6 @@ func prepareArtifactsForRemoteInstall(ctx context.Context, pack modDependenceRes
 		return "", nil, err
 	}
 	progressEvent.Package(pack.Key, "prepare", "依赖解析完成", 12)
-	if err := cleanupEntry.CheckCancelled(ctx, pack.Key); err != nil {
-		return "", nil, err
-	}
 	if err := cleanupEntry.CheckCancelled(ctx, pack.Key); err != nil {
 		return "", nil, err
 	}

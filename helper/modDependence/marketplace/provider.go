@@ -9,6 +9,7 @@ import (
 	sourceConstant "DysonSphereBox/constant/modDependence/source"
 	"DysonSphereBox/helper/modDependence/marketplace/contract"
 	"DysonSphereBox/helper/modDependence/marketplace/thunderstoreindex"
+	"DysonSphereBox/helper/modDependence/marketplace/thunderstoremeta"
 	"DysonSphereBox/helper/modDependence/marketplace/thunderstoreview"
 	"context"
 	"fmt"
@@ -36,6 +37,29 @@ func ListRemotePackages(ctx context.Context, query contract.RemotePackageQuery) 
 	default:
 		return modDependenceResponse.RemotePackageListData{}, fmt.Errorf("unsupported mod source: %s", query.Source)
 	}
+}
+
+// ResolveLatestRemotePackage 按 Thunderstore namespace/name 解析最新 active 版本。
+// 职责：为 R2 同款普通 Mod 依赖策略提供最新可用版本的统一 DTO。
+// 使用：安装依赖解析器在普通 Mod 安装时调用。
+// 边界：只支持 Thunderstore；无 active 版本或索引加载失败时返回错误。
+func ResolveLatestRemotePackage(ctx context.Context, namespace string, name string) (*modDependenceResponse.RemoteModPackageDTO, error) {
+	packages, err := thunderstoreindex.LoadPackages(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, pkg := range packages {
+		if !strings.EqualFold(pkg.Owner, namespace) || !strings.EqualFold(pkg.Name, name) {
+			continue
+		}
+		version, ok := thunderstoremeta.LatestActiveVersion(pkg.Versions)
+		if !ok {
+			return nil, fmt.Errorf("Thunderstore package has no active version: %s-%s", namespace, name)
+		}
+		result := thunderstoreview.PackageToRemote(pkg, version, packages)
+		return &result, nil
+	}
+	return nil, fmt.Errorf("Thunderstore package not found: %s-%s", namespace, name)
 }
 
 // ResolveRemotePackage 根据统一 key 解析单个远端包。

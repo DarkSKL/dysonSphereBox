@@ -8,6 +8,7 @@ package manifest
 import (
 	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
 	v2Artifact "DysonSphereBox/helper/modDependence/installer/v2/artifact"
+	"DysonSphereBox/helper/modDependence/installer/v2/sessionsnapshot"
 	"DysonSphereBox/helper/modDependence/installer/v2/sessionstate"
 	"DysonSphereBox/helper/modDependence/installer/v2/sessionutil"
 	v2Uninstall "DysonSphereBox/helper/modDependence/installer/v2/uninstall"
@@ -15,6 +16,7 @@ import (
 	"encoding/json"
 	"gorm.io/gorm"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -24,27 +26,25 @@ import (
 // 边界：数据库辅助查询失败时尽量返回已有 manifest，不阻断后续核心清理。
 func Enrich(db *gorm.DB, record installedModel.ModInstalledPackage, manifest sessionstate.Manifest) sessionstate.Manifest {
 	for _, fileRecord := range loadFileRecords(db, record.PackageKey) {
+		if slices.Contains(manifest.ReusedComponents, fileRecord.ComponentKey) || manifest.IsReplacedComponent(fileRecord.ComponentKey) || !sessionsnapshot.BelongsToSession(fileRecord, manifest) {
+			continue
+		}
 		if strings.TrimSpace(fileRecord.ComponentKey) != "" {
 			manifest.InstalledComponents = sessionutil.AppendUniqueString(manifest.InstalledComponents, fileRecord.ComponentKey)
 		}
-		manifest.InstalledFiles = sessionutil.AppendOrReplaceSessionFile(manifest.InstalledFiles, sessionstate.File{
-			PackageKey:    fileRecord.PackageKey,
-			ComponentKey:  fileRecord.ComponentKey,
-			SourcePath:    fileRecord.SourcePath,
-			TargetPath:    fileRecord.TargetPath,
-			RelativePath:  fileRecord.RelativePath,
-			Sha256:        fileRecord.Sha256,
-			FileSize:      fileRecord.FileSize,
-			TargetExisted: false,
-		})
+		manifest.InstalledFiles = sessionsnapshot.AppendRecordFallbackFiles(manifest.InstalledFiles, []installedModel.ModInstalledFile{fileRecord})
 		manifest.PlannedTargetDirs = sessionutil.AppendUniqueTargetDir(manifest.PlannedTargetDirs, filepath.Dir(fileRecord.TargetPath))
 	}
 	for _, component := range loadComponents(db, record.PackageKey, manifest.InstalledComponents) {
+		if manifest.IsReplacedComponent(component.ComponentKey) {
+			continue
+		}
 		manifest.InstalledComponents = sessionutil.AppendUniqueString(manifest.InstalledComponents, component.ComponentKey)
 		manifest.PlannedComponents = sessionutil.AppendOrReplacePlannedComponent(manifest.PlannedComponents, sessionstate.ComponentPlan{
 			ComponentKey: component.ComponentKey,
 			InstallDir: v2Artifact.Artifact{
 				ComponentKey: component.ComponentKey,
+				Namespace:    component.Namespace,
 				DisplayName:  component.DisplayName,
 				Name:         component.Name,
 			}.InstallDirName(),
@@ -55,15 +55,25 @@ func Enrich(db *gorm.DB, record installedModel.ModInstalledPackage, manifest ses
 }
 
 // loadFileRecords 读取清理时可参考的包文件记录。
-// 职责：复用卸载文件查询逻辑，兼容历史依赖文件归属异常。
+// 职责：复用卸载文件查询逻辑，兼容历史依赖文件归属异常，并过滤其它包拥有的共享文件。
 // 使用：Enrich 补全文件证据时调用。
-// 边界：查询失败时返回 nil，由后续 manifest 证据继续清理。
+// 边界：查询失败时返回 nil；借用文件及无法确认共享状态的非本包文件不进入清理证据。
 func loadFileRecords(db *gorm.DB, packageKey string) []installedModel.ModInstalledFile {
 	records, err := v2Uninstall.FindPackageFiles(db, packageKey)
 	if err != nil {
 		return nil
 	}
-	return records
+	sessionRecords := make([]installedModel.ModInstalledFile, 0, len(records))
+	for _, record := range records {
+		if record.PackageKey != packageKey {
+			shared, err := v2Uninstall.IsFileShared(db, packageKey, record)
+			if err != nil || shared {
+				continue
+			}
+		}
+		sessionRecords = append(sessionRecords, record)
+	}
+	return sessionRecords
 }
 
 // loadComponents 读取清理时涉及的组件记录。
@@ -101,6 +111,7 @@ func appendRawPackagePlans(record installedModel.ModInstalledPackage, manifest s
 		ComponentKey: pack.Key,
 		InstallDir: v2Artifact.Artifact{
 			ComponentKey: pack.Key,
+			Namespace:    pack.Namespace,
 			DisplayName:  pack.DisplayName,
 			Name:         pack.Name,
 		}.InstallDirName(),
@@ -113,6 +124,7 @@ func appendRawPackagePlans(record installedModel.ModInstalledPackage, manifest s
 			ComponentKey: dependency.Key,
 			InstallDir: v2Artifact.Artifact{
 				ComponentKey: dependency.Key,
+				Namespace:    dependency.Namespace,
 				DisplayName:  dependency.DisplayName,
 				Name:         dependency.Name,
 			}.InstallDirName(),

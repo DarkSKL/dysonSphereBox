@@ -5,6 +5,7 @@ package file
 // 边界：不负责扫描会话文件集合、不写清理审计日志、不删除数据库文件记录；manifest 保存委托 conflictstate。
 
 import (
+	"DysonSphereBox/helper/modDependence/fileops"
 	"DysonSphereBox/helper/modDependence/installer/shared"
 	"DysonSphereBox/helper/modDependence/installer/v2/conflictstate"
 	"DysonSphereBox/helper/modDependence/installer/v2/installpath"
@@ -13,6 +14,7 @@ import (
 	v2Uninstall "DysonSphereBox/helper/modDependence/installer/v2/uninstall"
 	installedModel "DysonSphereBox/model/modDependence/installed"
 	"encoding/json"
+	"fmt"
 	"gorm.io/gorm"
 	"os"
 	"path/filepath"
@@ -21,18 +23,18 @@ import (
 // Restore 恢复单个会话文件的物理状态。
 // 职责：优先用备份文件恢复覆盖前目标，或删除首次安装写入的新文件。
 // 使用：sessioncleanup/files.CleanupFiles 反向清理文件时调用。
-// 边界：目标原本存在但备份缺失时不主动删除；备份读取异常会返回错误。
+// 边界：显式备份缺失返回错误并保留恢复会话；历史记录无备份时不主动删除原有目标。
 func Restore(file sessionstate.File) error {
 	if file.BackupPath != "" {
 		if _, err := os.Stat(file.BackupPath); err == nil {
-			_ = os.Remove(file.TargetPath)
 			if err := os.MkdirAll(filepath.Dir(file.TargetPath), 0o755); err != nil {
 				return err
 			}
-			return os.Rename(file.BackupPath, file.TargetPath)
+			return fileops.CopyFile(file.BackupPath, file.TargetPath, 0o644)
 		} else if !os.IsNotExist(err) {
 			return err
 		}
+		return fmt.Errorf("恢复备份缺失：%s", file.BackupPath)
 	}
 	if !file.TargetExisted {
 		return v2Uninstall.RemoveManagedFile(file.TargetPath)

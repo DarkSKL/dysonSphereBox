@@ -11,7 +11,6 @@ import (
 	"DysonSphereBox/helper/modDependence/installer/shared"
 	v2Buffer "DysonSphereBox/helper/modDependence/installer/v2/buffer"
 	"DysonSphereBox/helper/modDependence/installer/v2/cancel"
-	"DysonSphereBox/helper/modDependence/installer/v2/conflictstate"
 	v2InstallError "DysonSphereBox/helper/modDependence/installer/v2/installerror"
 	cleanupBuffer "DysonSphereBox/helper/modDependence/installer/v2/sessioncleanup/buffer"
 	cleanupDirectory "DysonSphereBox/helper/modDependence/installer/v2/sessioncleanup/directory"
@@ -48,9 +47,15 @@ func CleanupInterrupted(packageKey string, status string) error {
 		}
 		return err
 	}
+	// 已恢复的旧主包不再拥有待清理会话，重复调用必须保留成功安装的文件。
+	if record.InstallState == string(installConstant.StateInstalled) || record.InstallState == "" {
+		return nil
+	}
 	manifest := sessionstate.Manifest{}
 	if len(record.InstallManifest) > 0 {
-		_ = json.Unmarshal(record.InstallManifest, &manifest)
+		if err := json.Unmarshal(record.InstallManifest, &manifest); err != nil {
+			return err
+		}
 	}
 	manifest = cleanupManifest.Enrich(db, record, manifest)
 	if strings.TrimSpace(manifest.CleanedAt) != "" {
@@ -63,14 +68,22 @@ func CleanupInterrupted(packageKey string, status string) error {
 		return err
 	}
 	manifest.CleanedAt = time.Now().Format(time.RFC3339Nano)
-	if err := conflictstate.SaveManifest(record.PackageKey, string(installConstant.StateFailed), "failed", status, progresscalc.Clamp(record.InstallProgress), status, &manifest); err != nil {
+	// failed 标记与旧主包恢复必须一起提交，恢复失败不能留下已完成清理的标记。
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		manifestJSON, err := json.Marshal(manifest)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&installedModel.ModInstalledPackage{}).Where("package_key = ?", record.PackageKey).
+			Updates(map[string]interface{}{"install_state": string(installConstant.StateFailed), "install_stage": "failed", "install_status": status, "install_progress": progresscalc.Clamp(record.InstallProgress), "error_message": status, "install_manifest": string(manifestJSON)}).Error; err != nil {
+			return err
+		}
+		return sessionsnapshot.RestorePreviousPackage(tx, record.PackageKey, manifest)
+	}); err != nil {
 		logging.RecordDone(record.PackageKey, status, manifest, err)
 		return err
 	}
-	if err := sessionsnapshot.RestorePreviousPackage(db, record.PackageKey, manifest); err != nil {
-		logging.RecordDone(record.PackageKey, status, manifest, err)
-		return err
-	}
+	cleanupBuffer.CleanupManifestBackups(manifest)
 	gameDir, err := gamepath.GetConfiguredGameDir()
 	if err == nil {
 		cleanupDirectory.CleanupPlannedDirs(db, gameDir, record.PackageKey, manifest)

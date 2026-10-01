@@ -5,9 +5,7 @@ package copyfiles
 // 边界：只处理冲突和覆盖记录；不备份文件、不复制文件、不释放旧 installed 记录。
 
 import (
-	"DysonSphereBox/helper/modDependence/installer/contract"
 	"DysonSphereBox/helper/modDependence/installer/v2/copyconflict"
-	v2InstallError "DysonSphereBox/helper/modDependence/installer/v2/installerror"
 	"DysonSphereBox/helper/modDependence/installer/v2/installplan"
 	"fmt"
 	"os"
@@ -18,6 +16,9 @@ import (
 // 使用：copyPlannedFile 在复制目标文件前调用。
 // 边界：只处理冲突和覆盖记录；不备份文件、不释放旧记录。
 func (session *copySession) prepareConflict(file installplan.File) (bool, error) {
+	if !file.Tracked {
+		return true, nil
+	}
 	conflict, err := copyconflict.InspectFile(session.db, file, session.artifact)
 	if err != nil {
 		return false, err
@@ -26,21 +27,12 @@ func (session *copySession) prepareConflict(file installplan.File) (bool, error)
 		return true, nil
 	}
 
-	decision := copyconflict.ResolveDecision(session.options, file)
-	switch decision {
-	case contract.InstallConflictActionOverwrite:
-		if info, err := os.Stat(file.TargetPath); err == nil && info.IsDir() {
-			return false, fmt.Errorf("目标路径是目录，无法用文件覆盖：%s", file.TargetPath)
-		} else if err != nil && !os.IsNotExist(err) {
-			return false, err
-		}
-		session.overwrittenFiles = append(session.overwrittenFiles, file)
-		return true, nil
-	case contract.InstallConflictActionSkip:
-		return false, nil
-	case contract.InstallConflictActionFail:
-		return false, fmt.Errorf("用户选择终止安装：%s", conflict.Message)
-	default:
-		return false, &v2InstallError.Conflict{Conflict: *conflict}
+	if info, statErr := os.Stat(file.TargetPath); statErr == nil && info.IsDir() {
+		return false, fmt.Errorf("目标路径是目录，无法用文件覆盖：%s", file.TargetPath)
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		return false, statErr
 	}
+	// R2 profile 的冲突策略是按安装顺序覆盖，后安装的组件获得目标文件所有权。
+	session.overwrittenFiles = append(session.overwrittenFiles, file)
+	return true, nil
 }

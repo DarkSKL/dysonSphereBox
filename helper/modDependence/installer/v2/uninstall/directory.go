@@ -11,11 +11,11 @@ import (
 )
 
 // CleanupEmptyManagedDirs 清理 BepInEx 下安装器可能留下的空目录。
-// 职责：递归清理 plugins、patchers、config 下的空子目录。
+// 职责：递归清理 plugins、patchers、config、core、monomod 下的空子目录。
 // 使用：卸载事务完成后调用。
 // 边界：不会删除 root 本身，也不会删除包含文件的目录。
 func CleanupEmptyManagedDirs(root string) {
-	for _, child := range []string{"plugins", "patchers", "config"} {
+	for _, child := range []string{"plugins", "patchers", "config", "core", "monomod"} {
 		cleanupEmptyDirs(filepath.Join(root, child), filepath.Join(root, child))
 	}
 }
@@ -31,7 +31,7 @@ func CleanupEmptyInstallParentDirs(filePath string) {
 	dir := filepath.Dir(filePath)
 	for {
 		base := strings.ToLower(filepath.Base(dir))
-		if base == "plugins" || base == "patchers" || base == "config" || base == "bepinex" || dir == filepath.Dir(dir) {
+		if base == "plugins" || base == "patchers" || base == "config" || base == "core" || base == "monomod" || base == "bepinex" || dir == filepath.Dir(dir) {
 			return
 		}
 		entries, err := os.ReadDir(dir)

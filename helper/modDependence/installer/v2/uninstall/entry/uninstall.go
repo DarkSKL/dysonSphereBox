@@ -10,7 +10,9 @@ import (
 	"DysonSphereBox/helper/modDependence/installer/contract"
 	"DysonSphereBox/helper/modDependence/installer/progresscalc"
 	"DysonSphereBox/helper/modDependence/installer/shared"
+	"DysonSphereBox/helper/modDependence/installer/v2/operationguard"
 	progressEvent "DysonSphereBox/helper/modDependence/installer/v2/progress/event"
+	cleanupEntry "DysonSphereBox/helper/modDependence/installer/v2/sessioncleanup/entry"
 	v2Uninstall "DysonSphereBox/helper/modDependence/installer/v2/uninstall"
 	modDependenceModel "DysonSphereBox/model/modDependence/installed"
 	"fmt"
@@ -25,9 +27,17 @@ import (
 // 边界：只删除由该 packageKey 记录且未被其它包共享的文件，避免误删用户手动文件。
 // 逻辑流：1. 校验 packageKey 并读取本地记录 => 2. 构建文件卸载计划 => 3. 删除未共享文件 => 4. 事务清理数据库记录 => 5. 清理空目录并返回卸载结果。
 func UninstallRemoteModPackage(packageKey string) (*contract.PackageInstallResult, error) {
+	release, err := operationguard.Acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	packageKey = strings.TrimSpace(packageKey)
 	if packageKey == "" {
 		return nil, fmt.Errorf("package key is required")
+	}
+	if err := cleanupEntry.CleanupInterrupted(packageKey, "卸载前恢复未完成安装"); err != nil {
+		return nil, err
 	}
 	progressEvent.Uninstall(packageKey, "uninstall", "准备卸载", 5)
 	gameDir, err := gamepath.GetConfiguredGameDir()
@@ -68,7 +78,7 @@ func UninstallRemoteModPackage(packageKey string) (*contract.PackageInstallResul
 	}
 	progressEvent.Uninstall(packageKey, "record", "正在清理安装记录", 88)
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("package_key = ?", packageKey).Delete(&modDependenceModel.ModInstalledFile{}).Error; err != nil {
+		if err := v2Uninstall.ReleasePackageFileRecords(tx, packageKey); err != nil {
 			return err
 		}
 		if err := v2Uninstall.DeleteLegacyComponentFileRecords(tx, packageKey); err != nil {

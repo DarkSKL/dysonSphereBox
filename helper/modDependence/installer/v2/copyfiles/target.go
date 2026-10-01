@@ -39,6 +39,9 @@ func (session *copySession) prepareTargetFile(file installplan.File) (installpla
 		file.BackupPath = backupPath
 	}
 	if err := os.MkdirAll(filepath.Dir(file.TargetPath), 0o755); err != nil {
+		if rollbackItem.BackupPath != "" {
+			_ = os.Remove(rollbackItem.BackupPath)
+		}
 		return rollbackItem, file, err
 	}
 

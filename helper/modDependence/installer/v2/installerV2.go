@@ -8,6 +8,8 @@ import (
 	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
 	"DysonSphereBox/helper/modDependence/installer/contract"
 	"DysonSphereBox/helper/modDependence/installer/v2/cancel"
+	"DysonSphereBox/helper/modDependence/installer/v2/operationguard"
+	cleanupEntry "DysonSphereBox/helper/modDependence/installer/v2/sessioncleanup/entry"
 	"fmt"
 	"strings"
 )
@@ -26,15 +28,35 @@ func InstallRemoteModPackage(pack modDependenceResponse.RemoteModPackageDTO) (*c
 // 边界：遇到冲突时保存 manifest 并返回可恢复错误；取消或失败时按会话清理已写文件。
 // 逻辑流：1. 注册取消句柄并初始化会话 => 2. 准备 BepInEx 和缓存目录 => 3. 解析主包与依赖 artifact => 4. 逐个处理文件并记录组件 => 5. 保存主包完成状态并返回结果。
 func InstallRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPackageDTO, options contract.InstallRemotePackageOptions) (*contract.PackageInstallResult, error) {
+	release, err := operationguard.Acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return installRemoteModPackageWithOptions(pack, options)
+}
+
+// installRemoteModPackageWithOptions 执行已持有目录写入权限的安装。
+// 职责：供普通入口和冲突继续复用完整流程；使用：入口获取 operationguard 后调用；边界：不得脱离锁调用。
+func installRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPackageDTO, options contract.InstallRemotePackageOptions) (*contract.PackageInstallResult, error) {
 	if strings.TrimSpace(pack.Key) == "" {
 		return nil, fmt.Errorf("package key is required")
+	}
+	if options.ResetSession {
+		if result, err := reuseInstalledRoot(pack); result != nil || err != nil {
+			return result, err
+		}
+		// 重试必须先完成旧会话恢复，不能重置掉仍需恢复的备份证据。
+		if err := cleanupEntry.CleanupInterrupted(pack.Key, "重新安装前恢复旧会话"); err != nil {
+			return nil, err
+		}
 	}
 	installCtx, unregisterInstallCancellation := cancel.Register(pack.Key)
 	defer unregisterInstallCancellation()
 
 	preparation, err := prepareRemotePackageInstall(installCtx, pack, options)
 	if err != nil {
-		return nil, err
+		return nil, cleanupEntry.CleanupFailed(pack.Key, err)
 	}
 
 	results, err := installRemoteArtifacts(installCtx, pack, options, preparation)

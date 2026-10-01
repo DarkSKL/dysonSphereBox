@@ -44,8 +44,8 @@ func SplitInstallRoot(relativePath string) (root string, rest string, hasRoot bo
 }
 
 // SplitFirstPathSegment 拆分归一化路径的首段和剩余部分。
-// 职责：为根目录识别和目录前缀判断提供稳定拆分。
-// 使用：SplitInstallRoot 与 HasArtifactDirectoryPrefix 调用。
+// 职责：为根目录识别提供稳定拆分。
+// 使用：SplitInstallRoot 调用。
 // 边界：空路径返回两个空字符串，不返回错误。
 func SplitFirstPathSegment(relativePath string) (string, string) {
 	relativePath = NormalizeEntryPath(relativePath)

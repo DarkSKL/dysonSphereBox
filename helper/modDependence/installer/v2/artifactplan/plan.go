@@ -2,8 +2,8 @@ package artifactplan
 
 // 文件职责：扫描 artifact 解压目录或本地目录，生成 V2 安装文件计划。
 // 使用：V2 artifact 安装流程在下载/解压完成后调用，获取后续复制和持久化所需的 installplan.File。
-// 边界：不下载、不解压、不复制文件、不写 manifest；启发式布局校验由 layout.go 维护。
-// 逻辑流：1. 校验 artifact 布局 => 2. 遍历目录文件 => 3. 计算目标相对路径 => 4. 校验目标不越出游戏目录 => 5. 计算哈希并返回文件计划。
+// 边界：不下载、不解压、不复制文件、不写 manifest；框架包拦截由 layout.go 维护。
+// 逻辑流：1. 拦截框架包 => 2. 遍历目录文件 => 3. 按 R2 安装规则计算目标相对路径 => 4. 校验目标不越出游戏目录 => 5. 计算哈希并返回文件计划。
 
 import (
 	"DysonSphereBox/helper/modDependence/fileops"
@@ -45,7 +45,8 @@ func PlanFiles(ctx context.Context, extractPath string, gameDir string, artifact
 		}
 		normalizedRelativePath := filepath.ToSlash(relativePath)
 
-		targetRelativePath := artifactlayout.ResolveTargetRelativePath(normalizedRelativePath, artifact.Descriptor())
+		target := artifactlayout.ResolveTarget(normalizedRelativePath, artifact.Descriptor())
+		targetRelativePath := target.RelativePath
 		targetPath := filepath.Join(gameDir, targetRelativePath)
 		if !fileops.IsSubPath(gameDir, targetPath) {
 			return fmt.Errorf("artifact target escapes game directory: %s", targetPath)
@@ -63,6 +64,7 @@ func PlanFiles(ctx context.Context, extractPath string, gameDir string, artifact
 			RelativePath: targetRelativePath,
 			Sha256:       hash,
 			FileSize:     size,
+			Tracked:      target.Tracked,
 		})
 		return nil
 	})

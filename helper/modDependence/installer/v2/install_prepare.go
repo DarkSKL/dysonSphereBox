@@ -7,7 +7,6 @@ package v2
 
 import (
 	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
-	installConstant "DysonSphereBox/constant/modDependence/install"
 	bepinexContract "DysonSphereBox/helper/modDependence/bepinex/contract"
 	"DysonSphereBox/helper/modDependence/installer/contract"
 	v2Artifact "DysonSphereBox/helper/modDependence/installer/v2/artifact"
@@ -43,13 +42,8 @@ func prepareRemotePackageInstall(ctx context.Context, pack modDependenceResponse
 	if err != nil {
 		return nil, err
 	}
-	if err := installstore.SaveRemotePackageState(pack, string(installConstant.StateRunning), "prepare", "准备安装", 1, "", 0); err != nil {
+	if err := installstore.BeginRemotePackage(pack, previousPackage, options.ResetSession); err != nil {
 		return nil, err
-	}
-	if options.ResetSession {
-		if err := installmanifest.Reset(pack.Key, previousPackage); err != nil {
-			return nil, err
-		}
 	}
 
 	progressEvent.Package(pack.Key, "prepare", "准备安装", 1)

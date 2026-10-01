@@ -5,6 +5,7 @@ package sessionsnapshot
 // 边界：只读取数据库，不删除记录；manifest 缺失时尽量用会话开始时间窗口补救。
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -46,7 +47,13 @@ func InstalledFileRecords(db *gorm.DB, packageKey string, manifest sessionstate.
 	for _, record := range fallbackRecords {
 		records = appendUniqueInstalledFileRecord(records, record)
 	}
-	return records, nil
+	sessionRecords := make([]installedModel.ModInstalledFile, 0, len(records))
+	for _, record := range records {
+		if !slices.Contains(manifest.ReusedComponents, record.ComponentKey) && !manifest.IsReplacedComponent(record.ComponentKey) && BelongsToSession(record, manifest) {
+			sessionRecords = append(sessionRecords, record)
+		}
+	}
+	return sessionRecords, nil
 }
 
 // fallbackInstalledFileRecords 按会话开始时间兜底查找文件记录。

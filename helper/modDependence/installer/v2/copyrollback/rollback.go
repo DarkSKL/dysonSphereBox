@@ -25,16 +25,12 @@ func RollbackCopiedFiles(plan []installplan.CopyRollback) {
 	for index := len(plan) - 1; index >= 0; index-- {
 		item := plan[index]
 		if item.Existed {
-			_ = os.Remove(item.TargetPath)
 			if item.BackupPath != "" {
-				_ = os.Rename(item.BackupPath, item.TargetPath)
+				_ = fileops.CopyFile(item.BackupPath, item.TargetPath, 0o644)
 			}
 			continue
 		}
 		_ = os.Remove(item.TargetPath)
-		if item.BackupPath != "" {
-			_ = os.Remove(item.BackupPath)
-		}
 		v2Uninstall.CleanupEmptyInstallParentDirs(item.TargetPath)
 	}
 }
@@ -48,6 +44,14 @@ func BackupTargetFile(targetPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return BackupTargetFileInDir(targetPath, backupDir)
+}
+
+// BackupTargetFileInDir 在指定安装缓存目录创建旧文件备份。
+// 职责：允许版本清理与复制覆盖共用备份实现。
+// 使用：安装器已解析 bufferDir 时调用，测试可传入临时目录。
+// 边界：只复制原文件，不删除目标或持久化会话；失败返回错误。
+func BackupTargetFileInDir(targetPath string, backupDir string) (string, error) {
 	backupPath := filepath.Join(backupDir, "rollback", fmt.Sprintf("%d-%s", time.Now().UnixNano(), shared.SanitizePathSegment(filepath.Base(targetPath), "file")))
 	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
 		return "", err

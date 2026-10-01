@@ -25,6 +25,8 @@ type File struct {
 	Sha256 string `json:"sha256"`
 	// FileSize 职责：记录源文件大小；使用：安装记录展示或后续校验；边界：不作为唯一一致性判断。
 	FileSize int64 `json:"fileSize"`
+	// Tracked 职责：标记文件是否纳入安装器归属清单；使用：R2 config 等 untracked 文件复制时跳过冲突、卸载记录和共享判断；边界：物理复制仍会发生，失败回滚仍由 CopyRollback 负责。
+	Tracked bool `json:"tracked"`
 	// TargetExisted 职责：标记复制前目标是否存在；使用：回滚决定恢复或删除；边界：只代表复制前瞬时状态。
 	TargetExisted bool
 	// BackupPath 职责：记录覆盖前备份文件路径；使用：失败回滚；边界：仅覆盖已有文件时可能存在。

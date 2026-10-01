@@ -11,6 +11,7 @@ import (
 	"DysonSphereBox/helper/modDependence/installer/shared"
 	"DysonSphereBox/helper/modDependence/installer/v2/conflictstate"
 	"DysonSphereBox/helper/modDependence/installer/v2/copyconflict"
+	"DysonSphereBox/helper/modDependence/installer/v2/operationguard"
 	cleanupEntry "DysonSphereBox/helper/modDependence/installer/v2/sessioncleanup/entry"
 	"DysonSphereBox/helper/modDependence/installer/v2/sessionstate"
 	modDependenceModel "DysonSphereBox/model/modDependence/installed"
@@ -24,6 +25,11 @@ import (
 // 使用：前端冲突弹窗提交覆盖、跳过或失败动作后由 InstallerService 调用。
 // 边界：只恢复 install_state=conflict 的安装包；选择失败会把当前包标记为 failed。
 func ContinueRemoteModPackageInstall(packageKey string, action contract.InstallConflictAction) (*contract.PackageInstallResult, error) {
+	release, err := operationguard.Acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	db, err := shared.RequireDatabase()
 	if err != nil {
 		return nil, err
@@ -37,7 +43,9 @@ func ContinueRemoteModPackageInstall(packageKey string, action contract.InstallC
 	}
 	manifest := sessionstate.Manifest{}
 	if len(record.InstallManifest) > 0 {
-		_ = json.Unmarshal(record.InstallManifest, &manifest)
+		if err := json.Unmarshal(record.InstallManifest, &manifest); err != nil {
+			return nil, err
+		}
 	}
 	if manifest.Conflict == nil {
 		return nil, fmt.Errorf("没有可继续处理的安装冲突")
@@ -45,7 +53,6 @@ func ContinueRemoteModPackageInstall(packageKey string, action contract.InstallC
 	if action == contract.InstallConflictActionFail {
 		err := fmt.Errorf("用户选择终止安装：%s", manifest.Conflict.Message)
 		err = cleanupEntry.CleanupFailed(record.PackageKey, err)
-		conflictstate.MarkFailed(record.PackageKey, err)
 		return nil, err
 	}
 	if action != contract.InstallConflictActionOverwrite && action != contract.InstallConflictActionSkip {
@@ -60,5 +67,5 @@ func ContinueRemoteModPackageInstall(packageKey string, action contract.InstallC
 	if err := conflictstate.SaveManifest(record.PackageKey, string(installConstant.StateRunning), "prepare", "继续安装", 1, "", &manifest); err != nil {
 		return nil, err
 	}
-	return InstallRemoteModPackageWithOptions(pack, contract.InstallRemotePackageOptions{Decisions: manifest.Decisions})
+	return installRemoteModPackageWithOptions(pack, contract.InstallRemotePackageOptions{Decisions: manifest.Decisions})
 }

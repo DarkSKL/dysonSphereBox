@@ -12,6 +12,7 @@ import (
 	"DysonSphereBox/helper/modDependence/installer/v2/installplan"
 	modDependenceModel "DysonSphereBox/model/modDependence/installed"
 	"encoding/json"
+	"fmt"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -19,10 +20,10 @@ import (
 )
 
 // SaveArtifact 保存单个组件及其安装文件清单。
-// 职责：upsert 组件记录、维护 package-component 关系，并写入文件归属记录。
-// 使用：每个 artifact 文件复制成功后调用。
-// 边界：必须在文件已经写入后调用；数据库失败时返回错误交给上层清理安装会话。
-// 逻辑流：1. 构造组件模型 => 2. upsert 组件 => 3. 确保包组件关系 => 4. upsert 文件清单 => 5. 提交事务。
+// 职责：upsert 新安装组件、维护 package-component 关系，并写入文件归属记录。
+// 使用：每个 artifact 文件复制成功后或复用已安装依赖时调用。
+// 边界：复用组件必须存在且不能写入新文件或覆盖元数据；数据库失败交给上层清理会话。
+// 逻辑流：1. 构造组件模型 => 2. 校验复用组件或 upsert 新组件 => 3. 确保包组件关系 => 4. upsert 文件清单 => 5. 提交事务。
 func SaveArtifact(pack modDependenceResponse.RemoteModPackageDTO, artifact v2Artifact.Artifact, files []installplan.File) error {
 	db, err := shared.RequireDatabase()
 	if err != nil {
@@ -34,6 +35,7 @@ func SaveArtifact(pack modDependenceResponse.RemoteModPackageDTO, artifact v2Art
 		ComponentKey:       artifact.ComponentKey,
 		Source:             string(artifact.Source),
 		SourceDependencyID: artifact.ComponentKey,
+		Namespace:          artifact.Namespace,
 		Name:               artifact.Name,
 		DisplayName:        artifact.DisplayName,
 		Version:            artifact.Version,
@@ -45,8 +47,17 @@ func SaveArtifact(pack modDependenceResponse.RemoteModPackageDTO, artifact v2Art
 	}
 
 	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "component_key"}}, UpdateAll: true}).Create(&component).Error; err != nil {
-			return err
+		if artifact.ReuseExisting {
+			if len(files) > 0 {
+				return fmt.Errorf("复用组件不能写入新的文件记录：%s", artifact.ComponentKey)
+			}
+			if err := tx.Where("component_key = ?", artifact.ComponentKey).Take(&modDependenceModel.ModInstalledComponent{}).Error; err != nil {
+				return fmt.Errorf("复用组件不存在或无法读取：%s：%w", artifact.ComponentKey, err)
+			}
+		} else {
+			if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "component_key"}}, UpdateAll: true}).Create(&component).Error; err != nil {
+				return err
+			}
 		}
 
 		relation := modDependenceModel.ModInstalledPackageComponent{

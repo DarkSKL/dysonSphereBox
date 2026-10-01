@@ -18,8 +18,11 @@ definePage({ meta: { layout: 'main', title: '全局设置' } })
 </template>
 
 <style scoped lang="scss">
+// 内容区宽于 --ds-page-max-width 时水平居中，窄于时铺满并保留页面内边距
 .settings-page {
+  width: 100%;
   max-width: var(--ds-page-max-width);
+  margin-inline: auto;
   padding: var(--ds-page-padding-top) var(--ds-page-padding-x) var(--ds-page-padding-bottom);
   container: settings-page / inline-size;
 }

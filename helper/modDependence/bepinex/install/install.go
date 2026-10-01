@@ -12,6 +12,7 @@ import (
 	bepinexStatus "DysonSphereBox/helper/modDependence/bepinex/status"
 	"DysonSphereBox/helper/modDependence/fileops"
 	"DysonSphereBox/helper/modDependence/gamepath"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,15 @@ import (
 // 边界：已安装时只校验或修复 Doorstop 配置；下载、解压或复制失败时返回错误，不写审计日志。
 // 逻辑流：1. 读取并校验游戏目录 => 2. 检测现有 BepInEx 状态 => 3. 已安装则修复/确认 Doorstop 后返回 => 4. 解析并下载最新包 => 5. 解压并复制 BepInExPack => 6. 再次检测并返回结果。
 func InstallBepInEx() (*contract.BepInExInstallResult, error) {
+	return InstallBepInExWithContext(context.Background())
+}
+
+// InstallBepInExWithContext 安装前置框架并传递完整取消上下文。
+// 职责：覆盖索引、下载、解压和文件复制的取消检查；使用：V2 Mod 安装准备；边界：独立框架入口仍可通过原无上下文函数调用。
+func InstallBepInExWithContext(ctx context.Context) (*contract.BepInExInstallResult, error) {
+	if ctx.Err() != nil {
+		return nil, fileops.ErrInstallCancelled
+	}
 	gameDir, err := gamepath.GetConfiguredGameDir()
 	if err != nil {
 		return nil, err
@@ -43,7 +53,7 @@ func InstallBepInEx() (*contract.BepInExInstallResult, error) {
 		status = bepinexStatus.CheckBepInExStatus(gameDir)
 		return &contract.BepInExInstallResult{GameDir: gameDir, Installed: false, Skipped: true, Message: "BepInEx 已安装，已确认 Doorstop 配置", Status: status}, nil
 	}
-	pkg, err := remote.ResolveLatestBepInExPackage()
+	pkg, err := remote.ResolveLatestBepInExPackageWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -51,11 +61,11 @@ func InstallBepInEx() (*contract.BepInExInstallResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	zipPath, err := remote.DownloadPackage(bufferDir, pkg)
+	zipPath, err := remote.DownloadPackageWithContext(ctx, bufferDir, pkg)
 	if err != nil {
 		return nil, err
 	}
-	extractPath, err := bepinexArchive.ExtractPackage(bufferDir, zipPath, pkg)
+	extractPath, err := bepinexArchive.ExtractPackageWithContext(ctx, bufferDir, zipPath, pkg)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +73,7 @@ func InstallBepInEx() (*contract.BepInExInstallResult, error) {
 	if info, err := os.Stat(packRoot); err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("BepInEx package structure is invalid: missing BepInExPack")
 	}
-	if err := fileops.CopyDirectoryContents(packRoot, gameDir); err != nil {
+	if err := fileops.CopyDirectoryContentsWithContext(ctx, packRoot, gameDir); err != nil {
 		return nil, err
 	}
 	if err := bepinexConfig.EnsureDoorstopConfig(gameDir); err != nil {

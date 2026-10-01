@@ -13,7 +13,6 @@ import (
 	"DysonSphereBox/helper/modDependence/installer/v2/sessionstate"
 	v2Uninstall "DysonSphereBox/helper/modDependence/installer/v2/uninstall"
 	"gorm.io/gorm"
-	"os"
 )
 
 // CleanupFiles 清理安装会话写入的文件和数据库记录。
@@ -25,11 +24,17 @@ func CleanupFiles(db *gorm.DB, packageKey string, manifest sessionstate.Manifest
 	if err != nil {
 		return err
 	}
-	sessionFiles := sessionsnapshot.UniqueFiles(manifest.InstalledFiles)
+	// 配置始终独立回滚，成功安装后的卸载不会读取这份证据。
+	for index := len(manifest.UntrackedFiles) - 1; index >= 0; index-- {
+		if err := cleanupFile.Restore(manifest.UntrackedFiles[index]); err != nil {
+			return err
+		}
+	}
+	sessionFiles := append([]sessionstate.File(nil), manifest.InstalledFiles...)
 	sessionFiles = sessionsnapshot.AppendRecordFallbackFiles(sessionFiles, records)
 	for index := len(sessionFiles) - 1; index >= 0; index-- {
 		file := sessionFiles[index]
-		if len(file.PreviousRecords) > 0 {
+		if len(file.PreviousRecords) > 0 || file.TargetExisted {
 			err := cleanupFile.Restore(file)
 			logging.RecordItem(packageKey, "file", file.TargetPath, "restore", "目标文件覆盖过旧文件，恢复安装前版本", err)
 			if err != nil {
@@ -51,12 +56,10 @@ func CleanupFiles(db *gorm.DB, packageKey string, manifest sessionstate.Manifest
 			logging.RecordItem(packageKey, "file", file.TargetPath, "skip", "目标文件仍被其它安装包引用，跳过删除", nil)
 		}
 		v2Uninstall.CleanupEmptyInstallParentDirs(file.TargetPath)
-		if file.BackupPath != "" {
-			err := os.Remove(file.BackupPath)
-			if os.IsNotExist(err) {
-				err = nil
-			}
-			logging.RecordItem(packageKey, "backup", file.BackupPath, "remove", "移除安装回滚备份文件", err)
+	}
+	for _, file := range manifest.RemovedVersionFiles {
+		if err := cleanupFile.Restore(file); err != nil {
+			return err
 		}
 	}
 	pendingLogs, transactionErr := cleanupRecord.CleanupRecords(db, packageKey, manifest, sessionFiles, records)

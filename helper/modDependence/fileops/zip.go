@@ -6,6 +6,7 @@ package fileops
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -33,6 +34,15 @@ func IsValidZipFile(path string) bool {
 // 边界：只处理单个条目，不负责打开或关闭 zip 读取器，也不发送进度事件。
 // 逻辑流：1. 归一化条目名 => 2. 拼接并校验目标路径 => 3. 目录项创建目录 => 4. 文件项复制字节到目标文件。
 func ExtractZipFile(file *zip.File, destinationDir string) error {
+	return ExtractZipFileWithContext(context.Background(), file, destinationDir)
+}
+
+// ExtractZipFileWithContext 解压单条目并响应取消。
+// 职责：中止大文件的解压写入；使用：前置框架可取消解压；边界：沿用路径穿越检查，半写入文件留在缓存目录。
+func ExtractZipFileWithContext(ctx context.Context, file *zip.File, destinationDir string) error {
+	if ctx.Err() != nil {
+		return ErrInstallCancelled
+	}
 	entryName := NormalizeZipEntryName(file.Name)
 	if entryName == "" {
 		return nil
@@ -65,7 +75,7 @@ func ExtractZipFile(file *zip.File, destinationDir string) error {
 	}
 	defer target.Close()
 
-	_, err = io.Copy(target, source)
+	_, err = io.Copy(target, newContextReader(ctx, source))
 	return err
 }
 

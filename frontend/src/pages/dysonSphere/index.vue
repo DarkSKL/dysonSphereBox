@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import SphereScene from '../../components/dysonSphere/home/sphere-scene.vue'
+import {useBuildCycle} from '../../composables/dysonSphere/useBuildCycle'
 
 definePage({ meta: { layout: 'main', title: '首页' } })
 
 // =============== 建造进度 ===============
-// 说明：后端尚未提供建造进度数据，暂用固定值；接入后替换此处即可。
-const buildProgress = 0.72
-const buildProgressText = `${Math.round(buildProgress * 100)}%`
+// 说明：进度跟随本地时间日循环（08:00 为 0%，22:00 为 100%），由 useBuildCycle 定时刷新。
+const {progress: buildProgress, progressText: buildProgressText} = useBuildCycle()
 </script>
 
 <template>

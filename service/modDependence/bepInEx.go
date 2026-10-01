@@ -12,6 +12,7 @@ import (
 	bepinexStatus "DysonSphereBox/helper/modDependence/bepinex/status"
 	bepinexUninstall "DysonSphereBox/helper/modDependence/bepinex/uninstall"
 	"DysonSphereBox/helper/modDependence/gamepath"
+	"DysonSphereBox/helper/modDependence/installer/v2/operationguard"
 )
 
 // BepInExService 提供前端可调用的 BepInEx 安装、卸载、检测和更新能力。
@@ -26,6 +27,11 @@ type BepInExService struct {
 // 使用：设置页或 Mod 页需要补齐前置环境时调用；失败会记录系统日志并返回错误。
 // 边界：下载、解压、Doorstop 配置修复由 helper 处理，服务层不直接操作游戏目录。
 func (service *BepInExService) Install() (*bepinexContract.BepInExInstallResult, error) {
+	release, err := operationguard.Acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	result, err := bepinexInstall.InstallBepInEx()
 	if err != nil {
 		bepinexAudit.RecordBepInExFailure("install", "BepInEx 安装失败", err)
@@ -41,6 +47,11 @@ func (service *BepInExService) Install() (*bepinexContract.BepInExInstallResult,
 // 使用：设置页用户明确移除前置框架时调用。
 // 边界：卸载流程由 helper 清理文件和安装记录，服务层只负责日志和结果透传。
 func (service *BepInExService) Uninstall() (*bepinexContract.BepInExUninstallResult, error) {
+	release, err := operationguard.Acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	result, err := bepinexUninstall.UninstallBepInEx()
 	if err != nil {
 		bepinexAudit.RecordBepInExFailure("uninstall", "BepInEx 卸载失败", err)
@@ -57,6 +68,11 @@ func (service *BepInExService) Uninstall() (*bepinexContract.BepInExUninstallRes
 // 边界：当前版本已安装时跳过重复安装，并返回可展示的跳过结果。
 // 逻辑流：1. 读取当前状态 => 2. 已安装则返回跳过结果 => 3. 未安装则调用安装 helper => 4. 记录更新结果。
 func (service *BepInExService) Update() (*bepinexContract.BepInExInstallResult, error) {
+	release, err := operationguard.Acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	status, err := service.GetStatus()
 	if err != nil {
 		return nil, err

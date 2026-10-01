@@ -1,7 +1,7 @@
 package buffer
 
 // 文件职责：清理 V2 安装会话产生的下载、解压缓存和成功安装后的回滚备份。
-// 使用：失败/中断清理完成后删除 partial 与 extract 目录，安装成功写入主包前删除 BackupPath。
+// 使用：失败/中断清理完成后删除 partial 与 extract 目录，安装成功提交后删除 BackupPath。
 // 边界：只处理缓存与备份文件，不修改 manifest、不删除游戏目标文件、不写数据库记录。
 // 逻辑流：1. 从 manifest 汇总组件 key => 2. 定位 downloads partial 和 extract 目录 => 3. 校验路径位于 bufferDir 内 => 4. 删除缓存或跳过并记录日志。
 
@@ -48,15 +48,25 @@ func CleanupSessionBuffers(bufferDir string, packageKey string, manifest session
 }
 
 // CleanupSessionBackups 清理成功安装后遗留的回滚备份文件。
-// 职责：读取当前 manifest 并删除 InstalledFiles 中记录的 BackupPath。
-// 使用：安装全部成功、准备清空 manifest 前调用。
+// 职责：读取当前 manifest 并删除其中记录的 BackupPath。
+// 使用：会话清理完成后调用。
 // 边界：删除失败会被忽略；函数只处理备份文件，不删除 manifest 或目标文件。
 func CleanupSessionBackups(packageKey string) error {
 	manifest := sessionsnapshot.LoadManifest(packageKey)
-	for _, file := range manifest.InstalledFiles {
+	CleanupManifestBackups(manifest)
+	return nil
+}
+
+// CleanupManifestBackups 删除已完成会话中的新旧文件备份。
+// 职责：统一清理覆盖文件和旧版本残留文件的备份。
+// 使用：数据库提交成功或失败恢复完成后调用。
+// 边界：删除失败仅保留缓存，不把已提交安装视为失败，不删除游戏文件。
+func CleanupManifestBackups(manifest sessionstate.Manifest) {
+	files := append(append([]sessionstate.File(nil), manifest.InstalledFiles...), manifest.RemovedVersionFiles...)
+	files = append(files, manifest.UntrackedFiles...)
+	for _, file := range files {
 		if file.BackupPath != "" {
 			_ = os.Remove(file.BackupPath)
 		}
 	}
-	return nil
 }

@@ -13,9 +13,11 @@ import (
 	v2Artifact "DysonSphereBox/helper/modDependence/installer/v2/artifact"
 	"DysonSphereBox/helper/modDependence/installer/v2/artifactinstall"
 	v2InstallError "DysonSphereBox/helper/modDependence/installer/v2/installerror"
+	"DysonSphereBox/helper/modDependence/installer/v2/installmanifest"
 	"DysonSphereBox/helper/modDependence/installer/v2/installstore"
 	progressEvent "DysonSphereBox/helper/modDependence/installer/v2/progress/event"
 	cleanupEntry "DysonSphereBox/helper/modDependence/installer/v2/sessioncleanup/entry"
+	"DysonSphereBox/helper/modDependence/installer/v2/versionreplace"
 )
 
 // installRemoteArtifact 安装并记录单个远端 artifact。
@@ -26,6 +28,16 @@ import (
 func installRemoteArtifact(ctx context.Context, bufferDir string, gameDir string, pack modDependenceResponse.RemoteModPackageDTO, artifact v2Artifact.Artifact, artifactStart int, artifactEnd int, options contract.InstallRemotePackageOptions) (contract.DependencyInstallResult, error) {
 	recordPercent := max(artifactStart, artifactEnd-3)
 	progressEvent.Package(pack.Key, "install", fmt.Sprintf("正在处理 %s", artifact.DisplayName), artifactStart)
+	if artifact.ReuseExisting {
+		if err := installmanifest.AppendReusedArtifact(artifact.InstallRecordPackageKey(), artifact.ComponentKey); err != nil {
+			return contract.DependencyInstallResult{}, v2InstallError.WrapArtifact("record", artifact, err)
+		}
+		if err := installstore.SaveArtifact(pack, artifact, nil); err != nil {
+			return contract.DependencyInstallResult{}, v2InstallError.WrapArtifact("record", artifact, err)
+		}
+		progressEvent.Package(pack.Key, "install", fmt.Sprintf("复用已安装依赖 %s", artifact.DisplayName), artifactEnd)
+		return contract.DependencyInstallResult{Key: artifact.ComponentKey, Name: artifact.DisplayName, Version: artifact.Version, Skipped: true, Message: "复用已安装组件"}, nil
+	}
 	fileRecords, zipPath, err := artifactinstall.InstallFiles(ctx, bufferDir, gameDir, artifact, artifactStart, recordPercent, options, installRemotePackageTestHooks.AfterPlannedFiles)
 	if err != nil {
 		if v2InstallError.IsConflict(err) {
@@ -38,6 +50,14 @@ func installRemoteArtifact(ctx context.Context, bufferDir string, gameDir string
 	}
 	if err := cleanupEntry.CheckCancelled(ctx, pack.Key); err != nil {
 		return contract.DependencyInstallResult{}, err
+	}
+	if len(fileRecords) == 0 {
+		if err := installmanifest.AppendArtifact(artifact.InstallRecordPackageKey(), artifact.ComponentKey, nil); err != nil {
+			return contract.DependencyInstallResult{}, v2InstallError.WrapArtifact("record", artifact, err)
+		}
+	}
+	if err := versionreplace.Prepare(ctx, bufferDir, gameDir, artifact, fileRecords); err != nil {
+		return contract.DependencyInstallResult{}, v2InstallError.WrapArtifact("replace", artifact, err)
 	}
 	progressEvent.Package(pack.Key, "record", fmt.Sprintf("正在记录 %s", artifact.DisplayName), recordPercent)
 	if err := installstore.SaveArtifact(pack, artifact, fileRecords); err != nil {

@@ -40,6 +40,7 @@ func installedFileRecordArtifact(record modDependenceModel.ModInstalledFile) art
 	}
 	return artifactlayout.ArtifactDescriptor{
 		ComponentKey: record.ComponentKey,
+		Namespace:    component.Namespace,
 		Name:         component.Name,
 		DisplayName:  component.DisplayName,
 		Version:      component.Version,

@@ -60,6 +60,9 @@ func downloadRemoteArtifact(ctx context.Context, bufferDir string, artifact v2Ar
 	client := core.NewHTTPStandardClient(180 * time.Second)
 	response, err := client.Do(request)
 	if err != nil {
+		if cancelled := cancel.Check(ctx); cancelled != nil {
+			return "", cancelled
+		}
 		return "", err
 	}
 	defer response.Body.Close()

@@ -8,6 +8,7 @@ import (
 	installConstant "DysonSphereBox/constant/modDependence/install"
 	"DysonSphereBox/core"
 	"DysonSphereBox/helper/modDependence/installer/progresscalc"
+	"DysonSphereBox/helper/modDependence/installer/v2/operationguard"
 	progressPayload "DysonSphereBox/helper/modDependence/installer/v2/progress/payload"
 	progressSnapshot "DysonSphereBox/helper/modDependence/installer/v2/progress/snapshot"
 	cleanupEntry "DysonSphereBox/helper/modDependence/installer/v2/sessioncleanup/entry"
@@ -21,6 +22,11 @@ import (
 // 边界：只处理 running 状态；conflict 会保留给用户继续选择覆盖、跳过或失败。
 // 逻辑流：1. 查询 running 安装记录 => 2. 调用会话清理移除未完成文件 => 3. 写入 failed 运行时快照 => 4. 返回恢复结果给启动流程。
 func RecoverInterruptedRemotePackageInstalls() error {
+	release, err := operationguard.Acquire()
+	if err != nil {
+		return err
+	}
+	defer release()
 	if core.GLOBAL.DB == nil {
 		return fmt.Errorf("database is not initialized")
 	}

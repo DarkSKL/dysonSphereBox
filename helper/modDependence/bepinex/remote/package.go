@@ -11,9 +11,11 @@ import (
 	"DysonSphereBox/helper/modDependence/bepinex/contract"
 	"DysonSphereBox/helper/modDependence/fileops"
 	"DysonSphereBox/helper/modDependence/marketplace/thunderstoremeta"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -25,7 +27,13 @@ import (
 // 边界：只选择 active 版本；远端缺失或没有可用版本时返回错误，不使用本地缓存兜底。
 // 逻辑流：1. 获取 Thunderstore 索引 => 2. 匹配 BepInEx 作者和包名 => 3. 选择最新 active 版本 => 4. 转换成安装器需要的包信息。
 func ResolveLatestBepInExPackage() (*contract.BepInExPackage, error) {
-	packages, err := fetchThunderstorePackages()
+	return ResolveLatestBepInExPackageWithContext(context.Background())
+}
+
+// ResolveLatestBepInExPackageWithContext 解析框架版本并响应取消。
+// 职责：使首次框架安装的索引请求可取消；使用：Mod 安装准备阶段；边界：仍只选择官方 active 版本。
+func ResolveLatestBepInExPackageWithContext(ctx context.Context) (*contract.BepInExPackage, error) {
+	packages, err := fetchThunderstorePackagesWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +66,21 @@ func ResolveLatestBepInExPackage() (*contract.BepInExPackage, error) {
 // 使用：ResolveLatestBepInExPackage 选择 BepInEx 版本前调用。
 // 边界：HTTP 非 2xx 或 JSON 解析失败时返回错误，不写入缓存。
 func fetchThunderstorePackages() ([]thunderstoreAPI.Package, error) {
+	return fetchThunderstorePackagesWithContext(context.Background())
+}
+
+// fetchThunderstorePackagesWithContext 请求带取消信号的官方索引。
+// 职责：停止已取消的前置下载准备；使用：可取消版本解析；边界：不写市场缓存。
+func fetchThunderstorePackagesWithContext(ctx context.Context) ([]thunderstoreAPI.Package, error) {
+	if ctx.Err() != nil {
+		return nil, fileops.ErrInstallCancelled
+	}
 	client := core.NewHTTPStandardClient(60 * time.Second)
-	response, err := client.Get(thunderstoreAPI.IndexURL)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, thunderstoreAPI.IndexURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +104,15 @@ func fetchThunderstorePackages() ([]thunderstoreAPI.Package, error) {
 // 边界：HTTP 非 2xx、写入失败或 zip 校验失败时返回错误并尽量删除损坏文件。
 // 逻辑流：1. 创建下载目录 => 2. 复用有效 zip 缓存 => 3. 清理损坏/残留 partial => 4. 下载到 partial => 5. 重命名并校验 zip。
 func DownloadPackage(bufferDir string, pkg *contract.BepInExPackage) (string, error) {
+	return DownloadPackageWithContext(context.Background(), bufferDir, pkg)
+}
+
+// DownloadPackageWithContext 下载框架 ZIP 并传递取消上下文。
+// 职责：中止网络请求和流式写入；使用：前置安装准备；边界：取消删除 partial，完整缓存仍可复用。
+func DownloadPackageWithContext(ctx context.Context, bufferDir string, pkg *contract.BepInExPackage) (string, error) {
+	if ctx.Err() != nil {
+		return "", fileops.ErrInstallCancelled
+	}
 	downloadDir := filepath.Join(bufferDir, "downloads")
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
 		return "", err
@@ -102,7 +132,11 @@ func DownloadPackage(bufferDir string, pkg *contract.BepInExPackage) (string, er
 	}
 
 	client := core.NewHTTPStandardClient(180 * time.Second)
-	response, err := client.Get(pkg.DownloadURL)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, pkg.DownloadURL, nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return "", err
 	}

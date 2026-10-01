@@ -3,7 +3,7 @@ package record
 // 文件职责：清理或恢复 V2 安装会话涉及的文件记录、组件关系和旧组件快照。
 // 使用：失败、中断或取消安装在物理文件清理后进入数据库事务时调用。
 // 边界：只处理数据库记录和待刷新日志项，不删除物理文件、不扫描 manifest、不写系统日志。
-// 逻辑流：1. 删除本次未完成安装文件记录 => 2. 删除组件关联记录 => 3. 恢复覆盖前文件归属 => 4. 恢复旧组件记录 => 5. 删除孤立组件。
+// 逻辑流：1. 删除本次未完成安装文件记录 => 2. 删除本次组件关联并恢复旧关联 => 3. 恢复覆盖前文件归属 => 4. 恢复旧组件记录 => 5. 删除孤立组件。
 
 import (
 	"DysonSphereBox/helper/modDependence/installer/v2/installpath"
@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"strings"
+	"time"
 )
 
 // CleanupRecords 清理未完成安装记录并恢复覆盖前快照。
@@ -50,8 +51,21 @@ func CleanupRecords(db *gorm.DB, packageKey string, manifest sessionstate.Manife
 			}
 			appendPendingLog("record", "", "remove", "清理未完成安装的组件关联记录", nil)
 		}
-		for _, file := range sessionFiles {
+		for _, componentKey := range manifest.PreviousPackageComponents {
+			relation := installedModel.ModInstalledPackageComponent{PackageKey: packageKey, ComponentKey: componentKey}
+			if err := tx.Where("package_key = ? AND component_key = ?", packageKey, componentKey).
+				FirstOrCreate(&relation).Error; err != nil {
+				return err
+			}
+		}
+		for index := len(sessionFiles) - 1; index >= 0; index-- {
+			file := sessionFiles[index]
 			for _, previousRecord := range file.PreviousRecords {
+				startedAt, _ := time.Parse(time.RFC3339Nano, manifest.StartedAt)
+				// 同一会话前一轮复制的记录不是旧归属，恢复它会留下已删除新文件的孤立清单。
+				if previousRecord.PackageKey == packageKey && (manifest.PreviousPackage == nil || (!startedAt.IsZero() && !previousRecord.CreatedAt.Before(startedAt))) {
+					continue
+				}
 				record := sessionmodel.SnapshotToFileRecord(previousRecord)
 				if err := tx.Where("package_key = ? AND lower(target_path) IN ?", record.PackageKey, installpath.ValuesForQuery(record.TargetPath)).
 					Assign(record).

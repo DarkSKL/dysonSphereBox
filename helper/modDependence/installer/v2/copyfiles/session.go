@@ -11,7 +11,6 @@ import (
 	"DysonSphereBox/helper/modDependence/installer/v2/copyconflict"
 	"DysonSphereBox/helper/modDependence/installer/v2/copyrollback"
 	"DysonSphereBox/helper/modDependence/installer/v2/installplan"
-	cleanupFile "DysonSphereBox/helper/modDependence/installer/v2/sessioncleanup/file"
 	"DysonSphereBox/helper/modDependence/installer/v2/sessionsnapshot"
 	"context"
 
@@ -74,13 +73,12 @@ func newCopySession(ctx context.Context, files []installplan.File, artifact v2Ar
 	}, nil
 }
 
-// rollback 回滚当前复制会话已写入的文件和 manifest 记录。
-// 职责：恢复被覆盖文件、删除新复制文件，并从 manifest 移除已追加条目。
+// rollback 回滚当前复制会话已写入的文件。
+// 职责：恢复被覆盖文件、删除新复制文件，并保留持久化证据供外层恢复。
 // 使用：CopyPlannedFiles 在任意复制步骤失败或取消后调用。
-// 边界：忽略 manifest 移除错误，避免覆盖原始失败原因；只处理当前会话已记录项目。
+// 边界：保留备份直到完整会话清理成功；局部恢复失败由外层依照 manifest 重试。
 func (session *copySession) rollback() {
 	copyrollback.RollbackCopiedFiles(session.rollbackPlan)
-	_ = cleanupFile.RemoveFromManifest(session.packageKey, session.installableFiles)
 }
 
 // releaseOverwrittenRecords 释放被覆盖文件的旧归属记录。
@@ -88,10 +86,12 @@ func (session *copySession) rollback() {
 // 使用：CopyPlannedFiles 循环完成后调用。
 // 边界：必须在复制成功后执行；失败时由调用方触发回滚。
 func (session *copySession) releaseOverwrittenRecords() error {
-	for _, file := range session.overwrittenFiles {
-		if err := copyconflict.ReleaseRecords(session.db, file); err != nil {
-			return err
+	return session.db.Transaction(func(tx *gorm.DB) error {
+		for _, file := range session.overwrittenFiles {
+			if err := copyconflict.ReleaseRecords(tx, file); err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }

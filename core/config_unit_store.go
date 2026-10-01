@@ -39,7 +39,7 @@ func (model *ConfigUnit) Get() (string, error) {
 // Set 直接向 SQLite 写入值。
 // 职责：按 ConfigUnit 的分组和键名创建或更新配置值。
 // 使用：配置服务保存用户设置时调用。
-// 边界：数据库未初始化或写入失败时返回错误，不做业务合法性校验。
+// 边界：数据库未初始化或写入失败时返回错误，不做业务合法性校验；空字符串会真实写入，用于清除配置。
 func (model *ConfigUnit) Set(val string) error {
 	if err := model.validate(); err != nil {
 		return err
@@ -50,9 +50,10 @@ func (model *ConfigUnit) Set(val string) error {
 		Key:   model.Key,
 	}
 
+	// Assign 必须使用 map：GORM 对结构体会忽略零值字段，Set("") 将无法清空已有值。
 	err := GLOBAL.DB.
 		Where(&systemModel.Config{Group: model.Group, Key: model.Key}).
-		Assign(systemModel.Config{Value: val}).
+		Assign(map[string]interface{}{"value": val}).
 		FirstOrCreate(&config).
 		Error
 	if err != nil {

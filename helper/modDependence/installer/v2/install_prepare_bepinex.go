@@ -20,7 +20,7 @@ import (
 // 使用：prepareRemotePackageInstall 在缓存目录和 artifact 队列准备前调用。
 // 边界：BepInEx 缺失时返回错误阻断安装；不负责展示审计日志。
 func prepareBepInExForRemoteInstall(ctx context.Context, pack modDependenceResponse.RemoteModPackageDTO) (*bepinexContract.BepInExInstallResult, error) {
-	bepInExResult, err := bepinexInstall.InstallBepInEx()
+	bepInExResult, err := bepinexInstall.InstallBepInExWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
