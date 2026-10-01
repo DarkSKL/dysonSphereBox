@@ -84,9 +84,8 @@ export function useEnvironmentState() {
 
   const enabledModCount = computed(() => mods.value.filter((item) => item.state === 'enabled').length)
   const disabledModCount = computed(() => mods.value.filter((item) => item.state === 'disabled').length)
-  const enabledBlueprintCount = computed(
-    () => blueprintPage.value?.items.filter((item) => item.type === 'blueprint' && item.state === 'enabled').length ?? 0,
-  )
+  // 说明：取后端整库统计，与 totalBlueprints 同口径；不能按当前目录 items 计数，否则分子只含当前文件夹
+  const enabledBlueprintCount = computed(() => blueprintPage.value?.enabledBlueprints ?? 0)
   const saveCount = computed(() => saves.value.length)
   const hasInitialSyncCandidates = computed(() => {
     const preview = initialSyncPreview.value ?? overview.value?.initialSync

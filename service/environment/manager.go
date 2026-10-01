@@ -21,6 +21,7 @@ import (
 
 	environmentHelper "DysonSphereBox/helper/environment"
 	"DysonSphereBox/helper/modDependence/fileops"
+	"DysonSphereBox/helper/modDependence/installer/v2/operationguard"
 
 	"gorm.io/gorm"
 )
@@ -122,6 +123,10 @@ func (service *EnvironmentManagerService) ListMods(query string) ([]EnvironmentM
 	if err != nil {
 		return nil, err
 	}
+	managedDirs, err := service.installerManagedModDirs()
+	if err != nil {
+		return nil, err
+	}
 
 	query = strings.ToLower(strings.TrimSpace(query))
 	items := make([]EnvironmentModItem, 0, len(resources))
@@ -132,7 +137,9 @@ func (service *EnvironmentManagerService) ListMods(query string) ([]EnvironmentM
 		if state := states[resource.ID]; state != "" {
 			resource.State = state
 		}
-		items = append(items, modResourceToListItem(resource))
+		item := modResourceToListItem(resource)
+		item.InstallerManaged = environmentHelper.IsInstallerManagedDir(managedDirs, environmentHelper.ModLibraryDirName(resource.LibraryPath))
+		items = append(items, item)
 	}
 	return items, nil
 }
@@ -182,14 +189,18 @@ func (service *EnvironmentManagerService) ListBlueprints(parentId string, query 
 	childrenByParent := make(map[string]int)
 	byID := make(map[string]environmentHelper.BlueprintResource)
 	totalBlueprints := 0
+	enabledBlueprints := 0
 	totalFolders := 0
 	for _, resource := range resources {
 		byID[resource.ID] = resource
 		childrenByParent[resource.ParentID]++
 		if resource.Type == "folder" {
 			totalFolders++
-		} else {
-			totalBlueprints++
+			continue
+		}
+		totalBlueprints++
+		if states[resource.ID] == environmentHelper.EnvironmentStateEnabled {
+			enabledBlueprints++
 		}
 	}
 
@@ -222,8 +233,9 @@ func (service *EnvironmentManagerService) ListBlueprints(parentId string, query 
 		ParentID:        parentId,
 		Breadcrumbs:     buildBreadcrumbs(parentId, byID),
 		Items:           items,
-		TotalBlueprints: totalBlueprints,
-		TotalFolders:    totalFolders,
+		TotalBlueprints:   totalBlueprints,
+		EnabledBlueprints: enabledBlueprints,
+		TotalFolders:      totalFolders,
 	}, nil
 }
 
@@ -355,6 +367,15 @@ func (service *EnvironmentManagerService) RunInitialSync(request EnvironmentInit
 	resolver := environmentHelper.Resolver{}
 
 	if kind == "all" || kind == "mod" {
+		release, guardErr := operationguard.Acquire()
+		if guardErr != nil {
+			_ = service.finishEnvironmentOperation(operationID, envOperationStatusFailed, guardErr.Error(), operationDetailPayload{
+				Plan:    map[string]interface{}{"kind": kind},
+				Failure: map[string]interface{}{"message": guardErr.Error()},
+			})
+			return EnvironmentInitialSyncResult{}, guardErr
+		}
+		defer release()
 		synced, failures := service.syncExistingMods(resolver)
 		result.SyncedMods = synced
 		result.Failures = append(result.Failures, failures...)
@@ -411,7 +432,9 @@ func (service *EnvironmentManagerService) EnableMod(itemId string) (EnvironmentO
 	return service.runRecordedEnvironmentOperation("enable", "mod", itemId, map[string]interface{}{
 		"itemId": itemId,
 	}, func() (EnvironmentOperationResult, error) {
-		return service.enableModWithoutOperation(itemId)
+		return service.withModTargetGuard(func() (EnvironmentOperationResult, error) {
+			return service.enableModWithoutOperation(itemId)
+		})
 	})
 }
 
@@ -446,6 +469,9 @@ func (service *EnvironmentManagerService) enableModWithoutOperation(itemId strin
 	if !selected.Supported {
 		return EnvironmentOperationResult{}, fmt.Errorf("%s", selected.Warning)
 	}
+	if err := service.rejectInstallerManagedMod(selected.LibraryPath); err != nil {
+		return EnvironmentOperationResult{}, err
+	}
 
 	sourcePath := filepath.Join(filepath.Dir(libraryRoot), filepath.FromSlash(selected.LibraryPath))
 	targetPath := filepath.Join(modRoot.Path, filepath.Base(sourcePath))
@@ -477,7 +503,9 @@ func (service *EnvironmentManagerService) DisableMod(itemId string) (Environment
 	return service.runRecordedEnvironmentOperation("disable", "mod", itemId, map[string]interface{}{
 		"itemId": itemId,
 	}, func() (EnvironmentOperationResult, error) {
-		return service.disableModWithoutOperation(itemId)
+		return service.withModTargetGuard(func() (EnvironmentOperationResult, error) {
+			return service.disableModWithoutOperation(itemId)
+		})
 	})
 }
 
@@ -511,7 +539,19 @@ func (service *EnvironmentManagerService) RestoreGameFromClientMirror(itemId str
 		"itemId": itemId,
 		"kind":   normalizedKind,
 	}, func() (EnvironmentOperationResult, error) {
-		return service.restoreGameFromClientMirrorWithoutOperation(itemId, normalizedKind)
+		if normalizedKind != "mod" {
+			return service.restoreGameFromClientMirrorWithoutOperation(itemId, normalizedKind)
+		}
+		return service.withModTargetGuard(func() (EnvironmentOperationResult, error) {
+			libraryPath, err := service.modLibraryPathByID(itemId)
+			if err != nil {
+				return EnvironmentOperationResult{}, err
+			}
+			if err := service.rejectInstallerManagedMod(libraryPath); err != nil {
+				return EnvironmentOperationResult{}, err
+			}
+			return service.restoreGameFromClientMirrorWithoutOperation(itemId, normalizedKind)
+		})
 	})
 }
 
@@ -537,6 +577,13 @@ func (service *EnvironmentManagerService) UnlinkEnvironmentSyncRecord(itemId str
 // 使用：DisableMod 的 operation wrapper 调用。
 // 边界：不创建 operation 记录，不发 Wails 事件。
 func (service *EnvironmentManagerService) disableModWithoutOperation(itemId string) (EnvironmentOperationResult, error) {
+	libraryPath, err := service.modLibraryPathByID(itemId)
+	if err != nil {
+		return EnvironmentOperationResult{}, err
+	}
+	if err := service.rejectInstallerManagedMod(libraryPath); err != nil {
+		return EnvironmentOperationResult{}, err
+	}
 	if err := service.disableSyncedItem(itemId, "mod"); err != nil {
 		return EnvironmentOperationResult{}, err
 	}
@@ -619,7 +666,9 @@ func (service *EnvironmentManagerService) DeleteMod(itemId string) (EnvironmentO
 	return service.runRecordedEnvironmentOperation("delete", "mod", itemId, map[string]interface{}{
 		"itemId": itemId,
 	}, func() (EnvironmentOperationResult, error) {
-		return service.deleteModWithoutOperation(itemId)
+		return service.withModTargetGuard(func() (EnvironmentOperationResult, error) {
+			return service.deleteModWithoutOperation(itemId)
+		})
 	})
 }
 
@@ -651,7 +700,16 @@ func (service *EnvironmentManagerService) deleteModWithoutOperation(itemId strin
 	if err != nil {
 		return EnvironmentOperationResult{}, err
 	}
-	if states[itemId] == environmentHelper.EnvironmentStateEnabled {
+	managedDirs, err := service.installerManagedModDirs()
+	if err != nil {
+		return EnvironmentOperationResult{}, err
+	}
+	if environmentHelper.IsInstallerManagedDir(managedDirs, environmentHelper.ModLibraryDirName(selected.LibraryPath)) {
+		// 游戏侧目录已由模组市场安装器接管：只清理环境同步证据，游戏侧文件交给安装器卸载。
+		if err := service.deleteEnvSyncedFiles(itemId, "mod"); err != nil {
+			return EnvironmentOperationResult{}, err
+		}
+	} else if states[itemId] == environmentHelper.EnvironmentStateEnabled {
 		if err := service.disableSyncedItem(itemId, "mod"); err != nil {
 			return EnvironmentOperationResult{}, err
 		}
@@ -1859,10 +1917,18 @@ func (service *EnvironmentManagerService) syncExistingMods(resolver environmentH
 	if err != nil {
 		return 0, []string{fmt.Sprintf("扫描 Mod 目录失败: %v", err)}
 	}
+	managedDirs, err := service.installerManagedModDirs()
+	if err != nil {
+		return 0, []string{fmt.Sprintf("读取模组安装记录失败: %v", err)}
+	}
 	synced := 0
 	failures := []string{}
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		// 模组市场安装器托管的目录由安装记录负责，环境管理不重复纳管，避免两套记录争夺同一批文件。
+		if environmentHelper.IsInstallerManagedDir(managedDirs, entry.Name()) {
 			continue
 		}
 		sourcePath := filepath.Join(modRoot.Path, entry.Name())
@@ -2467,7 +2533,9 @@ func (service *EnvironmentManagerService) findSaveResource(saveRoot string, save
 func (service *EnvironmentManagerService) buildInitialSyncPreview(kind string, modRoot environmentHelper.RootResolution, blueprintRoot environmentHelper.RootResolution, saveRoot environmentHelper.RootResolution) EnvironmentInitialSyncPreview {
 	preview := EnvironmentInitialSyncPreview{Kind: kind}
 	if kind == "all" || kind == "mod" {
-		preview.Mods = environmentHelper.CountFirstLevelDirs(modRoot.Path)
+		// 读取安装记录失败时按空集合统计，预览只用于提示，真实纳管会再次读取并报告失败。
+		managedDirs, _ := service.installerManagedModDirs()
+		preview.Mods = environmentHelper.CountUnmanagedFirstLevelDirs(modRoot.Path, managedDirs)
 	}
 	if kind == "all" || kind == "blueprint" {
 		preview.Blueprints = environmentHelper.CountBlueprintFiles(blueprintRoot.Path)

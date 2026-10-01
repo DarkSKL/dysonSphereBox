@@ -79,6 +79,25 @@
   --ds-focus-ring: rgb(0 0 0 / 0.32);
   // 浮层遮罩：卡片安装进度、失败提示等覆盖在图片上的半透明层
   --ds-overlay-bg: rgb(235 235 235 / 0.88);
+
+  // 资源启用状态：日间为清透青绿，在灰白底上作为唯一的鲜活色点；卡片底色为纯色，不做渐变
+  // 边界：只用于资源页模组 / 蓝图 / 市场模组卡片的启用与关闭区分，其它状态仍使用通用状态色
+  --ds-res-on: #0e9f8e;
+  --ds-res-on-soft: rgb(14 159 142 / 0.07);
+  --ds-res-on-hover-border: rgb(14 159 142 / 0.3);
+  --ds-res-on-surface: #f3f3f3;
+  // 环绕渐变描边：a 为高亮头、b 为过渡、c 为低亮段，沿边框旋转流动；日间为浅青绿到淡湖蓝，节奏放慢更安静
+  // 边界：三段都必须是不透明色，任一段透明都会让环在该处断开
+  --ds-res-on-ring-a: #5ccfc0;
+  --ds-res-on-ring-b: #a8e8ec;
+  --ds-res-on-ring-c: #d9f2ee;
+  --ds-res-on-ring-duration: 6s;
+  --ds-res-on-glow: 0 1px 6px rgb(14 159 142 / 0.06);
+  --ds-res-on-dot-glow: 0 0 0 2px rgb(14 159 142 / 0.1);
+  // 关闭态：无彩色灰
+  --ds-res-off: rgb(24 24 26 / 0.42);
+  --ds-res-off-soft: rgb(0 0 0 / 0.045);
+  --ds-res-off-border: rgb(0 0 0 / 0.13);
 }
 
 :root[data-theme='dark'] {
@@ -144,6 +163,21 @@
   --ds-pressed-bg: rgb(76 194 255 / 0.2);
   --ds-focus-ring: rgb(76 194 255 / 0.5);
   --ds-overlay-bg: rgb(3 6 13 / 0.84);
+
+  // 资源启用状态：夜间以炫蓝为主、青绿点缀的能量环，暗尾融入深空底色；卡片底色为纯色，只加轻微外发光
+  --ds-res-on: #3ee0b0;
+  --ds-res-on-soft: rgb(62 224 176 / 0.13);
+  --ds-res-on-hover-border: rgb(76 194 255 / 0.45);
+  --ds-res-on-surface: #0a0f1a;
+  --ds-res-on-ring-a: #4cc2ff;
+  --ds-res-on-ring-b: #3ee0b0;
+  --ds-res-on-ring-c: #23557a;
+  --ds-res-on-ring-duration: 4s;
+  --ds-res-on-glow: 0 0 14px rgb(76 194 255 / 0.12);
+  --ds-res-on-dot-glow: 0 0 6px rgb(62 224 176 / 0.8);
+  --ds-res-off: rgb(170 172 200 / 0.46);
+  --ds-res-off-soft: rgb(170 172 200 / 0.06);
+  --ds-res-off-border: rgb(140 170 230 / 0.13);
 }
 
 // =============== 页面布局 Token ===============

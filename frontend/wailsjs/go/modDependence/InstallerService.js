@@ -22,6 +22,10 @@ export function ListInstalledPackageKeys() {
   return window['go']['modDependence']['InstallerService']['ListInstalledPackageKeys']();
 }
 
+export function ListInstalledPackages() {
+  return window['go']['modDependence']['InstallerService']['ListInstalledPackages']();
+}
+
 export function UninstallRemotePackage(arg1) {
   return window['go']['modDependence']['InstallerService']['UninstallRemotePackage'](arg1);
 }

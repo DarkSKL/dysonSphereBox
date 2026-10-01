@@ -89,6 +89,14 @@ func (service *InstallerService) ListInstalledPackageKeys() ([]string, error) {
 	return v2Query.ListInstalledPackageKeys()
 }
 
+// ListInstalledPackages 返回本地已安装 Mod 包摘要。
+// 职责：提供资源页展示模组市场安装结果所需的包、组件和插件目录信息。
+// 使用：资源页模组标签加载和刷新时调用。
+// 边界：只读取本地安装记录，不访问远端市场，不包含失败或冲突中的包。
+func (service *InstallerService) ListInstalledPackages() ([]contract.InstalledPackageSummary, error) {
+	return v2Query.ListInstalledPackageSummaries()
+}
+
 // ListInstallProgressSnapshots 返回当前进程内和本地表中的 Mod 安装进度快照。
 // 职责：恢复安装中、失败和待处理冲突的卡片状态。
 // 使用：前端页面刷新后恢复正在安装或失败的卡片状态。

@@ -313,6 +313,8 @@ type EnvironmentModItem struct {
 	Supported bool `json:"supported"`
 	// Warning 职责：保存扫描警告；使用：前端提示；边界：为空表示无提示。
 	Warning string `json:"warning"`
+	// InstallerManaged 职责：标记资源库目录与模组市场安装器托管的插件目录重名；使用：前端禁用启用/禁用并引导到模组页处理；边界：只按目录名判断，不比较文件内容。
+	InstallerManaged bool `json:"installerManaged"`
 }
 
 // EnvironmentModDetail 描述 Mod 详情弹窗数据。
@@ -368,6 +370,8 @@ type EnvironmentBlueprintPage struct {
 	Items []EnvironmentBlueprintItem `json:"items"`
 	// TotalBlueprints 职责：保存整个资源库蓝图文件数量；使用：工具栏计数；边界：不含文件夹。
 	TotalBlueprints int `json:"totalBlueprints"`
+	// EnabledBlueprints 职责：保存整个资源库已启用蓝图数量；使用：工具栏计数；边界：与 TotalBlueprints 同口径，不含文件夹且不受当前目录与搜索影响。
+	EnabledBlueprints int `json:"enabledBlueprints"`
 	// TotalFolders 职责：保存整个资源库文件夹数量；使用：工具栏计数；边界：只统计镜像目录树。
 	TotalFolders int `json:"totalFolders"`
 }

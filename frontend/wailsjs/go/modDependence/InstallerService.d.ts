@@ -13,4 +13,6 @@ export function ListInstallProgressSnapshots():Promise<Array<contract.InstallPro
 
 export function ListInstalledPackageKeys():Promise<Array<string>>;
 
+export function ListInstalledPackages():Promise<Array<contract.InstalledPackageSummary>>;
+
 export function UninstallRemotePackage(arg1:string):Promise<contract.PackageInstallResult>;
