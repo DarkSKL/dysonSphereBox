@@ -106,7 +106,7 @@ const handleUninstall = (): void => {
         <div class="mb-5 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
           <div class="pack-dialog-stat px-3 py-2">
             <p class="pack-dialog-muted">版本</p>
-            <p class="mt-1 truncate font-medium pack-dialog-strong">{{ pack.version || '未知' }}</p>
+            <p class="mt-1 truncate font-medium pack-dialog-strong type-mono">{{ pack.version || '未知' }}</p>
           </div>
           <div class="pack-dialog-stat px-3 py-2">
             <p class="pack-dialog-muted">作者</p>
@@ -114,11 +114,11 @@ const handleUninstall = (): void => {
           </div>
           <div class="pack-dialog-stat px-3 py-2">
             <p class="pack-dialog-muted">下载</p>
-            <p class="mt-1 truncate font-medium pack-dialog-strong">{{ pack.downloadCount || 0 }}</p>
+            <p class="mt-1 truncate font-medium pack-dialog-strong type-display">{{ pack.downloadCount || 0 }}</p>
           </div>
           <div class="pack-dialog-stat px-3 py-2">
             <p class="pack-dialog-muted">大小</p>
-            <p class="mt-1 truncate font-medium pack-dialog-strong">{{ packageSizeText }}</p>
+            <p class="mt-1 truncate font-medium pack-dialog-strong type-display">{{ packageSizeText }}</p>
           </div>
         </div>
 
@@ -131,7 +131,7 @@ const handleUninstall = (): void => {
           >
             <div class="min-w-0">
               <p class="truncate text-sm font-semibold pack-dialog-strong">{{ mod.displayName || mod.name || '未知模组' }}</p>
-              <p class="pack-dialog-muted mt-0.5 text-xs">{{ mod.version || '未知版本' }}</p>
+              <p class="pack-dialog-muted mt-0.5 text-xs type-mono">{{ mod.version || '未知版本' }}</p>
             </div>
             <p class="pack-dialog-desc text-sm leading-6">{{ mod.description || '暂无说明。' }}</p>
           </div>

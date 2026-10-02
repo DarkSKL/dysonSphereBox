@@ -131,6 +131,7 @@ const handleDetect = async (): Promise<void> => {
   <SettingsSection id="game-settings-path" title="游戏路径" :hint-tone="hint.tone">
     <n-input
       v-model:value="draftPath"
+      class="type-mono"
       placeholder="例如 D:\SteamLibrary\steamapps\common\Dyson Sphere Program"
       :status="state === 'invalid' && !hasPendingChange ? 'warning' : undefined"
       :input-props="{spellcheck: false, autocomplete: 'off', 'aria-labelledby': 'game-settings-path-title', 'aria-describedby': 'game-settings-path-hint'}"

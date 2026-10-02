@@ -20,6 +20,8 @@ Before editing, inspect the relevant local files instead of assuming current sta
 
 Read `references/project-standards.md` when implementing or reviewing non-trivial changes.
 
+Before creating, changing, or reviewing frontend typography, UI layout, controls, theme colors, or visual states, read [界面视觉规范](references/ui-visual-standards.md). It defines the project's font roles, day/night palette, token ownership, and UI verification requirements. Use current source to verify token values and asset paths.
+
 ## Installed Stack
 
 Use the libraries already installed in this project:

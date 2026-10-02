@@ -19,11 +19,12 @@ withDefaults(defineProps<ResourceCardProps>(), {
 
 <template>
   <!-- ~ 资源卡片 -->
-  <!-- * 说明：正方形卡片，左上角图标，底部为名称、元信息与状态点 -->
+  <!-- * 说明：正方形卡片，左上角图标；存档使用蓝色流动描边和分行文件信息 -->
   <!-- * 交互：点击、右键与拖拽事件透传到根按钮，由页面决定具体动作 -->
   <!-- * 依赖：图标通过默认插槽传入；tone 决定边框与状态点颜色 -->
   <!-- * 边界：只负责展示，不调用任何后端接口 -->
   <button type="button" class="resource-card" :class="`is-${tone}`" :aria-busy="operating">
+    <span v-if="tone === 'save'" class="resource-card-format" aria-hidden="true">DSV</span>
     <span class="resource-card-icon">
       <n-spin :show="operating" size="small">
         <slot />
@@ -56,6 +57,9 @@ withDefaults(defineProps<ResourceCardProps>(), {
 
 .resource-card {
   --card-accent: var(--ds-text-muted);
+  --card-ring-a: var(--ds-res-on-ring-a);
+  --card-ring-b: var(--ds-res-on-ring-b);
+  --card-ring-c: var(--ds-res-on-ring-c);
   position: relative;
   display: flex;
   min-width: 0;
@@ -73,7 +77,7 @@ withDefaults(defineProps<ResourceCardProps>(), {
     box-shadow 160ms ease,
     transform 120ms ease;
 
-  // 环绕渐变描边：仅启用态显示；覆盖在 1px 边框上，用遮罩挖空内容区只留边框环，
+  // 环绕渐变描边：启用态和存档显示；覆盖在 1px 边框上，用遮罩挖空内容区只留边框环，
   // 锥形渐变的起始角持续旋转，使颜色沿边框流动
   // 边界：环宽取整数像素，小数宽度在圆角与缩放下会出现抗锯齿断点；渐变首尾同色保证旋转一周无接缝
   &::before {
@@ -83,11 +87,11 @@ withDefaults(defineProps<ResourceCardProps>(), {
     border-radius: inherit;
     background: conic-gradient(
       from var(--resource-ring-angle),
-      var(--ds-res-on-ring-a),
-      var(--ds-res-on-ring-b) 25%,
-      var(--ds-res-on-ring-c) 50%,
-      var(--ds-res-on-ring-b) 75%,
-      var(--ds-res-on-ring-a)
+      var(--card-ring-a),
+      var(--card-ring-b) 25%,
+      var(--card-ring-c) 50%,
+      var(--card-ring-b) 75%,
+      var(--card-ring-a)
     );
     content: '';
     opacity: 0;
@@ -201,17 +205,115 @@ withDefaults(defineProps<ResourceCardProps>(), {
     border-color: var(--ds-error-border);
   }
 
+  // 文件夹使用金色流动描边，标识可进入的目录；色值来自 --ds-folder-* token
   &.is-folder {
-    --card-accent: var(--ds-warning);
+    --card-accent: var(--ds-folder-accent);
+    --card-ring-a: var(--ds-folder-ring-a);
+    --card-ring-b: var(--ds-folder-ring-b);
+    --card-ring-c: var(--ds-folder-ring-c);
+    border-color: transparent;
+    box-shadow: var(--ds-folder-glow);
+
+    &::before {
+      opacity: 1;
+      animation: resource-ring-spin var(--ds-res-on-ring-duration) linear infinite;
+    }
+
+    &:hover {
+      border-color: transparent;
+
+      &::before {
+        animation-duration: calc(var(--ds-res-on-ring-duration) / 2);
+      }
+    }
+
+    // 拖拽悬停为放入目标时隐藏金环，让信息色描边清楚提示可放入
+    &.is-drop-target {
+      border-color: var(--ds-info);
+
+      &::before {
+        opacity: 0;
+      }
+    }
   }
 
-  &.is-save,
+  // 存档不表示启用状态，蓝色能量环只标识 .dsv 资源；日期分行避免与文件大小相互挤压。
+  &.is-save {
+    --card-accent: var(--ds-save-accent);
+    --card-ring-a: var(--ds-save-ring-a);
+    --card-ring-b: var(--ds-save-ring-b);
+    --card-ring-c: var(--ds-save-ring-c);
+    border-color: transparent;
+
+    &::before {
+      opacity: 1;
+      animation: resource-ring-spin var(--ds-res-on-ring-duration) linear infinite;
+    }
+
+    &::after {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      width: 8px;
+      height: 8px;
+      border-right: 1px solid var(--card-accent);
+      border-bottom: 1px solid var(--card-accent);
+      content: '';
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    &:hover {
+      border-color: transparent;
+    }
+
+    .resource-card-name {
+      font-family: var(--ds-font-mono);
+    }
+
+    .resource-card-meta {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .resource-card-status {
+      padding: 0;
+      border-radius: 0;
+      font-family: var(--ds-font-display);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .resource-card-dot {
+      display: none;
+    }
+  }
+
   &.is-market {
     --card-accent: var(--ds-info);
   }
 
   &.is-market {
     border-color: color-mix(in srgb, var(--ds-info) 38%, var(--ds-border-default));
+  }
+}
+
+.resource-card-format {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  color: var(--card-accent);
+  font-family: var(--ds-font-display);
+  font-size: 10px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+// 减少动态效果时保持存档蓝色、文件夹金色静态描边，避免边框持续旋转；鼠标悬停反馈不改变流动节奏。
+@media (prefers-reduced-motion: reduce) {
+  .resource-card.is-save::before,
+  .resource-card.is-folder::before {
+    animation: none;
   }
 }
 
@@ -243,6 +345,8 @@ withDefaults(defineProps<ResourceCardProps>(), {
 }
 
 .resource-card-meta-text {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

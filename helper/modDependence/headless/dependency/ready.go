@@ -9,8 +9,11 @@ import "DysonSphereBox/helper/modDependence/headless/contract"
 // Ready 判断所有开服依赖是否安装完整。
 // 职责：把依赖列表归约为 NebulaReady 布尔值。
 // 使用：headless.BuildUnconfiguredHeadlessEnvironmentStatus 和 headless.InspectHeadlessEnvironment 调用。
-// 边界：空列表会返回 true；当前调用方始终传入内置规格生成的列表。
+// 边界：空列表返回 false；必须有真实检测结果才允许判定就绪。
 func Ready(dependencies []contract.HeadlessDependencyStatus) bool {
+	if len(dependencies) == 0 {
+		return false
+	}
 	for _, item := range dependencies {
 		if !item.Installed {
 			return false

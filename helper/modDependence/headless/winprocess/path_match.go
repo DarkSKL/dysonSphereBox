@@ -14,20 +14,26 @@ import (
 // 使用：FindDysonSphereHeadlessProcess 遍历进程列表时调用。
 // 边界：命令行或可执行路径缺失时尽量保守匹配，避免误判普通游戏进程。
 func isHeadlessProcessForGameDir(process windowsProcess, gameDir string, processName string, serverArgument string) bool {
-	commandLine := strings.ToLower(process.CommandLine)
-	if !strings.Contains(commandLine, strings.ToLower(serverArgument)) {
+	commandLine := strings.TrimSpace(strings.ToLower(process.CommandLine))
+	argumentFound := false
+	for _, token := range strings.Fields(commandLine) {
+		if token == strings.ToLower(serverArgument) {
+			argumentFound = true
+			break
+		}
+	}
+	if !argumentFound {
 		return false
 	}
 
 	gameDir = filepath.Clean(gameDir)
 	expectedExe := filepath.Clean(filepath.Join(gameDir, processName))
-	if sameWindowsPath(process.ExecutablePath, expectedExe) {
-		return true
+	if strings.TrimSpace(process.ExecutablePath) != "" {
+		return sameWindowsPath(process.ExecutablePath, expectedExe)
 	}
-
-	normalizedCommandLine := normalizeWindowsPathForCompare(commandLine)
-	return strings.Contains(normalizedCommandLine, normalizeWindowsPathForCompare(expectedExe)) ||
-		strings.Contains(normalizedCommandLine, normalizeWindowsPathForCompare(gameDir))
+	expected := normalizeWindowsPathForCompare(expectedExe)
+	commandLine = strings.ReplaceAll(commandLine, "/", `\`)
+	return strings.HasPrefix(commandLine, `"`+expected+`" `) || strings.HasPrefix(commandLine, expected+" ")
 }
 
 // sameWindowsPath 比较两个 Windows 路径是否等价。

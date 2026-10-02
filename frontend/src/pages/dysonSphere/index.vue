@@ -64,6 +64,7 @@ const {progress: buildProgress, progressText: buildProgressText} = useBuildCycle
   margin: 0 0 12px;
   color: var(--ds-text-muted);
   font-size: 11px;
+  font-family: var(--ds-font-display);
   font-weight: 600;
   letter-spacing: 0.24em;
 }
@@ -85,6 +86,7 @@ const {progress: buildProgress, progressText: buildProgressText} = useBuildCycle
 
 .home-progress-value {
   color: var(--ds-text-primary);
+  font-family: var(--ds-font-display);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }

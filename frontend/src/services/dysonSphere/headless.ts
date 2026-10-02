@@ -1,6 +1,9 @@
 import {
   GetEnvironmentStatus as getEnvironmentStatusBinding,
   PrepareEnvironment as prepareEnvironmentBinding,
+  ReadServerLog as readServerLogBinding,
+  ExportServerLog as exportServerLogBinding,
+  ListServerArchives as listServerArchivesBinding,
   SaveSettings as saveSettingsBinding,
   StartEnvironment as startEnvironmentBinding,
   StopEnvironment as stopEnvironmentBinding,
@@ -21,6 +24,9 @@ interface HeadlessBridgeWindow extends Window {
 type HeadlessBridgeMethod =
   | 'GetEnvironmentStatus'
   | 'PrepareEnvironment'
+  | 'ReadServerLog'
+  | 'ExportServerLog'
+  | 'ListServerArchives'
   | 'SaveSettings'
   | 'StartEnvironment'
   | 'StopEnvironment'
@@ -40,6 +46,21 @@ export const getHeadlessEnvironmentStatus = async (): Promise<contract.HeadlessE
 export const prepareHeadlessEnvironment = async (): Promise<contract.HeadlessPrepareResult> => {
   assertHeadlessBridgeReady('PrepareEnvironment')
   return prepareEnvironmentBinding()
+}
+
+export const readHeadlessServerLog = async (source: string): Promise<contract.HeadlessLogSnapshot> => {
+  assertHeadlessBridgeReady('ReadServerLog')
+  return readServerLogBinding(source)
+}
+
+export const exportHeadlessServerLog = async (source: string): Promise<string> => {
+  assertHeadlessBridgeReady('ExportServerLog')
+  return exportServerLogBinding(source)
+}
+
+export const listHeadlessServerArchives = async (): Promise<contract.HeadlessArchiveOption[]> => {
+  assertHeadlessBridgeReady('ListServerArchives')
+  return listServerArchivesBinding()
 }
 
 export const saveHeadlessSettings = async (hostPort: number, serverArchive: string): Promise<contract.HeadlessSettings> => {

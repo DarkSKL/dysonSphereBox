@@ -8,6 +8,7 @@ import (
 	"DysonSphereBox/helper/modDependence/headless/wincommand"
 	"encoding/json"
 	"strings"
+	"time"
 )
 
 // windowsProcess 表示 Windows 命令查询到的游戏进程信息。
@@ -15,6 +16,8 @@ import (
 // 使用：listDysonSphereProcesses 解析 PowerShell 输出后交给 FindDysonSphereHeadlessProcess 筛选。
 // 边界：只在 Windows 命令输出解析中使用，不暴露给服务层或前端 DTO。
 type windowsProcess struct {
+	// CreatedAt 职责：记录进程创建时间；使用：计算真实运行时长；边界：读取不到时为零。
+	CreatedAt int64 `json:"CreatedAt"`
 	// ProcessID 职责：记录进程 ID；使用：返回给上层用于展示或停止流程；边界：0 表示无效进程。
 	ProcessID int `json:"ProcessId"`
 	// CommandLine 职责：记录进程命令行；使用：判断是否包含无头服务器启动参数；边界：权限不足时可能为空。
@@ -29,9 +32,15 @@ type windowsProcess struct {
 // 边界：查询失败时返回未运行，不向上抛出错误影响状态刷新。
 // 逻辑流：1. 查询 Windows 进程列表 => 2. 过滤无头启动参数 => 3. 比较可执行路径或命令行路径 => 4. 返回首个有效 PID。
 func FindDysonSphereHeadlessProcess(gameDir string, processName string, serverArgument string) (int, bool) {
+	id, running, _ := InspectHeadlessProcess(gameDir, processName, serverArgument)
+	return id, running
+}
+
+// InspectHeadlessProcess 职责：读取无头进程 PID 与运行秒数；使用：开服状态采样；边界：查询失败返回未运行，创建时间未知时秒数为零。
+func InspectHeadlessProcess(gameDir string, processName string, serverArgument string) (int, bool, int64) {
 	processes, err := listDysonSphereProcesses(processName)
 	if err != nil {
-		return 0, false
+		return 0, false, 0
 	}
 
 	for _, process := range processes {
@@ -39,11 +48,15 @@ func FindDysonSphereHeadlessProcess(gameDir string, processName string, serverAr
 			continue
 		}
 		if process.ProcessID > 0 {
-			return process.ProcessID, true
+			seconds := int64(0)
+			if process.CreatedAt > 0 {
+				seconds = max(int64(0), time.Now().Unix()-process.CreatedAt)
+			}
+			return process.ProcessID, true, seconds
 		}
 	}
 
-	return 0, false
+	return 0, false, 0
 }
 
 // listDysonSphereProcesses 模块说明。
@@ -56,7 +69,7 @@ func FindDysonSphereHeadlessProcess(gameDir string, processName string, serverAr
 // 使用：FindDysonSphereHeadlessProcess 过滤无头服务器进程前调用。
 // 边界：没有进程时返回空切片；输出可能是数组或单对象。
 func listDysonSphereProcesses(processName string) ([]windowsProcess, error) {
-	command := `$items = Get-CimInstance Win32_Process -Filter "Name = '` + processName + `'" | Select-Object ProcessId,CommandLine,ExecutablePath; if ($null -eq $items) { '[]' } else { $items | ConvertTo-Json -Compress }`
+	command := `$items = Get-CimInstance Win32_Process -Filter "Name = '` + processName + `'" | Select-Object ProcessId,CommandLine,ExecutablePath,@{Name='CreatedAt';Expression={([DateTimeOffset]$_.CreationDate).ToUnixTimeSeconds()}}; if ($null -eq $items) { '[]' } else { $items | ConvertTo-Json -Compress }`
 	output, err := wincommand.Output("powershell", "-NoProfile", "-Command", command)
 	if err != nil {
 		return nil, err

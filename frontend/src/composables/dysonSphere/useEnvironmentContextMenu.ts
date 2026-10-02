@@ -360,7 +360,7 @@ export const useEnvironmentContextMenu = (
         case 'save-delete':
           return dialogs.openConfirmDialog({
             title: '删除存档',
-            content: `删除存档“${save.name}”？文件会移入应用快照目录。`,
+            content: `删除存档“${save.name}”？存档及同名联机附加数据会一起移入应用快照目录。`,
             positiveText: '删除存档',
             isDanger: true,
             submit: async () => env.deleteSave(save.id),

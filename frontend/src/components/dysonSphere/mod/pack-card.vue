@@ -94,11 +94,11 @@ defineEmits<{
       <div class="absolute bottom-2 right-2 flex max-w-[calc(100%-1rem)] gap-1">
         <div class="mod-pack-card__stat rounded px-2 py-0.5 text-xs">
           <PackageOpen :size="12" :stroke-width="1.8" class="mr-1 inline-block align-[-2px]" />
-          <span>{{ fileCount }} 个组件</span>
+          <span><span class="type-display">{{ fileCount }}</span> 个组件</span>
         </div>
         <div class="mod-pack-card__stat hidden rounded px-2 py-0.5 text-xs sm:block">
           <Download :size="12" :stroke-width="1.8" class="mr-1 inline-block align-[-2px]" />
-          <span>{{ downloadCount }}</span>
+          <span class="type-display">{{ downloadCount }}</span>
         </div>
       </div>
       <div

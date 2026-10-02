@@ -2,10 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+// =============== 全局字体 ===============
+// 说明：思源黑体承载中文界面，Oxanium 用于品牌、英文和关键数字，JetBrains Mono 用于日志与技术信息。
+// 边界：字体文件随前端资源打包；业务组件通过 --ds-font-* token 或语义类名选择用途，不直接依赖文件路径。
+@font-face {
+  font-family: 'Source Han Sans SC';
+  src: url('./assets/fonts/SourceHanSansHWSC/OTF/SimplifiedChineseHW/SourceHanSansHWSC-Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Han Sans SC';
+  src: url('./assets/fonts/SourceHanSansHWSC/OTF/SimplifiedChineseHW/SourceHanSansHWSC-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Oxanium';
+  src: url('./assets/fonts/Oxanium/Oxanium-VariableFont_wght.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./assets/fonts/JetBrainsMono/fonts/variable/JetBrainsMono[wght].ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+}
+
 // =============== 全局色彩 Token ===============
 // 说明：深空科技风格；日间为白灰黑的无彩色死寂白昼，不使用蓝色；夜间为深邃黑的星云深空，以炫蓝作为强调色。组件只引用 --ds-* 变量，不直接写色值。
 // 边界：App.vue 中的 Naive UI 覆盖、packages/dyson-sphere 的调色板（internal/palette.ts）需与此处色值保持同步。
 :root {
+  --ds-font-ui: 'Source Han Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --ds-font-display: 'Oxanium', 'Source Han Sans SC', sans-serif;
+  --ds-font-mono: 'JetBrains Mono', ui-monospace, 'Source Han Sans SC', 'Microsoft YaHei', monospace;
   color-scheme: light;
   // 背景层级：应用底色 < 外壳 < 面板 < 浮起面板；全部为中性灰白，不带色相
   // 外壳底色与首页戴森球场景的日间背景一致（#ebebeb），切换页面时不跳色
@@ -98,6 +136,17 @@
   --ds-res-off: rgb(24 24 26 / 0.42);
   --ds-res-off-soft: rgb(0 0 0 / 0.045);
   --ds-res-off-border: rgb(0 0 0 / 0.13);
+  // 存档卡片：按资源页约定使用独立蓝色流动描边，不表达模组启用状态。
+  --ds-save-accent: #2878c4;
+  --ds-save-ring-a: #2878c4;
+  --ds-save-ring-b: #72b8f0;
+  --ds-save-ring-c: #bddbf5;
+  // 文件夹卡片：金色流动描边，标识可进入的目录，与模组启用态和存档蓝环区分；日间为琥珀金到淡香槟
+  --ds-folder-accent: #b07a1c;
+  --ds-folder-ring-a: #c8901e;
+  --ds-folder-ring-b: #ecc35a;
+  --ds-folder-ring-c: #f5e7c4;
+  --ds-folder-glow: 0 1px 6px rgb(176 122 28 / 0.08);
 }
 
 :root[data-theme='dark'] {
@@ -178,6 +227,16 @@
   --ds-res-off: rgb(170 172 200 / 0.46);
   --ds-res-off-soft: rgb(170 172 200 / 0.06);
   --ds-res-off-border: rgb(140 170 230 / 0.13);
+  --ds-save-accent: #6aa8ff;
+  --ds-save-ring-a: #6aa8ff;
+  --ds-save-ring-b: #8ddaff;
+  --ds-save-ring-c: #183d70;
+  // 夜间：恒星金高亮头、淡金过渡，暗尾为深琥珀融入深空底色
+  --ds-folder-accent: #ffc15a;
+  --ds-folder-ring-a: #ffc15a;
+  --ds-folder-ring-b: #ffe49a;
+  --ds-folder-ring-c: #5a3a10;
+  --ds-folder-glow: 0 0 14px rgb(255 193 90 / 0.1);
 }
 
 // =============== 页面布局 Token ===============
@@ -196,12 +255,34 @@ body,
   height: 100%;
 }
 
+html {
+  font-family: var(--ds-font-ui);
+}
+
 body {
   margin: 0;
   background: var(--ds-bg-app);
   color: var(--ds-text-primary);
-  font-family: "Nunito", "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-family: var(--ds-font-ui);
   font-feature-settings: "kern";
+}
+
+// 语义字体：用于跨页面复用的英文、数字与技术信息，不改变中文界面默认字体。
+.type-display {
+  font-family: var(--ds-font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+pre,
+code,
+kbd,
+samp,
+.type-mono,
+.type-mono .n-input__input-el,
+.type-mono .n-input__textarea-el {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-variant-ligatures: none;
 }
 
 * {

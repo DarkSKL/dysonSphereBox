@@ -28,20 +28,31 @@ func SaveHeadlessSettings(gameDir string, hostPort int, serverArchive string) (*
 	if hostPort <= 0 || hostPort > 65535 {
 		return nil, fmt.Errorf("host port must be between 1 and 65535")
 	}
-	if winprocess.IsPortOccupied(hostPort) {
+	if processID, running := winprocess.FindDysonSphereHeadlessProcess(gameDir, dysonSphereProcessName, nebulaServerArgument); running && processID > 0 {
+		return nil, fmt.Errorf("服务器运行中，请先中止服务器再保存配置")
+	}
+	currentPort := headlessNebula.ReadHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, defaultNebulaHostPort)
+	if hostPort != currentPort && winprocess.IsPortOccupied(hostPort) {
 		return nil, fmt.Errorf("开服端口 %d 已被占用，请更换端口后再保存", hostPort)
 	}
 
 	gameDir = filepath.Clean(gameDir)
-	normalizedArchive := strings.TrimSpace(serverArchive)
+	normalizedArchive, err := normalizeHeadlessArchive(serverArchive)
+	if err != nil {
+		return nil, err
+	}
 	if core.GLOBAL.Configure == nil || core.GLOBAL.Configure.GameServerArchive == nil {
 		return nil, fmt.Errorf("GameServerArchive config is not initialized")
 	}
-	if err := core.GLOBAL.Configure.GameServerArchive.Set(normalizedArchive); err != nil {
-		return nil, err
-	}
 	if err := headlessNebula.WriteHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, hostPort); err != nil {
 		return nil, err
+	}
+	if err := core.GLOBAL.Configure.GameServerArchive.Set(normalizedArchive); err != nil {
+		rollbackErr := headlessNebula.WriteHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, currentPort)
+		if rollbackErr != nil {
+			return nil, fmt.Errorf("保存存档配置失败，端口回滚也失败（%v）: %w", rollbackErr, err)
+		}
+		return nil, fmt.Errorf("保存存档配置失败，端口已恢复: %w", err)
 	}
 
 	status, err := InspectHeadlessEnvironment(gameDir)

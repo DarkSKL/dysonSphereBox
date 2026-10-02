@@ -230,9 +230,9 @@ func (service *EnvironmentManagerService) ListBlueprints(parentId string, query 
 	}
 
 	return EnvironmentBlueprintPage{
-		ParentID:        parentId,
-		Breadcrumbs:     buildBreadcrumbs(parentId, byID),
-		Items:           items,
+		ParentID:          parentId,
+		Breadcrumbs:       buildBreadcrumbs(parentId, byID),
+		Items:             items,
 		TotalBlueprints:   totalBlueprints,
 		EnabledBlueprints: enabledBlueprints,
 		TotalFolders:      totalFolders,
@@ -1220,7 +1220,7 @@ func (service *EnvironmentManagerService) exportBlueprintWithoutOperation(itemId
 }
 
 // RenameSave 重命名真实存档文件。
-// 职责：创建环境操作记录，并保留原扩展名重命名 SaveRoot 中的真实文件。
+// 职责：创建环境操作记录，并成组重命名 SaveRoot 中的 .dsv 和同名 .server 文件。
 // 使用：存档卡片重命名时调用。
 // 边界：不会跨目录移动，不覆盖同名文件，完成后重新扫描真实 SaveRoot。
 func (service *EnvironmentManagerService) RenameSave(saveId string, name string) (EnvironmentOperationResult, error) {
@@ -1269,7 +1269,7 @@ func (service *EnvironmentManagerService) renameSaveWithoutOperation(saveId stri
 	if pathExists(newPath) {
 		return EnvironmentOperationResult{}, fmt.Errorf("同名存档已存在")
 	}
-	if err := os.Rename(oldPath, newPath); err != nil {
+	if err := environmentHelper.MoveSaveBundleSafely(oldPath, newPath); err != nil {
 		return EnvironmentOperationResult{}, fmt.Errorf("重命名存档失败: %w", err)
 	}
 	items, err := service.RefreshSaves()
@@ -1280,9 +1280,9 @@ func (service *EnvironmentManagerService) renameSaveWithoutOperation(saveId stri
 }
 
 // ImportSaves 导入存档文件到真实 SaveRoot。
-// 职责：创建环境操作记录，并把用户选择的存档文件复制到游戏存档目录。
+// 职责：创建环境操作记录，并把用户选择的 .dsv 和同名 .server 文件复制到游戏存档目录。
 // 使用：环境页存档导入操作调用。
-// 边界：同名且内容不同会返回冲突；不会覆盖已有存档。
+// 边界：同名且内容不同会返回冲突；整批失败时回滚本次新建文件，不覆盖已有存档。
 func (service *EnvironmentManagerService) ImportSaves(paths []string) (EnvironmentOperationResult, error) {
 	return service.runRecordedEnvironmentOperation("import", "save", "", map[string]interface{}{
 		"paths": paths,
@@ -1304,18 +1304,19 @@ func (service *EnvironmentManagerService) importSavesWithoutOperation(paths []st
 	if len(paths) == 0 {
 		return EnvironmentOperationResult{}, fmt.Errorf("没有可导入的存档文件")
 	}
-	if _, err := environmentHelper.ImportFilesIntoRootSafely(paths, saveRoot.Path); err != nil {
+	count, err := environmentHelper.CopySaveBundlesSafely(paths, saveRoot.Path)
+	if err != nil {
 		return EnvironmentOperationResult{}, err
 	}
 	items, err := service.RefreshSaves()
 	if err != nil {
 		return EnvironmentOperationResult{}, err
 	}
-	return EnvironmentOperationResult{Message: fmt.Sprintf("已导入 %d 个存档", len(paths)), Saves: items}, nil
+	return EnvironmentOperationResult{Message: fmt.Sprintf("已导入 %d 个存档", count), Saves: items}, nil
 }
 
 // ExportSave 导出真实存档文件到指定目录。
-// 职责：创建环境操作记录，按 saveId 定位当前真实存档并复制到用户指定目录。
+// 职责：创建环境操作记录，按 saveId 定位 .dsv 并连同同名 .server 复制到用户指定目录。
 // 使用：环境页存档导出操作调用。
 // 边界：导出失败不修改源存档；目标同名且内容不同返回冲突。
 func (service *EnvironmentManagerService) ExportSave(saveId string, targetDir string) (EnvironmentOperationResult, error) {
@@ -1342,14 +1343,14 @@ func (service *EnvironmentManagerService) exportSaveWithoutOperation(saveId stri
 		return EnvironmentOperationResult{}, err
 	}
 	sourcePath := filepath.Join(saveRoot.Path, filepath.FromSlash(selected.RelativePath))
-	if _, err := environmentHelper.ImportFilesIntoRootSafely([]string{sourcePath}, targetDir); err != nil {
+	if err := environmentHelper.CopySaveBundleSafely(sourcePath, targetDir); err != nil {
 		return EnvironmentOperationResult{}, err
 	}
 	return EnvironmentOperationResult{Message: "存档已导出"}, nil
 }
 
 // DeleteSave 删除真实存档文件到应用快照目录。
-// 职责：创建环境操作记录，把存档移动到 AppData/environment/snapshots/save 下。
+// 职责：创建环境操作记录，把 .dsv 和同名 .server 一起移动到 appData/environment/snapshots/save 下。
 // 使用：环境页存档删除操作在用户明确确认后调用。
 // 边界：不永久删除；快照冲突或文件不可移动时返回错误并保留原文件。
 func (service *EnvironmentManagerService) DeleteSave(saveId string) (EnvironmentOperationResult, error) {
@@ -1379,7 +1380,7 @@ func (service *EnvironmentManagerService) deleteSaveWithoutOperation(saveId stri
 		return EnvironmentOperationResult{}, err
 	}
 	sourcePath := filepath.Join(saveRoot.Path, filepath.FromSlash(selected.RelativePath))
-	if _, err := environmentHelper.MoveFileToSnapshotSafely(sourcePath, snapshotRoot, selected.RelativePath); err != nil {
+	if err := environmentHelper.MoveSaveBundleSafely(sourcePath, filepath.Join(snapshotRoot, filepath.FromSlash(selected.RelativePath))); err != nil {
 		return EnvironmentOperationResult{}, err
 	}
 	items, err := service.RefreshSaves()

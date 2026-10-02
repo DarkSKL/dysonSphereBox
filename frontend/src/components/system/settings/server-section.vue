@@ -118,6 +118,7 @@ const handleRestoreDefault = (): void => {
   <SettingsSection id="settings-server" title="连接地址" :hint-tone="hint.tone">
     <n-input
       v-model:value="draftAddress"
+      class="type-mono"
       :placeholder="DEFAULT_SERVER_ADDRESS"
       :status="draftValidation.error ? 'error' : undefined"
       :input-props="{spellcheck: false, autocomplete: 'off', 'aria-labelledby': 'settings-server-title', 'aria-describedby': 'settings-server-hint'}"

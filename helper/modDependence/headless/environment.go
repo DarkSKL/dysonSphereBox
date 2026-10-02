@@ -22,7 +22,8 @@ import (
 // 使用：HeadlessService.GetEnvironmentStatus 捕获配置缺失或路径错误后调用。
 // 边界：不把未配置路径当成接口异常；不访问游戏目录，只返回引导用户设置路径的问题列表。
 func BuildUnconfiguredHeadlessEnvironmentStatus(reason string) contract.HeadlessEnvironmentStatus {
-	status := contract.HeadlessEnvironmentStatus{Dependencies: headlessDependency.Inspect(""), HostPort: defaultNebulaHostPort, ServerArchive: readHeadlessServerArchive(), Network: headlessNetwork.InspectStatus(), Issues: unconfiguredHeadlessIssues(reason), Ready: false}
+	dependencies, _ := headlessDependency.Inspect("")
+	status := contract.HeadlessEnvironmentStatus{Dependencies: dependencies, HostPort: defaultNebulaHostPort, ServerArchive: readHeadlessServerArchive(), Network: headlessNetwork.InspectStatus(), Issues: unconfiguredHeadlessIssues(reason), Ready: false}
 	status.NebulaReady = headlessDependency.Ready(status.Dependencies)
 	return status
 }
@@ -38,13 +39,18 @@ func InspectHeadlessEnvironment(gameDir string) (contract.HeadlessEnvironmentSta
 	}
 	gameDir = filepath.Clean(gameDir)
 	pluginRoot := filepath.Join(gameDir, headlessPluginRoot)
+	dependencies, err := headlessDependency.Inspect(pluginRoot)
+	if err != nil {
+		return contract.HeadlessEnvironmentStatus{}, err
+	}
 	hostPort := headlessNebula.ReadHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, defaultNebulaHostPort)
 	serverArchive := readHeadlessServerArchive()
-	processID, processRunning := winprocess.FindDysonSphereHeadlessProcess(gameDir, dysonSphereProcessName, nebulaServerArgument)
+	processID, processRunning, uptimeSeconds := winprocess.InspectHeadlessProcess(gameDir, dysonSphereProcessName, nebulaServerArgument)
 	tcpListening := winprocess.IsNetstatPortListening("tcp", hostPort)
 	udpListening := winprocess.IsNetstatPortListening("udp", hostPort)
-	status := contract.HeadlessEnvironmentStatus{GameDir: gameDir, PluginRoot: pluginRoot, BepInExStatus: bepinexStatus.CheckBepInExStatus(gameDir), Dependencies: headlessDependency.Inspect(pluginRoot), SteamAppIDPath: filepath.Join(gameDir, headlessSteamAppIDFile), HostPort: hostPort, NebulaConfigPath: filepath.Join(gameDir, filepath.FromSlash(nebulaConfigRelative)), ServerArchive: serverArchive, ProcessRunning: processRunning, ProcessID: processID, TCPListening: tcpListening, UDPListening: udpListening, PortListening: tcpListening || udpListening, BepInExLogPath: filepath.Join(gameDir, filepath.FromSlash(headlessBepInExLogFile)), OutputLogPath: filepath.Join(gameDir, headlessOutputLogFile), Network: headlessNetwork.InspectStatus(), StartCommand: headlessCommand.BuildStartCommand(gameDir, dysonSphereProcessName, nebulaServerArgument, headlessDefaultSaveMode, serverArchive)}
+	status := contract.HeadlessEnvironmentStatus{GameDir: gameDir, PluginRoot: pluginRoot, BepInExStatus: bepinexStatus.CheckBepInExStatus(gameDir), Dependencies: dependencies, SteamAppIDPath: filepath.Join(gameDir, headlessSteamAppIDFile), HostPort: hostPort, NebulaConfigPath: filepath.Join(gameDir, filepath.FromSlash(nebulaConfigRelative)), ServerArchive: serverArchive, ProcessRunning: processRunning, ProcessID: processID, TCPListening: tcpListening, UDPListening: udpListening, PortListening: tcpListening || udpListening, BepInExLogPath: filepath.Join(gameDir, filepath.FromSlash(headlessBepInExLogFile)), OutputLogPath: filepath.Join(gameDir, headlessOutputLogFile), Network: headlessNetwork.InspectStatus(), StartCommand: headlessCommand.BuildStartCommand(gameDir, dysonSphereProcessName, nebulaServerArgument, headlessDefaultSaveMode, serverArchive)}
 	status.StartCommandText = wincommand.Quote(status.StartCommand)
+	status.UptimeSeconds = uptimeSeconds
 	status.SteamAppIDExists, status.SteamAppIDValid = inspectSteamAppID(status.SteamAppIDPath)
 	status.NebulaReady = headlessDependency.Ready(status.Dependencies)
 	status.Issues = collectHeadlessIssues(status)

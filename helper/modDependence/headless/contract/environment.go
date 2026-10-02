@@ -11,6 +11,8 @@ import bepinexContract "DysonSphereBox/helper/modDependence/bepinex/contract"
 // 使用：开服页状态刷新、准备环境、启动停止后统一返回。
 // 边界：该状态只读，不会修改文件；实时进程和网络状态只代表本次采样。
 type HeadlessEnvironmentStatus struct {
+	// UptimeSeconds 职责：记录真实进程运行秒数；使用：控制台运行时长；边界：创建时间未知或未运行时为零。
+	UptimeSeconds int64 `json:"uptimeSeconds"`
 	// GameDir 职责：记录当前游戏目录；使用：前端展示和审计日志定位；边界：未配置状态下为空。
 	GameDir string `json:"gameDir"`
 	// PluginRoot 职责：记录 BepInEx 插件根目录；使用：依赖检测和前端展示；边界：目录可能尚未创建。

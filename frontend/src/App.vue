@@ -59,6 +59,8 @@ const naiveThemeOverrides = computed<GlobalThemeOverrides>(() => {
       inputColor: input,
       inputColorDisabled: surface,
       hoverColor: dark ? 'rgb(190 190 255 / 0.06)' : 'rgb(0 0 0 / 0.045)',
+      fontFamily: "'Source Han Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif",
+      fontFamilyMono: "'JetBrains Mono', ui-monospace, 'Source Han Sans SC', 'Microsoft YaHei', monospace",
     },
     Button: {
       borderRadiusMedium: '4px',

@@ -13,7 +13,7 @@ type spec struct {
 	ID string
 	// Name 职责：提供默认依赖名称；使用：manifest 缺失时展示；边界：可被 manifest 覆盖。
 	Name string
-	// Folder 职责：指定 BepInEx/plugins 下的依赖目录；使用：本地存在性检测；边界：不递归搜索其它目录。
+	// Folder 职责：指定 Owner-Name 组件标识；使用：匹配 V2 记录与 plugins/patchers 目录；边界：不扫描无关组件。
 	Folder string
 	// Function 职责：概括依赖功能；使用：前端帮助用户理解依赖作用；边界：不参与 Ready 计算。
 	Function string
@@ -21,7 +21,7 @@ type spec struct {
 	Description string
 	// Source 职责：提供依赖来源链接；使用：前端引导用户查看；边界：后端不会自动下载。
 	Source string
-	// RequiredFiles 职责：列出判断依赖完整性的必需文件；使用：缺失时写入 MissingFiles；边界：空列表表示目录存在即可视为安装。
+	// RequiredFiles 职责：列出判断依赖完整性的必需文件；使用：缺失时写入 MissingFiles；边界：空列表仍须有实际 DLL。
 	RequiredFiles []string
 }
 

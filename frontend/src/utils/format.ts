@@ -35,6 +35,25 @@ export const formatDate = (value: unknown): string => {
   return date.toLocaleDateString('zh-CN', {year: 'numeric', month: '2-digit', day: '2-digit'})
 }
 
+// 说明：把后端以 MiB/s 表示的速率换算为网络常用的 Mbps（10^6 bit/s）。
+// 边界：非法或负数统一按 0 处理。
+export const mibpsToMbps = (mibPerSecond = 0): number => {
+  if (!Number.isFinite(mibPerSecond) || mibPerSecond <= 0) {
+    return 0
+  }
+
+  return mibPerSecond * 1024 * 1024 * 8 / 1_000_000
+}
+
+// 说明：按数值量级调整 Mbps 小数位，避免小流量显示为 0 或大流量位数过长。
+export const formatMbps = (mbps: number): string => {
+  if (!Number.isFinite(mbps) || mbps <= 0) {
+    return '0 Mbps'
+  }
+
+  return `${mbps.toFixed(mbps >= 100 ? 0 : mbps >= 10 ? 1 : 2)} Mbps`
+}
+
 export const formatDownloadSpeed = (bytesPerSecond: number): string => {
   if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
     return ''

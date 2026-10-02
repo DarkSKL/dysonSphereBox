@@ -993,7 +993,7 @@ const closeWindow = (): void => {
   border-radius: 4px;
   background: transparent;
   color: var(--ds-text-muted);
-  font-family: "Nunito", "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-family: var(--ds-font-mono);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }

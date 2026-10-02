@@ -581,6 +581,7 @@ const signOut = async (): Promise<void> => {
 
 .account-art-kicker {
   color: var(--account-art-kicker);
+  font-family: var(--ds-font-display);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -625,6 +626,7 @@ const signOut = async (): Promise<void> => {
   display: block;
   color: var(--ds-brand);
   font-size: 10px;
+  font-family: var(--ds-font-display);
   font-weight: 700;
   letter-spacing: 0.2em;
   line-height: 1.2;

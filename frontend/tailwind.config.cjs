@@ -5,7 +5,13 @@ module.exports = {
     './src/**/*.{vue,js,ts,jsx,tsx}',
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ['var(--ds-font-ui)'],
+        display: ['var(--ds-font-display)'],
+        mono: ['var(--ds-font-mono)'],
+      },
+    },
   },
   plugins: [],
 }

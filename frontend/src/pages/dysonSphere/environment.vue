@@ -809,6 +809,7 @@ watch(activeTab, (tab) => {
           <span>蓝图编码</span>
           <n-input
             v-model:value="quickImportDialog.code"
+            class="type-mono"
             type="textarea"
             placeholder="粘贴蓝图编码"
             :autosize="{minRows: 5, maxRows: 9}"
@@ -846,13 +847,13 @@ watch(activeTab, (tab) => {
             <dt>名称</dt>
             <dd>{{ selectedModDetail.name }}</dd>
             <dt>版本</dt>
-            <dd>{{ selectedModDetail.version || '未知版本' }}</dd>
+            <dd class="type-mono">{{ selectedModDetail.version || '未知版本' }}</dd>
             <dt>作者</dt>
             <dd>{{ selectedModDetail.author || '未知作者' }}</dd>
             <dt>官网</dt>
-            <dd>{{ selectedModDetail.websiteUrl || '未提供' }}</dd>
+            <dd class="type-mono">{{ selectedModDetail.websiteUrl || '未提供' }}</dd>
             <dt>路径</dt>
-            <dd>{{ selectedModDetail.libraryPath || '未记录' }}</dd>
+            <dd class="type-mono">{{ selectedModDetail.libraryPath || '未记录' }}</dd>
             <dt>说明</dt>
             <dd>{{ selectedModDetail.warning || selectedModDetail.description || '暂无说明' }}</dd>
           </dl>
@@ -867,7 +868,7 @@ watch(activeTab, (tab) => {
           </div>
           <div class="environment-detail-section">
             <span>原始 Manifest</span>
-            <n-code class="environment-code" :code="selectedModDetail.rawManifest || '{}'" language="json" />
+            <n-code class="environment-code type-mono" :code="selectedModDetail.rawManifest || '{}'" language="json" />
           </div>
         </div>
       </n-spin>
@@ -882,7 +883,7 @@ watch(activeTab, (tab) => {
           <dt>名称</dt>
           <dd>{{ packTitle(selectedInstalledPackage) }}</dd>
           <dt>版本</dt>
-          <dd>{{ selectedInstalledPackage.version || '未知版本' }}</dd>
+          <dd class="type-mono">{{ selectedInstalledPackage.version || '未知版本' }}</dd>
           <dt>作者</dt>
           <dd>{{ selectedInstalledPackage.author || selectedInstalledPackage.namespace || '未知作者' }}</dd>
           <dt>来源</dt>
@@ -890,14 +891,14 @@ watch(activeTab, (tab) => {
           <dt>安装时间</dt>
           <dd>{{ formatDate(selectedInstalledPackage.installedAt) }}</dd>
           <dt>文件</dt>
-          <dd>{{ selectedInstalledPackage.fileCount }} 个 · {{ formatFileSize(selectedInstalledPackage.sizeBytes) }}</dd>
+          <dd class="type-display">{{ selectedInstalledPackage.fileCount }} 个 · {{ formatFileSize(selectedInstalledPackage.sizeBytes) }}</dd>
           <dt>说明</dt>
           <dd>{{ selectedInstalledPackage.description || '暂无说明' }}</dd>
         </dl>
         <div class="environment-detail-section">
           <span>插件目录</span>
           <div v-if="selectedInstalledPackage.pluginDirs.length > 0" class="environment-chip-list">
-            <span v-for="dir in selectedInstalledPackage.pluginDirs" :key="dir">{{ dir }}</span>
+            <span v-for="dir in selectedInstalledPackage.pluginDirs" :key="dir" class="type-mono">{{ dir }}</span>
           </div>
           <p v-else>没有写入 plugins 目录的文件</p>
         </div>
@@ -1000,6 +1001,7 @@ watch(activeTab, (tab) => {
   margin-left: auto;
   color: var(--ds-text-muted);
   font-size: 12px;
+  font-family: var(--ds-font-display);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1160,6 +1162,7 @@ watch(activeTab, (tab) => {
     font-style: normal;
     font-weight: 400;
     font-variant-numeric: tabular-nums;
+    font-family: var(--ds-font-display);
   }
 }
 

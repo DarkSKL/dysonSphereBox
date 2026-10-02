@@ -38,8 +38,14 @@ func collectHeadlessIssues(status contract.HeadlessEnvironmentStatus) []string {
 	if !status.SteamAppIDValid {
 		issues = append(issues, "steam_appid.txt 缺失或内容不是 1366540")
 	}
+	if _, err := normalizeHeadlessArchive(status.ServerArchive); err != nil {
+		issues = append(issues, err.Error())
+	}
 	if status.ProcessRunning && !status.PortListening {
 		issues = append(issues, fmt.Sprintf("DSPGAME 进程运行中，但端口 %d 未监听", status.HostPort))
+	}
+	if !status.ProcessRunning && status.PortListening {
+		issues = append(issues, fmt.Sprintf("端口 %d 已被其它进程占用", status.HostPort))
 	}
 
 	return issues

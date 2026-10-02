@@ -28,18 +28,24 @@ func IsNetstatPortListening(protocol string, port int) bool {
 		return false
 	}
 
-	portToken := ":" + strconv.Itoa(port)
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		normalized := strings.ToUpper(strings.TrimSpace(line))
-		if !strings.Contains(normalized, strings.ToUpper(protocol)) || !strings.Contains(normalized, portToken) {
+	return portListeningInOutput(string(output), protocol, port)
+}
+
+// portListeningInOutput 职责：精确匹配本地端点端口；使用：netstat 解析与回归验证；边界：忽略远端端口和非监听 TCP，兼容 IPv6。
+func portListeningInOutput(output, protocol string, port int) bool {
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || !strings.EqualFold(fields[0], protocol) {
 			continue
 		}
-		if protocol == "tcp" {
-			return strings.Contains(normalized, "LISTENING")
+		local := fields[1]
+		index := strings.LastIndex(local, ":")
+		if index < 0 || local[index+1:] != strconv.Itoa(port) {
+			continue
 		}
-		return true
+		if strings.EqualFold(protocol, "udp") || (len(fields) >= 5 && strings.EqualFold(fields[3], "LISTENING")) {
+			return true
+		}
 	}
-
 	return false
 }

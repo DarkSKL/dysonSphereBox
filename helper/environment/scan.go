@@ -229,7 +229,7 @@ func ScanBlueprints(libraryRoot string) ([]BlueprintResource, error) {
 }
 
 // ScanSaves 扫描真实存档目录。
-// 职责：读取 SaveRoot 下的存档文件并忽略环境管理临时文件。
+// 职责：只读取 SaveRoot 下的 .dsv 主存档，忽略联机附加文件和环境管理临时文件。
 // 使用：ListSaves、RefreshSaves 和概览计数调用。
 // 边界：不复制存档、不解析游戏内部元数据、不跟随目录树操作。
 func ScanSaves(saveRoot string) ([]SaveResource, error) {
@@ -251,7 +251,7 @@ func ScanSaves(saveRoot string) ([]SaveResource, error) {
 			}
 			return nil
 		}
-		if isTemporarySaveFile(entry.Name()) {
+		if isTemporarySaveFile(entry.Name()) || !strings.EqualFold(filepath.Ext(entry.Name()), ".dsv") {
 			return nil
 		}
 
@@ -263,10 +263,6 @@ func ScanSaves(saveRoot string) ([]SaveResource, error) {
 		if err != nil {
 			return nil
 		}
-		status := "normal"
-		if strings.EqualFold(filepath.Ext(entry.Name()), ".tmp") {
-			status = "invalid"
-		}
 		resources = append(resources, SaveResource{
 			ID:             stableIDFromPath("save", relativePath),
 			Name:           strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())),
@@ -274,7 +270,7 @@ func ScanSaves(saveRoot string) ([]SaveResource, error) {
 			RelativePath:   filepath.ToSlash(filepath.Clean(relativePath)),
 			SizeBytes:      info.Size(),
 			LastModifiedAt: info.ModTime(),
-			Status:         status,
+			Status:         "normal",
 		})
 		return nil
 	})

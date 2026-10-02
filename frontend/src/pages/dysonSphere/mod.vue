@@ -501,4 +501,8 @@ const {
 .mod-conflict-path {
   color: var(--ds-text-muted);
 }
+
+.mod-conflict-path {
+  font-family: var(--ds-font-mono);
+}
 </style>
