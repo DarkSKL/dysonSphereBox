@@ -5,6 +5,7 @@ package wincommand
 // 边界：只负责隐藏窗口执行命令与格式化展示命令，不解析具体命令输出、不决定业务状态。
 
 import (
+	"context"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -17,6 +18,16 @@ import (
 // 边界：只返回 stdout；需要 stderr 诊断时使用 CombinedOutput。
 func Output(name string, args ...string) ([]byte, error) {
 	command := exec.Command(name, args...)
+	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return command.Output()
+}
+
+// OutputContext 在后台执行命令并返回 stdout，ctx 结束时终止进程。
+// 职责：隐藏 Windows 控制台窗口并读取标准输出，支持超时。
+// 使用：联机防火墙检测等不能无限等待的检测命令调用。
+// 边界：只返回 stdout；超时返回 ctx 错误，由调用方决定兜底结果。
+func OutputContext(ctx context.Context, name string, args ...string) ([]byte, error) {
+	command := exec.CommandContext(ctx, name, args...)
 	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	return command.Output()
 }

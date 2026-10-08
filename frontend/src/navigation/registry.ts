@@ -9,6 +9,7 @@ import {
   ScrollText,
   Server,
   Settings,
+  Users,
 } from '@lucide/vue'
 
 /** 描述可由侧边导航渲染的路由入口。 */
@@ -49,6 +50,7 @@ export const gameNavigationRegistry: readonly GameNavigationDefinition[] = [
       { key: 'headless', label: '开服', to: '/dysonSphere/headless', icon: Server },
       { key: 'mods', label: '模组', to: '/dysonSphere/mod', icon: Package },
       { key: 'resources', label: '资源', to: '/dysonSphere/environment', icon: Boxes },
+      { key: 'multiplayer', label: '联机', to: '/dysonSphere/multiplayer', icon: Users },
       { key: 'settings', label: '游戏设置', to: '/dysonSphere/settings', icon: Settings },
     ],
   },

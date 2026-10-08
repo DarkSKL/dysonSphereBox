@@ -54,7 +54,31 @@ func SaveToken(token string) error {
 // 边界：只清除客户端状态，不通知服务端作废 token。
 func ClearSession() error {
 	setNeedChangePassword(false)
-	return SaveToken("")
+	err := SaveToken("")
+	sessionClearedHooks.Lock()
+	hooks := append([]func(){}, sessionClearedHooks.list...)
+	sessionClearedHooks.Unlock()
+	for _, hook := range hooks {
+		hook()
+	}
+	return err
+}
+
+// sessionClearedHooks 保存会话清除后的回调。
+// 职责：让依赖账号会话的长连接（联机控制链路）在注销、401、切换服务器时主动断开。
+// 使用：OnSessionCleared 注册，ClearSession 调用。
+// 边界：回调不得再调用 ClearSession；只在本进程内有效。
+var sessionClearedHooks struct {
+	sync.Mutex
+	list []func()
+}
+
+// OnSessionCleared 注册会话清除后的回调。
+// 职责：解耦账号会话与联机控制链路；使用：service/multiplayer 注册服务时调用一次；边界：回调需快速返回。
+func OnSessionCleared(hook func()) {
+	sessionClearedHooks.Lock()
+	sessionClearedHooks.list = append(sessionClearedHooks.list, hook)
+	sessionClearedHooks.Unlock()
 }
 
 // SessionState 返回前端可见的会话状态。

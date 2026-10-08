@@ -95,10 +95,17 @@ Section
     !insertmacro wails.associateCustomProtocols
 
     !insertmacro wails.writeUninstaller
+
+    # 联机：为盒子添加入站防火墙规则（libp2p 监听端口 H），避免首次监听时弹窗被取消后入站全部被拦
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="DysonSphereBox" program="$INSTDIR\${PRODUCT_EXECUTABLE}"'
+    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="DysonSphereBox" dir=in action=allow program="$INSTDIR\${PRODUCT_EXECUTABLE}" enable=yes'
 SectionEnd
 
 Section "uninstall"
     !insertmacro wails.setShellContext
+
+    # 联机：删除安装时添加的入站防火墙规则
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="DysonSphereBox" program="$INSTDIR\${PRODUCT_EXECUTABLE}"'
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 

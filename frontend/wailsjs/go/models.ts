@@ -1880,6 +1880,47 @@ export namespace environment {
 
 }
 
+export namespace forward {
+	
+	export class LocalPort {
+	    label: string;
+	    proto: string;
+	    address: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalPort(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.proto = source["proto"];
+	        this.address = source["address"];
+	    }
+	}
+	export class TargetState {
+	    index: number;
+	    proto: string;
+	    port: number;
+	    address: string;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TargetState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.proto = source["proto"];
+	        this.port = source["port"];
+	        this.address = source["address"];
+	        this.status = source["status"];
+	    }
+	}
+
+}
+
 export namespace modDependence {
 	
 	export class RemoteModDependencyDTO {
@@ -2033,6 +2074,614 @@ export namespace modDependence {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace multiplayer {
+	
+	export class AccountView {
+	    loggedIn: boolean;
+	    userId: number;
+	    nickname: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.loggedIn = source["loggedIn"];
+	        this.userId = source["userId"];
+	        this.nickname = source["nickname"];
+	    }
+	}
+	export class ActionResult {
+	    code: number;
+	    msg: string;
+	    data: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new ActionResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.msg = source["msg"];
+	        this.data = source["data"];
+	    }
+	}
+	export class ConnectionView {
+	    state: string;
+	    lastErrorCode: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConnectionView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.lastErrorCode = source["lastErrorCode"];
+	    }
+	}
+	export class InviteView {
+	    code: string;
+	    link: string;
+	    expiresAtMs: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new InviteView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.link = source["link"];
+	        this.expiresAtMs = source["expiresAtMs"];
+	    }
+	}
+	export class LinkState {
+	    state: string;
+	    path: string;
+	    ipFamily: string;
+	    rttMs: number;
+	    error: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LinkState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.path = source["path"];
+	        this.ipFamily = source["ipFamily"];
+	        this.rttMs = source["rttMs"];
+	        this.error = source["error"];
+	    }
+	}
+	export class LinkView {
+	    userId: number;
+	    state: string;
+	    path: string;
+	    ipFamily: string;
+	    rttMs: number;
+	    error: number;
+	    detail: string;
+	    natBlocked: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LinkView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.userId = source["userId"];
+	        this.state = source["state"];
+	        this.path = source["path"];
+	        this.ipFamily = source["ipFamily"];
+	        this.rttMs = source["rttMs"];
+	        this.error = source["error"];
+	        this.detail = source["detail"];
+	        this.natBlocked = source["natBlocked"];
+	    }
+	}
+	export class LobbyListRequest {
+	    page: number;
+	    pageSize: number;
+	    keyword: string;
+	    sort: string;
+	    order: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LobbyListRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.keyword = source["keyword"];
+	        this.sort = source["sort"];
+	        this.order = source["order"];
+	    }
+	}
+	export class PortDecl {
+	    proto: string;
+	    port: number;
+	    count: number;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PortDecl(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.proto = source["proto"];
+	        this.port = source["port"];
+	        this.count = source["count"];
+	        this.label = source["label"];
+	    }
+	}
+	export class RoomSummary {
+	    roomId: string;
+	    name: string;
+	    hostNickname: string;
+	    memberCount: number;
+	    maxMembers: number;
+	    hasPassword: boolean;
+	    ports: PortDecl[];
+	    createdAtMs: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RoomSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.roomId = source["roomId"];
+	        this.name = source["name"];
+	        this.hostNickname = source["hostNickname"];
+	        this.memberCount = source["memberCount"];
+	        this.maxMembers = source["maxMembers"];
+	        this.hasPassword = source["hasPassword"];
+	        this.ports = this.convertValues(source["ports"], PortDecl);
+	        this.createdAtMs = source["createdAtMs"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LobbyView {
+	    watching: boolean;
+	    total: number;
+	    list: RoomSummary[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LobbyView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.watching = source["watching"];
+	        this.total = source["total"];
+	        this.list = this.convertValues(source["list"], RoomSummary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Member {
+	    userId: number;
+	    nickname: string;
+	    peerId: string;
+	    joinedAtMs: number;
+	    link?: LinkState;
+	
+	    static createFrom(source: any = {}) {
+	        return new Member(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.userId = source["userId"];
+	        this.nickname = source["nickname"];
+	        this.peerId = source["peerId"];
+	        this.joinedAtMs = source["joinedAtMs"];
+	        this.link = this.convertValues(source["link"], LinkState);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class NetworkView {
+	    upnp: boolean;
+	    ipv6: boolean;
+	    natConsistent?: boolean;
+	    natMappings: string[];
+	    observedAddrs: string[];
+	    reportedAddrs: p2p.ClassifiedAddr[];
+	    observed: p2p.ClassifiedAddr[];
+	    observeErrors: string[];
+	    hostAddrs: p2p.ClassifiedAddr[];
+	    hostNoPublic: boolean;
+	    firewallRule: boolean;
+	    targets: forward.TargetState[];
+	
+	    static createFrom(source: any = {}) {
+	        return new NetworkView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.upnp = source["upnp"];
+	        this.ipv6 = source["ipv6"];
+	        this.natConsistent = source["natConsistent"];
+	        this.natMappings = source["natMappings"];
+	        this.observedAddrs = source["observedAddrs"];
+	        this.reportedAddrs = this.convertValues(source["reportedAddrs"], p2p.ClassifiedAddr);
+	        this.observed = this.convertValues(source["observed"], p2p.ClassifiedAddr);
+	        this.observeErrors = source["observeErrors"];
+	        this.hostAddrs = this.convertValues(source["hostAddrs"], p2p.ClassifiedAddr);
+	        this.hostNoPublic = source["hostNoPublic"];
+	        this.firewallRule = source["firewallRule"];
+	        this.targets = this.convertValues(source["targets"], forward.TargetState);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class RoomCreateRequest {
+	    name: string;
+	    visibility: string;
+	    password: string;
+	    maxMembers: number;
+	    ports: PortDecl[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RoomCreateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.visibility = source["visibility"];
+	        this.password = source["password"];
+	        this.maxMembers = source["maxMembers"];
+	        this.ports = this.convertValues(source["ports"], PortDecl);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RoomHost {
+	    userId: number;
+	    nickname: string;
+	    peerId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RoomHost(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.userId = source["userId"];
+	        this.nickname = source["nickname"];
+	        this.peerId = source["peerId"];
+	    }
+	}
+	export class RoomJoinRequest {
+	    roomId: string;
+	    inviteCode: string;
+	    password: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RoomJoinRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.roomId = source["roomId"];
+	        this.inviteCode = source["inviteCode"];
+	        this.password = source["password"];
+	    }
+	}
+	export class RoomResolveRequest {
+	    roomId: string;
+	    inviteCode: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RoomResolveRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.roomId = source["roomId"];
+	        this.inviteCode = source["inviteCode"];
+	    }
+	}
+	export class RoomSnapshot {
+	    roomId: string;
+	    revision: number;
+	    name: string;
+	    visibility: string;
+	    hasPassword: boolean;
+	    maxMembers: number;
+	    ports: PortDecl[];
+	    createdAtMs: number;
+	    host: RoomHost;
+	    members: Member[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RoomSnapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.roomId = source["roomId"];
+	        this.revision = source["revision"];
+	        this.name = source["name"];
+	        this.visibility = source["visibility"];
+	        this.hasPassword = source["hasPassword"];
+	        this.maxMembers = source["maxMembers"];
+	        this.ports = this.convertValues(source["ports"], PortDecl);
+	        this.createdAtMs = source["createdAtMs"];
+	        this.host = this.convertValues(source["host"], RoomHost);
+	        this.members = this.convertValues(source["members"], Member);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class RoomView {
+	    snapshot: RoomSnapshot;
+	    role: string;
+	    invite?: InviteView;
+	
+	    static createFrom(source: any = {}) {
+	        return new RoomView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.snapshot = this.convertValues(source["snapshot"], RoomSnapshot);
+	        this.role = source["role"];
+	        this.invite = this.convertValues(source["invite"], InviteView);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SessionLimits {
+	    maxMembers: number;
+	    maxPorts: number;
+	    punchRounds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionLimits(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.maxMembers = source["maxMembers"];
+	        this.maxPorts = source["maxPorts"];
+	        this.punchRounds = source["punchRounds"];
+	    }
+	}
+	export class SessionView {
+	    sessionId: string;
+	    peerId: string;
+	    listenPort: number;
+	    limits: SessionLimits;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.peerId = source["peerId"];
+	        this.listenPort = source["listenPort"];
+	        this.limits = this.convertValues(source["limits"], SessionLimits);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class State {
+	    stateRevision: number;
+	    connection: ConnectionView;
+	    account: AccountView;
+	    session?: SessionView;
+	    lobby: LobbyView;
+	    room?: RoomView;
+	    links: LinkView[];
+	    localPorts: forward.LocalPort[];
+	    network: NetworkView;
+	    pending: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new State(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stateRevision = source["stateRevision"];
+	        this.connection = this.convertValues(source["connection"], ConnectionView);
+	        this.account = this.convertValues(source["account"], AccountView);
+	        this.session = this.convertValues(source["session"], SessionView);
+	        this.lobby = this.convertValues(source["lobby"], LobbyView);
+	        this.room = this.convertValues(source["room"], RoomView);
+	        this.links = this.convertValues(source["links"], LinkView);
+	        this.localPorts = this.convertValues(source["localPorts"], forward.LocalPort);
+	        this.network = this.convertValues(source["network"], NetworkView);
+	        this.pending = source["pending"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace p2p {
+	
+	export class ClassifiedAddr {
+	    addr: string;
+	    display: string;
+	    kind: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClassifiedAddr(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.addr = source["addr"];
+	        this.display = source["display"];
+	        this.kind = source["kind"];
+	    }
 	}
 
 }

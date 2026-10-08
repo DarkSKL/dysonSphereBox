@@ -34,6 +34,11 @@ type Configure struct {
 	// 使用：无头服务器启动命令构造时读取该配置。
 	// 边界：不验证存档文件是否存在。
 	GameServerArchive *ConfigUnit
+	// MultiplayerListenPort 访问联机 libp2p 监听端口配置。
+	// 职责：持久化盒子 H 端口号，便于 UPnP 映射与防火墙规则稳定。
+	// 使用：联机控制器启动 libp2p host 前读取；为空或绑定失败时随机新端口后写回。
+	// 边界：只保存端口号文本，不保存任何密钥；密钥每次控制链路建立时临时生成。
+	MultiplayerListenPort *ConfigUnit
 }
 
 // InitConfigure 初始化应用配置单元集合。
@@ -47,5 +52,6 @@ func InitConfigure() *Configure {
 		AccountToken:      InitConfigUnit("Account", "Token"),
 		GameStartFilePath: InitConfigUnit("Game", "StartupFilePath"),
 		GameServerArchive: InitConfigUnit("Game", "ServerArchive"),
+		MultiplayerListenPort: InitConfigUnit("Multiplayer", "ListenPort"),
 	}
 }

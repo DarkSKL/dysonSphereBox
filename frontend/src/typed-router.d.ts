@@ -65,6 +65,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/dysonSphere/multiplayer': RouteRecordInfo<
+      '/dysonSphere/multiplayer',
+      '/dysonSphere/multiplayer',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/dysonSphere/settings': RouteRecordInfo<
       '/dysonSphere/settings',
       '/dysonSphere/settings',
@@ -146,6 +153,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/dysonSphere/mod.vue': {
       routes:
         | '/dysonSphere/mod'
+      views:
+        | never
+    }
+    'src/pages/dysonSphere/multiplayer.vue': {
+      routes:
+        | '/dysonSphere/multiplayer'
       views:
         | never
     }
