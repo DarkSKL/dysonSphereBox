@@ -7,9 +7,9 @@ package headless
 import (
 	"fmt"
 
+	systemModel "DysonSphereBox/constant/logging"
 	headlessContract "DysonSphereBox/helper/modDependence/headless/contract"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
 )
 
 // recordHeadlessProcessTransition 记录无头服务器进程上线或下线日志。
@@ -25,13 +25,13 @@ func recordHeadlessProcessTransition(status headlessContract.HeadlessEnvironment
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "headless",
-		Event:     event,
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeOperation,
-		Content:   content,
-		Metadata: map[string]interface{}{
+		Namespace: "modDependence.headless." + event,
+		Source:    "backend.headless",
+		Reason:    "状态检查发现进程运行状态发生变化",
+		Handler:   "System",
+		Level:     systemModel.Info,
+		Action:    content,
+		Data: map[string]interface{}{
 			"gameDir":   status.GameDir,
 			"processId": status.ProcessID,
 			"hostPort":  status.HostPort,
@@ -53,13 +53,13 @@ func recordHeadlessPortTransition(status headlessContract.HeadlessEnvironmentSta
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "headless",
-		Event:     event,
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeOperation,
-		Content:   content,
-		Metadata: map[string]interface{}{
+		Namespace: "modDependence.headless." + event,
+		Source:    "backend.headless",
+		Reason:    "状态检查发现监听端口状态发生变化",
+		Handler:   "System",
+		Level:     systemModel.Info,
+		Action:    content,
+		Data: map[string]interface{}{
 			"gameDir":      status.GameDir,
 			"processId":    status.ProcessID,
 			"hostPort":     status.HostPort,

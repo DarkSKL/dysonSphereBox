@@ -49,7 +49,7 @@ type InstalledPackageSummary struct {
 	// PackageURL 职责：保存来源页面地址；使用：详情展示；边界：手动导入包可能为空。
 	PackageURL string `json:"packageUrl"`
 	// InstalledAt 职责：保存安装时间；使用：详情展示；边界：零值表示未知。
-	InstalledAt time.Time `json:"installedAt"`
+	InstalledAt time.Time `json:"installedAt" ts_type:"string"`
 	// FileCount 职责：保存归属当前包的文件数量；使用：详情展示；边界：不包含其它包共享持有的文件。
 	FileCount int `json:"fileCount"`
 	// SizeBytes 职责：保存归属当前包的文件总大小；使用：详情展示；边界：以安装记录为准，不实时扫描磁盘。

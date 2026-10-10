@@ -1,118 +1,80 @@
 package system
 
-// 文件职责：提供系统操作日志分页查询、前端补充记录和历史清理的 Wails 服务。
-// 使用：日志页筛选审计记录，或前端记录后端无法感知的重要交互时调用。
-// 边界：业务关键日志优先由后端 helper 自动写入；本服务不替代具体业务流程埋点。
+// 文件职责：暴露统一日志查询、前端采集、健康与诊断导出。使用：日志页面及前端异常边界；边界：不向外部服务器上传，不删除原始证据。
 
 import (
-	"errors"
-	"fmt"
-	"time"
-
+	"DysonSphereBox/constant/logging"
 	"DysonSphereBox/core"
+	"DysonSphereBox/core/diagnostics"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
+	logStore "DysonSphereBox/helper/system/logging"
+	"fmt"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"strings"
 )
 
-// LogService 提供前端可调用的系统日志读写能力。
-// 职责：分页查询、创建和清理系统操作日志。
-// 使用：日志页展示审计记录，或前端在后端无法感知的重要交互中主动记录日志。
-// 边界：业务操作日志优先由后端 helper 自动记录，前端不应替代后端关键流程埋点。
+// LogService 职责：提供统一诊断日志 API；使用：前端日志模块；边界：服务只编排 helper 和运行时对话框。
 type LogService struct{}
 
-// ListLogs 按条件分页返回系统日志。
-// 职责：根据 namespace/module/event/level/type 条件分页读取日志。
-// 使用：日志页筛选、分页和刷新列表时调用。
-// 边界：数据库未初始化时返回错误；metadata 转换失败会透传错误。
-// 逻辑流：1. 校验数据库 => 2. 规范化分页 => 3. 叠加筛选条件 => 4. 统计总数并分页查询 => 5. 转换 DTO 返回。
+// ListLogs 职责：筛选分页日志；使用：日志页与时间线；边界：数据库不可用时明确返回文件降级告警。
 func (service *LogService) ListLogs(query systemHelper.LogQuery) (systemHelper.LogListResult, error) {
-	if core.GLOBAL.DB == nil {
-		return systemHelper.LogListResult{}, errors.New("database is not initialized")
-	}
-
-	page, pageSize := systemHelper.NormalizeLogPage(query.Page, query.PageSize)
-	dbQuery := core.GLOBAL.DB.Model(&systemModel.Log{})
-
-	if query.Namespace != "" {
-		dbQuery = dbQuery.Where("namespace = ?", query.Namespace)
-	}
-	if query.Module != "" {
-		dbQuery = dbQuery.Where("module = ?", query.Module)
-	}
-	if query.Event != "" {
-		dbQuery = dbQuery.Where("event = ?", query.Event)
-	}
-	if query.Level != 0 {
-		dbQuery = dbQuery.Where("level = ?", query.Level)
-	}
-	if query.Type != 0 {
-		dbQuery = dbQuery.Where("type = ?", query.Type)
-	}
-
-	var total int64
-	if err := dbQuery.Count(&total).Error; err != nil {
-		return systemHelper.LogListResult{}, fmt.Errorf("count system logs: %w", err)
-	}
-
-	items := make([]systemModel.Log, 0, pageSize)
-	err := dbQuery.
-		Order("date_time DESC").
-		Limit(pageSize).
-		Offset((page - 1) * pageSize).
-		Find(&items).
-		Error
-	if err != nil {
-		return systemHelper.LogListResult{}, fmt.Errorf("list system logs: %w", err)
-	}
-
-	logItems, err := systemHelper.ToLogDTOs(items)
-	if err != nil {
-		return systemHelper.LogListResult{}, err
-	}
-
-	return systemHelper.LogListResult{
-		Items:    logItems,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return logStore.List(core.GLOBAL.DB, query)
 }
 
-// CreateLog 主动创建一条系统日志。
-// 使用：前端只应记录后端无法感知的重要交互；后端业务操作优先使用 helper 内部埋点。
-// 职责：把前端提交的日志请求转换为统一 LogEntry。
-// 边界：不补充业务上下文；调用方必须传入清晰 namespace/module/event。
-func (service *LogService) CreateLog(request systemHelper.CreateLogRequest) error {
-	return systemHelper.RecordLog(systemHelper.LogEntry{
-		Namespace: request.Namespace,
-		Module:    request.Module,
-		Event:     request.Event,
-		Level:     request.Level,
-		Type:      request.Type,
-		Content:   request.Content,
-		Metadata:  request.Metadata,
-		Error:     request.Error,
-	})
+// DeleteLog 职责：删除用户指定的单条日志并记录操作；使用：日志页右键菜单；边界：校验 ID，持久化失败不报告成功，原始文件由诊断保留策略管理。
+func (service *LogService) DeleteLog(id string) error {
+	if strings.TrimSpace(id) == "" || len(id) > 40 || strings.TrimSpace(id) != id {
+		return fmt.Errorf("日志标识无效")
+	}
+	if err := logStore.Delete(core.GLOBAL.DB, id); err != nil {
+		return err
+	}
+	systemHelper.RecordOperation("system", "logging", "delete", "删除日志", map[string]interface{}{"logId": id})
+	if core.GLOBAL.RuntimeContext != nil {
+		runtime.EventsEmit(core.GLOBAL.RuntimeContext, logging.ChangedEvent)
+	}
+	return nil
 }
 
-// DeleteLogsBefore 删除指定时间之前的系统日志。
-// 职责：按时间边界清理历史系统日志。
-// 使用：后续日志清理设置或维护工具触发时调用。
-// 边界：用于后续日志清理设置；before 为空时拒绝执行，避免误删全部审计记录。
-func (service *LogService) DeleteLogsBefore(before time.Time) (int64, error) {
-	if before.IsZero() {
-		return 0, errors.New("before time cannot be zero")
+// CreateLog 职责：采集前端事件；使用：异常捕获和桥接边界；边界：强制 frontend 来源及本机会话，拒绝无效结构和过量数据。
+func (service *LogService) CreateLog(entry logging.Entry) error {
+	if !strings.HasPrefix(entry.Source, "frontend.") {
+		return fmt.Errorf("前端日志来源必须以 frontend. 开头")
 	}
-	if core.GLOBAL.DB == nil {
-		return 0, errors.New("database is not initialized")
-	}
+	entry.ID, entry.SessionID, entry.AppVersion = "", "", ""
+	return diagnostics.Default.Write(entry)
+}
 
-	result := core.GLOBAL.DB.
-		Where("date_time < ?", before).
-		Delete(&systemModel.Log{})
-	if result.Error != nil {
-		return 0, fmt.Errorf("delete system logs: %w", result.Error)
-	}
+// GetLogHealth 职责：查询采集健康和实际路径；使用：日志页及诊断导出；边界：索引未初始化明确显示。
+func (service *LogService) GetLogHealth() systemHelper.LogHealth {
+	err, pending := logStore.Health()
+	return systemHelper.LogHealth{File: diagnostics.Default.Health(), IndexError: err, Pending: pending}
+}
 
-	return result.RowsAffected, nil
+// OpenLogDirectory 职责：打开实际日志目录；使用：日志页工具栏；边界：无运行时或目录时拒绝。
+func (service *LogService) OpenLogDirectory() error {
+	dir := diagnostics.Default.Health().Directory
+	if core.GLOBAL.RuntimeContext == nil || dir == "" {
+		return fmt.Errorf("日志目录或桌面运行时尚未就绪")
+	}
+	return logStore.OpenDirectory(dir)
+}
+
+// ExportDiagnostics 职责：导出脱敏诊断包；使用：用户报错时；边界：取消不写文件，拒绝覆盖盒子内部数据。
+func (service *LogService) ExportDiagnostics(query systemHelper.LogQuery) (string, error) {
+	if err := logStore.ValidateQuery(query); err != nil {
+		return "", err
+	}
+	if core.GLOBAL.RuntimeContext == nil {
+		return "", fmt.Errorf("桌面运行时尚未初始化")
+	}
+	target, err := runtime.SaveFileDialog(core.GLOBAL.RuntimeContext, runtime.SaveDialogOptions{Title: "导出诊断包", DefaultFilename: "dyson-sphere-box-diagnostics.zip", Filters: []runtime.FileFilter{{DisplayName: "诊断包 (*.zip)", Pattern: "*.zip"}}})
+	if err != nil || target == "" {
+		return "", err
+	}
+	if err := logStore.Export(core.GLOBAL.DB, target, query, service.GetLogHealth()); err != nil {
+		return "", err
+	}
+	systemHelper.RecordOperation("system", "logging", "export", "导出诊断包", map[string]interface{}{"target": target})
+	return target, nil
 }

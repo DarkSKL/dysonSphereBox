@@ -7,9 +7,9 @@ package headless
 import (
 	"fmt"
 
+	systemModel "DysonSphereBox/constant/logging"
 	headlessContract "DysonSphereBox/helper/modDependence/headless/contract"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
 )
 
 // RecordHeadlessStartResult 记录无头服务器启动动作结果。
@@ -21,9 +21,9 @@ func RecordHeadlessStartResult(result *headlessContract.HeadlessStartResult) {
 		return
 	}
 
-	level := systemModel.LogLevelInfo
+	level := systemModel.Info
 	if !result.Started && !result.Skipped {
-		level = systemModel.LogLevelWarn
+		level = systemModel.Warn
 	}
 	content := result.Message
 	if result.Started {
@@ -33,13 +33,13 @@ func RecordHeadlessStartResult(result *headlessContract.HeadlessStartResult) {
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "headless",
-		Event:     "start",
+		Namespace: "modDependence.headless." + "start",
+		Source:    "backend.headless",
+		Reason:    "启动请求已处理，进程与环境状态见 data，不代表服务器业务已就绪",
+		Handler:   "User",
 		Level:     level,
-		Type:      systemModel.LogTypeConfiguration,
-		Content:   content,
-		Metadata: map[string]interface{}{
+		Action:    content,
+		Data: map[string]interface{}{
 			"gameDir":          result.GameDir,
 			"started":          result.Started,
 			"skipped":          result.Skipped,

@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
+	systemModel "DysonSphereBox/constant/logging"
 	"DysonSphereBox/helper/multiplayer/p2p"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
 )
 
 // 拨号记录的角色取值。
@@ -91,22 +91,23 @@ func (record DialRecord) Text() string {
 // 职责：失败写 warn（event dialFailure），成功写 info（event dialSuccess），namespace multiplayer、module link；content 为 Text，metadata 为结构化字段；
 // 使用：成员链路与房主回拨；边界：静默写入，调用方可放到独立 goroutine。
 func RecordDial(record DialRecord) {
-	level, event := systemModel.LogLevelWarn, "dialFailure"
+	level, event := systemModel.Warn, "dialFailure"
 	if record.OK {
-		level, event = systemModel.LogLevelInfo, "dialSuccess"
+		level, event = systemModel.Info, "dialSuccess"
 	}
 	role := record.Role
 	if role == "" {
 		role = DialRoleMember
 	}
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "multiplayer",
-		Module:    "link",
-		Event:     event,
+		Namespace: "multiplayer.link." + event,
+		Source:    "backend.link",
+		Reason:    "联机链路状态机执行直连或打洞后的实际拨号结果",
+		Handler:   "System",
 		Level:     level,
-		Content:   record.Text(),
+		Action:    record.Text(),
 		Error:     strings.Join(append([]string{record.Err}, record.AddrErrors...), "\n"),
-		Metadata: map[string]interface{}{
+		Data: map[string]interface{}{
 			"role":       role,
 			"path":       record.Path,
 			"round":      record.Round,

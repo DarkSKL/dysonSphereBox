@@ -4,7 +4,7 @@ package system
 // 使用：由 UpdateService 在远端检查、自更新替换完成或失败后调用。
 // 边界：只记录更新流程结果，不重试网络请求、不下载更新包、不回滚替换文件。
 
-import systemModel "DysonSphereBox/model/system"
+import systemModel "DysonSphereBox/constant/logging"
 
 // RecordUpdateCheckSuccess 记录应用更新检查成功事件。
 // 职责：写入应用更新检查成功的审计日志。
@@ -12,13 +12,13 @@ import systemModel "DysonSphereBox/model/system"
 // 边界：result 仅作为 metadata 保存，不在日志层解释是否必须更新。
 func RecordUpdateCheckSuccess(version string, result interface{}) {
 	RecordLogSilently(LogEntry{
-		Namespace: "system",
-		Module:    "update",
-		Event:     "checkAppUpdate",
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeOperation,
-		Content:   "应用更新检查完成",
-		Metadata: map[string]interface{}{
+		Namespace: "system.update." + "checkAppUpdate",
+		Source:    "backend.update",
+		Reason:    "业务流程返回以下结果，原始证据见 data",
+		Handler:   "Unknown",
+		Level:     systemModel.Info,
+		Action:    "应用更新检查完成",
+		Data: map[string]interface{}{
 			"version": version,
 			"result":  result,
 		},
@@ -41,13 +41,13 @@ func RecordUpdateCheckFailure(version string, err error) {
 // 边界：不重启程序，只记录“重启后生效”的结果。
 func RecordUpdateSelfSuccess(version string, result interface{}) {
 	RecordLogSilently(LogEntry{
-		Namespace: "system",
-		Module:    "update",
-		Event:     "updateAppSelf",
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeOperation,
-		Content:   "应用自更新已应用，重启后生效",
-		Metadata: map[string]interface{}{
+		Namespace: "system.update." + "updateAppSelf",
+		Source:    "backend.update",
+		Reason:    "业务流程返回以下结果，原始证据见 data",
+		Handler:   "Unknown",
+		Level:     systemModel.Info,
+		Action:    "应用自更新已应用，重启后生效",
+		Data: map[string]interface{}{
 			"version": version,
 			"result":  result,
 		},

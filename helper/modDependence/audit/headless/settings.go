@@ -5,9 +5,9 @@ package headless
 // 边界：只写系统日志，不校验端口、不写 nebula.cfg、不修改启动命令。
 
 import (
+	systemModel "DysonSphereBox/constant/logging"
 	headlessContract "DysonSphereBox/helper/modDependence/headless/contract"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
 )
 
 // RecordHeadlessSettingsResult 记录无头服务器设置保存结果。
@@ -20,13 +20,13 @@ func RecordHeadlessSettingsResult(result *headlessContract.HeadlessSettings) {
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "headless",
-		Event:     "settings",
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeConfiguration,
-		Content:   "无头服务器设置已保存",
-		Metadata: map[string]interface{}{
+		Namespace: "modDependence.headless." + "settings",
+		Source:    "backend.headless",
+		Reason:    "用户提交开服设置且保存流程已完成",
+		Handler:   "User",
+		Level:     systemModel.Info,
+		Action:    "无头服务器设置已保存",
+		Data: map[string]interface{}{
 			"gameDir":          result.Status.GameDir,
 			"hostPort":         result.HostPort,
 			"serverArchive":    result.ServerArchive,

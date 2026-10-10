@@ -18,7 +18,7 @@ import {useAppVersion} from '../composables/useAppVersion'
 import {usePageTutorial} from '../composables/usePageTutorial'
 import {useThemeMode} from '../composables/useThemeMode'
 import AccountModal from '../components/layout/account-modal.vue'
-import {gameNavigationRegistry, globalNavigationEntries} from '../navigation/registry'
+import {workspaceNavigationRegistry, globalNavigationEntries} from '../navigation/registry'
 import {accountIsAuthenticated, accountUser, restoreAccountSession} from '../services/account'
 
 const route = useRoute()
@@ -34,17 +34,17 @@ const {appVersion, loadAppVersion} = useAppVersion()
 const {isDarkMode, isSavingThemeMode, loadThemeMode, toggleThemeMode} = useThemeMode()
 const {tryAutoStartTutorial: tryAutoStartGlobalTutorial} = usePageTutorial('global')
 
-// =============== 当前游戏上下文 ===============
-// 说明：根据当前路由解析游戏，第二层菜单只读取该游戏注册的数据；全局页面不挂载游戏菜单。
-const currentGame = computed(() => (
-  gameNavigationRegistry.find((game) => route.path === game.to || route.path.startsWith(`${game.to}/`))
+// =============== 当前工作区上下文 ===============
+// 说明：根据当前路由解析游戏或社区工作区，第二层菜单读取对应注册数据；全局页面不挂载子菜单。
+const currentWorkspace = computed(() => (
+  workspaceNavigationRegistry.find((workspace) => route.path === workspace.to || route.path.startsWith(`${workspace.to}/`))
 ))
-const currentGameNavigation = computed(() => currentGame.value?.navigation ?? [])
-const activeNavIndex = computed(() => currentGameNavigation.value.findIndex((item) => (
-  route.path === item.to || (item.to !== currentGame.value?.to && route.path.startsWith(`${item.to}/`))
+const currentWorkspaceNavigation = computed(() => currentWorkspace.value?.navigation ?? [])
+const activeNavIndex = computed(() => currentWorkspaceNavigation.value.findIndex((item) => (
+  route.path === item.to || (item.to !== currentWorkspace.value?.to && route.path.startsWith(`${item.to}/`))
 )))
 
-// =============== 游戏选项收起状态 ===============
+// =============== 工作区选项收起状态 ===============
 // 说明：收起后只保留图标，状态保存在本地存储中，重启应用后沿用上次选择。
 const sidebarCollapsedStorageKey = 'dsbox:sidebar-collapsed'
 const readSidebarCollapsed = (): boolean => {
@@ -152,7 +152,7 @@ const closeWindow = (): void => {
 </script>
 
 <template>
-  <div class="app-shell" :class="{'is-global-context': !currentGame, 'is-sidebar-collapsed': isSidebarCollapsed}">
+  <div class="app-shell" :class="{'is-global-context': !currentWorkspace, 'is-sidebar-collapsed': isSidebarCollapsed}">
     <!-- ~ 动态宇宙背景 -->
     <!-- * 说明：两层漂移星云 + 平移星流 + 闪烁星点，配色与首页戴森球场景背景对齐 -->
     <!-- * 交互：纯装饰层，不响应指针事件，不进入可访问性树 -->
@@ -183,20 +183,20 @@ const closeWindow = (): void => {
 
       <div class="app-rail-divider" />
 
-      <nav class="app-rail-games" role="tablist" aria-label="游戏切换" data-tour="main-brand">
+      <nav class="app-rail-games" role="tablist" aria-label="工作区切换" data-tour="main-brand">
         <RouterLink
-          v-for="game in gameNavigationRegistry"
-          :key="game.key"
-          :to="game.to"
+          v-for="workspace in workspaceNavigationRegistry"
+          :key="workspace.key"
+          :to="workspace.to"
           class="app-rail-button app-rail-game"
           role="tab"
-          :class="{'is-selected': game.key === currentGame?.key}"
-          :title="game.label"
-          :aria-label="game.label"
-          :aria-selected="game.key === currentGame?.key"
+          :class="{'is-selected': workspace.key === currentWorkspace?.key}"
+          :title="workspace.label"
+          :aria-label="workspace.label"
+          :aria-selected="workspace.key === currentWorkspace?.key"
         >
-          <component :is="game.icon" :size="20" :stroke-width="1.7" />
-          <span class="app-rail-game-label">{{ game.shortLabel }}</span>
+          <component :is="workspace.icon" :size="20" :stroke-width="1.7" />
+          <span class="app-rail-game-label">{{ workspace.shortLabel }}</span>
         </RouterLink>
       </nav>
 
@@ -216,7 +216,7 @@ const closeWindow = (): void => {
           :aria-label="isGlobalMenuOpen ? '收起全局菜单' : '打开全局菜单'"
           aria-controls="app-global-menu"
           :aria-expanded="isGlobalMenuOpen"
-          :data-tour="currentGame ? undefined : 'main-nav'"
+          :data-tour="currentWorkspace ? undefined : 'main-nav'"
           @click="toggleGlobalMenu"
         >
           <List :size="19" :stroke-width="1.8" class="app-rail-menu-icon" />
@@ -252,7 +252,7 @@ const closeWindow = (): void => {
 
     <section class="app-workspace">
       <!-- ~ 无边框窗口标题栏 -->
-      <!-- * 说明：跨越游戏选项与页面内容，统一承载当前标题、版本、主题和窗口控制 -->
+      <!-- * 说明：跨越工作区选项与页面内容，统一承载当前标题、版本、主题和窗口控制 -->
       <!-- * 交互：标题空白区可拖动窗口；右侧按钮调用主题与 Wails 窗口 API -->
       <!-- * 依赖：依赖 route.meta.title、useThemeMode 与 runtime 控制方法 -->
       <!-- * 边界：所有可点击控件均禁止窗口拖动，保留既有教程选择器 -->
@@ -301,13 +301,13 @@ const closeWindow = (): void => {
       </header>
 
       <div class="app-workspace-body">
-        <aside v-if="currentGame" class="app-sidebar">
-          <!-- ~ 游戏选项 -->
-          <!-- * 说明：只渲染当前游戏注册的数据，避免不同游戏的路由选项耦合在布局中 -->
-          <!-- * 交互：选择游戏选项后跳转页面，高亮容器移动至当前路由入口 -->
-          <!-- * 依赖：依赖 currentGameNavigation、activeNavIndex、Vue Router 与图标组件 -->
+        <aside v-if="currentWorkspace" class="app-sidebar">
+          <!-- ~ 工作区选项 -->
+          <!-- * 说明：只渲染当前工作区注册的数据，将游戏与社区的路由选项分开维护 -->
+          <!-- * 交互：选择工作区选项后跳转页面，高亮容器移动至当前路由入口 -->
+          <!-- * 依赖：依赖 currentWorkspaceNavigation、activeNavIndex、Vue Router 与图标组件 -->
           <!-- * 边界：全局页面隐藏此层；收起或窄窗口下只保留图标和可访问名称 -->
-          <nav id="app-game-nav" class="app-nav" data-tour="main-nav" aria-label="游戏选项">
+          <nav id="app-workspace-nav" class="app-nav" data-tour="main-nav" :aria-label="`${currentWorkspace.label}选项`">
             <span
               v-if="activeNavIndex >= 0"
               class="app-nav-active-highlight"
@@ -315,7 +315,7 @@ const closeWindow = (): void => {
               aria-hidden="true"
             />
             <RouterLink
-              v-for="item in currentGameNavigation"
+              v-for="item in currentWorkspaceNavigation"
               :key="item.key"
               :to="item.to"
               class="app-nav-link"
@@ -337,7 +337,7 @@ const closeWindow = (): void => {
             class="app-sidebar-toggle"
             :title="sidebarToggleTitle"
             :aria-label="sidebarToggleTitle"
-            aria-controls="app-game-nav"
+            aria-controls="app-workspace-nav"
             :aria-expanded="!isSidebarCollapsed"
             @click="toggleSidebarCollapsed"
           >

@@ -7,9 +7,9 @@ package headless
 import (
 	"fmt"
 
+	systemModel "DysonSphereBox/constant/logging"
 	headlessContract "DysonSphereBox/helper/modDependence/headless/contract"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
 )
 
 // RecordHeadlessStopResult 记录无头服务器停止动作结果。
@@ -21,9 +21,9 @@ func RecordHeadlessStopResult(result *headlessContract.HeadlessStopResult) {
 		return
 	}
 
-	level := systemModel.LogLevelInfo
+	level := systemModel.Info
 	if !result.Stopped && !result.Skipped {
-		level = systemModel.LogLevelWarn
+		level = systemModel.Warn
 	}
 	content := result.Message
 	if result.Stopped {
@@ -33,13 +33,13 @@ func RecordHeadlessStopResult(result *headlessContract.HeadlessStopResult) {
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "headless",
-		Event:     "stop",
+		Namespace: "modDependence.headless." + "stop",
+		Source:    "backend.headless",
+		Reason:    "停止请求已处理，进程检查结果见 data",
+		Handler:   "User",
 		Level:     level,
-		Type:      systemModel.LogTypeConfiguration,
-		Content:   content,
-		Metadata: map[string]interface{}{
+		Action:    content,
+		Data: map[string]interface{}{
 			"gameDir":   result.GameDir,
 			"stopped":   result.Stopped,
 			"skipped":   result.Skipped,

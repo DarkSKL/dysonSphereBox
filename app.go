@@ -5,8 +5,12 @@ package main
 // 边界：不实现具体业务流程，不定义数据库模型或前端组件。
 
 import (
+	"DysonSphereBox/constant/logging"
+	"DysonSphereBox/core/diagnostics"
+	logStore "DysonSphereBox/helper/system/logging"
 	"context"
 	"fmt"
+	"time"
 
 	"DysonSphereBox/core"
 	legacyMigration "DysonSphereBox/helper/modDependence/installer/migration/legacy"
@@ -42,22 +46,31 @@ func NewApp() *App {
 // 使用：Wails 框架在应用启动后自动调用一次。
 // 边界：启动恢复只调用 installer 子包的遗留文件修复和中断安装恢复；具体业务流程仍放在服务层。
 func (a *App) startup(ctx context.Context) {
+	defer diagnostics.CapturePanic("backend.startup")
 	a.ctx = ctx
 	core.GLOBAL.RuntimeContext = ctx
 
 	if err := core.InitDatabase(databaseTemplate); err != nil {
+		diagnostics.Default.Record(logging.Entry{Action: "初始化客户端基础设施失败", Level: logging.Fatal, Source: "backend.startup", Reason: "数据库、迁移或服务器配置初始化返回错误", Namespace: "system.lifecycle.initializeFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err), "result": "failed"}})
 		panic(fmt.Errorf("init database: %w", err))
 	}
+	if err := logStore.MigrateLegacy(core.GLOBAL.DB); err != nil {
+		diagnostics.Default.Record(logging.Entry{Action: "迁移历史日志失败", Level: logging.Error, Source: "backend.logging", Reason: "旧日志转换返回错误，旧表仍保留", Namespace: "system.logging.migrationFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})
+	}
+	if err := logStore.Start(core.GLOBAL.DB); err != nil {
+		diagnostics.Default.Record(logging.Entry{Action: "重建日志索引失败", Level: logging.Error, Source: "backend.logging", Reason: "文件回放返回错误，仍可读取文件证据", Namespace: "system.logging.indexFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})
+	}
 	if err := legacyMigration.RepairScopedBepInExFiles(); err != nil {
-		fmt.Printf("repair legacy scoped mod files: %v\n", err)
+		systemHelper.RecordFailure("system", "recovery", "legacyRepair", "修复历史 Mod 文件失败", err, nil)
 	}
 	if err := v2Installer.RecoverInterruptedRemotePackageInstalls(); err != nil {
-		fmt.Printf("recover interrupted mod installs: %v\n", err)
+		systemHelper.RecordFailure("system", "recovery", "modInstall", "恢复中断的 Mod 安装失败", err, nil)
 	}
 	environmentManagerService := environmentService.EnvironmentManagerService{}
 	if _, err := environmentManagerService.RecoverInterruptedOperations(); err != nil {
-		fmt.Printf("recover interrupted environment operations: %v\n", err)
+		systemHelper.RecordFailure("system", "recovery", "environment", "恢复环境操作失败", err, nil)
 	}
+	diagnostics.Default.Record(logging.Entry{Action: "客户端初始化完成", Level: logging.Info, Source: "backend.startup", Reason: "启动初始化与恢复检查完成", Namespace: "system.lifecycle.ready", Handler: logging.System, Data: map[string]interface{}{"result": "success", "time": time.Now().Format(time.RFC3339Nano)}})
 }
 
 // shutdown 在 Wails 退出时释放数据库等基础设施资源。
@@ -65,9 +78,12 @@ func (a *App) startup(ctx context.Context) {
 // 使用：Wails 框架在应用退出时自动调用。
 // 边界：关闭失败只记录到控制台，避免退出流程二次 panic。
 func (a *App) shutdown(ctx context.Context) {
+	diagnostics.Default.Record(logging.Entry{Action: "关闭客户端", Level: logging.Info, Source: "backend.shutdown", Reason: "Wails 调用正常关闭生命周期", Namespace: "system.lifecycle.shutdown", Handler: logging.System, Data: map[string]interface{}{"result": "started"}})
+	logStore.Stop()
 	if err := core.CloseDatabase(); err != nil {
-		fmt.Printf("close database: %v\n", err)
+		diagnostics.Default.Record(logging.Entry{Action: "关闭数据库失败", Level: logging.Error, Source: "backend.shutdown", Reason: "数据库关闭返回错误", Namespace: "system.database.closeFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})
 	}
+	diagnostics.Default.EndSession()
 }
 
 // SelectDysonSphereDirectory 打开系统目录选择器并保存戴森球计划游戏目录。

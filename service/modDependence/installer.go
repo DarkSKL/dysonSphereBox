@@ -6,10 +6,12 @@ package modDependence
 
 import (
 	ModDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
+	"DysonSphereBox/constant/logging"
 	installAudit "DysonSphereBox/helper/modDependence/audit/install"
 	"DysonSphereBox/helper/modDependence/installer/contract"
 	v2Installer "DysonSphereBox/helper/modDependence/installer/v2"
 	v2Cancel "DysonSphereBox/helper/modDependence/installer/v2/cancel"
+	"DysonSphereBox/helper/modDependence/installer/v2/diagnostic"
 	v2InstallError "DysonSphereBox/helper/modDependence/installer/v2/installerror"
 	v2ProgressEvent "DysonSphereBox/helper/modDependence/installer/v2/progress/event"
 	v2ProgressSnapshot "DysonSphereBox/helper/modDependence/installer/v2/progress/snapshot"
@@ -30,6 +32,8 @@ type InstallerService struct {
 // 边界：冲突和取消错误由 helper 保持特殊状态，服务层不把它们记录为普通失败。
 // 逻辑流：1. 调用远端安装 helper => 2. 判断取消/冲突/失败分支 => 3. 记录安装成功或失败日志 => 4. 返回安装结果给前端。
 func (service *InstallerService) InstallRemotePackage(pack ModDependenceResponse.RemoteModPackageDTO) (*contract.PackageInstallResult, error) {
+	finishLog := diagnostic.Begin(pack.Key, "安装 Mod 包", logging.User)
+	defer finishLog()
 	result, err := v2Installer.InstallRemoteModPackage(pack)
 	if err != nil {
 		if !v2InstallError.IsCancelled(err) && !v2InstallError.IsConflict(err) {
@@ -47,8 +51,13 @@ func (service *InstallerService) InstallRemotePackage(pack ModDependenceResponse
 // 使用：前端卡片显示修复按钮后，用户选择覆盖、跳过或失败时调用。
 // 边界：只处理处于 conflict 状态的安装包；非法 action 由 helper 返回错误。
 func (service *InstallerService) ContinueRemotePackageInstall(packageKey string, action string) (*contract.PackageInstallResult, error) {
+	finishLog := diagnostic.Begin(packageKey, "按用户决策继续安装", logging.User)
+	defer finishLog()
 	result, err := v2Installer.ContinueRemoteModPackageInstall(packageKey, contract.InstallConflictAction(action))
 	if err != nil {
+		if !v2InstallError.IsCancelled(err) && !v2InstallError.IsConflict(err) {
+			installAudit.RecordPackageFailure(packageKey, "continueInstall", "继续安装失败", err)
+		}
 		return nil, err
 	}
 
@@ -70,6 +79,8 @@ func (service *InstallerService) CancelRemotePackageInstall(packageKey string) e
 // 边界：V2 卸载按安装文件清单清理，避免 Thunderstore patcher 或手动导入文件残留。
 // 逻辑流：1. 调用卸载 helper => 2. 失败时标记进度和审计日志 => 3. 成功时记录卸载结果 => 4. 返回卸载明细。
 func (service *InstallerService) UninstallRemotePackage(packageKey string) (*contract.PackageInstallResult, error) {
+	finishLog := diagnostic.Begin(packageKey, "卸载 Mod 包", logging.User)
+	defer finishLog()
 	result, err := v2UninstallEntry.UninstallRemoteModPackage(packageKey)
 	if err != nil {
 		v2ProgressEvent.MarkFailure(packageKey, "卸载失败", err)

@@ -7,6 +7,7 @@ package core
 import (
 	"fmt"
 
+	"DysonSphereBox/core/diagnostics"
 	"DysonSphereBox/model"
 
 	"github.com/glebarez/sqlite"
@@ -35,6 +36,7 @@ func InitDatabase(databaseTemplate []byte) error {
 	}
 
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+		Logger:                                   diagnostics.DatabaseLogger{},
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {

@@ -620,7 +620,7 @@ export namespace contract {
 	    state: string;
 	    errorMessage: string;
 	    conflict?: InstallConflictDTO;
-	    updatedAt: time.Time;
+	    updatedAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new InstallProgressSnapshot(source);
@@ -639,7 +639,7 @@ export namespace contract {
 	        this.state = source["state"];
 	        this.errorMessage = source["errorMessage"];
 	        this.conflict = this.convertValues(source["conflict"], InstallConflictDTO);
-	        this.updatedAt = this.convertValues(source["updatedAt"], time.Time);
+	        this.updatedAt = source["updatedAt"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -692,7 +692,7 @@ export namespace contract {
 	    author: string;
 	    description: string;
 	    packageUrl: string;
-	    installedAt: time.Time;
+	    installedAt: string;
 	    fileCount: number;
 	    sizeBytes: number;
 	    pluginDirs: string[];
@@ -713,7 +713,7 @@ export namespace contract {
 	        this.author = source["author"];
 	        this.description = source["description"];
 	        this.packageUrl = source["packageUrl"];
-	        this.installedAt = this.convertValues(source["installedAt"], time.Time);
+	        this.installedAt = source["installedAt"];
 	        this.fileCount = source["fileCount"];
 	        this.sizeBytes = source["sizeBytes"];
 	        this.pluginDirs = source["pluginDirs"];
@@ -785,6 +785,33 @@ export namespace contract {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace diagnostics {
+	
+	export class Health {
+	    directory: string;
+	    sessionId: string;
+	    fileError: string;
+	    fallback: boolean;
+	    memoryCount: number;
+	    dropped: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Health(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.directory = source["directory"];
+	        this.sessionId = source["sessionId"];
+	        this.fileError = source["fileError"];
+	        this.fallback = source["fallback"];
+	        this.memoryCount = source["memoryCount"];
+	        this.dropped = source["dropped"];
+	    }
 	}
 
 }
@@ -1112,7 +1139,7 @@ export namespace environment {
 	    name: string;
 	    state: string;
 	    sizeBytes: number;
-	    updatedAt: time.Time;
+	    updatedAt: string;
 	    relativePath: string;
 	    extension: string;
 	    childCount: number;
@@ -1129,29 +1156,11 @@ export namespace environment {
 	        this.name = source["name"];
 	        this.state = source["state"];
 	        this.sizeBytes = source["sizeBytes"];
-	        this.updatedAt = this.convertValues(source["updatedAt"], time.Time);
+	        this.updatedAt = source["updatedAt"];
 	        this.relativePath = source["relativePath"];
 	        this.extension = source["extension"];
 	        this.childCount = source["childCount"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class EnvironmentBlueprintDetail {
 	    item: EnvironmentBlueprintItem;
@@ -1617,7 +1626,7 @@ export namespace environment {
 	    description: string;
 	    state: string;
 	    sizeBytes: number;
-	    updatedAt: time.Time;
+	    updatedAt: string;
 	    libraryPath: string;
 	    supported: boolean;
 	    warning: string;
@@ -1636,30 +1645,12 @@ export namespace environment {
 	        this.description = source["description"];
 	        this.state = source["state"];
 	        this.sizeBytes = source["sizeBytes"];
-	        this.updatedAt = this.convertValues(source["updatedAt"], time.Time);
+	        this.updatedAt = source["updatedAt"];
 	        this.libraryPath = source["libraryPath"];
 	        this.supported = source["supported"];
 	        this.warning = source["warning"];
 	        this.installerManaged = source["installerManaged"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class EnvironmentOperation {
 	    id: number;
@@ -1669,7 +1660,7 @@ export namespace environment {
 	    status: string;
 	    message: string;
 	    detail: number[];
-	    createdAt: time.Time;
+	    createdAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new EnvironmentOperation(source);
@@ -1684,26 +1675,8 @@ export namespace environment {
 	        this.status = source["status"];
 	        this.message = source["message"];
 	        this.detail = source["detail"];
-	        this.createdAt = this.convertValues(source["createdAt"], time.Time);
+	        this.createdAt = source["createdAt"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class EnvironmentSaveItem {
 	    id: string;
@@ -1711,7 +1684,7 @@ export namespace environment {
 	    fileName: string;
 	    relativePath: string;
 	    sizeBytes: number;
-	    lastModifiedAt: time.Time;
+	    lastModifiedAt: string;
 	    status: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1725,27 +1698,9 @@ export namespace environment {
 	        this.fileName = source["fileName"];
 	        this.relativePath = source["relativePath"];
 	        this.sizeBytes = source["sizeBytes"];
-	        this.lastModifiedAt = this.convertValues(source["lastModifiedAt"], time.Time);
+	        this.lastModifiedAt = source["lastModifiedAt"];
 	        this.status = source["status"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class EnvironmentOperationResult {
 	    message: string;
@@ -1916,6 +1871,47 @@ export namespace forward {
 	        this.port = source["port"];
 	        this.address = source["address"];
 	        this.status = source["status"];
+	    }
+	}
+
+}
+
+export namespace logging {
+	
+	export class Entry {
+	    id: string;
+	    schemaVersion: number;
+	    action: string;
+	    level: string;
+	    source: string;
+	    reason: string;
+	    namespace: string;
+	    data: Record<string, any>;
+	    time: string;
+	    handler: string;
+	    sessionId: string;
+	    operationId: string;
+	    appVersion: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Entry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.schemaVersion = source["schemaVersion"];
+	        this.action = source["action"];
+	        this.level = source["level"];
+	        this.source = source["source"];
+	        this.reason = source["reason"];
+	        this.namespace = source["namespace"];
+	        this.data = source["data"];
+	        this.time = source["time"];
+	        this.handler = source["handler"];
+	        this.sessionId = source["sessionId"];
+	        this.operationId = source["operationId"];
+	        this.appVersion = source["appVersion"];
 	    }
 	}
 
@@ -2894,67 +2890,46 @@ export namespace system {
 	        this.key = source["key"];
 	    }
 	}
-	export class CreateLogRequest {
-	    namespace: string;
-	    module: string;
-	    event: string;
-	    level: number;
-	    type: number;
-	    content: string;
-	    metadata: Record<string, any>;
-	    error: string;
+	export class LogHealth {
+	    file: diagnostics.Health;
+	    indexError: string;
+	    pending: number;
 	
 	    static createFrom(source: any = {}) {
-	        return new CreateLogRequest(source);
+	        return new LogHealth(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.namespace = source["namespace"];
-	        this.module = source["module"];
-	        this.event = source["event"];
-	        this.level = source["level"];
-	        this.type = source["type"];
-	        this.content = source["content"];
-	        this.metadata = source["metadata"];
-	        this.error = source["error"];
-	    }
-	}
-	export class LogDTO {
-	    id: number;
-	    namespace: string;
-	    module: string;
-	    event: string;
-	    level: number;
-	    type: number;
-	    content: string;
-	    metadata: Record<string, any>;
-	    error: string;
-	    dateTime: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new LogDTO(source);
+	        this.file = this.convertValues(source["file"], diagnostics.Health);
+	        this.indexError = source["indexError"];
+	        this.pending = source["pending"];
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.namespace = source["namespace"];
-	        this.module = source["module"];
-	        this.event = source["event"];
-	        this.level = source["level"];
-	        this.type = source["type"];
-	        this.content = source["content"];
-	        this.metadata = source["metadata"];
-	        this.error = source["error"];
-	        this.dateTime = source["dateTime"];
-	    }
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class LogListResult {
-	    items: LogDTO[];
+	    items: logging.Entry[];
 	    total: number;
 	    page: number;
 	    pageSize: number;
+	    warning: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LogListResult(source);
@@ -2962,10 +2937,11 @@ export namespace system {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.items = this.convertValues(source["items"], LogDTO);
+	        this.items = this.convertValues(source["items"], logging.Entry);
 	        this.total = source["total"];
 	        this.page = source["page"];
 	        this.pageSize = source["pageSize"];
+	        this.warning = source["warning"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2987,11 +2963,18 @@ export namespace system {
 		}
 	}
 	export class LogQuery {
+	    namespaces: string[];
+	    levels: string[];
+	    handlers: string[];
 	    namespace: string;
-	    module: string;
-	    event: string;
-	    level: number;
-	    type: number;
+	    level: string;
+	    source: string;
+	    handler: string;
+	    keyword: string;
+	    sessionId: string;
+	    operationId: string;
+	    from: string;
+	    to: string;
 	    page: number;
 	    pageSize: number;
 	
@@ -3001,11 +2984,18 @@ export namespace system {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespaces = source["namespaces"];
+	        this.levels = source["levels"];
+	        this.handlers = source["handlers"];
 	        this.namespace = source["namespace"];
-	        this.module = source["module"];
-	        this.event = source["event"];
 	        this.level = source["level"];
-	        this.type = source["type"];
+	        this.source = source["source"];
+	        this.handler = source["handler"];
+	        this.keyword = source["keyword"];
+	        this.sessionId = source["sessionId"];
+	        this.operationId = source["operationId"];
+	        this.from = source["from"];
+	        this.to = source["to"];
 	        this.page = source["page"];
 	        this.pageSize = source["pageSize"];
 	    }
@@ -3028,23 +3018,6 @@ export namespace system {
 	        this.status = source["status"];
 	        this.completed = source["completed"];
 	        this.skipped = source["skipped"];
-	    }
-	}
-
-}
-
-export namespace time {
-	
-	export class Time {
-	
-	
-	    static createFrom(source: any = {}) {
-	        return new Time(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	
 	    }
 	}
 

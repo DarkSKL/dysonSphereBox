@@ -131,7 +131,7 @@ type EnvironmentOperation struct {
 	// Detail 职责：保存结构化操作计划和结果；使用：冲突处理、诊断和后续恢复；边界：只保证是合法 JSON 值。
 	Detail json.RawMessage `json:"detail"`
 	// CreatedAt 职责：保存操作创建时间；使用：前端排序和展示；边界：不代表完成时间。
-	CreatedAt time.Time `json:"createdAt"`
+	CreatedAt time.Time `json:"createdAt" ts_type:"string"`
 }
 
 // EnvironmentManagedStateSummary 描述托管状态复核结果。
@@ -306,7 +306,7 @@ type EnvironmentModItem struct {
 	// SizeBytes 职责：保存资源大小；使用：前端格式化展示；边界：目录大小为估算。
 	SizeBytes int64 `json:"sizeBytes"`
 	// UpdatedAt 职责：保存最新修改时间；使用：前端展示；边界：零值表示未知。
-	UpdatedAt time.Time `json:"updatedAt"`
+	UpdatedAt time.Time `json:"updatedAt" ts_type:"string"`
 	// LibraryPath 职责：保存资源库相对路径；使用：诊断和后续打开资源目录；边界：不暴露绝对路径。
 	LibraryPath string `json:"libraryPath"`
 	// Supported 职责：标记第一版是否支持管理；使用：裸 DLL 提示禁用操作；边界：不等同安全校验。
@@ -405,7 +405,7 @@ type EnvironmentBlueprintItem struct {
 	// SizeBytes 职责：保存节点大小；使用：前端展示；边界：目录大小为递归估算。
 	SizeBytes int64 `json:"sizeBytes"`
 	// UpdatedAt 职责：保存更新时间；使用：排序或详情；边界：零值表示未知。
-	UpdatedAt time.Time `json:"updatedAt"`
+	UpdatedAt time.Time `json:"updatedAt" ts_type:"string"`
 	// RelativePath 职责：保存相对蓝图资源库根路径；使用：后续移动和同步；边界：不包含绝对路径。
 	RelativePath string `json:"relativePath"`
 	// Extension 职责：保存文件扩展名；使用：提示未知扩展；边界：文件夹为空。
@@ -445,7 +445,7 @@ type EnvironmentSaveItem struct {
 	// SizeBytes 职责：保存文件大小；使用：前端展示；边界：不代表可写性。
 	SizeBytes int64 `json:"sizeBytes"`
 	// LastModifiedAt 职责：保存最后修改时间；使用：前端显示最近保存；边界：来自文件系统。
-	LastModifiedAt time.Time `json:"lastModifiedAt"`
+	LastModifiedAt time.Time `json:"lastModifiedAt" ts_type:"string"`
 	// Status 职责：保存扫描状态；使用：前端状态提示；边界：第一阶段不做占用检测。
 	Status string `json:"status"`
 }

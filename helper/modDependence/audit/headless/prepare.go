@@ -5,9 +5,9 @@ package headless
 // 边界：只写系统日志，不创建基础文件、不安装 Nebula 依赖、不检测端口。
 
 import (
+	systemModel "DysonSphereBox/constant/logging"
 	headlessContract "DysonSphereBox/helper/modDependence/headless/contract"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
 )
 
 // RecordHeadlessPrepareResult 记录无头服务器环境准备结果。
@@ -19,19 +19,19 @@ func RecordHeadlessPrepareResult(result *headlessContract.HeadlessPrepareResult)
 		return
 	}
 
-	level := systemModel.LogLevelInfo
+	level := systemModel.Info
 	if !result.Status.Ready {
-		level = systemModel.LogLevelWarn
+		level = systemModel.Warn
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "headless",
-		Event:     "prepare",
+		Namespace: "modDependence.headless." + "prepare",
+		Source:    "backend.headless",
+		Reason:    "环境准备结束，实际就绪检查与问题见 data",
+		Handler:   "User",
 		Level:     level,
-		Type:      systemModel.LogTypeConfiguration,
-		Content:   result.Message,
-		Metadata: map[string]interface{}{
+		Action:    result.Message,
+		Data: map[string]interface{}{
 			"gameDir":      result.GameDir,
 			"changed":      result.Changed,
 			"writtenPath":  result.WrittenPath,

@@ -5,6 +5,7 @@ package core
 // 边界：只配置标准库 http.Client 的通用传输行为，不解析业务响应、不记录业务日志。
 
 import (
+	"DysonSphereBox/core/diagnostics"
 	"crypto/tls"
 	"net/http"
 	"time"
@@ -17,10 +18,10 @@ import (
 func NewHTTPStandardClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
-		Transport: &http.Transport{
+		Transport: diagnostics.Transport{Base: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
-			},
+			}},
 		},
 	}
 }

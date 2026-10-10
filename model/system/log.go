@@ -1,6 +1,6 @@
 package system
 
-// 文件职责：定义系统日志数据库表模型。
+// 文件职责：定义历史系统日志数据库表模型。
 // 使用：由 core 自动迁移并由 helper/system 写入、service/system 查询。
 // 边界：不定义日志枚举、不包含远端接口 DTO、服务编排或文件系统操作。
 
@@ -10,7 +10,7 @@ import (
 	"gorm.io/datatypes"
 )
 
-// Log 保存系统重要操作日志。
+// Log 保存迁移前的旧格式系统操作日志。
 // 职责：描述 system_logs 表中的审计日志记录。
 // 使用：helper/system 统一写入，LogService 分页查询并转换为 DTO。
 // 边界：日志写入失败不应影响原业务流程；业务层应通过 helper 统一记录，避免直接拼表字段。

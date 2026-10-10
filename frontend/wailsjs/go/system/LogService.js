@@ -6,10 +6,22 @@ export function CreateLog(arg1) {
   return window['go']['system']['LogService']['CreateLog'](arg1);
 }
 
-export function DeleteLogsBefore(arg1) {
-  return window['go']['system']['LogService']['DeleteLogsBefore'](arg1);
+export function DeleteLog(arg1) {
+  return window['go']['system']['LogService']['DeleteLog'](arg1);
+}
+
+export function ExportDiagnostics(arg1) {
+  return window['go']['system']['LogService']['ExportDiagnostics'](arg1);
+}
+
+export function GetLogHealth() {
+  return window['go']['system']['LogService']['GetLogHealth']();
 }
 
 export function ListLogs(arg1) {
   return window['go']['system']['LogService']['ListLogs'](arg1);
+}
+
+export function OpenLogDirectory() {
+  return window['go']['system']['LogService']['OpenLogDirectory']();
 }

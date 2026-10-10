@@ -8,6 +8,7 @@ import (
 	installConstant "DysonSphereBox/constant/modDependence/install"
 	"DysonSphereBox/core"
 	"DysonSphereBox/helper/modDependence/installer/progresscalc"
+	"DysonSphereBox/helper/modDependence/installer/v2/diagnostic"
 	"DysonSphereBox/helper/modDependence/installer/v2/progress/payload"
 	"DysonSphereBox/helper/modDependence/installer/v2/progress/persistence"
 	"DysonSphereBox/helper/modDependence/installer/v2/progress/snapshot"
@@ -28,6 +29,7 @@ func Emit(data payload.Payload) {
 		data.State = string(installConstant.StateRunning)
 	}
 	snapshot.Store(data)
+	diagnostic.Observe(data)
 	persistence.UpdatePackageInstallProgress(data)
 	if core.GLOBAL.RuntimeContext == nil {
 		return
@@ -48,6 +50,7 @@ func RuntimeOnly(data payload.Payload) {
 		data.State = string(installConstant.StateRunning)
 	}
 	snapshot.Store(data)
+	diagnostic.Observe(data)
 	if core.GLOBAL.RuntimeContext == nil {
 		return
 	}

@@ -5,9 +5,9 @@ package bepinex
 // 边界：只写系统日志，不执行文件修改、网络请求、安装状态迁移或服务层错误处理。
 
 import (
+	systemModel "DysonSphereBox/constant/logging"
 	bepinexContract "DysonSphereBox/helper/modDependence/bepinex/contract"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
 )
 
 // RecordBepInExFailure 记录 BepInEx 操作失败事件。
@@ -33,13 +33,13 @@ func RecordBepInExUninstallSuccess(result *bepinexContract.BepInExUninstallResul
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "bepInEx",
-		Event:     "uninstall",
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeInstallation,
-		Content:   "BepInEx 状态：已安装 -> " + resultText,
-		Metadata: map[string]interface{}{
+		Namespace: "modDependence.bepInEx." + "uninstall",
+		Source:    "backend.bepInEx",
+		Reason:    "卸载流程返回，实际移除和跳过信息见 data",
+		Handler:   "User",
+		Level:     systemModel.Info,
+		Action:    "BepInEx 状态：已安装 -> " + resultText,
+		Data: map[string]interface{}{
 			"gameDir":      result.GameDir,
 			"removed":      result.Removed,
 			"skipped":      result.Skipped,
@@ -69,13 +69,13 @@ func RecordBepInExInstallResult(event string, result *bepinexContract.BepInExIns
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "bepInEx",
-		Event:     event,
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeInstallation,
-		Content:   "BepInEx 状态：未安装 -> " + resultText,
-		Metadata: map[string]interface{}{
+		Namespace: "modDependence.bepInEx." + event,
+		Source:    "backend.bepInEx",
+		Reason:    "安装或更新流程返回，实际版本与变更见 data",
+		Handler:   "User",
+		Level:     systemModel.Info,
+		Action:    "BepInEx 安装处理结果：" + resultText,
+		Data: map[string]interface{}{
 			"gameDir":   result.GameDir,
 			"bufferDir": result.BufferDir,
 			"version":   packageVersion,

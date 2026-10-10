@@ -6,10 +6,12 @@ package logging
 // 逻辑流：1. 清理入口记录开始摘要 => 2. 各清理步骤记录单项动作 => 3. 事务内日志延迟收集 => 4. 事务后刷新并记录完成结果。
 
 import (
+	system "DysonSphereBox/constant/logging"
+	"DysonSphereBox/core/diagnostics"
+	"DysonSphereBox/helper/modDependence/installer/v2/diagnostic"
 	"DysonSphereBox/helper/modDependence/installer/v2/sessionstate"
 	systemHelper "DysonSphereBox/helper/system"
 	installedModel "DysonSphereBox/model/modDependence/installed"
-	system "DysonSphereBox/model/system"
 	"fmt"
 )
 
@@ -18,7 +20,7 @@ import (
 // 使用：sessioncleanup/entry.CleanupInterrupted 在执行文件清理前调用。
 // 边界：只写审计日志，不影响清理流程；日志失败由底层静默处理。
 func RecordStart(record installedModel.ModInstalledPackage, status string, manifest sessionstate.Manifest) {
-	recordRemotePackageCleanupLog("cleanupRemotePackageInstallStart", system.LogLevelInfo, "开始清理未完成的 Mod 包安装", nil, map[string]interface{}{
+	recordRemotePackageCleanupLog("cleanupRemotePackageInstallStart", system.Info, "开始清理未完成的 Mod 包安装", nil, map[string]interface{}{
 		"packageKey":              record.PackageKey,
 		"packageName":             record.DisplayName,
 		"source":                  record.Source,
@@ -39,10 +41,10 @@ func RecordStart(record installedModel.ModInstalledPackage, status string, manif
 // 使用：清理流程每处理一个重要对象时调用。
 // 边界：err 非空时记录错误级别；不会重试或改变清理决策。
 func RecordItem(packageKey string, kind string, target string, action string, reason string, err error) {
-	level := system.LogLevelInfo
+	level := system.Info
 	success := true
 	if err != nil {
-		level = system.LogLevelError
+		level = system.Error
 		success = false
 	}
 	content := fmt.Sprintf("Mod 包清理：%s %s", action, kind)
@@ -71,11 +73,11 @@ func FlushItems(items []sessionstate.CleanupLogItem) {
 // 使用：sessioncleanup/entry.CleanupInterrupted 在每个退出分支调用。
 // 边界：只记录日志，不覆盖安装状态；err 非空时记录失败事件。
 func RecordDone(packageKey string, status string, manifest sessionstate.Manifest, err error) {
-	level := system.LogLevelInfo
+	level := system.Info
 	event := "cleanupRemotePackageInstallDone"
 	content := "Mod 包未完成安装清理完成"
 	if err != nil {
-		level = system.LogLevelError
+		level = system.Error
 		event = "cleanupRemotePackageInstallFailed"
 		content = "Mod 包未完成安装清理失败"
 	}
@@ -95,19 +97,18 @@ func RecordDone(packageKey string, status string, manifest sessionstate.Manifest
 // 职责：统一写入清理开始、单项清理和清理结果日志。
 // 使用：安装会话恢复和清理流程在处理未完成安装记录时调用。
 // 边界：只记录日志，不执行文件删除或数据库事务；err 为空时日志 Error 字段为空。
-func recordRemotePackageCleanupLog(event string, level system.LogLevel, content string, err error, metadata map[string]interface{}) {
-	errorText := ""
+func recordRemotePackageCleanupLog(event string, level string, content string, err error, metadata map[string]interface{}) {
 	if err != nil {
-		errorText = err.Error()
+		metadata["error"] = diagnostics.ErrorData(err)
 	}
-	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "installer",
-		Event:     event,
+	key, _ := metadata["packageKey"].(string)
+	systemHelper.RecordLogSilently(diagnostic.Apply(systemHelper.LogEntry{
+		Namespace: "modDependence.installer." + event,
+		Source:    "backend.installer",
+		Reason:    "安装会话清理流程报告实际执行结果",
+		Handler:   "System",
 		Level:     level,
-		Type:      system.LogTypeInstallation,
-		Content:   content,
-		Metadata:  metadata,
-		Error:     errorText,
-	})
+		Action:    content,
+		Data:      metadata,
+	}, key))
 }

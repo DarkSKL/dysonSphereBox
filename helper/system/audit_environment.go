@@ -4,7 +4,7 @@ package system
 // 使用：由 EnvironmentService 和 App.SelectDysonSphereDirectory 在路径流程结束后调用。
 // 边界：只记录路径流程结果，不查找路径、不保存配置、不校验 DSPGAME.exe 是否存在。
 
-import systemModel "DysonSphereBox/model/system"
+import systemModel "DysonSphereBox/constant/logging"
 
 // RecordGamePathSuccess 记录游戏目录加载或初始化成功事件。
 // 职责：写入游戏目录加载、自动定位或用户选择成功的审计日志。
@@ -12,13 +12,13 @@ import systemModel "DysonSphereBox/model/system"
 // 边界：不校验路径结构，调用方应先完成路径归一化或校验。
 func RecordGamePathSuccess(event string, content string, dirPath string, source string) {
 	RecordLogSilently(LogEntry{
-		Namespace: "system",
-		Module:    "environment",
-		Event:     event,
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeConfiguration,
-		Content:   content,
-		Metadata: map[string]interface{}{
+		Namespace: "system.environment." + event,
+		Source:    "backend.environment",
+		Reason:    "业务流程返回以下结果，原始证据见 data",
+		Handler:   "Unknown",
+		Level:     systemModel.Info,
+		Action:    content,
+		Data: map[string]interface{}{
 			"dirPath": dirPath,
 			"source":  source,
 		},
@@ -31,13 +31,13 @@ func RecordGamePathSuccess(event string, content string, dirPath string, source 
 // 边界：只记录错误和候选路径，不尝试修复配置。
 func RecordGamePathFailure(event string, content string, err error, dirPath string) {
 	RecordLogSilently(LogEntry{
-		Namespace: "system",
-		Module:    "environment",
-		Event:     event,
-		Level:     systemModel.LogLevelError,
-		Type:      systemModel.LogTypeConfiguration,
-		Content:   content,
-		Metadata: map[string]interface{}{
+		Namespace: "system.environment." + event,
+		Source:    "backend.environment",
+		Reason:    "业务流程返回以下结果，原始证据见 data",
+		Handler:   "Unknown",
+		Level:     systemModel.Error,
+		Action:    content,
+		Data: map[string]interface{}{
 			"dirPath": dirPath,
 		},
 		Error: errorText(err),

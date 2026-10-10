@@ -3,6 +3,7 @@ import {
   Boxes,
   Home,
   Info,
+  MessagesSquare,
   Orbit,
   Package,
   SlidersHorizontal,
@@ -20,8 +21,8 @@ export interface NavigationEntry {
   readonly icon: Component
 }
 
-/** 描述全局快捷栏中的游戏，以及该游戏自己的第二层选项。 */
-export interface GameNavigationDefinition {
+/** 描述快捷栏中的工作区，以及该工作区的第二层选项。 */
+export interface WorkspaceNavigationDefinition {
   readonly key: string
   readonly label: string
   readonly shortLabel: string
@@ -37,8 +38,8 @@ export const globalNavigationEntries: readonly NavigationEntry[] = [
   { key: 'global-settings', label: '全局设置', to: '/system/settings', icon: SlidersHorizontal },
 ]
 
-/** 游戏注册表是第二层导航的唯一来源；新增游戏时在此声明游戏入口和专属选项。 */
-export const gameNavigationRegistry: readonly GameNavigationDefinition[] = [
+/** 工作区注册表统一声明游戏、社区入口及各自的子导航。 */
+export const workspaceNavigationRegistry: readonly WorkspaceNavigationDefinition[] = [
   {
     key: 'dyson-sphere-program',
     label: '戴森球计划',
@@ -50,8 +51,17 @@ export const gameNavigationRegistry: readonly GameNavigationDefinition[] = [
       { key: 'headless', label: '开服', to: '/dysonSphere/headless', icon: Server },
       { key: 'mods', label: '模组', to: '/dysonSphere/mod', icon: Package },
       { key: 'resources', label: '资源', to: '/dysonSphere/environment', icon: Boxes },
-      { key: 'multiplayer', label: '联机', to: '/dysonSphere/multiplayer', icon: Users },
       { key: 'settings', label: '游戏设置', to: '/dysonSphere/settings', icon: Settings },
+    ],
+  },
+  {
+    key: 'community',
+    label: '社区',
+    shortLabel: '社区',
+    to: '/community',
+    icon: MessagesSquare,
+    navigation: [
+      { key: 'multiplayer', label: '联机', to: '/community/multiplayer', icon: Users },
     ],
   },
 ]

@@ -6,9 +6,11 @@ package install
 
 import (
 	modDependenceResponse "DysonSphereBox/apiDefinition/modDependence"
+	systemModel "DysonSphereBox/constant/logging"
+	"DysonSphereBox/core/diagnostics"
 	"DysonSphereBox/helper/modDependence/installer/contract"
+	"DysonSphereBox/helper/modDependence/installer/v2/diagnostic"
 	systemHelper "DysonSphereBox/helper/system"
-	systemModel "DysonSphereBox/model/system"
 	"errors"
 )
 
@@ -21,14 +23,15 @@ func RecordRemotePackageInstallSuccess(result *contract.PackageInstallResult) {
 		return
 	}
 
-	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "installer",
-		Event:     "installRemotePackage",
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeInstallation,
-		Content:   "Mod 包已安装",
-		Metadata: map[string]interface{}{
+	systemHelper.RecordLogSilently(diagnostic.Apply(systemHelper.LogEntry{
+		Namespace: "modDependence.installer." + "installRemotePackage",
+		Source:    "backend.installer",
+		Reason:    "安装器完成文件写入及安装记录提交",
+		Handler:   "User",
+		Level:     systemModel.Info,
+		Action:    "Mod 包已安装",
+		Data: map[string]interface{}{
+			"result":          "success",
 			"packageKey":      result.PackageKey,
 			"packageName":     result.PackageName,
 			"dependencyCount": len(result.Dependencies),
@@ -36,7 +39,7 @@ func RecordRemotePackageInstallSuccess(result *contract.PackageInstallResult) {
 			"pluginRoot":      result.PluginRoot,
 			"message":         result.Message,
 		},
-	})
+	}, result.PackageKey))
 }
 
 // RecordRemotePackageInstallFailure 记录 Mod 包安装失败事件。
@@ -59,7 +62,8 @@ func RecordRemotePackageInstallFailure(pack modDependenceResponse.RemoteModPacka
 		metadata["failedDownloadURL"] = artifactErr.DownloadURL
 	}
 
-	systemHelper.RecordFailure("modDependence", "installer", "installRemotePackage", "Mod 包安装失败", err, metadata)
+	metadata["result"], metadata["error"] = "failed", diagnostics.ErrorData(err)
+	systemHelper.RecordLogSilently(diagnostic.Apply(systemHelper.LogEntry{Action: "Mod 包安装失败", Level: systemModel.Error, Source: "backend.installer", Reason: "安装器返回非取消、非冲突的错误", Namespace: "modDependence.installer.installRemotePackage", Handler: systemModel.User, Data: metadata}, pack.Key))
 }
 
 // RecordRemotePackageUninstallSuccess 记录 Mod 包卸载成功事件。
@@ -71,21 +75,22 @@ func RecordRemotePackageUninstallSuccess(result *contract.PackageInstallResult) 
 		return
 	}
 
-	systemHelper.RecordLogSilently(systemHelper.LogEntry{
-		Namespace: "modDependence",
-		Module:    "installer",
-		Event:     "uninstallRemotePackage",
-		Level:     systemModel.LogLevelInfo,
-		Type:      systemModel.LogTypeInstallation,
-		Content:   "Mod 包已卸载",
-		Metadata: map[string]interface{}{
+	systemHelper.RecordLogSilently(diagnostic.Apply(systemHelper.LogEntry{
+		Namespace: "modDependence.installer." + "uninstallRemotePackage",
+		Source:    "backend.installer",
+		Reason:    "卸载器完成清单处理及数据库提交",
+		Handler:   "User",
+		Level:     systemModel.Info,
+		Action:    "Mod 包已卸载",
+		Data: map[string]interface{}{
+			"result":          "success",
 			"packageKey":      result.PackageKey,
 			"packageName":     result.PackageName,
 			"dependencyCount": len(result.Dependencies),
 			"gameDir":         result.GameDir,
 			"message":         result.Message,
 		},
-	})
+	}, result.PackageKey))
 }
 
 // RecordRemotePackageUninstallFailure 记录 Mod 包卸载失败事件。
@@ -93,7 +98,10 @@ func RecordRemotePackageUninstallSuccess(result *contract.PackageInstallResult) 
 // 使用：UninstallRemotePackage 捕获错误后调用。
 // 边界：只记录失败，不修改安装记录或文件状态。
 func RecordRemotePackageUninstallFailure(packageKey string, err error) {
-	systemHelper.RecordFailure("modDependence", "installer", "uninstallRemotePackage", "Mod 包卸载失败", err, map[string]interface{}{
-		"packageKey": packageKey,
-	})
+	RecordPackageFailure(packageKey, "uninstallRemotePackage", "Mod 包卸载失败", err)
+}
+
+// RecordPackageFailure 职责：记录关联包的失败；使用：继续安装和卸载失败；边界：保留真实事件名，不混淆安装和卸载。
+func RecordPackageFailure(packageKey, event, action string, err error) {
+	systemHelper.RecordLogSilently(diagnostic.Apply(systemHelper.LogEntry{Action: action, Level: systemModel.Error, Source: "backend.installer", Reason: "安装器操作返回错误", Namespace: "modDependence.installer." + event, Handler: systemModel.User, Data: map[string]interface{}{"packageKey": packageKey, "result": "failed", "error": diagnostics.ErrorData(err)}}, packageKey))
 }

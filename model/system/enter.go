@@ -13,6 +13,8 @@ type ModelGroup struct {
 	Config
 	// Log 职责：嵌入系统日志模型注册对象；使用：RegisterModels 返回日志表迁移指针；边界：不查询或记录日志内容。
 	Log
+	// LogEntry 职责：嵌入统一日志索引模型；使用：RegisterModels 返回新日志表迁移指针；边界：不执行采集或查询。
+	LogEntry
 	// TutorialProgress 职责：嵌入首次使用教程进度模型注册对象；使用：RegisterModels 返回教程进度表迁移指针；边界：不查询或写入教程阅读状态。
 	TutorialProgress
 }
@@ -25,6 +27,7 @@ func (modelGroup *ModelGroup) RegisterModels() []interface{} {
 	return []interface{}{
 		&modelGroup.Config,
 		&modelGroup.Log,
+		&modelGroup.LogEntry,
 		&modelGroup.TutorialProgress,
 	}
 }

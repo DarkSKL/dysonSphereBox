@@ -30,6 +30,20 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/community/': RouteRecordInfo<
+      '/community/',
+      '/community',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/community/multiplayer': RouteRecordInfo<
+      '/community/multiplayer',
+      '/community/multiplayer',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/dysonSphere/': RouteRecordInfo<
       '/dysonSphere/',
       '/dysonSphere',
@@ -123,6 +137,18 @@ declare module 'vue-router/auto-routes' {
     'src/pages/index.vue': {
       routes:
         | '/'
+      views:
+        | never
+    }
+    'src/pages/community/index.vue': {
+      routes:
+        | '/community/'
+      views:
+        | never
+    }
+    'src/pages/community/multiplayer.vue': {
+      routes:
+        | '/community/multiplayer'
       views:
         | never
     }

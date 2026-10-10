@@ -7,20 +7,20 @@ import { TOUR_SELECTORS } from './selectors'
 export const tutorialRegistry: Record<TutorialPageKey, TutorialDefinition> = {
   global: {
     pageKey: 'global',
-    version: 5,
+    version: 6,
     autoStart: true,
     steps: [
       {
         selector: TOUR_SELECTORS.mainBrand,
-        title: '游戏切换',
-        description: '左侧图标栏列出支持的游戏，当前为戴森球计划，点击可以进入对应游戏工作区。',
+        title: '工作区切换',
+        description: '左侧图标栏提供戴森球计划和社区入口：游戏工作区管理开服、模组与资源，社区提供联机功能。',
         side: 'right',
         align: 'center',
       },
       {
         selector: TOUR_SELECTORS.mainNav,
         title: '导航层级',
-        description: '左侧列表按钮可打开日志、关于和全局设置；进入游戏后，旁边的选项栏按当前游戏配置生成。',
+        description: '左侧列表按钮可打开日志、关于和全局设置；进入游戏或社区后，旁边的选项栏显示对应工作区的功能。',
         side: 'right',
         align: 'start',
       },

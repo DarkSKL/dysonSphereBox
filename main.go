@@ -5,7 +5,12 @@ package main
 // 边界：不实现具体业务流程，不定义数据库模型或前端组件。
 
 import (
+	"DysonSphereBox/constant/logging"
+	"DysonSphereBox/core"
+	"DysonSphereBox/core/diagnostics"
 	"embed"
+	"fmt"
+	"log"
 
 	"DysonSphereBox/service"
 
@@ -36,10 +41,19 @@ var databaseTemplate []byte
 // 使用：由 Go 程序入口自动调用。
 // 边界：不执行业务初始化；数据库和恢复任务由 App.startup 生命周期处理。
 func main() {
+	if err := diagnostics.Initialize(core.Version); err != nil {
+		fmt.Println("初始化日志失败:", err)
+	}
+	defer diagnostics.Default.Close()
+	defer diagnostics.CapturePanic("backend.main")
+	diagnostics.Default.BeginSession()
+	log.SetOutput(diagnostics.StandardWriter{})
+	diagnostics.Default.Record(logging.Entry{Action: "启动戴森球盒子", Level: logging.Info, Source: "backend.main", Reason: "用户启动客户端进程", Namespace: "system.lifecycle.start", Handler: logging.User, Data: map[string]interface{}{"result": "started"}})
 	app := NewApp()
 	services := append([]interface{}{app}, service.RegisterServices()...)
 
 	err := wails.Run(&options.App{
+		Logger:    diagnostics.RuntimeLogger{},
 		Title:     "戴森球盒子",
 		Width:     1024,
 		Height:    768,
@@ -64,6 +78,6 @@ func main() {
 	})
 
 	if err != nil {
-		println("Error:", err.Error())
+		diagnostics.Default.Record(logging.Entry{Action: "启动桌面宿主失败", Level: logging.Fatal, Source: "backend.main", Reason: "Wails Run 返回错误", Namespace: "system.lifecycle.hostFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err), "result": "failed"}})
 	}
 }

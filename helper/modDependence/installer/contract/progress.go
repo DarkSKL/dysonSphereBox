@@ -34,5 +34,5 @@ type InstallProgressSnapshot struct {
 	// Conflict 职责：保存待处理冲突详情；使用：前端冲突弹窗和继续安装入口；边界：只有 conflict 状态才应存在。
 	Conflict *InstallConflictDTO `json:"conflict,omitempty"`
 	// UpdatedAt 职责：记录快照更新时间；使用：前端排序和判断状态新旧；边界：运行时快照使用当前进程时间。
-	UpdatedAt time.Time `json:"updatedAt"`
+	UpdatedAt time.Time `json:"updatedAt" ts_type:"string"`
 }

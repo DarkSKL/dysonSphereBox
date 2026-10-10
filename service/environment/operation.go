@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"DysonSphereBox/constant/logging"
 	"DysonSphereBox/core"
+	"DysonSphereBox/core/diagnostics"
 	environmentHelper "DysonSphereBox/helper/environment"
 	"DysonSphereBox/helper/modDependence/fileops"
 	environmentModel "DysonSphereBox/model/environment"
@@ -256,6 +258,7 @@ func (service *EnvironmentManagerService) recordEnvironmentOperationStart(operat
 	}
 
 	service.emitEnvironmentOperationEvent(environmentOperationStartedEvent, record.ID, operation, kind, itemID, envOperationStatusRunning, "操作执行中")
+	diagnostics.Default.Record(logging.Entry{Action: "开始环境资源操作", Level: logging.Info, Source: "backend.environment", Reason: "资源服务准备执行文件与状态操作", Namespace: "environment.resource." + operation, Handler: logging.Unknown, OperationID: fmt.Sprintf("environment-%d", record.ID), Data: map[string]interface{}{"result": "started", "kind": kind, "itemId": itemID, "plan": plan}})
 	service.emitEnvironmentOperationEvent(environmentOperationProgressEvent, record.ID, operation, kind, itemID, envOperationStatusRunning, "正在处理文件与状态")
 	return record.ID, nil
 }
@@ -317,6 +320,14 @@ func (service *EnvironmentManagerService) finishEnvironmentOperation(operationID
 
 	record := environmentModel.EnvOperation{}
 	if err := core.GLOBAL.DB.First(&record, "id = ?", operationID).Error; err == nil {
+		level, handler := logging.Info, logging.Unknown
+		if status == envOperationStatusFailed {
+			level = logging.Error
+		}
+		if status == envOperationStatusRecovered {
+			handler = logging.System
+		}
+		diagnostics.Default.Record(logging.Entry{Action: message, Level: level, Source: "backend.environment", Reason: "环境操作收尾状态已写入，文件复核证据见 data", Namespace: "environment.resource." + record.Operation, Handler: handler, OperationID: fmt.Sprintf("environment-%d", record.ID), Data: map[string]interface{}{"result": status, "kind": record.Kind, "itemId": record.ItemID, "plan": detail.Plan, "evidence": detail.Result, "error": detail.Failure, "issues": detail.Issues, "durationMs": time.Since(record.CreatedAt).Milliseconds()}})
 		eventName := environmentOperationCompletedEvent
 		if status == envOperationStatusFailed {
 			eventName = environmentOperationFailedEvent
