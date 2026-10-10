@@ -194,7 +194,7 @@ func List(db *gorm.DB, q systemHelper.LogQuery) (systemHelper.LogListResult, err
 	result.Warning = "日志索引不可用，正在查看保留的文件记录。" + diagnostics.CleanText(indexError) + warning
 	matched := []contract.Entry{}
 	for _, item := range items {
-		if !deleted[item.ID] && Match(item, q) {
+		if !deleted[item.ID] && !diagnostics.IsNoise(item) && Match(item, q) {
 			matched = append(matched, item)
 		}
 	}

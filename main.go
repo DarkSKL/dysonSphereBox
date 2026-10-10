@@ -48,7 +48,6 @@ func main() {
 	defer diagnostics.CapturePanic("backend.main")
 	diagnostics.Default.BeginSession()
 	log.SetOutput(diagnostics.StandardWriter{})
-	diagnostics.Default.Record(logging.Entry{Action: "启动戴森球盒子", Level: logging.Info, Source: "backend.main", Reason: "用户启动客户端进程", Namespace: "system.lifecycle.start", Handler: logging.User, Data: map[string]interface{}{"result": "started"}})
 	app := NewApp()
 	services := append([]interface{}{app}, service.RegisterServices()...)
 

@@ -35,7 +35,6 @@ func Begin(key, action, handler string) func() {
 	op := &operation{id: diagnostics.NewID(), handler: handler, begin: time.Now()}
 	operations.items[key] = op
 	operations.Unlock()
-	diagnostics.Default.Record(logging.Entry{Action: action, Level: logging.Info, Source: "backend.installer", Reason: "安装器服务收到操作请求", Namespace: "modDependence.installer.started", Handler: handler, OperationID: op.id, Data: map[string]interface{}{"packageKey": key, "result": "started"}})
 	return func() {
 		operations.Lock()
 		if operations.items[key] == op {

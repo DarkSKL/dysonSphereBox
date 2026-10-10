@@ -10,6 +10,7 @@ definePage({ meta: { layout: 'main', title: '系统日志' } })
 // 说明：筛选、列表和详情共用统一契约；级别只表达严重度，结果直接展示 data.result。
 const logs = useLogs()
 const { query, items, total, loading, exporting, error, warning, health, healthWarning, selected, timeline, timelineWarning } = logs
+const showLogHealthDetails = logs.showLogHealthDetails
 const detailOpen = computed({ get: () => selected.value !== null, set: (open: boolean) => { if (!open) selected.value = null } })
 const advanced = ref(false)
 const searchValue = ref(query.keyword)
@@ -90,7 +91,8 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
 
     <n-alert v-if="healthWarning || warning" type="warning" :show-icon="true" class="logs-alert">{{ healthWarning || warning }}</n-alert>
     <n-alert v-if="error" type="error" :show-icon="true" class="logs-alert">{{ error }}</n-alert>
-    <div class="logs-status"><span>{{ health?.file.fileError ? '文件采集异常' : health ? '文件采集正常' : '采集状态未就绪' }}</span><span v-if="health?.file.fallback">后备目录</span><span class="type-mono">{{ health?.file.directory }}</span><span v-if="health?.pending">{{ health.pending }} 条待索引</span></div>
+    <div class="logs-status"><span>{{ health?.file.fileError ? '文件采集异常' : health ? '文件采集正常' : '采集状态未就绪' }}</span><span v-if="health?.file.fallback">后备目录</span><span class="type-mono">{{ health?.file.directory }}</span><span v-if="health?.pending">{{ health.pending }} 条待索引</span><n-button v-if="health?.file.noiseSuppressed" text size="tiny" @click="showLogHealthDetails = !showLogHealthDetails">本次运行已过滤 {{ health.file.noiseSuppressed }} 条框架噪声</n-button></div>
+    <div v-if="showLogHealthDetails && health?.file.noiseSuppressed" class="logs-noise-details">框架调试与信息输出、开发热重载取消请求及重复握手关闭输出已过滤。未知运行时错误仍保留；相同基础设施故障会在诊断事件中附带重复次数和时间范围。</div>
 
     <!-- ~ 日志列表与详情 -->
     <!-- * 说明：列表以时间线卡片呈现，详情展示完整结构与同一次操作的事件 -->
@@ -155,6 +157,7 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
 .filter-actions { display: flex; align-items: center; gap: 8px; }
 .logs-alert { margin-top: 12px; }
 .logs-status { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px 0; overflow-wrap: anywhere; }
+.logs-noise-details { padding: 0 0 12px; color: var(--ds-text-muted); font-size: 12px; }
 .logs-workspace { display: grid; min-width: 0; }
 .logs-list { min-width: 0; }
 .logs-timeline { position: relative; padding: 4px 0 4px 28px; border-block: 1px solid var(--ds-border-default); }

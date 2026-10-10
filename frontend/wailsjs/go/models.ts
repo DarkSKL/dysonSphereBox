@@ -798,6 +798,7 @@ export namespace diagnostics {
 	    fallback: boolean;
 	    memoryCount: number;
 	    dropped: number;
+	    noiseSuppressed: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Health(source);
@@ -811,6 +812,7 @@ export namespace diagnostics {
 	        this.fallback = source["fallback"];
 	        this.memoryCount = source["memoryCount"];
 	        this.dropped = source["dropped"];
+	        this.noiseSuppressed = source["noiseSuppressed"];
 	    }
 	}
 

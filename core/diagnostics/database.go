@@ -25,7 +25,7 @@ func (DatabaseLogger) Warn(context.Context, string, ...interface{}) {}
 
 // Error 职责：记录数据库基础设施错误类别；使用：GORM；边界：不格式化潜在敏感参数。
 func (DatabaseLogger) Error(_ context.Context, _ string, _ ...interface{}) {
-	Default.Record(logging.Entry{Action: "数据库内部错误", Level: logging.Error, Source: "backend.database", Reason: "GORM 报告基础设施错误", Namespace: "system.database.internalError", Handler: logging.System, Data: map[string]interface{}{"result": "failed"}})
+	Default.RecordEvidence(logging.Entry{Action: "数据库内部错误", Level: logging.Error, Source: "backend.database", Reason: "GORM 报告基础设施错误", Namespace: "system.database.internalError", Handler: logging.System, Data: map[string]interface{}{"result": "failed"}})
 }
 
 // Trace 职责：记录查询失败与慢查询；使用：GORM 操作回调；边界：不调用返回 SQL 的 fc，忽略正常未找到记录。
@@ -44,5 +44,5 @@ func (DatabaseLogger) Trace(_ context.Context, begin time.Time, _ func() (string
 		data["error"] = ErrorData(err)
 		data["result"] = "failed"
 	}
-	Default.Record(logging.Entry{Action: "数据库操作", Level: level, Source: "backend.database", Reason: reason, Namespace: "system.database." + event, Handler: logging.System, Data: data})
+	Default.RecordEvidence(logging.Entry{Action: "数据库操作", Level: level, Source: "backend.database", Reason: reason, Namespace: "system.database." + event, Handler: logging.System, Data: data})
 }

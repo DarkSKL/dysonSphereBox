@@ -39,7 +39,7 @@ export interface LogQuery {
 }
 
 export interface LogHealth {
-  readonly file: { readonly directory: string; readonly sessionId: string; readonly fileError: string; readonly fallback: boolean; readonly memoryCount: number; readonly dropped: number }
+  readonly file: { readonly directory: string; readonly sessionId: string; readonly fileError: string; readonly fallback: boolean; readonly memoryCount: number; readonly dropped: number; readonly noiseSuppressed: number }
   readonly indexError: string
   readonly pending: number
 }

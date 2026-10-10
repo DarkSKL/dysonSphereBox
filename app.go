@@ -78,7 +78,6 @@ func (a *App) startup(ctx context.Context) {
 // 使用：Wails 框架在应用退出时自动调用。
 // 边界：关闭失败只记录到控制台，避免退出流程二次 panic。
 func (a *App) shutdown(ctx context.Context) {
-	diagnostics.Default.Record(logging.Entry{Action: "关闭客户端", Level: logging.Info, Source: "backend.shutdown", Reason: "Wails 调用正常关闭生命周期", Namespace: "system.lifecycle.shutdown", Handler: logging.System, Data: map[string]interface{}{"result": "started"}})
 	logStore.Stop()
 	if err := core.CloseDatabase(); err != nil {
 		diagnostics.Default.Record(logging.Entry{Action: "关闭数据库失败", Level: logging.Error, Source: "backend.shutdown", Reason: "数据库关闭返回错误", Namespace: "system.database.closeFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})

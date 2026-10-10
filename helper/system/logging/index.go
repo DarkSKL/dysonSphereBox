@@ -56,6 +56,27 @@ func Start(db *gorm.DB) error {
 			return err
 		}
 	}
+	if err := idx.db.Transaction(func(tx *gorm.DB) error {
+		rows := []systemModel.LogEntry{}
+		if err := tx.Where("deleted_at IS NULL").Find(&rows).Error; err != nil {
+			return err
+		}
+		for _, row := range rows {
+			data := map[string]interface{}{}
+			if err := json.Unmarshal(row.Data, &data); err != nil {
+				continue
+			}
+			entry := contract.Entry{Action: row.Action, Level: row.Level, Source: row.Source, Namespace: row.Namespace, Data: data}
+			if diagnostics.IsNoise(entry) {
+				if err := tx.Delete(&row).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		idx.setError(err.Error())
+	}
 	return nil
 }
 
@@ -73,6 +94,9 @@ func (idx *Index) run() {
 
 // save 职责：按 ID 幂等入库；使用：回放和实时写入；边界：错误不会抹掉文件证据。
 func (idx *Index) save(e contract.Entry) error {
+	if diagnostics.IsNoise(e) {
+		return nil
+	}
 	when, err := time.Parse(time.RFC3339Nano, e.Time)
 	if err != nil {
 		return err
@@ -104,10 +128,11 @@ func Health() (string, int) {
 
 // Stop 职责：停止接收并排空索引；使用：关闭数据库之前；边界：所有生产者经 SetSink 串行切断，不关闭正在写入的队列。
 func Stop() {
-	diagnostics.Default.SetSink(nil)
 	if active == nil {
 		return
 	}
+	diagnostics.Default.FlushRepeats()
+	diagnostics.Default.SetSink(nil)
 	close(active.queue)
 	select {
 	case <-active.done:

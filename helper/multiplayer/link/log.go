@@ -93,7 +93,8 @@ func (record DialRecord) Text() string {
 func RecordDial(record DialRecord) {
 	level, event := systemModel.Warn, "dialFailure"
 	if record.OK {
-		level, event = systemModel.Info, "dialSuccess"
+		// 单次成功拨号是连接建立过程的一部分；后续断线与最终链路状态负责反馈结果。
+		return
 	}
 	role := record.Role
 	if role == "" {

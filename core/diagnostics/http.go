@@ -4,6 +4,8 @@ package diagnostics
 
 import (
 	"DysonSphereBox/constant/logging"
+	"context"
+	"errors"
 	"net/http"
 	"time"
 )
@@ -20,11 +22,17 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	response, err := base.RoundTrip(r)
 	elapsed := time.Since(begin)
+	if errors.Is(err, context.Canceled) && errors.Is(r.Context().Err(), context.Canceled) {
+		return response, err
+	}
 	status := 0
 	if response != nil {
 		status = response.StatusCode
 	}
 	if err == nil && status < 400 && elapsed < 10*time.Second {
+		if status >= 200 {
+			Default.ResolveNetwork(r.Method, r.URL.String())
+		}
 		return response, err
 	}
 	level, reason := logging.Warn, "HTTP 请求耗时超过十秒"

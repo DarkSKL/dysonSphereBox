@@ -37,7 +37,6 @@ func (model *EnvironmentService) LoadOrInitDysonSphereExe() (dirPath string, err
 	}
 
 	if dirPath := dysonsphere.NormalizeDir(configuredPath); dirPath != "" {
-		systemHelper.RecordGamePathSuccess("loadOrInitGamePath", "已加载已保存的游戏目录", dirPath, "configured")
 		return dirPath, nil
 	}
 
@@ -52,7 +51,6 @@ func (model *EnvironmentService) LoadOrInitDysonSphereExe() (dirPath string, err
 		return "", err
 	}
 
-	systemHelper.RecordGamePathSuccess("loadOrInitGamePath", "已从 Steam 初始化游戏目录", dirPath, "steam")
 	return dirPath, nil
 }
 

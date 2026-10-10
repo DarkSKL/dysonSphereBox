@@ -106,7 +106,7 @@ func Export(db *gorm.DB, target string, q systemHelper.LogQuery, health systemHe
 	}
 	items, warning := diagnostics.Default.ReadEntries()
 	for _, item := range items {
-		if !deleted[item.ID] && !seen[item.ID] && Match(item, q) {
+		if !deleted[item.ID] && !seen[item.ID] && !diagnostics.IsNoise(item) && Match(item, q) {
 			item.Data = diagnostics.CleanData(item.Data)
 			if err := encoder.Encode(item); err != nil {
 				return err

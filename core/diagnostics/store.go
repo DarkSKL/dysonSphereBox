@@ -24,18 +24,21 @@ var namespacePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-
 
 // Store 职责：串行维护文件和健康状态；使用：进程级单例或隔离测试；边界：索引回调不得持有业务事务。
 type Store struct {
-	mu        sync.Mutex
-	dir       string
-	file      *os.File
-	size      int64
-	sequence  int
-	session   string
-	version   string
-	lastError string
-	fallback  bool
-	memory    []logging.Entry
-	dropped   int64
-	sink      func(logging.Entry)
+	mu          sync.Mutex
+	dir         string
+	file        *os.File
+	size        int64
+	sequence    int
+	session     string
+	version     string
+	lastError   string
+	fallback    bool
+	memory      []logging.Entry
+	dropped     int64
+	sink        func(logging.Entry)
+	repeated    map[string]*repeatedEntry
+	repeatTimer *time.Timer
+	noiseCount  uint64
 }
 
 // Health 职责：暴露采集状态；使用：日志页面和诊断包；边界：错误清除前不会报告健康。
@@ -52,6 +55,8 @@ type Health struct {
 	MemoryCount int `json:"memoryCount"`
 	// Dropped 职责：记录内存证据溢出数；使用：采集告警；边界：不会把被丢弃记录视为已落盘。
 	Dropped int64 `json:"dropped"`
+	// NoiseSuppressed 职责：本次进程过滤的噪声条数；使用：健康详情；边界：不包含历史索引清理数量。
+	NoiseSuppressed uint64 `json:"noiseSuppressed"`
 }
 
 // Default 职责：保存进程日志设施；使用：基础设施及业务 helper；边界：未初始化时仅保留内存和 stderr。
@@ -157,8 +162,31 @@ func (s *Store) write(e logging.Entry, index bool) error {
 	if err := Validate(e); err != nil {
 		return err
 	}
+	if IsNoise(e) {
+		s.mu.Lock()
+		s.noiseCount++
+		s.mu.Unlock()
+		return nil
+	}
+	e.Action, e.Reason, e.Source = CleanText(e.Action), CleanText(e.Reason), CleanText(e.Source)
+	e.Data = CleanData(e.Data)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.coalesceLocked(e) {
+		return nil
+	}
+	if e.ID == "" {
+		e.ID = NewID()
+	}
+	err := s.writeLocked(e, index)
+	if err == nil {
+		s.rememberLocked(e, index)
+	}
+	return err
+}
+
+// writeLocked 职责：追加单条证据；使用：普通写入与重复摘要；边界：调用方持有 Store 锁，不能递归采集。
+func (s *Store) writeLocked(e logging.Entry, index bool) error {
 	if e.ID == "" {
 		e.ID = NewID()
 	}
@@ -182,10 +210,10 @@ func (s *Store) write(e logging.Entry, index bool) error {
 	if err == nil && s.file == nil {
 		err = fmt.Errorf("日志文件未打开")
 	}
-	if err == nil && s.size+int64(len(b)+1) > 8*1024*1024 {
+	if err == nil && s.file != nil && s.size+int64(len(b)+1) > 8*1024*1024 {
 		err = s.rotate()
 	}
-	if err == nil {
+	if err == nil && s.file != nil {
 		var n int
 		n, err = s.file.Write(append(b, '\n'))
 		s.size += int64(n)
@@ -203,7 +231,7 @@ func (s *Store) write(e logging.Entry, index bool) error {
 	} else {
 		s.lastError = ""
 	}
-	if index && s.sink != nil {
+	if err == nil && index && s.sink != nil {
 		s.sink(e)
 	}
 	return err
@@ -261,13 +289,21 @@ func (s *Store) SetSink(sink func(logging.Entry)) { s.mu.Lock(); defer s.mu.Unlo
 func (s *Store) Health() Health {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Health{Directory: s.dir, SessionID: s.session, FileError: s.lastError, Fallback: s.fallback, MemoryCount: len(s.memory), Dropped: s.dropped}
+	return Health{Directory: s.dir, SessionID: s.session, FileError: s.lastError, Fallback: s.fallback, MemoryCount: len(s.memory), Dropped: s.dropped, NoiseSuppressed: s.noiseCount}
 }
 
 // Close 职责：刷新并关闭采集；使用：主进程退出；边界：文件关闭后仍可使用内存降级。
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.repeatTimer != nil {
+		s.repeatTimer.Stop()
+		s.repeatTimer = nil
+	}
+	for _, item := range s.repeated {
+		s.flushRepeatLocked(item)
+	}
+	s.repeated = nil
 	if s.file == nil {
 		return nil
 	}

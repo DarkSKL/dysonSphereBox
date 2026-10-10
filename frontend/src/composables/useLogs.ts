@@ -19,6 +19,7 @@ export const useLogs = () => {
   const error = ref('')
   const warning = ref('')
   const health = ref<LogHealth | null>(null)
+  const showLogHealthDetails = ref(false)
   const selected = ref<LogEntry | null>(null)
   const timeline = ref<LogEntry[]>([])
   const timelineWarning = ref('')
@@ -101,5 +102,5 @@ export const useLogs = () => {
     timer = window.setInterval(scheduleRefresh, 5000)
   })
   onBeforeUnmount(() => { disposed = true; version++; detailVersion++; clearInterval(timer); clearTimeout(refreshTimer); unsubscribe?.() })
-  return { query, items, total, loading, exporting, deleting, error, warning, health, healthWarning, selected, timeline, timelineWarning, load, select, remove, exportBundle, openDirectory, copy, reset }
+  return { query, items, total, loading, exporting, deleting, error, warning, health, healthWarning, showLogHealthDetails, selected, timeline, timelineWarning, load, select, remove, exportBundle, openDirectory, copy, reset }
 }
