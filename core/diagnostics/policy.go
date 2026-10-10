@@ -7,8 +7,12 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// webViewReadyPattern 职责：精确识别 WebView2 的成功初始化输出；使用：标准日志过滤；边界：其它 WebView 错误与未知文本全部保留。
+var webViewReadyPattern = regexp.MustCompile(`^(?:\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? )?\[WebView2\] Environment created successfully$`)
 
 // IsNoise 职责：排除没有业务状态信息的自动输出；使用：实时采集和历史回放；边界：致命错误、业务失败和未识别的运行时错误始终保留。
 func IsNoise(e logging.Entry) bool {
@@ -22,9 +26,14 @@ func IsNoise(e logging.Entry) bool {
 		}
 		message, _ := e.Data["message"].(string)
 		switch strings.TrimSpace(message) {
-		case "websocket: close sent", "Websocket write message failed websocket: close sent", "[ExternalAssetHandler] Proxy error: context canceled":
+		case "websocket: close sent", "Websocket write message failed websocket: close sent", "[ExternalAssetHandler] Proxy error: context canceled",
+			"Unknown message from front end: runtime:ready", "process message error: runtime:ready -> Unknown message from front end: runtime:ready":
+			// runtime:ready 是框架内置握手，桌面端正常处理；开发端误交给通用消息分发器时产生这两种固定输出。
 			return true
 		}
+	case "runtime.go":
+		message, _ := e.Data["message"].(string)
+		return e.Level == logging.Info && webViewReadyPattern.MatchString(strings.TrimSpace(message))
 	case "frontend.bridge":
 		// 历史桥接“started/returned”仅表示函数被调用或 Promise 返回，不能证明业务成功。
 		result, _ := e.Data["result"].(string)

@@ -29,8 +29,19 @@ const responseBodyLimit = 4 << 20
 // 职责：统一账号接口的鉴权、续期、401 清理、强制改密识别与错误文案。
 // 使用：本包的 Captcha、Login、GetCurrentUser 等流程调用。
 // 边界：路径按服务器基础地址的相对路径解析，保留基础地址中的路径前缀；payload 为 nil 时不发送请求体。
-func request[T any](ctx context.Context, method string, path string, payload interface{}, authenticated bool) (T, error) {
-	var result T
+func request[T any](ctx context.Context, method string, path string, payload interface{}, authenticated bool) (result T, resultErr error) {
+	// 传输错误已有 URL 与错误链记录；只补齐构造、业务拒绝和响应解析失败，不记录成功读取与请求正文。
+	stage, status, code := "initialize", 0, 0
+	transportFailed := false
+	var evidenceErr error
+	defer func() {
+		if resultErr != nil && !transportFailed {
+			if evidenceErr == nil {
+				evidenceErr = resultErr
+			}
+			recordRequestFailure(method, path, stage, status, code, evidenceErr)
+		}
+	}()
 	client := core.GLOBAL.ServerClient
 	if client == nil {
 		return result, errors.New("服务器连接尚未初始化，请稍后重试。")
@@ -38,6 +49,7 @@ func request[T any](ctx context.Context, method string, path string, payload int
 
 	var body io.Reader
 	if payload != nil {
+		stage = "encodeRequest"
 		data, err := json.Marshal(payload)
 		if err != nil {
 			return result, fmt.Errorf("编码请求数据失败：%w", err)
@@ -45,6 +57,7 @@ func request[T any](ctx context.Context, method string, path string, payload int
 		body = bytes.NewReader(data)
 	}
 
+	stage = "constructRequest"
 	httpRequest, err := client.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
 	if err != nil {
 		return result, fmt.Errorf("构造服务器请求失败：%w", err)
@@ -61,30 +74,42 @@ func request[T any](ctx context.Context, method string, path string, payload int
 
 	response, err := client.Do(httpRequest)
 	if err != nil {
+		transportFailed = true
 		return result, fmt.Errorf("无法连接服务器 %s，请确认服务已启动，或前往全局设置检查服务器地址。", client.BaseURL())
 	}
 	defer response.Body.Close()
+	status = response.StatusCode
 
 	if refreshedToken := response.Header.Get(systemAPI.AccountNewTokenHeader); refreshedToken != "" {
-		_ = SaveToken(refreshedToken)
+		if err := SaveToken(refreshedToken); err != nil {
+			recordRequestFailure(method, path, "persistSession", status, code, err)
+		}
 	}
 	if response.StatusCode == http.StatusUnauthorized {
-		_ = ClearSession()
+		if err := ClearSession(); err != nil {
+			recordRequestFailure(method, path, "clearSession", status, code, err)
+		}
 	}
 
+	stage = "readResponse"
 	raw, err := io.ReadAll(io.LimitReader(response.Body, responseBodyLimit))
 	if err != nil {
+		evidenceErr = err
 		return result, errors.New("读取服务器响应失败，请稍后重试。")
 	}
 
 	var envelope systemAPI.AccountResponse
+	stage = "decodeResponse"
 	if err := json.Unmarshal(raw, &envelope); err != nil {
+		evidenceErr = err
 		return result, fmt.Errorf("服务器返回了无法识别的数据 (HTTP %d)。", response.StatusCode)
 	}
+	code = envelope.Code
 	if response.StatusCode == http.StatusConflict && envelope.Code == systemAPI.AccountCodeNeedChangePassword {
 		setNeedChangePassword(true)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices || envelope.Code != systemAPI.AccountCodeSuccess {
+		stage = "businessResponse"
 		if envelope.Msg != "" {
 			return result, errors.New(envelope.Msg)
 		}
@@ -95,6 +120,7 @@ func request[T any](ctx context.Context, method string, path string, payload int
 		return result, nil
 	}
 	if err := json.Unmarshal(envelope.Data, &result); err != nil {
+		stage, evidenceErr = "decodeData", err
 		return result, errors.New("服务器返回的数据格式不符合账号服务约定。")
 	}
 	return result, nil

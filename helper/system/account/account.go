@@ -46,6 +46,7 @@ func Login(ctx context.Context, payload systemAPI.AccountLoginRequest) (*systemA
 		return nil, err
 	}
 	if err := SaveToken(data.Token); err != nil {
+		recordRequestFailure(http.MethodPost, systemAPI.APIURLLogin, "persistSession", 0, 0, err)
 		return nil, fmt.Errorf("保存登录状态失败：%w", err)
 	}
 	setNeedChangePassword(data.NeedChangePassword)
@@ -111,8 +112,11 @@ func Logout(ctx context.Context) error {
 	if Token() != "" {
 		_, requestErr = request[struct{}](ctx, http.MethodPost, systemAPI.APIURLLogout, nil, true)
 	}
-	if err := ClearSession(); err != nil && requestErr == nil {
-		return fmt.Errorf("清除登录状态失败：%w", err)
+	if err := ClearSession(); err != nil {
+		recordRequestFailure(http.MethodPost, systemAPI.APIURLLogout, "clearSession", 0, 0, err)
+		if requestErr == nil {
+			return fmt.Errorf("清除登录状态失败：%w", err)
+		}
 	}
 	return requestErr
 }

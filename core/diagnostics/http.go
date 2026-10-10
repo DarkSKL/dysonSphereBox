@@ -29,10 +29,10 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if response != nil {
 		status = response.StatusCode
 	}
+	if err == nil && status >= 200 && status < 400 {
+		Default.ResolveNetwork(r.Method, r.URL.String())
+	}
 	if err == nil && status < 400 && elapsed < 10*time.Second {
-		if status >= 200 {
-			Default.ResolveNetwork(r.Method, r.URL.String())
-		}
 		return response, err
 	}
 	level, reason := logging.Warn, "HTTP 请求耗时超过十秒"

@@ -15,18 +15,13 @@ type RuntimeLogger struct{}
 // emit 职责：归一化运行时日志；使用：接口方法；边界：来源固定 runtime.wails。
 func (RuntimeLogger) emit(level, message string) {
 	message = strings.TrimSpace(message)
-	// Wails 对同一个未知前端消息输出原文及带前缀的包装错误，统一为一份故障证据。
-	const readyError = "Unknown message from front end: runtime:ready"
-	if message == "process message error: runtime:ready -> "+readyError {
-		message = readyError
-	}
 	if message == "" {
 		return
 	}
 	Default.Record(logging.Entry{Action: "桌面运行时异常", Level: level, Source: "runtime.wails", Reason: message, Namespace: "system.runtime.message", Handler: logging.System, Data: map[string]interface{}{"message": message}})
 }
 
-// Print 职责：记录普通运行时输出；使用：Wails；边界：不重定向文件句柄。
+// Print 职责：把普通运行时输出交给噪声策略；使用：Wails；边界：框架信息输出被过滤，不重定向文件句柄。
 func (r RuntimeLogger) Print(v string) { r.emit(logging.Info, v) }
 
 // Trace 职责：记录详细运行时输出；使用：Wails；边界：作为 Debug。

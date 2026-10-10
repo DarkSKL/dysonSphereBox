@@ -30,7 +30,11 @@ func (service *AccountService) GetCaptcha() (*systemAPI.AccountCaptcha, error) {
 // 使用：账号弹窗注册提交时调用。
 // 边界：注册成功不会自动登录。
 func (service *AccountService) Register(payload systemAPI.AccountRegisterRequest) (*systemAPI.AccountUser, error) {
-	return accountHelper.Register(context.Background(), payload)
+	user, err := accountHelper.Register(context.Background(), payload)
+	if err == nil {
+		accountHelper.RecordStateChange("registered", "账号注册完成")
+	}
+	return user, err
 }
 
 // Login 登录账号。
@@ -38,7 +42,11 @@ func (service *AccountService) Register(payload systemAPI.AccountRegisterRequest
 // 使用：账号弹窗登录提交时调用。
 // 边界：返回值不包含 token。
 func (service *AccountService) Login(payload systemAPI.AccountLoginRequest) (*systemAPI.AccountLoginResult, error) {
-	return accountHelper.Login(context.Background(), payload)
+	result, err := accountHelper.Login(context.Background(), payload)
+	if err == nil {
+		accountHelper.RecordStateChange("loggedIn", "账号登录状态已保存")
+	}
+	return result, err
 }
 
 // GetCurrentUser 获取当前登录用户。
@@ -54,7 +62,11 @@ func (service *AccountService) GetCurrentUser() (*systemAPI.AccountUser, error) 
 // 使用：账号资料编辑时调用。
 // 边界：空字符串字段被服务端忽略。
 func (service *AccountService) SetSelfInfo(payload systemAPI.AccountSelfInfoRequest) error {
-	return accountHelper.SetSelfInfo(context.Background(), payload)
+	err := accountHelper.SetSelfInfo(context.Background(), payload)
+	if err == nil {
+		accountHelper.RecordStateChange("profileUpdated", "账号资料更新完成")
+	}
+	return err
 }
 
 // SetSelfSetting 覆盖保存个人界面配置。
@@ -62,7 +74,11 @@ func (service *AccountService) SetSelfInfo(payload systemAPI.AccountSelfInfoRequ
 // 使用：需要保存账号级界面配置时调用。
 // 边界：调用方负责先读取并合并。
 func (service *AccountService) SetSelfSetting(settings map[string]interface{}) error {
-	return accountHelper.SetSelfSetting(context.Background(), settings)
+	err := accountHelper.SetSelfSetting(context.Background(), settings)
+	if err == nil {
+		accountHelper.RecordStateChange("settingsUpdated", "账号设置更新完成")
+	}
+	return err
 }
 
 // ChangePassword 修改当前账号密码。
@@ -70,7 +86,11 @@ func (service *AccountService) SetSelfSetting(settings map[string]interface{}) e
 // 使用：账号弹窗改密提交时调用。
 // 边界：成功后调用方应调用 Logout 并重新登录。
 func (service *AccountService) ChangePassword(payload systemAPI.AccountChangePasswordRequest) error {
-	return accountHelper.ChangePassword(context.Background(), payload)
+	err := accountHelper.ChangePassword(context.Background(), payload)
+	if err == nil {
+		accountHelper.RecordStateChange("passwordChanged", "账号密码修改完成")
+	}
+	return err
 }
 
 // Logout 注销当前账号。
@@ -78,7 +98,11 @@ func (service *AccountService) ChangePassword(payload systemAPI.AccountChangePas
 // 使用：用户退出登录或改密后调用。
 // 边界：服务端请求失败时本地会话仍已清除。
 func (service *AccountService) Logout() error {
-	return accountHelper.Logout(context.Background())
+	err := accountHelper.Logout(context.Background())
+	if err == nil {
+		accountHelper.RecordStateChange("loggedOut", "账号注销完成")
+	}
+	return err
 }
 
 // GetSessionState 返回本地会话状态。

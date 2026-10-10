@@ -5,6 +5,7 @@ package diagnostics
 import (
 	"DysonSphereBox/constant/logging"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -17,6 +18,8 @@ type repeatedEntry struct {
 	entry logging.Entry
 	index bool
 	count int
+	// total 职责：统计故障首次与重复发生的总次数；使用：摘要和恢复；边界：刷新摘要不会重置。
+	total int
 	first time.Time
 	last  time.Time
 }
@@ -28,7 +31,13 @@ func (s *Store) coalesceLocked(e logging.Entry) bool {
 		return false
 	}
 	item := s.repeated[key]
+	if time.Since(item.last) >= repeatWindow {
+		s.flushRepeatLocked(item)
+		delete(s.repeated, key)
+		return false
+	}
 	item.count++
+	item.total++
 	item.last = time.Now()
 	return true
 }
@@ -53,7 +62,7 @@ func (s *Store) rememberLocked(e logging.Entry, index bool) {
 		delete(s.repeated, oldestKey)
 	}
 	now := time.Now()
-	s.repeated[key] = &repeatedEntry{entry: e, index: index, first: now, last: now}
+	s.repeated[key] = &repeatedEntry{entry: e, index: index, total: 1, first: now, last: now}
 	if s.repeatTimer == nil {
 		s.repeatTimer = time.AfterFunc(repeatWindow, s.FlushRepeats)
 	}
@@ -71,14 +80,14 @@ func (s *Store) flushRepeatLocked(item *repeatedEntry) {
 	for key, value := range item.entry.Data {
 		e.Data[key] = value
 	}
-	data := map[string]interface{}{"additionalCount": item.count, "firstRecordId": item.entry.ID, "firstSeen": item.first.Format(time.RFC3339Nano), "lastSeen": item.last.Format(time.RFC3339Nano)}
+	data := map[string]interface{}{"additionalCount": item.count, "totalCount": item.total, "firstRecordId": item.entry.ID, "firstSeen": item.first.Format(time.RFC3339Nano), "lastSeen": item.last.Format(time.RFC3339Nano)}
 	e.Data["repeat"] = data
 	if item.entry.Source == "backend.http" {
 		e.Reason = fmt.Sprintf("%s（相同请求另失败 %d 次）", item.entry.Reason, item.count)
 	}
-	if err := s.writeLocked(e, item.index); err == nil {
-		item.count = 0
-	}
+	// 落盘失败时 writeLocked 已将摘要放入降级内存；清空窗口计数避免下一轮重复缓存同一份证据。
+	s.writeLocked(e, item.index)
+	item.count = 0
 }
 
 // FlushRepeats 职责：刷新合并证据；使用：计时器和索引停止前；边界：持续故障每 30 秒一条摘要，空闲指纹到期释放。
@@ -104,7 +113,8 @@ func (s *Store) FlushRepeats() {
 func (s *Store) ResolveNetwork(method, address string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var previous *repeatedEntry
+	previousIDs := []string{}
+	failureCount := 0
 	for key, item := range s.repeated {
 		e := item.entry
 		baseURL := strings.TrimSpace(address)
@@ -116,14 +126,14 @@ func (s *Store) ResolveNetwork(method, address string) {
 			failureURL = failureURL[:cut]
 		}
 		if e.Source == "backend.http" && e.Data["method"] == method && failureURL == CleanText(baseURL) && e.Data["result"] == "failed" {
-			repeatCount := item.count
 			s.flushRepeatLocked(item)
-			previous = item
-			previous.count = repeatCount
+			previousIDs = append(previousIDs, item.entry.ID)
+			failureCount += item.total
 			delete(s.repeated, key)
 		}
 	}
-	if previous != nil {
-		s.writeLocked(logging.Entry{Action: "远端请求恢复", Level: logging.Info, Source: "backend.http", Reason: "此前失败的接口再次返回成功状态", Namespace: "system.network.recovered", Handler: logging.System, Data: map[string]interface{}{"method": method, "url": CleanText(address), "result": "recovered", "previousRecordId": previous.entry.ID, "failureRepeatCount": previous.count}}, true)
+	if len(previousIDs) > 0 {
+		sort.Strings(previousIDs)
+		s.writeLocked(logging.Entry{Action: "远端请求恢复", Level: logging.Info, Source: "backend.http", Reason: "此前失败的接口再次返回成功状态", Namespace: "system.network.recovered", Handler: logging.System, Data: map[string]interface{}{"method": method, "url": CleanText(address), "result": "recovered", "previousRecordIds": previousIDs, "failureCount": failureCount}}, true)
 	}
 }
