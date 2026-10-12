@@ -10,7 +10,9 @@ import "time"
 // 职责：心跳、读超时、请求与事件回复时限；使用：socket.Conn 默认参数；边界：两端阈值相同。
 const (
 	// ProtocolVersion 职责：session.open 的 protocolVersion；使用：打开会话；边界：协议升级时修改。
-	ProtocolVersion = 1
+	ProtocolVersion = 2
+	// DCUtRUpgradeTimeout 职责：仅协商模式升级窗口；使用：成员建链；边界：超时禁止 relay 游戏流。
+	DCUtRUpgradeTimeout = 30 * time.Second
 	// PingInterval 职责：WS ping 间隔；使用：socket 心跳；边界：协议规定 5 秒。
 	PingInterval = 5 * time.Second
 	// ReadTimeout 职责：读超时判定断线；使用：socket 读截止；边界：协议规定 15 秒。
@@ -115,6 +117,8 @@ const (
 	PathUPnP = "upnp"
 	// PathPunch 职责：打洞连通；使用：LinkState.path；边界：同时拨号成功。
 	PathPunch = "punch"
+	// PathRelay 职责：当前使用原生中继；使用：链路投影；边界：地址族不按中继服务器分类。
+	PathRelay = "relay"
 
 	// RoleHost 职责：房主角色；使用：room.snapshot 与本地角色；边界：小写。
 	RoleHost = "host"
@@ -131,6 +135,12 @@ const (
 	TracePortsOpen = "ports_open"
 	// TraceDirectDial 职责：直连结束；使用：成员。
 	TraceDirectDial = "direct_dial"
+	// TraceRelayReserve 职责：原生预约结果；使用：双方；边界：可无房间。
+	TraceRelayReserve = "relay_reserve"
+	// TraceRelayDial 职责：指定中继拨号；使用：成员；边界：不使用旧打洞事件。
+	TraceRelayDial = "relay_dial"
+	// TraceDCUtR 职责：库原生事件；使用：双方；边界：不通过定时拨号推断。
+	TraceDCUtR = "dcutr"
 	// TracePunchRequest 职责：link.punch 请求结束；使用：成员；边界：detail 写回复码；房主对称 NAT 跳过打洞时 ok=false、detail 为 "skipped: host_symmetric" 或 "skipped: both_symmetric"。
 	TracePunchRequest = "punch_request"
 	// TracePunchDial 职责：按 atMs 同时拨号结束；使用：双方。

@@ -168,7 +168,7 @@ const closeWindow = (): void => {
     <!-- ~ 快捷入口栏 -->
     <!-- * 说明：快捷栏承载用户、游戏切换、全局页面和全局设置入口 -->
     <!-- * 交互：点击游戏标签切换到对应首页；全局页面不占用游戏第二层菜单 -->
-    <!-- * 依赖：依赖游戏注册表、全局导航入口、Vue Router 与 Lucide 图标 -->
+    <!-- * 依赖：依赖游戏注册表、全局导航入口、Vue Router 与本地图标组件 -->
     <!-- * 边界：会话信息不可用时头像仍可打开登录弹窗；当前仅支持戴森球计划 -->
     <aside class="app-quick-rail" aria-label="快捷入口">
       <button
@@ -195,7 +195,7 @@ const closeWindow = (): void => {
           :aria-label="workspace.label"
           :aria-selected="workspace.key === currentWorkspace?.key"
         >
-          <component :is="workspace.icon" :size="20" :stroke-width="1.7" />
+          <component :is="workspace.icon" :size="20" aria-hidden="true" />
           <span class="app-rail-game-label">{{ workspace.shortLabel }}</span>
         </RouterLink>
       </nav>
@@ -204,7 +204,7 @@ const closeWindow = (): void => {
       <!-- ~ 全局入口 -->
       <!-- * 说明：底部列表按钮向上展开一列与其同尺寸的快捷按钮，承载日志、关于和全局设置 -->
       <!-- * 交互：点击切换展开；点击外部、选择入口或按 Escape 收起；悬停或聚焦时在右侧显示名称 -->
-      <!-- * 依赖：依赖 globalNavigationEntries、Vue Router 与 Lucide 图标 -->
+      <!-- * 依赖：依赖 globalNavigationEntries、Vue Router 与 Tabler 导航图标 -->
       <!-- * 边界：收起时列表不渲染，避免隐藏按钮进入 Tab 顺序；当前处于全局页面时触发按钮保持选中态 -->
       <div ref="globalMenuRoot" class="app-rail-global" @keydown.esc.prevent.stop="closeGlobalMenu(true)">
         <button
@@ -240,7 +240,7 @@ const closeWindow = (): void => {
               :aria-current="route.path === item.to ? 'page' : undefined"
               @click="closeGlobalMenu()"
             >
-              <component :is="item.icon" :size="19" :stroke-width="1.8" />
+              <component :is="item.icon" :size="19" :stroke="1.8" aria-hidden="true" />
               <span class="app-rail-tip" aria-hidden="true">{{ item.label }}</span>
             </RouterLink>
           </nav>
@@ -323,7 +323,7 @@ const closeWindow = (): void => {
               :aria-label="item.label"
               :title="isSidebarCollapsed ? item.label : undefined"
             >
-              <component :is="item.icon" :size="17" :stroke-width="1.8" class="app-nav-icon" />
+              <component :is="item.icon" :size="20" class="app-nav-icon" aria-hidden="true" />
               <span class="app-nav-label">{{ item.label }}</span>
             </RouterLink>
           </nav>

@@ -22,7 +22,7 @@ type PortDecl struct {
 type LinkState struct {
 	// State 职责：connecting / connected / reconnecting / failed；使用：状态机；边界：取值见 constant。
 	State string `json:"state"`
-	// Path 职责：lan / direct / upnp / punch；使用：路径展示；边界：未连上为空。
+	// Path 职责：lan / direct / upnp / relay；使用：实际路径展示；边界：未连上为空，punch 仅历史解释。
 	Path string `json:"path"`
 	// IPFamily 职责：v4 / v6；使用：路径展示；边界：未连上为空。
 	IPFamily string `json:"ipFamily"`

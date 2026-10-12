@@ -7,7 +7,7 @@ package multiplayer
 // SessionOpenRequest 是 session.open（1001）请求 data。
 // 职责：上报协议版本、客户端版本与临时 PeerID；使用：控制链路首帧；边界：PeerID 被占用时服务器回复 20008。
 type SessionOpenRequest struct {
-	// ProtocolVersion 职责：协议版本；使用：服务器兼容判断；边界：当前为 1。
+	// ProtocolVersion 职责：协议版本；使用：服务器兼容判断；边界：当前为 2，不回退旧打洞。
 	ProtocolVersion int `json:"protocolVersion"`
 	// ClientVersion 职责：盒子版本（去掉 v 前缀）；使用：最低版本校验；边界：开发构建为 0.0.0。
 	ClientVersion string `json:"clientVersion"`
@@ -26,6 +26,10 @@ type SessionOpenReply struct {
 	Observers []string `json:"observers"`
 	// Limits 职责：服务器限制；使用：表单与打洞；边界：以服务器为准。
 	Limits SessionLimits `json:"limits"`
+	// Capabilities 职责：原生数据面能力；使用：预约和转发策略；边界：缺失字段按 false。
+	Capabilities Capabilities `json:"capabilities"`
+	// Relays 职责：服务器指定中继入口；使用：仅向这些节点预约；边界：为空时禁用中继。
+	Relays []string `json:"relays"`
 }
 
 // PeerAddrsRequest 是 peer.addrs（1002）请求 data。

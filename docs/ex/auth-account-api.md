@@ -7,7 +7,7 @@
 ### 地址
 
 - 后端直连：`http://127.0.0.1:8888`（`system.router-prefix` 为空，路径即下表所列）
-- 走本仓库前端开发代理：`/api` + 路径（Vite 会去掉 `/api` 前缀转发到 8888）
+- Client 前端经 Wails `AccountService` → Go helper → `GLOBAL.ServerClient` 请求服务器，不直接使用 Vite HTTP 代理；服务器基础地址来自 `System/ServerAddress`，可保留配置的路径前缀。
 
 ### 响应结构
 
@@ -26,7 +26,7 @@
 
 ### 鉴权
 
-- 登录成功后把 `data.token` 存起来，之后所有非 `/base/*` 请求带请求头 `x-token: <token>`
+- 登录成功后由 Go 后端把 `data.token` 保存到 `Account/Token`，之后所有非 `/base/*` 请求带请求头 `x-token: <token>`；Wails 登录结果、用户 DTO 和前端存储均不包含 token 或 password。
 - 后端同时会写一个 `x-token` 的 HttpOnly Cookie；跨域客户端以请求头为准
 - **静默续期**：token 剩余有效期小于 buffer(默认 1 天，总有效期默认 7 天)时，任意受保护接口的响应头会带 `new-token` 和 `new-expires-at`，收到后替换本地 token
 - 时间单位不一致：登录返回的 `expiresAt` 是**毫秒**时间戳，响应头 `new-expires-at` 是**秒**时间戳
@@ -177,10 +177,14 @@
 }
 ```
 
-- 成功 `msg = "设置成功"`，不返回数据；需要最新数据时重新调 `getUserInfo`
-- **空字符串会被忽略**，因此无法通过此接口把字段清空
-- 不要传 `enable`、`authorityIds` 等字段
-- Swagger 里写的是 `/user/SetSelfInfo`，实际路由是小写开头的 `/user/setSelfInfo`
+- 成功 HTTP 200、`code = 0`、`msg = "设置成功"`、`data = {}`；需要最新数据时重新调 `GET /user/getUserInfo`，读取 `data.userInfo`。不会因修改资料主动签发新 token，中间件静默续期仍按通用约定执行。
+- 2026-10-12 双端确认：仅更新 `nickName/headerImg/phone/email`，字段省略或 `null` 保持原值，显式 `""` 清除头像、手机或邮箱。昵称 trim 后必须为 1–32 个 Unicode 字符，不能清空。
+- 头像 trim 后不超过 2048 字节，允许 http/https 或相对 URL；手机不超过 32 字节，只允许 ASCII 数字、`+`、空格、`(`、`)`、`-` 且含数字；邮箱不超过 254 字节，由服务端 `mail.ParseAddress` 验证且不接受显示名。头像和联系方式允许空值。
+- 头像绝对 URL 必须有 host 且无 userinfo；相对 URL 必须无 scheme/host（支持 `/uploads`、`uploads`、`./` 等），拒绝 `//外部host`、反斜杠、控制字符与 javascript/data/file 协议；昵称也拒绝控制字符。
+- 身份只取已验证 JWT 的非零用户 ID；请求中的 `ID/id/uuid/userName/authorityId/authorityIds/authorities/enable/password` 等额外字段忽略且绝不写入。所有可写字段先校验再原子更新；校验失败 HTTP 200、`code = 7`，展示 `msg`，不更新任何字段。
+- 所有字段都拒绝控制字符；空对象或仅 null 字段在当前用户存在时无操作成功。JSON 类型/格式失败也是 HTTP200/code7；数据库失败或用户不存在只返回“设置失败”，不暴露数据库错误。手机和邮箱仅是资料，不代表已验证绑定或提供短信/邮件验证码。
+- Client 使用 `*string` + `omitempty` 区分省略与显式空字符串，UI 只发送变化字段，保存后刷新共享用户状态；刷新失败明确提示并在下次打开时重试。旧 Server 会忽略空串，清除能力需与新版 Server 同步发布。
+- 实际路由和 Swagger 均为小写开头的 `/user/setSelfInfo`。
 
 ## 7. 保存个人界面配置 `PUT /user/setSelfSetting`
 

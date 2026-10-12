@@ -9,7 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@iconify-icons/game-icons": "^1.2.2",
+    "@iconify/vue": "^5.0.3",
     "@lucide/vue": "^1.17.0",
+    "@tabler/icons-vue": "^3.49.0",
     "driver.js": "^1.6.0",
     "echarts": "^6.1.0",
     "lottie-web": "^5.13.0",

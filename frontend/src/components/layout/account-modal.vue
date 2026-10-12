@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import {ArrowRight, Eye, EyeOff, LockKeyhole, LogOut, RefreshCw, UserRound, X} from '@lucide/vue'
-import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
+import {ArrowRight, Eye, EyeOff, KeyRound, Link2, LockKeyhole, LogOut, Mail, PencilLine, Phone, RefreshCw, UserRound, X} from '@lucide/vue'
+import {computed, nextTick, onBeforeUnmount, reactive, ref, watch} from 'vue'
 import {useMessage} from 'naive-ui'
 import {
   accountIsAuthenticated,
@@ -12,8 +12,10 @@ import {
   loginAccount,
   logoutAccount,
   registerAccount,
+  updateSelfInfo,
   type CaptchaInfo,
 } from '../../services/account'
+import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../../services/server'
 
 interface AccountModalProps {
   readonly open: boolean
@@ -22,7 +24,7 @@ interface AccountModalProps {
 const props = defineProps<AccountModalProps>()
 const emit = defineEmits<{close: []}>()
 const message = useMessage()
-const mode = ref<'login' | 'register' | 'changePassword'>('login')
+const mode = ref<'login' | 'register' | 'changePassword' | 'editProfile'>('login')
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -35,9 +37,58 @@ const showPassword = ref(false)
 const firstField = ref<HTMLInputElement | null>(null)
 const requiresCaptcha = computed(() => mode.value === 'register' || (mode.value === 'login' && (!captchaInfo.value || captchaInfo.value.openCaptcha)))
 const isAuthenticated = accountIsAuthenticated
-const isShowingProfile = computed(() => isAuthenticated.value && mode.value !== 'changePassword')
+// 已登录时 login/register 均视为账号信息视图；改密与编辑资料是从账号信息进入的子视图
+const isShowingProfile = computed(() => isAuthenticated.value && (mode.value === 'login' || mode.value === 'register'))
 const user = accountUser
 const formTransitionName = computed(() => mode.value === 'login' ? 'account-form-backward' : 'account-form-forward')
+const formKicker = computed(() => isShowingProfile.value ? '04' : mode.value === 'login' ? '01' : mode.value === 'register' ? '02' : mode.value === 'changePassword' ? '03' : '05')
+const titleId = computed(() => isShowingProfile.value ? 'account-profile-title' : mode.value === 'login' ? 'account-login-title' : mode.value === 'register' ? 'account-register-title' : mode.value === 'changePassword' ? 'account-password-title' : 'account-edit-title')
+const displayName = computed(() => user.value?.nickName || user.value?.userName || '')
+// 自愿改密可返回账号信息；登录后被要求强制改密时不提供返回入口
+const canLeavePasswordChange = computed(() => isAuthenticated.value && !accountNeedsPasswordChange.value)
+// 改密校验“不含用户名”时，恢复会话后登录输入框为空，改用当前用户的登录名
+const passwordAccountName = computed(() => username.value.trim() || user.value?.userName || '')
+
+// =============== 账号资料 ===============
+// 说明：资料草稿只在进入编辑时从当前用户复制；头像加载失败回退为图标，头像地址变化后重新尝试。
+const profileKeys = ['nickName', 'headerImg', 'email', 'phone'] as const
+type ProfileKey = typeof profileKeys[number]
+const profileDraft = reactive<Record<ProfileKey, string>>({nickName: '', headerImg: '', email: '', phone: ''})
+const avatarFailed = ref(false)
+const isLoadingUser = ref(false)
+const needsUserRefresh = ref(false)
+// 相对头像路径属于账号服务器，不能落到 Wails 本地资源根；地址加载前暂用图标，不发送 token。
+const avatarSource = computed(() => {
+  const raw = user.value?.headerImg?.trim() ?? ''
+  if (!raw || !serverAddressReady.value || raw.startsWith('//')) return ''
+  try {
+    const url = new URL(raw, `${serverEffectiveAddress.value}/`)
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''
+  } catch {
+    return ''
+  }
+})
+watch(avatarSource, () => { avatarFailed.value = false })
+// 会话在编辑资料时失效（401、切换服务器），回到登录表单
+watch(isAuthenticated, (authenticated) => {
+  if (!authenticated && (mode.value === 'editProfile' || mode.value === 'changePassword')) {
+    mode.value = 'login'
+    password.value = ''
+    newPassword.value = ''
+    confirmPassword.value = ''
+    void refreshCaptcha()
+  }
+})
+// 受保护接口返回 409/10001 时立即切到改密视图，恢复会话和资料编辑共用此入口。
+watch(accountNeedsPasswordChange, (required) => {
+  if (required && isAuthenticated.value) mode.value = 'changePassword'
+})
+const passwordUpdatedText = computed(() => {
+  const raw = user.value?.passwordUpdatedAt
+  if (!raw) return '—'
+  const date = new Date(raw)
+  return Number.isNaN(date.getTime()) ? raw : date.toLocaleString('zh-CN', {hour12: false})
+})
 // 品牌区换位动画：切到注册时向左移出、从右侧移入；回到登录时向右移出、从左侧移入。
 // 为空表示不播放，弹窗每次打开时重置，避免挂载时重放上一次的换位动画。
 const artMotion = ref<'to-login' | 'to-register' | null>(null)
@@ -61,9 +112,18 @@ watch(
   async (open) => {
     document.body.classList.toggle('account-modal-open', open)
     if (open) {
+      void loadServerAddress().catch(() => { avatarFailed.value = true })
       artMotion.value = null
+      if (accountNeedsPasswordChange.value) mode.value = 'changePassword'
+      // 重新打开时从账号信息开始，强制改密状态除外
+      if (canLeavePasswordChange.value && (mode.value === 'editProfile' || mode.value === 'changePassword')) {
+        mode.value = 'login'
+      }
       if (!isAuthenticated.value && mode.value !== 'changePassword') {
         void refreshCaptcha()
+      }
+      if (isAuthenticated.value && (!user.value || needsUserRefresh.value)) {
+        void reloadUser()
       }
       await nextTick()
       firstField.value?.focus()
@@ -99,7 +159,7 @@ const toggleMode = (): void => {
   void refreshCaptcha()
 }
 
-const refreshCaptcha = async (): Promise<void> => {
+async function refreshCaptcha(): Promise<void> {
   isRefreshingCaptcha.value = true
   captchaInfo.value = null
   captchaValue.value = ''
@@ -149,7 +209,7 @@ const submit = async (): Promise<void> => {
     message.warning('两次输入的新密码不一致。')
     return
   }
-  if (mode.value === 'changePassword' && !isPasswordLocallyValid(newPassword.value, username.value.trim())) {
+  if (mode.value === 'changePassword' && !isPasswordLocallyValid(newPassword.value, passwordAccountName.value)) {
     message.warning('新密码至少 8 位，且需包含字母、数字、符号中的两类，不含空白字符或用户名。')
     return
   }
@@ -228,8 +288,100 @@ const isPasswordLocallyValid = (value: string, accountName: string): boolean => 
     && value.length >= 8
     && classes.filter(Boolean).length >= 2
     && !/\s/.test(value)
-    && !value.toLowerCase().includes(accountName.toLowerCase())
+    && !(accountName && value.toLowerCase().includes(accountName.toLowerCase()))
     && !commonPasswords.has(value.toLowerCase())
+}
+
+// =============== 账号信息子视图 ===============
+// 说明：编辑资料与自愿改密都从账号信息进入，返回时清空密码输入，不保留敏感草稿。
+async function reloadUser(): Promise<void> {
+  if (isLoadingUser.value) return
+  isLoadingUser.value = true
+  try {
+    await fetchCurrentUser()
+    needsUserRefresh.value = false
+  } catch (error) {
+    message.error(`账号信息读取失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    isLoadingUser.value = false
+  }
+}
+
+const startEditProfile = (): void => {
+  const current = user.value
+  if (!current) return
+  for (const key of profileKeys) profileDraft[key] = current[key] ?? ''
+  mode.value = 'editProfile'
+}
+
+const startChangePassword = (): void => {
+  showPassword.value = false
+  password.value = ''
+  newPassword.value = ''
+  confirmPassword.value = ''
+  mode.value = 'changePassword'
+}
+
+const backToProfile = (): void => {
+  if (isSubmitting.value) return
+  showPassword.value = false
+  password.value = ''
+  newPassword.value = ''
+  confirmPassword.value = ''
+  mode.value = 'login'
+}
+
+// saveProfile 只提交变化字段；显式空字符串用于清除头像和联系方式，昵称保持必填。
+const saveProfile = async (): Promise<void> => {
+  if (isSubmitting.value) return
+  const current = user.value
+  const next = Object.fromEntries(profileKeys.map((key) => [key, profileDraft[key].trim()])) as Record<ProfileKey, string>
+  const nickLength = Array.from(next.nickName).length
+  if (!nickLength || nickLength > 32) {
+    message.warning('昵称需填写 1 至 32 个字符。')
+    return
+  }
+  // URL 和邮箱格式由服务端统一校验，避免客户端拒绝兼容的相对头像路径或合法邮箱。
+  if (new TextEncoder().encode(next.headerImg).length > 2048) {
+    message.warning('头像地址不能超过 2048 字节。')
+    return
+  }
+  if (new TextEncoder().encode(next.email).length > 254) {
+    message.warning('邮箱地址不能超过 254 字节。')
+    return
+  }
+  if (next.phone && (next.phone.length > 32 || !/^[0-9+ ()-]+$/.test(next.phone) || !/[0-9]/.test(next.phone))) {
+    message.warning('请输入有效的手机号。')
+    return
+  }
+  const changes: Partial<Record<ProfileKey, string>> = {}
+  for (const key of profileKeys) {
+    if (next[key] !== (current?.[key] ?? '')) changes[key] = next[key]
+  }
+  if (!Object.keys(changes).length) {
+    message.info('资料没有变化。')
+    mode.value = 'login'
+    return
+  }
+
+  isSubmitting.value = true
+  try {
+    await updateSelfInfo(changes)
+    needsUserRefresh.value = true
+    try {
+      await fetchCurrentUser()
+      needsUserRefresh.value = false
+    } catch {
+      // 资料已保存；读取失败时保留重试标记，避免展示旧资料却永久不再同步。
+    }
+    if (needsUserRefresh.value) message.warning('资料已保存，最新信息读取失败，请重新打开账号窗口重试。')
+    else message.success('资料已更新。')
+    mode.value = isAuthenticated.value && accountNeedsPasswordChange.value ? 'changePassword' : 'login'
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    isSubmitting.value = false
+  }
 }
 
 const signOut = async (): Promise<void> => {
@@ -249,7 +401,7 @@ const signOut = async (): Promise<void> => {
   <!-- * 说明：品牌区与表单区左右分栏；切换模式时品牌区从一侧移出卡片、再从另一侧移入，表单区平移到对侧并淡出淡入内容 -->
   <!-- * 交互：点击遮罩或关闭按钮退出，点击切换入口改变模式，Enter 提交当前表单，Escape 关闭弹窗 -->
   <!-- * 依赖：依赖 open、表单状态与 useMessage -->
-  <!-- * 边界：账号接口尚未接入，提交仅做输入校验并提示，不改变登录状态 -->
+  <!-- * 边界：只经 Wails 账号服务调用服务器，token 不进入前端；会话失效时返回登录表单 -->
   <Transition name="account-modal">
     <div v-if="open" class="account-modal-backdrop" @pointerdown.self="emit('close')">
       <section
@@ -257,7 +409,7 @@ const signOut = async (): Promise<void> => {
         :class="{'is-register': mode === 'register'}"
         role="dialog"
         aria-modal="true"
-        :aria-labelledby="isShowingProfile ? 'account-profile-title' : mode === 'login' ? 'account-login-title' : mode === 'register' ? 'account-register-title' : 'account-password-title'"
+        :aria-labelledby="titleId"
         @pointerdown.stop
       >
         <button type="button" class="account-close" aria-label="关闭" title="关闭" @click="emit('close')">
@@ -294,27 +446,96 @@ const signOut = async (): Promise<void> => {
         <!-- ~ 账号表单区 -->
         <div class="account-form-panel">
           <Transition :name="formTransitionName">
-            <div :key="mode" class="account-form-inner">
+            <div :key="isShowingProfile ? 'profile' : mode" class="account-form-inner">
               <div class="account-form-heading">
-                <span class="account-form-kicker">ACCOUNT / {{ mode === 'login' ? '01' : mode === 'register' ? '02' : '03' }}</span>
+                <span class="account-form-kicker">ACCOUNT / {{ formKicker }}</span>
                 <h2 v-if="isShowingProfile" id="account-profile-title">账号信息</h2>
                 <h2 v-else-if="mode === 'login'" id="account-login-title">欢迎回来</h2>
                 <h2 v-else-if="mode === 'register'" id="account-register-title">创建账号</h2>
-                <h2 v-else id="account-password-title">修改密码</h2>
-                <p v-if="isShowingProfile">已登录为 {{ user?.nickName || user?.userName || '账号信息暂不可用' }}</p>
+                <h2 v-else-if="mode === 'changePassword'" id="account-password-title">修改密码</h2>
+                <h2 v-else id="account-edit-title">编辑资料</h2>
+                <p v-if="isShowingProfile">管理你的工程师档案与登录安全。</p>
                 <p v-else-if="mode === 'login'">使用用户名登录后继续管理你的戴森球工程。</p>
                 <p v-else-if="mode === 'register'">建立你的工程师档案，保存每一次跃迁。</p>
-                <p v-else>设置新密码后需要重新登录。</p>
+                <p v-else-if="mode === 'changePassword'">设置新密码后需要重新登录。</p>
+                <p v-else>昵称会在联机大厅与房间中显示。</p>
               </div>
 
+              <!-- ~ 账号信息：头像、昵称与资料概览；编辑资料、修改密码与退出登录 -->
               <div v-if="isShowingProfile" class="account-profile">
-                <div class="account-profile-name"><UserRound :size="18" />{{ user?.nickName || user?.userName }}</div>
-                <span class="account-profile-username">{{ user?.userName }}</span>
-                <button type="button" class="account-submit" @click="signOut">
+                <div class="account-profile-card">
+                  <span class="account-avatar" aria-hidden="true">
+                    <img v-if="avatarSource && !avatarFailed" :src="avatarSource" alt="" @error="avatarFailed = true" />
+                    <UserRound v-else :size="22" :stroke-width="1.8" />
+                  </span>
+                  <div class="account-profile-identity">
+                    <strong :title="displayName">{{ displayName || (isLoadingUser ? '正在读取…' : '账号信息暂不可用') }}</strong>
+                    <span v-if="user?.userName">@{{ user.userName }}</span>
+                  </div>
+                  <button v-if="!user" type="button" class="account-text-button" :disabled="isLoadingUser" @click="reloadUser">
+                    <RefreshCw :size="15" :class="{'is-spinning': isLoadingUser}" />重试
+                  </button>
+                </div>
+
+                <dl v-if="user" class="account-profile-list">
+                  <div><dt><Mail :size="14" />邮箱</dt><dd>{{ user.email || '未填写' }}</dd></div>
+                  <div><dt><Phone :size="14" />手机</dt><dd>{{ user.phone || '未填写' }}</dd></div>
+                  <div><dt><KeyRound :size="14" />密码更新</dt><dd>{{ passwordUpdatedText }}</dd></div>
+                </dl>
+
+                <div class="account-profile-actions">
+                  <button type="button" class="account-secondary" :disabled="!user" @click="startEditProfile">
+                    <PencilLine :size="15" :stroke-width="1.8" /><span>编辑资料</span>
+                  </button>
+                  <button type="button" class="account-secondary" @click="startChangePassword">
+                    <LockKeyhole :size="15" :stroke-width="1.8" /><span>修改密码</span>
+                  </button>
+                </div>
+                <button type="button" class="account-submit account-signout" @click="signOut">
                   <span>退出登录</span>
                   <LogOut :size="16" :stroke-width="1.8" />
                 </button>
               </div>
+
+              <!-- ~ 编辑资料：只提交变化字段；留空可清除头像和联系方式，昵称必填 -->
+              <form v-else-if="mode === 'editProfile'" class="account-form" @submit.prevent="saveProfile">
+                <label class="account-field">
+                  <span>昵称</span>
+                  <span class="account-input-wrap">
+                    <UserRound :size="16" :stroke-width="1.8" />
+                    <input v-model="profileDraft.nickName" type="text" autocomplete="nickname" maxlength="32" placeholder="1 至 32 个字符" />
+                  </span>
+                </label>
+                <label class="account-field">
+                  <span>头像地址</span>
+                  <span class="account-input-wrap">
+                    <Link2 :size="16" :stroke-width="1.8" />
+                    <input v-model="profileDraft.headerImg" type="text" autocomplete="photo" placeholder="https://… 或相对路径（可选）" />
+                  </span>
+                </label>
+                <label class="account-field">
+                  <span>邮箱</span>
+                  <span class="account-input-wrap">
+                    <Mail :size="16" :stroke-width="1.8" />
+                    <input v-model="profileDraft.email" type="email" autocomplete="email" placeholder="可选" />
+                  </span>
+                </label>
+                <label class="account-field">
+                  <span>手机</span>
+                  <span class="account-input-wrap">
+                    <Phone :size="16" :stroke-width="1.8" />
+                    <input v-model="profileDraft.phone" type="tel" autocomplete="tel" placeholder="可选" />
+                  </span>
+                </label>
+                <div class="account-form-meta"><span>头像、邮箱和手机留空可清除，昵称必填</span></div>
+                <div class="account-form-actions">
+                  <button type="button" class="account-secondary" :disabled="isSubmitting" @click="backToProfile">返回</button>
+                  <button type="submit" class="account-submit" :disabled="isSubmitting">
+                    <span>保存资料</span>
+                    <ArrowRight :size="17" :stroke-width="1.8" />
+                  </button>
+                </div>
+              </form>
 
               <form v-else class="account-form" @submit.prevent="submit">
                 <label v-if="mode !== 'changePassword'" class="account-field">
@@ -372,13 +593,16 @@ const signOut = async (): Promise<void> => {
                   <span v-else>验证码仅可使用一次</span>
                 </div>
 
-                <button type="submit" class="account-submit" :disabled="isSubmitting || isRefreshingCaptcha">
-                  <span>{{ mode === 'login' ? '登录工程台' : mode === 'register' ? '创建工程师账号' : '修改密码并继续' }}</span>
-                  <ArrowRight :size="17" :stroke-width="1.8" />
-                </button>
+                <div :class="{'account-form-actions': mode === 'changePassword' && canLeavePasswordChange}">
+                  <button v-if="mode === 'changePassword' && canLeavePasswordChange" type="button" class="account-secondary" :disabled="isSubmitting" @click="backToProfile">返回</button>
+                  <button type="submit" class="account-submit" :disabled="isSubmitting || isRefreshingCaptcha">
+                    <span>{{ mode === 'login' ? '登录工程台' : mode === 'register' ? '创建工程师账号' : '修改密码并继续' }}</span>
+                    <ArrowRight :size="17" :stroke-width="1.8" />
+                  </button>
+                </div>
               </form>
 
-              <div v-if="!isShowingProfile && mode !== 'changePassword'" class="account-switch">
+              <div v-if="!isShowingProfile && (mode === 'login' || mode === 'register')" class="account-switch">
                 <span>{{ mode === 'login' ? '还没有账号？' : '已经有账号？' }}</span>
                 <button type="button" class="account-switch-button" @click="toggleMode">
                   {{ mode === 'login' ? '立即注册' : '返回登录' }}
@@ -753,23 +977,154 @@ const signOut = async (): Promise<void> => {
   opacity: 0.65;
 }
 
+// =============== 账号信息与资料编辑 ===============
+// 说明：资料概览使用扁平分隔线，次要操作并排、退出登录单独一行；高度需容纳在固定卡片内。
 .account-profile {
   display: grid;
-  gap: 12px;
-  margin-top: 28px;
+  gap: 14px;
+  margin-top: 22px;
 }
 
-.account-profile-name {
+.account-profile-card {
   display: flex;
   align-items: center;
-  gap: 9px;
-  color: var(--ds-text-primary);
-  font-weight: 650;
+  gap: 12px;
+  min-width: 0;
 }
 
-.account-profile-username {
+.account-avatar {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--ds-border-default);
+  border-radius: 4px;
+  background: var(--ds-bg-panel-elevated);
+  color: var(--ds-text-muted);
+}
+
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-profile-identity {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.account-profile-identity strong {
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-profile-identity span {
+  overflow: hidden;
   color: var(--ds-text-muted);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.account-profile-list {
+  margin: 0;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.account-profile-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--ds-border-subtle);
+  font-size: 12px;
+}
+
+.account-profile-list dt {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 7px;
+  color: var(--ds-text-muted);
+}
+
+.account-profile-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-profile-actions,
+.account-form-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.account-form-actions {
+  grid-template-columns: auto 1fr;
+}
+
+.account-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-top: 2px;
+  padding: 0 16px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ds-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.account-secondary:hover:not(:disabled) {
+  border-color: var(--ds-border-strong);
+  background: var(--ds-hover-bg);
+}
+
+.account-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.account-signout {
+  width: 100%;
+}
+
+.is-spinning {
+  animation: account-spin 900ms linear infinite;
+}
+
+@keyframes account-spin {
+  to { transform: rotate(360deg); }
 }
 
 .account-form-meta,
@@ -979,7 +1334,8 @@ const signOut = async (): Promise<void> => {
     animation: none;
   }
 
-  .account-circuit-node {
+  .account-circuit-node,
+  .is-spinning {
     animation: none;
   }
 

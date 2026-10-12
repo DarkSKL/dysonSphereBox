@@ -121,7 +121,7 @@ export async function fetchCurrentUser(): Promise<AccountUser> {
   return user
 }
 
-// updateSelfInfo 更新当前用户的非空资料字段。
+// updateSelfInfo 部分更新当前用户资料；省略字段保持原值，显式空字符串清除头像和联系方式。
 export function updateSelfInfo(payload: {
   nickName?: string
   headerImg?: string

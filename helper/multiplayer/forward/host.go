@@ -7,6 +7,7 @@ package forward
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
@@ -187,7 +188,8 @@ func (forwarder *HostForwarder) admit(stream network.Stream, header Header, udp 
 	remote := stream.Conn().RemotePeer()
 	forwarder.mu.Lock()
 	defer forwarder.mu.Unlock()
-	if forwarder.closing || forwarder.blocked[remote] || !forwarder.host.Gater.Allowed(remote) {
+	if forwarder.closing || forwarder.blocked[remote] || !forwarder.host.Gater.Allowed(remote) ||
+		((stream.Conn().Stat().Limited || p2p.IsCircuit(stream.Conn().RemoteMultiaddr())) && !forwarder.host.RelayFallback()) {
 		return mpConstant.StatusUnauthorized, mpAPI.PortDecl{}
 	}
 	if header.Port < 0 || header.Port >= len(forwarder.ports) {
@@ -550,6 +552,12 @@ func (session *hostUDPSession) close() {
 // openStream 在已有连接上打开转发 stream 并完成握手。
 // 职责：成员侧写握手头、读状态字节；使用：LocalForwarder；边界：不主动拨号（WithNoDial），链路由 link 包维护。
 func openStream(ctx context.Context, host *p2p.Host, hostID peer.ID, protocol string, header Header) (network.Stream, byte, error) {
+	if !host.Gater.Allowed(hostID) || p2p.BestConn(host, hostID, host.RelayFallback()) == nil {
+		return nil, mpConstant.StatusUnauthorized, fmt.Errorf("游戏链路未授权或仅允许直接连接")
+	}
+	if host.RelayFallback() {
+		ctx = network.WithAllowLimitedConn(ctx, "relay-game")
+	}
 	ctx, cancel := context.WithTimeout(network.WithNoDial(ctx, "forward"), mpConstant.HandshakeTimeout)
 	defer cancel()
 	stream, err := host.NewStream(ctx, hostID, protocolID(protocol))

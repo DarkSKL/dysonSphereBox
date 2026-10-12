@@ -235,7 +235,7 @@ func (conn *Conn) Request(ctx context.Context, opcode int, data any) (*mpAPI.Rep
 }
 
 // ServerToLocal 把服务器毫秒时刻换算为本地时刻。
-// 职责：打洞对时；使用：link.punch after 的 atMs；边界：没有偏移样本时按 0 偏移。
+// 职责：提供诊断用服务端时钟换算；使用：日志关联；边界：原生 DCUtR 不依赖该时钟，没有样本时按 0 偏移。
 func (conn *Conn) ServerToLocal(serverMs int64) time.Time {
 	conn.clockMu.Lock()
 	offset := conn.offsetMs

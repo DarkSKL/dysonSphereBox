@@ -2110,6 +2110,22 @@ export namespace multiplayer {
 	        this.data = source["data"];
 	    }
 	}
+	export class Capabilities {
+	    nativeDcutr: boolean;
+	    relayV2: boolean;
+	    relayFallback: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Capabilities(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nativeDcutr = source["nativeDcutr"];
+	        this.relayV2 = source["relayV2"];
+	        this.relayFallback = source["relayFallback"];
+	    }
+	}
 	export class ConnectionView {
 	    state: string;
 	    lastErrorCode: number;
@@ -2581,6 +2597,8 @@ export namespace multiplayer {
 	    peerId: string;
 	    listenPort: number;
 	    limits: SessionLimits;
+	    capabilities: Capabilities;
+	    relays: p2p.RelayState[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SessionView(source);
@@ -2592,6 +2610,8 @@ export namespace multiplayer {
 	        this.peerId = source["peerId"];
 	        this.listenPort = source["listenPort"];
 	        this.limits = this.convertValues(source["limits"], SessionLimits);
+	        this.capabilities = this.convertValues(source["capabilities"], Capabilities);
+	        this.relays = this.convertValues(source["relays"], p2p.RelayState);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2679,6 +2699,26 @@ export namespace p2p {
 	        this.addr = source["addr"];
 	        this.display = source["display"];
 	        this.kind = source["kind"];
+	    }
+	}
+	export class RelayState {
+	    peerId: string;
+	    expiresAtMs: number;
+	    limitDurationSeconds: number;
+	    limitDataBytes: number;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RelayState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.peerId = source["peerId"];
+	        this.expiresAtMs = source["expiresAtMs"];
+	        this.limitDurationSeconds = source["limitDurationSeconds"];
+	        this.limitDataBytes = source["limitDataBytes"];
+	        this.error = source["error"];
 	    }
 	}
 

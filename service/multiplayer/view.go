@@ -75,6 +75,10 @@ type SessionView struct {
 	ListenPort int `json:"listenPort"`
 	// Limits 职责：服务器限制；使用：创建表单；边界：以服务器为准。
 	Limits mpAPI.SessionLimits `json:"limits"`
+	// Capabilities 职责：服务端数据面能力；使用：网络诊断；边界：缺失不授权。
+	Capabilities mpAPI.Capabilities `json:"capabilities"`
+	// Relays 职责：预约期限与资源限额；使用：中继诊断；边界：不包含凭证。
+	Relays []p2p.RelayState `json:"relays"`
 }
 
 // LobbyView 是大厅状态。
@@ -114,7 +118,7 @@ type LinkView struct {
 	mpAPI.LinkState
 	// Detail 职责：最近一次直连/打洞失败的错误文本；使用：链路失败提示下方展示真实原因；边界：只在成员自己的链路上有值，只存在本地投影，不进 link.report。
 	Detail string `json:"detail"`
-	// NATBlocked 职责：因房主对称 NAT 跳过打洞（host/both）；使用：20402 提示区分“房主的网络”（有值）与“你的网络”（为空）；边界：只在成员自己的链路 failed/20402 时有值，不进 link.report。
+	// NATBlocked 职责：保留旧前端字段；使用：兼容已有投影解码；边界：v2 不因 NAT 观测跳过原生 DCUtR，始终为空。
 	NATBlocked string `json:"natBlocked"`
 }
 

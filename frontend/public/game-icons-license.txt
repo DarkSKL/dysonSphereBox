@@ -1,0 +1,10 @@
+Game Icons attribution
+
+Icons by Lorc, Delapouite and contributors at Game-icons.net.
+Source: https://game-icons.net/
+Icon data distributed by Iconify: https://github.com/iconify/icon-sets
+License: Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+
+Icons used: ringed-planet, habitat-dome, radar-dish, processor, cargo-crate, cog.
+The original SVG paths are rendered at navigation sizes with the application theme color.

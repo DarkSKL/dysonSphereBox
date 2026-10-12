@@ -1,11 +1,12 @@
 package link
 
-// 文件职责：成员到房主的数据链路拨号（直连、按时刻同时拨号）、路径与 ipFamily 判定、失败分类（方案第 7.3–7.5 节）。
-// 使用：service/multiplayer 成员链路状态机调用 DialDirect/DialPunch，连通后 PathOf，全部失败后 Classify；房主收到 link.punch after 时调用 DialPunch 回拨。
+// 文件职责：成员到房主的数据链路拨号（直连、指定原生中继）、路径与 ipFamily 判定、失败分类（方案第 7.3–7.5 节）。
+// 使用：service/multiplayer 成员链路状态机调用 DialDirect/DialRelay，连通后 PathOf，全部失败后 Classify。
 // 边界：只做单次拨号与判定，不维护状态机、不发控制链路请求；NAT 分类只是诊断提示。
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -32,6 +33,15 @@ func AddrInfo(peerID string, addrs []string) (peer.AddrInfo, error) {
 	info := peer.AddrInfo{ID: id}
 	for _, raw := range addrs {
 		if addr, err := ma.NewMultiaddr(raw); err == nil {
+			if !p2p.IsCircuit(addr) {
+				if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
+					parsed, err := peer.AddrInfoFromP2pAddr(addr)
+					if err != nil || parsed.ID != id || len(parsed.Addrs) != 1 {
+						continue
+					}
+					addr = parsed.Addrs[0]
+				}
+			}
 			info.Addrs = append(info.Addrs, addr)
 		}
 	}
@@ -48,40 +58,44 @@ func clearBackoff(h host.Host, id peer.ID) {
 // DialDirect 并发尝试对端全部地址。
 // 职责：直连；使用：成员 connecting/reconnecting 第一步；边界：timeout 内未连上时 report.Err 非空，report 携带目标地址与逐地址错误。
 func DialDirect(ctx context.Context, h *p2p.Host, info peer.AddrInfo, timeout time.Duration) p2p.DialReport {
-	clearBackoff(h, info.ID)
-	dialCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	return h.ConnectReport(dialCtx, info)
-}
-
-// DialPunch 在本地时刻 at 用 WithSimultaneousConnect 同时拨号。
-// 职责：打洞一轮；使用：成员 isClient=true，房主 isClient=false；边界：WithSimultaneousConnect 脱离 DCUtR 的行为属于 P0 待实测；等待 at 期间 ctx 结束时 report 只有错误。
-func DialPunch(ctx context.Context, h *p2p.Host, info peer.AddrInfo, isClient bool, at time.Time, timeout time.Duration) p2p.DialReport {
-	if wait := time.Until(at); wait > 0 {
-		timer := time.NewTimer(wait)
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			timer.Stop()
-			return p2p.DialReport{Targets: info.Addrs, Err: ctx.Err()}
+	direct := peer.AddrInfo{ID: info.ID}
+	for _, addr := range info.Addrs {
+		if !p2p.IsCircuit(addr) {
+			direct.Addrs = append(direct.Addrs, addr)
 		}
 	}
 	clearBackoff(h, info.ID)
-	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	dialCtx, cancel := context.WithTimeout(network.WithForceDirectDial(ctx, "direct"), timeout)
 	defer cancel()
-	dialCtx = network.WithSimultaneousConnect(dialCtx, isClient, "punch")
-	dialCtx = network.WithForceDirectDial(dialCtx, "punch")
-	return h.ConnectReport(dialCtx, info)
+	return h.ConnectReport(dialCtx, direct)
+}
+
+// DialRelay 仅拨 WS 指定的房主中继入口。
+// 职责：建立原生 DCUtR 初始连接；使用：直连失败后；边界：默认能力关闭及未知入口全部拒绝。
+func DialRelay(ctx context.Context, h *p2p.Host, info peer.AddrInfo, timeout time.Duration) p2p.DialReport {
+	trusted := peer.AddrInfo{ID: info.ID}
+	for _, addr := range info.Addrs {
+		if h.TrustedCircuit(addr, info.ID) {
+			trusted.Addrs = append(trusted.Addrs, addr)
+		}
+	}
+	if !h.RelayEnabled() || len(trusted.Addrs) == 0 {
+		return p2p.DialReport{Err: fmt.Errorf("服务器未授权可用中继入口")}
+	}
+	clearBackoff(h, info.ID)
+	dialCtx, cancel := context.WithTimeout(network.WithAllowLimitedConn(ctx, "dcutr-bootstrap"), timeout)
+	defer cancel()
+	return h.ConnectReport(dialCtx, trusted)
 }
 
 // PathOf 判定已连通链路的路径与地址族。
-// 职责：打洞成功为 punch；远端私网/链路本地/ULA 为 lan；公网 IPv4 且房主 upnp 为 upnp；其余 direct；使用：link.report；边界：远端地址无法解析时 ipFamily 为空。
-func PathOf(conn network.Conn, punched bool, hostNet *mpAPI.NetInfo) (path string, family string) {
+// 职责：受限连接为 relay，私网为 lan，UPnP 公网 IPv4 为 upnp；使用：link.report；边界：relay 不用中继服务器的 IP 推断游戏对端地址族。
+func PathOf(conn network.Conn, hostNet *mpAPI.NetInfo) (path string, family string) {
+	if conn.Stat().Limited || p2p.IsCircuit(conn.RemoteMultiaddr()) {
+		return mpConstant.PathRelay, ""
+	}
 	ip, err := manet.ToIP(conn.RemoteMultiaddr())
 	if err != nil {
-		if punched {
-			return mpConstant.PathPunch, ""
-		}
 		return mpConstant.PathDirect, ""
 	}
 	family = "v6"
@@ -89,8 +103,6 @@ func PathOf(conn network.Conn, punched bool, hostNet *mpAPI.NetInfo) (path strin
 		family = "v4"
 	}
 	switch {
-	case punched:
-		return mpConstant.PathPunch, family
 	case ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLoopback():
 		return mpConstant.PathLAN, family
 	case family == "v4" && hostNet != nil && hostNet.UPnP:
@@ -205,7 +217,7 @@ func ips(addrs []string) []net.IP {
 	result := []net.IP{}
 	for _, raw := range addrs {
 		addr, err := ma.NewMultiaddr(raw)
-		if err != nil {
+		if err != nil || p2p.IsCircuit(addr) {
 			continue
 		}
 		if ip, err := manet.ToIP(addr); err == nil {

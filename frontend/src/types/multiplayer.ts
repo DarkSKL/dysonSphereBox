@@ -20,6 +20,23 @@ export interface RoomResolveResult {
   readonly needPassword: boolean
 }
 
+// =============== 大厅与创建表单契约 ===============
+// 说明：页面传递搜索分页与创建意图；请求仍由 services 转交 Go，端口以服务器限制为准。
+export interface LobbyQuery {
+  keyword: string
+  page: number
+  pageSize: number
+  sort: 'createdAt' | 'memberCount'
+}
+
+export interface RoomCreateForm {
+  name: string
+  visibility: 'public' | 'private'
+  password: string
+  maxMembers: number
+  ports: PortDecl[]
+}
+
 // 说明：结果码、会话终止原因、关房/离开原因与握手拒绝码（7、10001、HTTP 404）共用一张表。
 const codeTexts: Record<number, string> = {
   7: '登录已失效，请重新登录',
@@ -80,9 +97,9 @@ const codeTexts: Record<number, string> = {
 // 说明：数据链路失败码附带可操作的提示方向（方案第 7.5 节）。
 const linkErrorTexts: Record<number, {title: string; hint: string}> = {
   20401: {title: '双方 IP 协议族不匹配', hint: '双方都开启 IPv6，或使用同一种网络'},
-  20402: {title: '当前网络无法打洞（对称 NAT，常见于手机热点、移动网络）', hint: '请换网络或让对方当房主'},
+  20402: {title: 'NAT 映射随目标变化，直连升级失败', hint: '可换网络重试，或请管理员允许中继回退'},
   20403: {title: '运营商级 NAT（CGNAT）', hint: '联系运营商获取公网 IP，或开启 IPv6'},
-  20404: {title: '打洞超时', hint: '检查防火墙规则、UDP 是否被封'},
+  20404: {title: '数据链路建立超时', hint: '检查防火墙、UDP 和服务器中继设置'},
   20405: {title: '房主的 Windows 防火墙可能拦截了盒子', hint: '请房主在防火墙中允许 DysonSphereBox（开发构建为 DysonSphereBox-dev.exe），或使用安装包安装'},
   20406: {title: '房主拒绝了连接', hint: '请退出后重新加入；若反复出现请反馈'},
   20407: {title: '房主游戏端口拒绝连接', hint: '房主游戏未开启或端口填写错误'},
@@ -92,13 +109,8 @@ export function codeText(code: number, fallback = ''): string {
   return codeTexts[code] ?? (fallback || `操作失败（${code}）`)
 }
 
-// 说明：成员自己的 20402 按 links[].natBlocked 区分：host/both（房主对称 NAT，跳过了打洞）为“房主的网络”，为空（只有本机对称 NAT，打洞失败后归类）为“你的网络”。
-const selfNatText = {title: '你的网络无法打洞（对称 NAT，常见于手机热点、移动网络）', hint: '请换网络或让对方当房主'}
-const hostNatText = {title: '房主的网络无法打洞（对称 NAT，常见于手机热点、移动网络）', hint: '请房主换网络或让对方当房主'}
-
-// 说明：selfView 为 true 表示成员查看自己的链路（带 natBlocked）；房主查看成员链路时用通用文案。
-export function linkErrorText(code: number, natBlocked = '', selfView = false): {title: string; hint: string} | null {
-  if (code === 20402 && selfView) return natBlocked === 'host' || natBlocked === 'both' ? hostNatText : selfNatText
+// 说明：v2 仅把 NAT 观测作为失败诊断，不能据此断言原生 DCUtR 必然失败。
+export function linkErrorText(code: number, _natBlocked = '', _selfView = false): {title: string; hint: string} | null {
   return linkErrorTexts[code] ?? null
 }
 
@@ -113,7 +125,8 @@ export const linkPathTexts: Record<string, string> = {
   lan: '局域网',
   direct: '直连',
   upnp: 'UPnP 映射',
-  punch: '打洞',
+  punch: '打洞（旧版）',
+  relay: '中继',
 }
 
 export const connectionStateTexts: Record<string, string> = {

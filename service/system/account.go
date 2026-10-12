@@ -58,9 +58,9 @@ func (service *AccountService) GetCurrentUser() (*systemAPI.AccountUser, error) 
 }
 
 // SetSelfInfo 修改当前用户资料。
-// 职责：更新昵称、头像、手机、邮箱等非空字段。
+// 职责：部分更新昵称、头像、手机、邮箱四个白名单字段。
 // 使用：账号资料编辑时调用。
-// 边界：空字符串字段被服务端忽略。
+// 边界：省略或 null 不更新；空字符串可清除头像和联系方式，身份和权限由服务端 JWT 决定。
 func (service *AccountService) SetSelfInfo(payload systemAPI.AccountSelfInfoRequest) error {
 	err := accountHelper.SetSelfInfo(context.Background(), payload)
 	if err == nil {

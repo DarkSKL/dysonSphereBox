@@ -23,6 +23,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 )
 
 // options 是控制器的可注入依赖。
@@ -280,6 +281,14 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 			return false, code, permanent
 		}
 		_ = json.Unmarshal(reply.Data, &sess.info)
+		if err := h.ConfigureRelay(sess.info.Capabilities, sess.info.Relays, func(state p2p.RelayState, duration time.Duration) {
+			sess.tracer.Trace(mpAPI.LinkTraceRequest{Stage: mpConstant.TraceRelayReserve, OK: state.ExpiresAtMs > time.Now().UnixMilli(),
+				DurationMs: duration.Milliseconds(), Error: state.Error, Detail: fmt.Sprintf("relay=%s expires=%d duration=%ds data=%d", state.PeerID, state.ExpiresAtMs, state.LimitDurationSeconds, state.LimitDataBytes)})
+		}); err != nil {
+			sess.tracer.Trace(mpAPI.LinkTraceRequest{Stage: mpConstant.TraceRelayReserve, Error: err.Error()})
+		}
+		h.SetDCUtRTracer(func(evt *holepunch.Event) { go c.traceDCUtR(sess, evt) })
+		h.RunReservations()
 
 		c.mu.Lock()
 		c.connState, c.lastErr = mpConstant.ConnOnline, 0
@@ -417,6 +426,8 @@ func (c *controller) addrLoop(sess *session) {
 		case <-sess.stop:
 			return
 		case <-updates:
+			report(false)
+		case <-sess.host.RelayUpdates():
 			report(false)
 		case <-ticker.C:
 			next := p2p.InterfaceSignature()
@@ -680,6 +691,8 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 			if data.Result != 0 {
 				if pending {
 					sess.host.Gater.Remove(id)
+					c.room.hostForwarder.RemovePeer(id)
+					go func() { _ = sess.host.Network().ClosePeer(id) }()
 				}
 				return 0, "", false
 			}
@@ -765,30 +778,6 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		}
 		return 0, "", false
 
-	case mpConstant.EvLinkPunchBefore:
-		if sess.host == nil || len(sess.host.Network().ListenAddresses()) == 0 {
-			return mpConstant.CodePrepareFailed, "host not ready", false
-		}
-		return 0, "", false
-
-	case mpConstant.EvLinkPunchAfter:
-		var data mpAPI.LinkPunchEvent
-		if json.Unmarshal(frame.Data, &data) != nil {
-			return mpConstant.CodeApplyFailed, "bad data", false
-		}
-		if c.room == nil || data.RoomID != c.room.view.Snapshot.RoomID {
-			return 0, "", false
-		}
-		if c.room.link != nil {
-			c.room.link.deliverPunch(data)
-			return 0, "", false
-		}
-		if c.room.hostForwarder != nil && data.Result == 0 && data.AtMs > 0 && data.Member != nil {
-			at := sess.conn.ServerToLocal(data.AtMs)
-			member := *data.Member
-			go c.hostPunch(sess, data.RoomID, data.UserID, data.Round, member, at)
-		}
-		return 0, "", false
 	}
 	return mpConstant.CodeUnknownOpcode, "unknown opcode", false
 }
@@ -900,7 +889,7 @@ func (c *controller) snapshotState() State {
 		LocalPorts:    []forward.LocalPort{},
 		Network: NetworkView{ObservedAddrs: []string{}, Targets: []forward.TargetState{}, ReportedAddrs: []p2p.ClassifiedAddr{},
 			Observed: []p2p.ClassifiedAddr{}, ObserveErrors: []string{}, HostAddrs: []p2p.ClassifiedAddr{}, NATMappings: []string{}},
-		Pending:       []string{},
+		Pending: []string{},
 	}
 	for name := range c.pending {
 		state.Pending = append(state.Pending, name)
@@ -910,7 +899,7 @@ func (c *controller) snapshotState() State {
 		state.Account.UserID, state.Account.Nickname = sess.info.User.UserID, sess.info.User.Nickname
 		if sess.info.SessionID != "" {
 			state.Session = &SessionView{SessionID: sess.info.SessionID, PeerID: sess.host.ID().String(),
-				ListenPort: sess.port, Limits: sess.info.Limits}
+				ListenPort: sess.port, Limits: sess.info.Limits, Capabilities: sess.info.Capabilities, Relays: sess.host.RelayStates()}
 		}
 		state.Network.UPnP = sess.report.Net.UPnP
 		state.Network.IPv6 = sess.report.Net.IPv6

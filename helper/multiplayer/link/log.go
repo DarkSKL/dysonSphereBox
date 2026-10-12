@@ -1,7 +1,7 @@
 package link
 
 // 文件职责：把数据链路的每次直连 / 打洞结果（含目标地址列表、实际连上的地址与逐地址错误）写入盒子系统日志。
-// 使用：service/multiplayer 成员链路每次直连或打洞结束、房主每次回拨成员结束时构造 DialRecord 并调用 RecordDial。
+// 使用：service/multiplayer 成员链路每次直连或指定中继拨号结束时构造 DialRecord 并调用 RecordDial。
 // 边界：只写本地日志，不上报服务器；日志写入失败静默忽略，不影响链路状态机。
 
 import (
@@ -17,7 +17,7 @@ import (
 const (
 	// DialRoleMember 职责：成员拨房主；使用：DialRecord.Role；边界：默认值。
 	DialRoleMember = "member"
-	// DialRoleHost 职责：房主按 link.punch after 回拨成员；使用：DialRecord.Role。
+	// DialRoleHost 职责：房主侧诊断角色；使用：DialRecord.Role；边界：v2 不再 WS 回拨。
 	DialRoleHost = "host"
 )
 
@@ -60,10 +60,13 @@ func (record *DialRecord) ApplyReport(report p2p.DialReport) {
 // Text 返回面向用户的说明：第一行结论，其后缩进列出目标地址与逐地址错误。
 func (record DialRecord) Text() string {
 	action := "直连"
+	if record.Path == "relay" {
+		action = "指定中继连接"
+	}
 	if record.Path == "punch" {
 		action = fmt.Sprintf("打洞第 %d 轮", record.Round)
 		if record.Round == 0 {
-			// 第 0 轮：打洞前置判断未通过，没有发出 link.punch
+			// 历史日志兼容：旧版本第 0 轮表示未执行拨号，v2 不生成此路径。
 			action = "打洞"
 		}
 	}
@@ -103,7 +106,7 @@ func RecordDial(record DialRecord) {
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
 		Namespace: "multiplayer.link." + event,
 		Source:    "backend.link",
-		Reason:    "联机链路状态机执行直连或打洞后的实际拨号结果",
+		Reason:    "联机链路状态机执行直连或指定中继后的实际拨号结果",
 		Handler:   "System",
 		Level:     level,
 		Action:    record.Text(),

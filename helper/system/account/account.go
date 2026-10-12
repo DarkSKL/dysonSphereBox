@@ -73,7 +73,7 @@ func CurrentUser(ctx context.Context) (*systemAPI.AccountUser, error) {
 // SetSelfInfo 修改当前用户资料。
 // 职责：转发资料修改请求。
 // 使用：账号资料编辑时调用。
-// 边界：空字段被服务端忽略；需要最新资料时由调用方重新获取。
+// 边界：nil 字段不更新，非 nil 空字符串清除头像和联系方式；需要最新资料时由调用方重新获取。
 func SetSelfInfo(ctx context.Context, payload systemAPI.AccountSelfInfoRequest) error {
 	_, err := request[struct{}](ctx, http.MethodPut, systemAPI.APIURLSetSelfInfo, payload, true)
 	return err

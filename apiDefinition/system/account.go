@@ -34,7 +34,7 @@ const (
 	// APIURLSetSelfInfo 是修改个人资料的接口路径（PUT，需 x-token）。
 	// 职责：描述 `PUT /user/setSelfInfo` 接口的相对路径。
 	// 使用：AccountService.SetSelfInfo 调用。
-	// 边界：空字符串字段会被服务端忽略。
+	// 边界：仅更新四个资料字段；省略或 null 保持原值，空字符串可清除头像和联系方式。
 	APIURLSetSelfInfo = "/user/setSelfInfo"
 	// APIURLSetSelfSetting 是保存个人界面配置的接口路径（PUT，需 x-token）。
 	// 职责：描述 `PUT /user/setSelfSetting` 接口的相对路径。
@@ -206,16 +206,16 @@ type AccountCurrentUserData struct {
 // AccountSelfInfoRequest 是修改个人资料接口请求体。
 // 职责：描述可修改的资料字段。
 // 使用：前端经 AccountService.SetSelfInfo 传入。
-// 边界：空字符串会被服务端忽略，无法用来清空字段。
+// 边界：省略或 null 保持原值；显式空字符串清除头像、手机、邮箱，昵称不能清空；不接受身份或权限字段。
 type AccountSelfInfoRequest struct {
 	// NickName 职责：昵称；使用：更新资料；边界：可选。
-	NickName string `json:"nickName,omitempty"`
+	NickName *string `json:"nickName,omitempty"`
 	// HeaderImg 职责：头像 URL；使用：更新资料；边界：可选。
-	HeaderImg string `json:"headerImg,omitempty"`
+	HeaderImg *string `json:"headerImg,omitempty"`
 	// Phone 职责：手机号；使用：更新资料；边界：可选。
-	Phone string `json:"phone,omitempty"`
+	Phone *string `json:"phone,omitempty"`
 	// Email 职责：邮箱；使用：更新资料；边界：可选。
-	Email string `json:"email,omitempty"`
+	Email *string `json:"email,omitempty"`
 }
 
 // AccountChangePasswordRequest 是修改密码接口请求体。

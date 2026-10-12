@@ -291,6 +291,9 @@ func Collect(h *Host, observations []Observation, firewallRule bool, keepLoopbac
 	local := []string{}
 	ipv6 := false
 	for _, addr := range resolved {
+		if IsCircuit(addr) {
+			continue
+		}
 		if (manet.IsIPLoopback(addr) && !keepLoopback) || manet.IsIP6LinkLocal(addr) {
 			continue
 		}
@@ -304,6 +307,9 @@ func Collect(h *Host, observations []Observation, firewallRule bool, keepLoopbac
 	// host.Addrs() 包含 NAT 管理器的映射地址；不在接口地址中的公网 IPv4 视为 UPnP/NAT-PMP 映射
 	upnp := []string{}
 	for _, addr := range h.Addrs() {
+		if IsCircuit(addr) {
+			continue
+		}
 		text := addr.String()
 		if interfaceSet[text] || !manet.IsPublicAddr(addr) {
 			continue
@@ -319,7 +325,7 @@ func Collect(h *Host, observations []Observation, firewallRule bool, keepLoopbac
 
 	seen := map[string]bool{}
 	addrs := []string{}
-	for _, group := range [][]string{observed, upnp, local} {
+	for _, group := range [][]string{h.CircuitAddrs(), observed, upnp, local} {
 		for _, text := range group {
 			if seen[text] || len(text) > 256 || len(addrs) >= maxReportAddrs {
 				continue

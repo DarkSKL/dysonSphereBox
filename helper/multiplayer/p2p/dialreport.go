@@ -35,6 +35,8 @@ const (
 	AddrCGNAT = "cgnat"
 	// AddrUnknown 职责：无法解析出 IP（例如 DNS 地址）；使用：原样展示。
 	AddrUnknown = "unknown"
+	// AddrRelay 职责：指定中继地址；使用：诊断；边界：不以服务器 IP 误判房主公网。
+	AddrRelay = "relay"
 )
 
 // dialSettle 职责：拨号失败后等待逐地址回调的最长时间；使用：ConnectReport；边界：只在失败时等待。
@@ -53,6 +55,9 @@ func ClassifyAddr(raw string) string {
 }
 
 func classify(addr ma.Multiaddr) string {
+	if IsCircuit(addr) {
+		return AddrRelay
+	}
 	ip, err := manet.ToIP(addr)
 	if err != nil {
 		return AddrUnknown
@@ -72,6 +77,8 @@ func classify(addr ma.Multiaddr) string {
 // KindText 返回地址归类的中文标注。
 func KindText(kind string) string {
 	switch kind {
+	case AddrRelay:
+		return "中继"
 	case AddrPrivate:
 		return "私网"
 	case AddrPublic:
@@ -87,6 +94,9 @@ func KindText(kind string) string {
 
 // shortAddr 返回紧凑写法，例如 `quic 203.0.113.7:40123`；无法解析出 IP 与端口时原样返回。
 func shortAddr(addr ma.Multiaddr) string {
+	if IsCircuit(addr) {
+		return addr.String()
+	}
 	ip, err := manet.ToIP(addr)
 	if err != nil {
 		return addr.String()
@@ -342,8 +352,9 @@ func (h *Host) ConnectReport(ctx context.Context, info peer.AddrInfo) DialReport
 	report := DialReport{Targets: targets, Err: err, Duration: time.Since(started)}
 	if err == nil {
 		h.dials.unwatch(watch)
-		if conns := h.Network().ConnsToPeer(info.ID); len(conns) > 0 {
-			report.Connected = conns[0].RemoteMultiaddr()
+		limited, _ := network.GetAllowLimitedConn(ctx)
+		if conn := BestConn(h, info.ID, limited); conn != nil {
+			report.Connected = conn.RemoteMultiaddr()
 		}
 		return report
 	}
@@ -464,8 +475,8 @@ func (*dialRecorder) OpenedConnection(network.Direction, crypto.PubKey, network.
 func (*dialRecorder) ClosedConnection(network.Direction, time.Duration, network.ConnectionState, ma.Multiaddr) {
 }
 func (*dialRecorder) CompletedHandshake(time.Duration, network.ConnectionState, ma.Multiaddr) {}
-func (*dialRecorder) DialCompleted(bool, int, time.Duration)                                {}
-func (*dialRecorder) DialRankingDelay(time.Duration)                                        {}
+func (*dialRecorder) DialCompleted(bool, int, time.Duration)                                  {}
+func (*dialRecorder) DialRankingDelay(time.Duration)                                          {}
 func (*dialRecorder) UpdatedBlackHoleSuccessCounter(string, swarm.BlackHoleState, int, float64) {
 }
 

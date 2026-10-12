@@ -7,7 +7,6 @@ import {
   CloseRoom,
   Connect,
   CreateRoom,
-  Disconnect,
   GetState,
   InviteRoom,
   JoinRoom,
@@ -20,7 +19,7 @@ import {
 } from '../../wailsjs/go/multiplayer/MultiplayerService'
 import {multiplayer} from '../../wailsjs/go/models'
 import {EventsOn} from '../../wailsjs/runtime/runtime'
-import type {MultiplayerActionResult, MultiplayerState, PortDecl} from '../types/multiplayer'
+import type {LobbyQuery, MultiplayerActionResult, MultiplayerState, RoomCreateForm} from '../types/multiplayer'
 
 export const MULTIPLAYER_STATE_EVENT = 'multiplayer:state'
 
@@ -44,11 +43,10 @@ async function call(action: () => Promise<MultiplayerActionResult>): Promise<Mul
 }
 
 export const connectMultiplayer = () => call(Connect)
-export const disconnectMultiplayer = () => call(Disconnect)
-export const refreshLobby = (keyword = '', page = 1, pageSize = 20) =>
-  call(() => LobbyList(multiplayer.LobbyListRequest.createFrom({page, pageSize, keyword, sort: 'createdAt', order: 'desc'})))
+export const refreshLobby = (query: LobbyQuery) =>
+  call(() => LobbyList(multiplayer.LobbyListRequest.createFrom({...query, order: 'desc'})))
 export const watchLobby = (on: boolean) => call(() => LobbyWatch(on))
-export const createRoom = (request: {name: string; visibility: string; password: string; maxMembers: number; ports: PortDecl[]}) =>
+export const createRoom = (request: RoomCreateForm) =>
   call(() => CreateRoom(multiplayer.RoomCreateRequest.createFrom(request)))
 export const resolveRoom = (roomId: string, inviteCode: string) =>
   call(() => ResolveRoom(multiplayer.RoomResolveRequest.createFrom({roomId, inviteCode})))
