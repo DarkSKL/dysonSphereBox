@@ -3,9 +3,8 @@ package multiplayer
 // 文件职责：将库原生 DCUtR 事件转为 WS 诊断。使用：控制器会话注册 tracer。边界：不发旧 link.punch、不控制同步时刻。
 
 import (
-	mpAPI "DysonSphereBox/apiDefinition/multiplayer"
-	mpConstant "DysonSphereBox/constant/multiplayer"
-	"encoding/json"
+	"DysonSphereBox/helper/multiplayer/p2p"
+
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 )
 
@@ -17,33 +16,12 @@ func (c *controller) traceDCUtR(sess *session, evt *holepunch.Event) {
 		return
 	}
 	roomID := c.room.view.Snapshot.RoomID
-	remoteUserID := int64(0)
-	if c.room.view.Snapshot.Host.PeerID == evt.Remote.String() {
-		remoteUserID = c.room.view.Snapshot.Host.UserID
-	}
-	for _, member := range c.room.view.Snapshot.Members {
-		if member.PeerID == evt.Remote.String() {
-			remoteUserID = member.UserID
-		}
-	}
+	remoteUserID := c.peerUserLocked(evt.Remote)
 	c.mu.Unlock()
 	if remoteUserID == 0 {
 		return
 	}
-	trace := mpAPI.LinkTraceRequest{RoomID: roomID, PeerUserID: remoteUserID, Stage: mpConstant.TraceDCUtR, Detail: evt.Type}
-	switch detail := evt.Evt.(type) {
-	case *holepunch.EndHolePunchEvt:
-		trace.OK, trace.Error, trace.DurationMs = detail.Success, detail.Error, detail.EllapsedTime.Milliseconds()
-	case *holepunch.DirectDialEvt:
-		trace.OK, trace.Error, trace.DurationMs = detail.Success, detail.Error, detail.EllapsedTime.Milliseconds()
-	case *holepunch.ProtocolErrorEvt:
-		trace.Error = detail.Error
-	case *holepunch.HolePunchAttemptEvt:
-		trace.Round = detail.Attempt
-	default:
-		encoded, _ := json.Marshal(detail)
-		trace.Detail += " " + string(encoded)
-	}
-	// Tracer 统一按 UTF-8 边界截断，避免本层切开多字节地址/错误。
+	trace := p2p.HolePunchTrace(sess.host, evt)
+	trace.RoomID, trace.PeerUserID = roomID, remoteUserID
 	sess.tracer.Trace(trace)
 }

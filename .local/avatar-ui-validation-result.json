@@ -1,0 +1,11 @@
+{
+  "id": "2f14f176-ed8b-4fb4-8d39-401ac69e782d",
+  "ok": true,
+  "result": {
+    "result": "[{\"name\":\"头像按钮打开文件选择器\",\"passed\":true},{\"name\":\"上传中保留原头像\",\"passed\":true},{\"name\":\"上传中禁止再次选择和保存\",\"passed\":true},{\"name\":\"重复上传和保存均被拦截\",\"passed\":true},{\"name\":\"关闭后上传成功直接更新共享用户且无需保存\",\"passed\":true},{\"name\":\"重新打开仍保留成功头像\",\"passed\":true},{\"detail\":{\"email\":\"new@example.com\",\"nickName\":\"新昵称\",\"phone\":\"456\"},\"name\":\"后续昵称电话邮箱保存不回滚头像\",\"passed\":true},{\"name\":\"失败保留头像且显示重试提示\",\"passed\":true},{\"name\":\"文件选择已清空，可重选同一文件\",\"passed\":true},{\"name\":\"失败后同文件重试成功清除错误\",\"passed\":true},{\"name\":\"上传之前发起的读取响应不覆盖新头像\",\"passed\":true},{\"name\":\"退出或切服后迟到上传响应不恢复旧用户\",\"passed\":true}]",
+    "origin": "http://127.0.0.1:5177/avatar-validation.html"
+  },
+  "_meta": {
+    "runtimeId": "a633d215-16bc-4a17-937c-a23291b693ea"
+  }
+}

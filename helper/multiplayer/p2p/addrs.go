@@ -1,8 +1,8 @@
 package p2p
 
-// 文件职责：连接地址观测节点拿 observed address，汇总本机可达地址与网络诊断（upnp/ipv6/natConsistent），提供网卡变化签名。
+// 文件职责：连接地址观测节点拿 observed address，汇总本机可达地址与网络诊断（UPnP/IPv6/AutoNAT），提供网卡变化签名。
 // 使用：控制器在 session.open 后与网卡变化时调用 Observe + Collect，结果用于 peer.addrs 与前端 network 投影。
-// 边界：观测连接被服务器关闭不视为错误；NAT 判断只是诊断提示；不访问控制链路。
+// 边界：观测结果只是地址候选，公网入站状态由官方 AutoNAT 判断；不访问控制链路。
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 
 	mpAPI "DysonSphereBox/apiDefinition/multiplayer"
 
-	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -24,20 +23,28 @@ import (
 const maxReportAddrs = 16
 
 // Observation 是一个观测节点看到的本机地址。
-// 职责：记录观测节点 PeerID 与 observed address；使用：natConsistent 计算与诊断展示；边界：失败的观测节点不出现。
+// 职责：记录观测节点 PeerID 与 observed address；使用：地址上报与诊断展示；边界：失败的观测节点不出现。
 type Observation struct {
 	// Observer 职责：观测节点 PeerID；使用：按节点区分映射（两个节点可以同 IP 不同端口）；边界：无。
 	Observer peer.ID
+	// ConnID 职责：标识产生该 observed 地址的真实连接；使用：过滤被后续传输探测关闭的候选；边界：空值不发布到地址工厂。
+	ConnID string
 	// Addr 职责：observed address；使用：peer.addrs 与 CGNAT 判断；边界：不含 /p2p。
 	Addr ma.Multiaddr
 }
 
 // ObserverResult 是一个观测节点的观测结果（成功或失败）。
-// 职责：observe trace 与前端“拿不到 observed 地址的原因”；使用：控制器上报 link.trace；边界：每个观测节点一条；未下发或地址无法解析时为一条 Observer 为空的失败。
+// 职责：observe trace 与前端“拿不到 observed 地址的原因”；使用：控制器上报 link.trace；边界：每个观测节点按 TCP、QUIC 各一条；无可解析节点时返回配置错误。
 type ObserverResult struct {
+	// Recovery 职责：QUIC 失败后 TCP 原生连接恢复的独立结果；使用：额外 observe trace；边界：不覆盖两条主探测结果，不递归恢复。
+	Recovery *ObserverResult
+	// Transport 职责：本次独立探测的传输；使用：tcp/quic；边界：未配置入口时仍记录。
+	Transport string
+	// Diagnostic 职责：原始地址和逐地址错误；使用：服务端导出；边界：不含凭证。
+	Diagnostic *mpAPI.TraceDiagnostic
 	// Observer 职责：观测节点 PeerID；使用：trace detail；边界：字符串形式，无法确定节点时为空。
 	Observer string
-	// Targets 职责：观测节点的拨号地址（带归类）；使用：trace detail；边界：可为空。
+	// Targets 职责：本次传输的观测节点拨号候选；使用：trace detail；边界：可为空，不证明全部实际尝试。
 	Targets []string
 	// OK 职责：是否拿到 observed address；使用：trace ok；边界：无。
 	OK bool
@@ -54,104 +61,6 @@ type ObserverResult struct {
 func Observe(ctx context.Context, h *Host, observers []string, timeout time.Duration) []Observation {
 	observations, _ := ObserveDetailed(ctx, h, observers, timeout)
 	return observations
-}
-
-// ObserveDetailed 与 Observe 相同，另外返回每个观测节点的结果（含失败）。
-// 职责：observed address 与 observe trace；使用：控制器；边界：结果顺序按完成先后。
-// 拿不到 observed 地址时 Err 写原因：未下发观测节点、观测地址无法解析、拨号失败（逐地址）、identify 失败、identify 完成但没有 observed 地址、超时。
-func ObserveDetailed(ctx context.Context, h *Host, observers []string, timeout time.Duration) ([]Observation, []ObserverResult) {
-	if len(observers) == 0 {
-		return nil, []ObserverResult{{Err: "服务器未下发观测节点（session.open observers 为空）"}}
-	}
-	infos, invalid := groupObservers(observers)
-	details := []ObserverResult{}
-	if len(invalid) > 0 {
-		details = append(details, ObserverResult{Err: "观测地址无法解析（需为带 /p2p/<peerId> 的 multiaddr）：" + strings.Join(invalid, ", ")})
-	}
-	if len(infos) == 0 {
-		return nil, details
-	}
-	sub, err := h.EventBus().Subscribe([]interface{}{new(event.EvtPeerIdentificationCompleted), new(event.EvtPeerIdentificationFailed)})
-	if err != nil {
-		return nil, append(details, ObserverResult{Err: "订阅 identify 事件失败：" + err.Error()})
-	}
-	defer sub.Close()
-
-	type dialResult struct {
-		id     peer.ID
-		report DialReport
-	}
-	started := time.Now()
-	dialed := make(chan dialResult, len(infos))
-	waiting := map[peer.ID]bool{}
-	targets := map[peer.ID][]string{}
-	for _, info := range infos {
-		waiting[info.ID] = true
-		for _, addr := range info.Addrs {
-			targets[info.ID] = append(targets[info.ID], describe(addr))
-		}
-		go func(info peer.AddrInfo) {
-			dialCtx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			dialed <- dialResult{id: info.ID, report: h.ConnectReport(dialCtx, info)}
-		}(info)
-	}
-	result := func(id peer.ID, ok bool, addr string, reason string) ObserverResult {
-		return ObserverResult{Observer: id.String(), Targets: targets[id], OK: ok, Addr: addr, Duration: time.Since(started), Err: reason}
-	}
-	results := []Observation{}
-	// 观测结果按 observers 下发顺序排列，诊断区的映射顺序稳定
-	order := map[peer.ID]int{}
-	for index, info := range infos {
-		order[info.ID] = index
-	}
-	sorted := func() []Observation {
-		sort.SliceStable(results, func(i, j int) bool { return order[results[i].Observer] < order[results[j].Observer] })
-		return results
-	}
-	finish := func(reason string) ([]Observation, []ObserverResult) {
-		for id := range waiting {
-			details = append(details, result(id, false, "", reason))
-		}
-		return sorted(), details
-	}
-	deadline := time.NewTimer(timeout + time.Second)
-	defer deadline.Stop()
-	for len(waiting) > 0 {
-		select {
-		case raw := <-sub.Out():
-			switch evt := raw.(type) {
-			case event.EvtPeerIdentificationCompleted:
-				if !waiting[evt.Peer] {
-					continue
-				}
-				delete(waiting, evt.Peer)
-				if evt.ObservedAddr == nil {
-					details = append(details, result(evt.Peer, false, "", "identify 已完成，但观测节点没有返回 observed 地址"))
-					continue
-				}
-				results = append(results, Observation{Observer: evt.Peer, Addr: evt.ObservedAddr})
-				details = append(details, result(evt.Peer, true, evt.ObservedAddr.String(), ""))
-			case event.EvtPeerIdentificationFailed:
-				if !waiting[evt.Peer] {
-					continue
-				}
-				delete(waiting, evt.Peer)
-				details = append(details, result(evt.Peer, false, "", "identify 失败："+ErrorText(evt.Reason)))
-			}
-		case item := <-dialed:
-			// 拨号失败时 identify 不会完成；拨号成功则继续等 identify 事件
-			if item.report.Err != nil && waiting[item.id] {
-				delete(waiting, item.id)
-				details = append(details, result(item.id, false, "", "连接观测节点失败："+item.report.ErrorText(512)))
-			}
-		case <-deadline.C:
-			return finish("连接成功但等待 identify 超时")
-		case <-ctx.Done():
-			return finish(ctx.Err().Error())
-		}
-	}
-	return sorted(), details
 }
 
 // ErrorText 返回错误文本，nil 为空字符串。
@@ -192,77 +101,28 @@ func groupObservers(observers []string) ([]peer.AddrInfo, []string) {
 	return result, invalid
 }
 
-// quicMapping 返回 QUIC（UDP）observed 地址的 `ip:port`；TCP 等其他地址返回空字符串。
-func quicMapping(addr ma.Multiaddr) (mapping string, v4 bool) {
-	if addr == nil {
-		return "", false
-	}
-	port, err := addr.ValueForProtocol(ma.P_UDP)
-	if err != nil || port == "" {
-		return "", false
-	}
-	ip, err := manet.ToIP(addr)
-	if err != nil {
-		return "", false
-	}
-	return net.JoinHostPort(ip.String(), port), ip.To4() != nil
-}
-
-// NATMappings 返回每个观测节点看到的 QUIC 映射 `ip:port`。
-// 职责：网络诊断区展示两个观测映射；使用：Collect；边界：每个节点只取第一条 QUIC 地址，顺序同 observations，没有 QUIC 地址的节点不出现。
-func NATMappings(observations []Observation) []string {
-	seen := map[peer.ID]bool{}
-	result := []string{}
-	for _, item := range observations {
-		mapping, _ := quicMapping(item.Addr)
-		if mapping == "" || seen[item.Observer] {
+// FirstObserverAddrs 仅保留首个观测 PeerID 的全部传输入口。
+// 职责：保留同一 observer 的 TCP 与 QUIC 地址；使用：地址观测和 AutoNAT 来源解析；边界：不同 PeerID 的入口忽略。
+func FirstObserverAddrs(observers []string) []string {
+	var first peer.ID
+	result := make([]string, 0, len(observers))
+	for _, raw := range observers {
+		addr, err := ma.NewMultiaddr(strings.TrimSpace(raw))
+		if err != nil {
 			continue
 		}
-		seen[item.Observer] = true
-		result = append(result, mapping)
+		info, err := peer.AddrInfoFromP2pAddr(addr)
+		if err != nil {
+			continue
+		}
+		if first == "" {
+			first = info.ID
+		}
+		if info.ID == first {
+			result = append(result, raw)
+		}
 	}
 	return result
-}
-
-// NATConsistent 比较不同观测节点（按 PeerID 区分）看到的 QUIC 映射 `ip:port`。
-// 职责：计算 natConsistent；使用：peer.addrs net 与打洞前置判断；
-// 边界：只看 QUIC（UDP）observed 地址，TCP 不参与（打洞走 QUIC）；同一 IP 族内比较；任一 IP 族都不足两个节点时返回 nil。
-func NATConsistent(observations []Observation) *bool {
-	type mapping struct {
-		v4    bool
-		value string
-	}
-	byObserver := map[peer.ID]mapping{}
-	for _, item := range observations {
-		value, v4 := quicMapping(item.Addr)
-		if value == "" {
-			continue
-		}
-		if _, ok := byObserver[item.Observer]; !ok {
-			byObserver[item.Observer] = mapping{v4: v4, value: value}
-		}
-	}
-	// 按 IP 族分组：IPv4 与 IPv6 映射本来就不同，不能互相比较
-	families := map[bool][]string{}
-	for _, item := range byObserver {
-		families[item.v4] = append(families[item.v4], item.value)
-	}
-	compared, consistent := false, true
-	for _, values := range families {
-		if len(values) < 2 {
-			continue
-		}
-		compared = true
-		for _, value := range values[1:] {
-			if value != values[0] {
-				consistent = false
-			}
-		}
-	}
-	if !compared {
-		return nil
-	}
-	return &consistent
 }
 
 // Report 是一次地址汇总结果。
@@ -276,13 +136,11 @@ type Report struct {
 	Observed []string
 	// UPnPAddrs 职责：UPnP 映射出的公网地址；使用：CGNAT 判断；边界：可为空。
 	UPnPAddrs []string
-	// NATMappings 职责：各观测节点看到的 QUIC 映射 `ip:port`；使用：前端 natMappings；边界：顺序同观测节点下发顺序，可为空。
-	NATMappings []string
 }
 
 // Collect 汇总本机可达地址与诊断。
 // 职责：接口地址（去回环与链路本地）、UPnP 映射地址、observed 地址合并去重；使用：控制器上报 peer.addrs；边界：顺序为 observed、UPnP、接口地址，keepLoopback 只用于进程内测试。
-func Collect(h *Host, observations []Observation, firewallRule bool, keepLoopback bool) Report {
+func Collect(h *Host, observations []Observation, firewallRule bool, keepLoopback bool, reachability string) Report {
 	listen := h.Network().ListenAddresses()
 	ifaceAddrs, _ := manet.InterfaceMultiaddrs()
 	resolved, _ := manet.ResolveUnspecifiedAddresses(listen, ifaceAddrs)
@@ -335,11 +193,10 @@ func Collect(h *Host, observations []Observation, firewallRule bool, keepLoopbac
 		}
 	}
 	return Report{
-		Addrs:       addrs,
-		Net:         mpAPI.NetInfo{UPnP: len(upnp) > 0, IPv6: ipv6, NATConsistent: NATConsistent(observations), FirewallRule: firewallRule},
-		Observed:    observed,
-		UPnPAddrs:   upnp,
-		NATMappings: NATMappings(observations),
+		Addrs:     addrs,
+		Net:       mpAPI.NetInfo{UPnP: len(upnp) > 0, IPv6: ipv6, AutoNATReachability: reachability, FirewallRule: firewallRule},
+		Observed:  observed,
+		UPnPAddrs: upnp,
 	}
 }
 

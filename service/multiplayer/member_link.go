@@ -294,8 +294,12 @@ func describeAddrs(addrs []string) []string {
 
 // traceDial 上报 direct_dial / relay_dial：addr 为实际连上的地址，detail 为目标地址列表，error 为顶层错误 + 逐地址错误。
 func (l *memberLink) traceDial(stage string, round int, report p2p.DialReport) {
+	diagnostic := p2p.DialDiagnostic(report)
+	diagnostic.LocalPeerID, diagnostic.RemotePeerID = l.sess.host.ID().String(), l.hostID.String()
+	diagnostic.AtMs = time.Now().UnixMilli()
+	diagnostic.ListenAddrs, diagnostic.HostAddrs = p2p.AddrStrings(l.sess.host.Network().ListenAddresses()), p2p.AddrStrings(l.sess.host.Addrs())
 	l.sess.tracer.Trace(mpAPI.LinkTraceRequest{RoomID: l.roomID, PeerUserID: l.hostUserID, Stage: stage, Round: round,
-		OK: report.Err == nil, DurationMs: report.Duration.Milliseconds(), Addr: report.TraceAddr(),
+		OK: report.Err == nil, Diagnostic: diagnostic, DurationMs: report.Duration.Milliseconds(), Addr: report.TraceAddr(),
 		Error: report.ErrorText(mpConstant.TraceErrorMax), Detail: report.TargetsDetail(mpConstant.TraceDetailMax)})
 }
 

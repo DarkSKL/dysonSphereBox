@@ -24,6 +24,8 @@ type ActionResult struct {
 // State 是 multiplayer:state 投影。
 // 职责：前端渲染联机页面的唯一状态来源；使用：EventsEmit 推送与 GetState 恢复；边界：stateRevision 每次变化 +1。
 type State struct {
+	// Notice 职责：最近房间或管理通知；使用：离房后仍展示原因；边界：新会话或加入成功时清空。
+	Notice *NoticeView `json:"notice"`
 	// StateRevision 职责：投影版本；使用：前端丢弃旧投影；边界：进程内单调递增。
 	StateRevision int64 `json:"stateRevision"`
 	// Connection 职责：控制链路状态；使用：连接区块；边界：见 ConnectionView。
@@ -49,6 +51,8 @@ type State struct {
 // ConnectionView 是控制链路状态。
 // 职责：描述 offline/connecting/online/reconnecting 与最近错误；使用：前端连接提示；边界：lastErrorCode 可为握手 code（7/10001）、HTTP 404、会话码或终止原因。
 type ConnectionView struct {
+	// LastErrorMessage 职责：服务端安全说明；使用：补充错误原因；边界：纯文本。
+	LastErrorMessage string `json:"lastErrorMessage"`
 	// State 职责：连接状态；使用：展示；边界：取值见 constant。
 	State string `json:"state"`
 	// LastErrorCode 职责：最近一次导致断开或拒绝的码；使用：文案映射；边界：0 表示无。
@@ -67,6 +71,8 @@ type AccountView struct {
 
 // SessionView 是当前会话。
 type SessionView struct {
+	// Policy 职责：玩家可见的有效策略；使用：准入提示与控件禁用；边界：旧服务可缺失。
+	Policy *mpAPI.SessionPolicy `json:"policy"`
 	// SessionID 职责：会话 ID；使用：排障；边界：只读。
 	SessionID string `json:"sessionId"`
 	// PeerID 职责：本次临时 PeerID；使用：排障；边界：随控制链路作废。
@@ -118,8 +124,6 @@ type LinkView struct {
 	mpAPI.LinkState
 	// Detail 职责：最近一次直连/打洞失败的错误文本；使用：链路失败提示下方展示真实原因；边界：只在成员自己的链路上有值，只存在本地投影，不进 link.report。
 	Detail string `json:"detail"`
-	// NATBlocked 职责：保留旧前端字段；使用：兼容已有投影解码；边界：v2 不因 NAT 观测跳过原生 DCUtR，始终为空。
-	NATBlocked string `json:"natBlocked"`
 }
 
 // NetworkView 是本机网络诊断。
@@ -128,10 +132,8 @@ type NetworkView struct {
 	UPnP bool `json:"upnp"`
 	// IPv6 职责：是否有全局 IPv6；使用：诊断；边界：只看本机。
 	IPv6 bool `json:"ipv6"`
-	// NATConsistent 职责：两个观测节点看到的 QUIC 映射是否一致；使用：诊断、对称 NAT 提示；边界：拿不到两个节点的 QUIC 映射时为 null。
-	NATConsistent *bool `json:"natConsistent"`
-	// NATMappings 职责：各观测节点看到的 QUIC 映射 `ip:port`；使用：对称 NAT 提示中显示两个映射；边界：可为空。
-	NATMappings []string `json:"natMappings"`
+	// AutoNATReachability 职责：官方 AutoNAT 聚合公网入站状态；使用：本地网络诊断；边界：unknown/private 不阻断直连或原生 DCUtR。
+	AutoNATReachability string `json:"autoNatReachability"`
 	// ObservedAddrs 职责：观测节点看到的地址；使用：诊断；边界：可为空。
 	ObservedAddrs []string `json:"observedAddrs"`
 	// ReportedAddrs 职责：本机最近一次 peer.addrs 上报的地址（带私网/公网归类）；使用：网络诊断区；边界：离线为空。

@@ -38,6 +38,10 @@ type RelayState struct {
 
 // relayPolicy 隔离服务端能力和预约状态。职责：同步限额及更新通知；使用：Host；边界：初始化一次，随 host 关闭。
 type relayPolicy struct {
+	// lifecycle 职责：串行替换、启动与关闭预约；使用：动态策略；边界：等待旧 worker 时不持 mu。
+	lifecycle sync.Mutex
+	// closed 职责：禁止关闭后启动预约；使用：Close/ConfigureRelay；边界：由 lifecycle 保护。
+	closed       bool
 	mu           sync.RWMutex
 	capabilities mpAPI.Capabilities
 	infos        []peer.AddrInfo
@@ -94,20 +98,65 @@ func ParseRelays(raw []string) ([]peer.AddrInfo, map[peer.ID][]ma.Multiaddr, err
 	return infos, entries, nil
 }
 
-// ConfigureRelay 安装本次 WS 能力。职责：配置唯一受信任中继列表；使用：session.open 后调用一次；边界：缺失能力/地址时不预约，不允许 circuit。
+// ConfigureRelay 职责：整体替换 WS 授权并撤回旧预约；使用：打开会话及动态策略事件；边界：非法入口按关闭处理，保留直连。
 func (h *Host) ConfigureRelay(caps mpAPI.Capabilities, raw []string, onReserve func(RelayState, time.Duration)) error {
-	if !caps.NativeDCUtR || !caps.RelayV2 || len(raw) == 0 {
-		return nil
+	h.relay.lifecycle.Lock()
+	defer h.relay.lifecycle.Unlock()
+	if h.relay.closed {
+		return errors.New("联机数据面已关闭")
 	}
-	infos, entries, err := ParseRelays(raw)
-	if err != nil {
-		return err
+	var infos []peer.AddrInfo
+	entries := map[peer.ID][]ma.Multiaddr{}
+	var err error
+	if caps.NativeDCUtR && caps.RelayV2 && len(raw) > 0 {
+		infos, entries, err = ParseRelays(raw)
+		if err != nil {
+			infos, entries = nil, map[peer.ID][]ma.Multiaddr{}
+		}
+	}
+	// 先撤回授权，再等待旧续约退出，避免旧结果回写到新策略。
+	h.Gater.setRelays(map[peer.ID][]ma.Multiaddr{})
+	h.relay.mu.Lock()
+	cancel := h.relay.cancel
+	oldEntries := h.relay.entries
+	h.relay.capabilities = mpAPI.Capabilities{}
+	h.relay.infos = nil
+	h.relay.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	h.relay.workers.Wait()
+	for _, conn := range h.Network().Conns() {
+		if IsCircuit(conn.RemoteMultiaddr()) || conn.Stat().Limited {
+			_ = conn.Close()
+		}
+	}
+	for _, id := range h.Peerstore().PeersWithAddrs() {
+		for _, addr := range h.Peerstore().Addrs(id) {
+			if IsCircuit(addr) {
+				h.Peerstore().SetAddr(id, addr, 0)
+			}
+		}
+	}
+	for id := range oldEntries {
+		if len(entries[id]) == 0 {
+			_ = h.Network().ClosePeer(id)
+			h.Peerstore().ClearAddrs(id)
+		}
 	}
 	h.relay.mu.Lock()
+	for _, timer := range h.relay.expiry {
+		timer.Stop()
+	}
+	h.relay.states = map[peer.ID]RelayState{}
+	h.relay.expiry = map[peer.ID]*time.Timer{}
+	h.relay.cancel = nil
+	if onReserve == nil { onReserve = h.relay.onReserve }
 	h.relay.capabilities, h.relay.infos, h.relay.entries, h.relay.onReserve = caps, infos, entries, onReserve
 	h.relay.mu.Unlock()
 	h.Gater.setRelays(entries)
-	return nil
+	h.signalRelay()
+	return err
 }
 
 // RelayEnabled 返回明确授权结果。职责：禁止默认使用中继；使用：成员建链；边界：能力与入口均须有效。
@@ -216,8 +265,25 @@ func (h *Host) TrustedCircuit(addr ma.Multiaddr, target peer.ID) bool {
 	return trustedCircuit(addr, target, h.relay.entries)
 }
 
+// FilterRelayAddrs 职责：撤回不再授权的中继候选；使用：策略切换和房主地址更新；边界：保留原有直接地址，不添加新候选。
+func (h *Host) FilterRelayAddrs(raw []string, target peer.ID) []string {
+	result := make([]string, 0, len(raw))
+	for _, value := range raw {
+		addr, err := ma.NewMultiaddr(value)
+		if err == nil && (!IsCircuit(addr) || h.TrustedCircuit(addr, target)) {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
 // RunReservations 启动每个指定 relay 的预约续约。职责：原生 Reserve、到期撤回与失败重试；使用：session.open 后；边界：无能力不产生任何网络请求，Host.Close 取消并等待。
 func (h *Host) RunReservations() {
+	h.relay.lifecycle.Lock()
+	defer h.relay.lifecycle.Unlock()
+	if h.relay.closed {
+		return
+	}
 	h.relay.mu.Lock()
 	if h.relay.cancel != nil || len(h.relay.infos) == 0 {
 		h.relay.mu.Unlock()
@@ -304,6 +370,9 @@ func (h *Host) storeReservation(state RelayState, elapsed time.Duration) {
 // Close 拆除整个临时数据面。职责：取消续约、关闭原生 host、等待 worker；使用：WS 结束；边界：幂等，不保留旧预约地址。
 func (h *Host) Close() error {
 	h.closeOnce.Do(func() {
+		h.relay.lifecycle.Lock()
+		defer h.relay.lifecycle.Unlock()
+		h.relay.closed = true
 		h.relay.mu.Lock()
 		cancel := h.relay.cancel
 		for _, timer := range h.relay.expiry {
@@ -333,14 +402,23 @@ func (h reservationHost) NewStream(ctx context.Context, id peer.ID, ids ...proto
 	if !ok {
 		return stream, nil
 	}
-	return &reservationStream{Stream: stream, deadline: deadline}, nil
+	stop := context.AfterFunc(ctx, func() { _ = stream.Reset() })
+	return &reservationStream{Stream: stream, deadline: deadline, stop: stop}, nil
 }
 
 // reservationStream 职责：约束官方 Reserve 的 stream deadline；使用：预约读取；边界：不改变协议包。
 type reservationStream struct {
 	network.Stream
 	deadline time.Time
+	// stop 职责：解除取消监听；使用：预约 stream 关闭；边界：防止持有已结束的 stream。
+	stop func() bool
 }
+
+// Close 职责：释放预约取消监听和 stream；使用：官方 Reserve；边界：不关闭基础连接。
+func (stream *reservationStream) Close() error { stream.stop(); return stream.Stream.Close() }
+
+// Reset 职责：中止预约并释放取消监听；使用：官方 Reserve 失败；边界：幂等依赖原生 stream。
+func (stream *reservationStream) Reset() error { stream.stop(); return stream.Stream.Reset() }
 
 // SetDeadline 职责：保留应用更早截止；使用：官方 Reserve；边界：不允许默认一分钟覆盖应用窗口。
 func (stream *reservationStream) SetDeadline(deadline time.Time) error {

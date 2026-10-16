@@ -154,10 +154,12 @@ type LocalForwarder struct {
 	available bool
 	closing   bool
 	closed    bool
-	sessions  map[string]*localUDPSession
-	local     []LocalPort
-	pick      func(span int) int
-	okSeen    map[firstOKKey]bool
+	// tcp 职责：跟踪已接受的游戏连接；使用：Close 立即释放本地 socket；边界：不依赖异步 ClosePeer 才结束。
+	tcp      map[*net.TCPConn]struct{}
+	sessions map[string]*localUDPSession
+	local    []LocalPort
+	pick     func(span int) int
+	okSeen   map[firstOKKey]bool
 }
 
 // traceOpen 记录 stream_open：打开失败或非 OK 每次都记，OK 只记每个端口的第一次。
@@ -190,7 +192,7 @@ func (forwarder *LocalForwarder) traceOpen(proto string, header Header, status b
 // NewLocalForwarder 创建成员转发器。
 func NewLocalForwarder(host *p2p.Host, hostID peer.ID, ports []mpAPI.PortDecl) *LocalForwarder {
 	return &LocalForwarder{host: host, hostID: hostID, ports: append([]mpAPI.PortDecl(nil), ports...),
-		sessions: map[string]*localUDPSession{}, pick: randomBase, okSeen: map[firstOKKey]bool{}}
+		sessions: map[string]*localUDPSession{}, tcp: map[*net.TCPConn]struct{}{}, pick: randomBase, okSeen: map[firstOKKey]bool{}}
 }
 
 // Open 分配全部 M 并开始接收。
@@ -300,10 +302,15 @@ func (forwarder *LocalForwarder) Close() {
 	forwarder.closed, forwarder.closing, forwarder.available = true, true, false
 	groups := forwarder.groups
 	sessions := forwarder.sessions
+	connections := forwarder.tcp
+	forwarder.tcp = map[*net.TCPConn]struct{}{}
 	forwarder.sessions = map[string]*localUDPSession{}
 	forwarder.mu.Unlock()
 	for _, group := range groups {
 		group.close()
+	}
+	for conn := range connections {
+		_ = conn.Close()
 	}
 	for _, session := range sessions {
 		session.close()
@@ -328,7 +335,21 @@ func (forwarder *LocalForwarder) acceptTCP(listener *net.TCPListener, index int,
 			_ = conn.Close()
 			continue
 		}
+		forwarder.mu.Lock()
+		if forwarder.closed {
+			forwarder.mu.Unlock()
+			_ = conn.Close()
+			return
+		}
+		forwarder.tcp[conn] = struct{}{}
+		forwarder.mu.Unlock()
 		go func() {
+			defer func() {
+				_ = conn.Close()
+				forwarder.mu.Lock()
+				delete(forwarder.tcp, conn)
+				forwarder.mu.Unlock()
+			}()
 			started := time.Now()
 			header := Header{V: mpConstant.HandshakeVersion, Port: index, Offset: offset}
 			stream, status, err := openStream(context.Background(), forwarder.host, forwarder.hostID,

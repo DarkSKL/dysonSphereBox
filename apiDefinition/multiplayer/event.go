@@ -16,6 +16,8 @@ type EventActor struct {
 // EventBase 是每个事件 data 的公共字段。
 // 职责：描述房间、revision、触发者、原因与结果；使用：所有事件结构嵌入；边界：result 只在 after 出现，非 0 表示中止。
 type EventBase struct {
+	// Message 职责：服务端管理原因说明；使用：玩家退出和维护提示；边界：纯文本，可为空。
+	Message string `json:"message,omitempty"`
 	// RoomID 职责：相关房间；使用：房间匹配；边界：与房间无关时为空。
 	RoomID string `json:"roomId"`
 	// Revision 职责：before 为变化前、after 为变化后的 revision；使用：快照应用；边界：中止时不变。

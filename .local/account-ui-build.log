@@ -1,0 +1,187 @@
+
+> frontend@0.0.0 build
+> vue-tsc --noEmit && vite build
+
+vite v3.2.11 building for production...
+transforming...
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+✓ 11558 modules transformed.
+rendering chunks...
+dist/assets/Oxanium-VariableFont_wght.220dc25e.ttf   42.10 KiB
+dist/assets/JetBrainsMono_wght_.662a196d.ttf         296.04 KiB
+dist/assets/SourceHanSansHWSC-Regular.81ac5174.otf   16100.61 KiB
+dist/assets/SourceHanSansHWSC-Bold.4d35f982.otf      16524.02 KiB
+dist/assets/dsp-blueprint-editor.efc2abe0.js         4793.30 KiB
+dist/index.html                                      0.40 KiB
+dist/assets/index.a86e53cf.js                        0.22 KiB / gzip: 0.19 KiB
+dist/assets/index.dae8cdc2.js                        0.17 KiB / gzip: 0.15 KiB
+dist/assets/composables.d8fb55d5.js                  0.18 KiB / gzip: 0.16 KiB
+dist/assets/users.c0f5befb.js                        1.26 KiB / gzip: 0.52 KiB
+dist/assets/circle-question-mark.f7bb6d98.js         0.41 KiB / gzip: 0.30 KiB
+dist/assets/plug-zap.d8707378.js                     0.51 KiB / gzip: 0.33 KiB
+dist/assets/Tooltip.3c011367.js                      27.42 KiB / gzip: 9.45 KiB
+dist/assets/search.7ba48bdc.js                       7.71 KiB / gzip: 2.91 KiB
+dist/assets/copy.00e478d5.js                         19.58 KiB / gzip: 6.30 KiB
+dist/assets/trash-2.6c32bc22.js                      0.49 KiB / gzip: 0.31 KiB
+dist/assets/Select.189ee1ad.js                       42.83 KiB / gzip: 11.82 KiB
+dist/assets/rotate-ccw.6708d34f.js                   0.36 KiB / gzip: 0.28 KiB
+dist/assets/Popselect.16f370c4.js                    4.81 KiB / gzip: 1.89 KiB
+dist/assets/create-ref-setter.1f30b46c.js            0.07 KiB / gzip: 0.08 KiB
+dist/assets/blueprint-generator.9067cc9b.js          0.47 KiB / gzip: 0.34 KiB
+dist/assets/page-placeholder.f0cc47ed.js             1.68 KiB / gzip: 0.88 KiB
+dist/assets/game.a1a84240.js                         1.63 KiB / gzip: 0.75 KiB
+dist/assets/DrawerContent.97555e9c.js                16.38 KiB / gzip: 4.61 KiB
+dist/assets/format.09a285fb.js                       0.73 KiB / gzip: 0.43 KiB
+dist/assets/InstallerService.3d1aaa62.js             1.07 KiB / gzip: 0.45 KiB
+dist/assets/chevron-right.af5607d7.js                0.29 KiB / gzip: 0.24 KiB
+dist/assets/folder-open.080aefe5.js                  0.45 KiB / gzip: 0.31 KiB
+dist/assets/save.2f0165e0.js                         0.49 KiB / gzip: 0.32 KiB
+dist/assets/wrench.c74c5275.js                       0.72 KiB / gzip: 0.39 KiB
+dist/assets/multiplayer.acc270f4.js                  0.17 KiB / gzip: 0.16 KiB
+dist/assets/external-link.4cfa7cfd.js                0.41 KiB / gzip: 0.29 KiB
+dist/assets/download.9a56ab96.js                     0.39 KiB / gzip: 0.29 KiB
+dist/assets/about.f406b0ba.js                        0.44 KiB / gzip: 0.33 KiB
+dist/assets/value-box.8a96d74e.js                    5.53 KiB / gzip: 2.23 KiB
+dist/assets/dashboard.ea4f2dea.js                    0.43 KiB / gzip: 0.31 KiB
+dist/assets/settings.26c762a7.js                     9.04 KiB / gzip: 3.26 KiB
+dist/assets/Dropdown.a27d2099.js                     20.12 KiB / gzip: 6.40 KiB
+dist/assets/log.8c294432.css                         6.18 KiB / gzip: 1.49 KiB
+dist/assets/settings.46869bd3.css                    0.22 KiB / gzip: 0.15 KiB
+dist/assets/settings.b97016ae.js                     8.23 KiB / gzip: 3.14 KiB
+dist/assets/settings.58a1543c.css                    0.92 KiB / gzip: 0.41 KiB
+dist/assets/index.01e6b8d6.css                       1.40 KiB / gzip: 0.52 KiB
+dist/assets/value-box.ede2fdad.css                   1.83 KiB / gzip: 0.56 KiB
+dist/assets/page-placeholder.1caffd17.css            1.40 KiB / gzip: 0.48 KiB
+dist/assets/mod.997736d3.js                          30.40 KiB / gzip: 9.93 KiB
+dist/assets/mod.c06af6fe.css                         8.07 KiB / gzip: 1.90 KiB
+dist/assets/headless.8fe8c6f4.css                    12.55 KiB / gzip: 2.62 KiB
+dist/assets/environment.39a9642c.css                 15.26 KiB / gzip: 3.08 KiB
+dist/assets/multiplayer.6fa56e0a.js                  74.35 KiB / gzip: 22.88 KiB
+dist/assets/multiplayer.f32b4da6.css                 25.19 KiB / gzip: 4.68 KiB
+dist/assets/Input.1c976838.js                        78.38 KiB / gzip: 24.27 KiB
+dist/assets/index.9c447759.css                       57.90 KiB / gzip: 11.63 KiB
+dist/assets/environment.ba407ccd.js                  74.49 KiB / gzip: 21.67 KiB
+dist/assets/log.a276eb22.js                          177.84 KiB / gzip: 44.27 KiB
+dist/assets/index.f821fc90.js                        528.51 KiB / gzip: 162.47 KiB
+dist/assets/index.934cb274.js                        627.22 KiB / gzip: 162.56 KiB
+dist/assets/headless.893d175b.js                     541.11 KiB / gzip: 186.27 KiB
+
+(!) Some chunks are larger than 500 KiB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/guide/en/#outputmanualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

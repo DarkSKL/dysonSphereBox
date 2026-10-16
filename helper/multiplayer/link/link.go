@@ -18,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -55,6 +56,18 @@ func clearBackoff(h host.Host, id peer.ID) {
 	}
 }
 
+// resetDialAddrs 职责：无活跃连接时限定本轮拨号的 peerstore 地址；使用：直连与中继拨号前；边界：有连接时保留 identify 学到的地址，供原生 DCUtR 使用。
+// go-libp2p 的 BasicHost.Connect 从 peerstore 拨号；无连接时清除旧候选，有连接时避免打断库原生反拨或打洞。
+func resetDialAddrs(h host.Host, info peer.AddrInfo) {
+	if len(h.Network().ConnsToPeer(info.ID)) > 0 {
+		return
+	}
+	h.Peerstore().ClearAddrs(info.ID)
+	if len(info.Addrs) > 0 {
+		h.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
+	}
+}
+
 // DialDirect 并发尝试对端全部地址。
 // 职责：直连；使用：成员 connecting/reconnecting 第一步；边界：timeout 内未连上时 report.Err 非空，report 携带目标地址与逐地址错误。
 func DialDirect(ctx context.Context, h *p2p.Host, info peer.AddrInfo, timeout time.Duration) p2p.DialReport {
@@ -65,6 +78,7 @@ func DialDirect(ctx context.Context, h *p2p.Host, info peer.AddrInfo, timeout ti
 		}
 	}
 	clearBackoff(h, info.ID)
+	resetDialAddrs(h, direct)
 	dialCtx, cancel := context.WithTimeout(network.WithForceDirectDial(ctx, "direct"), timeout)
 	defer cancel()
 	return h.ConnectReport(dialCtx, direct)
@@ -83,6 +97,7 @@ func DialRelay(ctx context.Context, h *p2p.Host, info peer.AddrInfo, timeout tim
 		return p2p.DialReport{Err: fmt.Errorf("服务器未授权可用中继入口")}
 	}
 	clearBackoff(h, info.ID)
+	resetDialAddrs(h, trusted)
 	dialCtx, cancel := context.WithTimeout(network.WithAllowLimitedConn(ctx, "dcutr-bootstrap"), timeout)
 	defer cancel()
 	return h.ConnectReport(dialCtx, trusted)
@@ -137,7 +152,7 @@ type ClassifyInput struct {
 var cgnatNet = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
 
 // Classify 返回链路失败码。
-// 职责：按 20407 > 20406 > 20401 > 20405 > 20403 > 20402 > 20404 的优先级归类；使用：链路进入 failed 或 TARGET_REFUSED 时；边界：只是诊断提示。
+// 职责：按 20407 > 20406 > 20401 > 20405 > 20403 > 20404 的优先级归类；使用：链路进入 failed 或 TARGET_REFUSED 时；边界：只是诊断提示，不根据旧双观测映射推断打洞失败。
 func Classify(input ClassifyInput) int {
 	if input.TargetRefused {
 		return mpConstant.LinkErrTargetRefused
@@ -158,9 +173,6 @@ func Classify(input ClassifyInput) int {
 	}
 	if anyCGNAT(input.SelfObserved) || anyCGNAT(input.HostAddrs) || mismatch(input.SelfObserved, input.SelfUPnP) {
 		return mpConstant.LinkErrCGNAT
-	}
-	if isFalse(input.SelfNet.NATConsistent) || (input.HostNet != nil && isFalse(input.HostNet.NATConsistent)) {
-		return mpConstant.LinkErrNATInconsistent
 	}
 	return mpConstant.LinkErrPunchTimeout
 }
@@ -226,5 +238,3 @@ func ips(addrs []string) []net.IP {
 	}
 	return result
 }
-
-func isFalse(value *bool) bool { return value != nil && !*value }

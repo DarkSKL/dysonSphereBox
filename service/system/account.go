@@ -17,6 +17,17 @@ import (
 // 边界：注册时不访问数据库或网络；服务器地址来自全局 HTTP 客户端。
 type AccountService struct{}
 
+// UploadAvatar 职责：上传选中图片并返回服务器已保存的当前用户。
+// 使用：资料页选图后经 Wails 调用，helper 负责限长、内容校验与 multipart 传输。
+// 边界：token 留在后端；失败不更改本地账号资料，成功才记录头像更新日志。
+func (service *AccountService) UploadAvatar(fileName, contentBase64 string) (*systemAPI.AccountUser, error) {
+	user, err := accountHelper.UploadAvatar(context.Background(), fileName, contentBase64)
+	if err == nil {
+		accountHelper.RecordStateChange("avatarUpdated", "账号头像上传并保存完成")
+	}
+	return user, err
+}
+
 // GetCaptcha 获取一次性验证码。
 // 职责：返回验证码图片、ID 与登录是否需要验证码。
 // 使用：账号弹窗打开、切换模式或提交后刷新。

@@ -2,6 +2,7 @@
 // 说明：共享 Go 投影，编排页面激活、连接恢复与大厅请求；不在前端重建房间或持有账号 token。
 // 逻辑流：恢复投影 => 仅离线时自动连接 => 在线后同步大厅 => 停用时取消订阅，保留房间连接。
 import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch} from 'vue'
+import {accountIsAuthenticated} from '../../services/account'
 import * as api from '../../services/multiplayer'
 import {codeText, type LobbyQuery, type MultiplayerActionResult, type MultiplayerState, type RoomCreateForm, type RoomResolveResult} from '../../types/multiplayer'
 
@@ -40,6 +41,10 @@ export function useMultiplayerState() {
   let lobbyQueue: Promise<void> = Promise.resolve()
 
   const online = computed(() => state.value?.connection.state === 'online')
+  const admissionEnabled = computed(() => {
+    const policy = state.value?.session?.policy
+    return online.value && (!policy || (policy.admissionEnabled && !policy.maintenance))
+  })
   const room = computed(() => state.value?.room ?? null)
   const isHost = computed(() => room.value?.role === 'host')
   const pending = computed(() => new Set([...state.value?.pending ?? [], ...localPending.value]))
@@ -76,7 +81,7 @@ export function useMultiplayerState() {
   }
 
   async function create(form: RoomCreateForm): Promise<boolean> {
-    if (!online.value || room.value || roomBusy.value) return false
+    if (!admissionEnabled.value || room.value || roomBusy.value) return false
     const result = await run('createRoom', () => api.createRoom(form), '房间已创建')
     return result?.code === 0
   }
@@ -92,7 +97,7 @@ export function useMultiplayerState() {
   }
 
   async function join(target: string, password: string): Promise<boolean> {
-    if (!online.value || room.value || roomBusy.value || !resolved.value) return false
+    if (!admissionEnabled.value || room.value || roomBusy.value || !resolved.value) return false
     const invite = !target.startsWith('r_')
     const result = await run('joinRoom', () => api.joinRoom(invite ? '' : target, invite ? target : '', password), '已加入房间')
     if (result?.code === 0) clearResolved()
@@ -140,18 +145,24 @@ export function useMultiplayerState() {
   })
 
   // =============== 缓存页面生命周期 ===============
+  // 说明：登录只更新账号共享状态，不会推送联机投影；停留本页时重新读取后端，交给下方投影监听触发连接。
+  // 边界：退出登录也恢复投影；缓存页停用时不发请求，重新激活后统一恢复，不在前端伪造登录态。
+  watch(accountIsAuthenticated, () => {
+    if (active.value) void restore()
+  })
+
   // 说明：首次 mounted/activated 共用激活锁；请求恢复期间切走页面，不再自动连接。
   async function activate(): Promise<void> {
     if (active.value) return
     active.value = true
     await restore()
     if (!active.value) return
-    if (state.value?.connection.state === 'offline' && state.value.account.loggedIn) await connect(true)
+    if (state.value?.connection.state === 'offline' && state.value.account.loggedIn && !state.value.connection.lastErrorCode) await connect(true)
   }
 
   // 说明：控制链路强制保持；页面停留期间登录成功也立即自动连接，不可重连原因导致的离线仍等用户手动重连。
   watch(() => state.value?.account.loggedIn, (loggedIn, wasLoggedIn) => {
-    if (active.value && loggedIn && !wasLoggedIn && state.value?.connection.state === 'offline') void connect(true)
+    if (active.value && loggedIn && !wasLoggedIn && state.value?.connection.state === 'offline' && !state.value.connection.lastErrorCode) void connect(true)
   })
 
   onMounted(() => {
@@ -170,7 +181,7 @@ export function useMultiplayerState() {
   })
 
   return {
-    state, lastAction, resolved, online, room, isHost, pending, roomBusy,
+    state, lastAction, resolved, online, admissionEnabled, room, isHost, pending, roomBusy,
     query, liveLobby, lobbyReady, lobbyLoading, lobbyError,
     connect, refreshLobby, clearResolved, create, resolve, join, invite, leave, close, kick, retry,
   }

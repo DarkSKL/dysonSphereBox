@@ -7,7 +7,7 @@ import {portText} from '../../utils/multiplayer'
 // =============== 大厅浏览与筛选 ===============
 // 说明：列表来自后端投影；输入草稿提交后才搜索，排序、分页和每页条数交给页面更新请求。
 const props = defineProps<{
-  state: MultiplayerState | null; query: LobbyQuery; online: boolean; loading: boolean
+  state: MultiplayerState | null; query: LobbyQuery; online: boolean; admissionEnabled: boolean; loading: boolean
   ready: boolean; error: string; selected: string; busy: boolean
   connectionTitle: string; connectionHint: string
 }>()
@@ -64,16 +64,9 @@ function createdText(ms: number): string {
       <n-select :value="query.sort" :options="sortOptions" :disabled="!online || loading" aria-label="房间排序" class="sort-select" @update:value="emit('sort', $event)" />
       <span class="toolbar-spacer" />
       <n-tooltip><template #trigger><n-button :disabled="!online || loading" :loading="loading" aria-label="刷新大厅" @click="emit('refresh')"><template #icon><RefreshCw :size="16" /></template></n-button></template>刷新大厅</n-tooltip>
-      <n-button :disabled="!online || busy" @click="emit('invite')"><template #icon><KeyRound :size="16" /></template>邀请码加入</n-button>
-      <n-button type="primary" :disabled="!online || busy" @click="emit('create')"><template #icon><Plus :size="17" /></template>创建房间</n-button>
+      <n-button :disabled="!admissionEnabled || busy" @click="emit('invite')"><template #icon><KeyRound :size="16" /></template>邀请码加入</n-button>
+      <n-button type="primary" :disabled="!admissionEnabled || busy" @click="emit('create')"><template #icon><Plus :size="17" /></template>创建房间</n-button>
     </form>
-
-    <!-- * 分页：仅在有房间时显示，更新时间与分页、每页条数靠右 -->
-    <div v-if="online && ready && total > 0" class="lobby-pager">
-      <span v-if="updatedText" class="updated-text">更新于 {{ updatedText }}</span>
-      <n-pagination :page="query.page" :page-count="pageCount" :page-slot="5" :disabled="loading" @update:page="emit('page', $event)" />
-      <n-select :value="query.pageSize" :options="pageSizeOptions" :disabled="loading" aria-label="每页条数" class="size-select" @update:value="emit('pageSize', $event)" />
-    </div>
 
     <div class="room-table" role="table" aria-label="公开房间">
       <div class="room-row room-columns" role="row">
@@ -96,19 +89,26 @@ function createdText(ms: number): string {
           <span class="col-created created-text" role="cell">{{ createdText(item.createdAtMs) }}</span>
           <span class="col-lock" role="cell"><LockKeyhole v-if="item.hasPassword" :size="15" aria-label="需要密码" /><span v-else class="muted" aria-label="无需密码">—</span></span>
           <span class="col-action" role="cell">
-            <n-button size="small" :type="selected === item.roomId ? 'primary' : 'default'" :disabled="!online || busy || full(item)" :aria-label="`加入房间 ${item.name}`" @click="emit('join', item.roomId)"><template #icon><ArrowRight :size="14" /></template>{{ full(item) ? '已满' : '加入' }}</n-button>
+            <n-button size="small" :type="selected === item.roomId ? 'primary' : 'default'" :disabled="!admissionEnabled || busy || full(item)" :aria-label="`加入房间 ${item.name}`" @click="emit('join', item.roomId)"><template #icon><ArrowRight :size="14" /></template>{{ full(item) ? '已满' : '加入' }}</n-button>
           </span>
         </div>
       </template>
       <div v-else class="lobby-empty" role="status">
         <h3>{{ emptyTitle }}</h3><p>{{ emptyHint }}</p>
-        <n-button v-if="online && !error && !query.keyword" secondary :disabled="busy" @click="emit('create')">创建第一个房间<template #icon><ArrowRight :size="16" /></template></n-button>
+        <n-button v-if="online && !error && !query.keyword" secondary :disabled="!admissionEnabled || busy" @click="emit('create')">创建第一个房间<template #icon><ArrowRight :size="16" /></template></n-button>
         <n-button v-else-if="online && error" secondary @click="emit('refresh')">重新读取大厅</n-button>
         <n-button v-else-if="online && query.keyword" secondary @click="emit('search', '')">查看全部房间</n-button>
         <n-button v-else-if="state?.connection.state === 'offline' && state.account.loggedIn" secondary @click="emit('connect')">连接大厅</n-button>
       </div>
     </div>
     <footer class="lobby-footer"><span>大厅仅显示公开且未满员的房间</span><span>私密房间请使用好友发来的邀请码加入</span></footer>
+
+    <!-- * 分页：仅在有房间时显示，置于列表说明之后，更新时间与分页、每页条数靠右 -->
+    <div v-if="online && ready && total > 0" class="lobby-pager">
+      <span v-if="updatedText" class="updated-text">更新于 {{ updatedText }}</span>
+      <n-pagination :page="query.page" :page-count="pageCount" :page-slot="5" :disabled="loading" @update:page="emit('page', $event)" />
+      <n-select :value="query.pageSize" :options="pageSizeOptions" :disabled="loading" aria-label="每页条数" class="size-select" @update:value="emit('pageSize', $event)" />
+    </div>
   </section>
 </template>
 
@@ -119,7 +119,7 @@ function createdText(ms: number): string {
 .search-input { width: 320px; flex-shrink: 1; min-width: 180px; }
 .sort-select { width: 128px; flex-shrink: 0; }
 .toolbar-spacer { flex: 1; }
-.lobby-pager { justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 12px; }
+.lobby-pager { justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--ds-border-subtle); }
 .updated-text { color: var(--ds-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .size-select { width: 108px; }
 

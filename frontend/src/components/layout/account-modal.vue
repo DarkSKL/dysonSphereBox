@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import {ArrowRight, Eye, EyeOff, KeyRound, Link2, LockKeyhole, LogOut, Mail, PencilLine, Phone, RefreshCw, UserRound, X} from '@lucide/vue'
+import {ArrowRight, Camera, Eye, EyeOff, LockKeyhole, LogOut, Mail, PencilLine, Phone, RefreshCw, UserRound, X} from '@lucide/vue'
 import {computed, nextTick, onBeforeUnmount, reactive, ref, watch} from 'vue'
 import {useMessage} from 'naive-ui'
 import {
   accountIsAuthenticated,
   accountNeedsPasswordChange,
   accountUser,
+  accountAvatarUploading,
   changeAccountPassword,
   fetchCaptcha,
   fetchCurrentUser,
@@ -13,6 +14,7 @@ import {
   logoutAccount,
   registerAccount,
   updateSelfInfo,
+  uploadAccountAvatar,
   type CaptchaInfo,
 } from '../../services/account'
 import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../../services/server'
@@ -41,7 +43,7 @@ const isAuthenticated = accountIsAuthenticated
 const isShowingProfile = computed(() => isAuthenticated.value && (mode.value === 'login' || mode.value === 'register'))
 const user = accountUser
 const formTransitionName = computed(() => mode.value === 'login' ? 'account-form-backward' : 'account-form-forward')
-const formKicker = computed(() => isShowingProfile.value ? '04' : mode.value === 'login' ? '01' : mode.value === 'register' ? '02' : mode.value === 'changePassword' ? '03' : '05')
+const viewTransitionName = computed(() => mode.value === 'editProfile' ? 'account-edit-open' : 'account-edit-return')
 const titleId = computed(() => isShowingProfile.value ? 'account-profile-title' : mode.value === 'login' ? 'account-login-title' : mode.value === 'register' ? 'account-register-title' : mode.value === 'changePassword' ? 'account-password-title' : 'account-edit-title')
 const displayName = computed(() => user.value?.nickName || user.value?.userName || '')
 // 自愿改密可返回账号信息；登录后被要求强制改密时不提供返回入口
@@ -51,9 +53,12 @@ const passwordAccountName = computed(() => username.value.trim() || user.value?.
 
 // =============== 账号资料 ===============
 // 说明：资料草稿只在进入编辑时从当前用户复制；头像加载失败回退为图标，头像地址变化后重新尝试。
-const profileKeys = ['nickName', 'headerImg', 'email', 'phone'] as const
+const profileKeys = ['nickName', 'email', 'phone'] as const
 type ProfileKey = typeof profileKeys[number]
-const profileDraft = reactive<Record<ProfileKey, string>>({nickName: '', headerImg: '', email: '', phone: ''})
+const profileDraft = reactive<Record<ProfileKey, string>>({nickName: '', email: '', phone: ''})
+const avatarFileField = ref<HTMLInputElement | null>(null)
+const avatarUploadError = ref('')
+const isUploadingAvatar = accountAvatarUploading
 const avatarFailed = ref(false)
 const isLoadingUser = ref(false)
 const needsUserRefresh = ref(false)
@@ -71,6 +76,7 @@ const avatarSource = computed(() => {
 watch(avatarSource, () => { avatarFailed.value = false })
 // 会话在编辑资料时失效（401、切换服务器），回到登录表单
 watch(isAuthenticated, (authenticated) => {
+  if (!authenticated) avatarUploadError.value = ''
   if (!authenticated && (mode.value === 'editProfile' || mode.value === 'changePassword')) {
     mode.value = 'login'
     password.value = ''
@@ -83,21 +89,20 @@ watch(isAuthenticated, (authenticated) => {
 watch(accountNeedsPasswordChange, (required) => {
   if (required && isAuthenticated.value) mode.value = 'changePassword'
 })
-const passwordUpdatedText = computed(() => {
-  const raw = user.value?.passwordUpdatedAt
-  if (!raw) return '—'
-  const date = new Date(raw)
-  return Number.isNaN(date.getTime()) ? raw : date.toLocaleString('zh-CN', {hour12: false})
-})
 // 品牌区换位动画：切到注册时向左移出、从右侧移入；回到登录时向右移出、从左侧移入。
 // 为空表示不播放，弹窗每次打开时重置，避免挂载时重放上一次的换位动画。
 const artMotion = ref<'to-login' | 'to-register' | null>(null)
+// 电路走线：各线周期互不整除，避免多条脉冲同时到达；负延迟让弹窗打开时各线已处于不同相位，不会同时从起点出发。
 const circuitTraces = [
-  {d: 'M -10 90 H 72 V 132 H 165', end: [165, 132], duration: 5.2, delay: 0},
-  {d: 'M -10 210 H 52 V 178 H 143 V 154 H 210', end: [210, 154], duration: 6.1, delay: 1.2},
-  {d: 'M -10 330 H 86 V 294 H 160 V 260 H 218', end: [218, 260], duration: 5.7, delay: 2.1},
-  {d: 'M 10 470 H 72 V 428 H 142 V 396 H 206', end: [206, 396], duration: 6.4, delay: 0.8},
+  {d: 'M -10 90 H 72 V 132 H 165', end: [165, 132], duration: 5.2, delay: -1.4},
+  {d: 'M -10 210 H 52 V 178 H 143 V 154 H 210', end: [210, 154], duration: 6.1, delay: -4.3},
+  {d: 'M -10 330 H 86 V 294 H 160 V 260 H 218', end: [218, 260], duration: 5.7, delay: -0.3},
+  {d: 'M 10 470 H 72 V 428 H 142 V 396 H 206', end: [206, 396], duration: 6.4, delay: -2.9},
 ] as const
+const circuitTiming = (trace: typeof circuitTraces[number]) => ({
+  animationDuration: `${trace.duration}s`,
+  animationDelay: `${trace.delay}s`,
+})
 
 // =============== 弹窗生命周期 ===============
 // 说明：管理 Escape 关闭、验证码加载、首个输入框聚焦和页面滚动锁定。
@@ -134,6 +139,10 @@ watch(
 
 // 品牌区只在注册模式位于右侧，其余模式（登录、改密、账号信息）位于左侧；仅跨越两侧时播放换位动画
 watch(mode, (next, prev) => {
+  if (next === 'editProfile' || prev === 'editProfile') {
+    artMotion.value = null
+    return
+  }
   const wasRight = prev === 'register'
   const isRight = next === 'register'
   if (wasRight !== isRight) {
@@ -311,7 +320,31 @@ const startEditProfile = (): void => {
   const current = user.value
   if (!current) return
   for (const key of profileKeys) profileDraft[key] = current[key] ?? ''
+  avatarUploadError.value = ''
+  avatarFailed.value = false
   mode.value = 'editProfile'
+}
+
+// 选图后立即上传；不使用本地预览覆盖已保存头像，失败可再次选择同一图片重试。
+const changeAvatar = (): void => {
+  if (isSubmitting.value || isUploadingAvatar.value) return
+  avatarFileField.value?.click()
+}
+
+const uploadSelectedAvatar = async (event: Event): Promise<void> => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || isSubmitting.value || isUploadingAvatar.value) return
+  avatarUploadError.value = ''
+  try {
+    await uploadAccountAvatar(file)
+    avatarFailed.value = false
+    message.success('头像已上传并保存。')
+  } catch (error) {
+    avatarUploadError.value = `头像上传失败：${error instanceof Error ? error.message : String(error)} 可重新选择图片重试。`
+    message.error(avatarUploadError.value)
+  }
 }
 
 const startChangePassword = (): void => {
@@ -331,9 +364,9 @@ const backToProfile = (): void => {
   mode.value = 'login'
 }
 
-// saveProfile 只提交变化字段；显式空字符串用于清除头像和联系方式，昵称保持必填。
+// saveProfile 只提交变化资料；永不回传头像草稿，避免回滚即时上传结果。
 const saveProfile = async (): Promise<void> => {
-  if (isSubmitting.value) return
+  if (isSubmitting.value || isUploadingAvatar.value) return
   const current = user.value
   const next = Object.fromEntries(profileKeys.map((key) => [key, profileDraft[key].trim()])) as Record<ProfileKey, string>
   const nickLength = Array.from(next.nickName).length
@@ -341,11 +374,7 @@ const saveProfile = async (): Promise<void> => {
     message.warning('昵称需填写 1 至 32 个字符。')
     return
   }
-  // URL 和邮箱格式由服务端统一校验，避免客户端拒绝兼容的相对头像路径或合法邮箱。
-  if (new TextEncoder().encode(next.headerImg).length > 2048) {
-    message.warning('头像地址不能超过 2048 字节。')
-    return
-  }
+  // 邮箱格式由服务端统一校验，避免客户端拒绝兼容的合法邮箱。
   if (new TextEncoder().encode(next.email).length > 254) {
     message.warning('邮箱地址不能超过 254 字节。')
     return
@@ -398,7 +427,7 @@ const signOut = async (): Promise<void> => {
 
 <template>
   <!-- ~ 账号登录注册弹窗 -->
-  <!-- * 说明：品牌区与表单区左右分栏；切换模式时品牌区从一侧移出卡片、再从另一侧移入，表单区平移到对侧并淡出淡入内容 -->
+  <!-- * 说明：登录、注册与账号概览使用品牌分栏；编辑资料使用独立表单，隐藏品牌文案与电路装饰 -->
   <!-- * 交互：点击遮罩或关闭按钮退出，点击切换入口改变模式，Enter 提交当前表单，Escape 关闭弹窗 -->
   <!-- * 依赖：依赖 open、表单状态与 useMessage -->
   <!-- * 边界：只经 Wails 账号服务调用服务器，token 不进入前端；会话失效时返回登录表单 -->
@@ -412,34 +441,28 @@ const signOut = async (): Promise<void> => {
         :aria-labelledby="titleId"
         @pointerdown.stop
       >
-        <button type="button" class="account-close" aria-label="关闭" title="关闭" @click="emit('close')">
+        <button type="button" class="account-close" :class="{'is-edit-profile-close': mode === 'editProfile'}" aria-label="关闭" title="关闭" @click="emit('close')">
           <X :size="18" :stroke-width="1.8" />
         </button>
 
+        <!-- ~ 编辑切换：概览与品牌区短距退出后移入编辑视图，返回时沿原路恢复；两段总时长为 460ms -->
+        <Transition :name="viewTransitionName" mode="out-in" @after-enter="firstField?.focus()">
+        <div :key="mode === 'editProfile' ? 'edit' : 'overview'" class="account-modal-view" :class="{'is-edit-profile': mode === 'editProfile'}">
         <!-- ~ 品牌区：渐变底色 + 电路脉冲线条 -->
-        <div class="account-art" :class="artMotion ? `is-moving-${artMotion}` : ''" aria-hidden="true">
+        <div v-if="mode !== 'editProfile'" class="account-art" :class="artMotion ? `is-moving-${artMotion}` : ''" aria-hidden="true">
           <svg class="account-circuit" viewBox="0 0 320 580" preserveAspectRatio="xMidYMid slice">
             <g v-for="(trace, index) in circuitTraces" :key="index">
               <path class="account-circuit-trace" :d="trace.d" />
-              <path
-                class="account-circuit-pulse"
-                :d="trace.d"
-                pathLength="100"
-                :style="{animationDuration: `${trace.duration}s`, animationDelay: `${trace.delay}s`}"
-              />
-              <circle
-                class="account-circuit-node"
-                :cx="trace.end[0]"
-                :cy="trace.end[1]"
-                r="2.5"
-                :style="{animationDuration: `${trace.duration}s`, animationDelay: `${trace.delay}s`}"
-              />
+              <!-- 光晕与脉冲共用路径和时序：宽而淡的描边代替逐帧 drop-shadow 滤镜 -->
+              <path class="account-circuit-pulse is-glow" :d="trace.d" pathLength="100" :style="circuitTiming(trace)" />
+              <path class="account-circuit-pulse" :d="trace.d" pathLength="100" :style="circuitTiming(trace)" />
+              <circle class="account-circuit-ring" :cx="trace.end[0]" :cy="trace.end[1]" r="2.5" :style="circuitTiming(trace)" />
+              <circle class="account-circuit-node" :cx="trace.end[0]" :cy="trace.end[1]" r="2.5" :style="circuitTiming(trace)" />
             </g>
           </svg>
           <div class="account-art-copy">
             <span class="account-art-kicker">DYSON SPHERE BOX</span>
             <strong>让每一次建造，<br />都有自己的轨道。</strong>
-            <span class="account-art-caption">同步你的工程进度与本地资源</span>
           </div>
         </div>
 
@@ -448,7 +471,6 @@ const signOut = async (): Promise<void> => {
           <Transition :name="formTransitionName">
             <div :key="isShowingProfile ? 'profile' : mode" class="account-form-inner">
               <div class="account-form-heading">
-                <span class="account-form-kicker">ACCOUNT / {{ formKicker }}</span>
                 <h2 v-if="isShowingProfile" id="account-profile-title">账号信息</h2>
                 <h2 v-else-if="mode === 'login'" id="account-login-title">欢迎回来</h2>
                 <h2 v-else-if="mode === 'register'" id="account-register-title">创建账号</h2>
@@ -461,7 +483,7 @@ const signOut = async (): Promise<void> => {
                 <p v-else>昵称会在联机大厅与房间中显示。</p>
               </div>
 
-              <!-- ~ 账号信息：头像、昵称与资料概览；编辑资料、修改密码与退出登录 -->
+              <!-- ~ 账号概览：仅保留头像、昵称与账号操作，联系方式在编辑资料中管理 -->
               <div v-if="isShowingProfile" class="account-profile">
                 <div class="account-profile-card">
                   <span class="account-avatar" aria-hidden="true">
@@ -477,12 +499,6 @@ const signOut = async (): Promise<void> => {
                   </button>
                 </div>
 
-                <dl v-if="user" class="account-profile-list">
-                  <div><dt><Mail :size="14" />邮箱</dt><dd>{{ user.email || '未填写' }}</dd></div>
-                  <div><dt><Phone :size="14" />手机</dt><dd>{{ user.phone || '未填写' }}</dd></div>
-                  <div><dt><KeyRound :size="14" />密码更新</dt><dd>{{ passwordUpdatedText }}</dd></div>
-                </dl>
-
                 <div class="account-profile-actions">
                   <button type="button" class="account-secondary" :disabled="!user" @click="startEditProfile">
                     <PencilLine :size="15" :stroke-width="1.8" /><span>编辑资料</span>
@@ -491,26 +507,31 @@ const signOut = async (): Promise<void> => {
                     <LockKeyhole :size="15" :stroke-width="1.8" /><span>修改密码</span>
                   </button>
                 </div>
-                <button type="button" class="account-submit account-signout" @click="signOut">
+                <button type="button" class="account-secondary account-signout" @click="signOut">
                   <span>退出登录</span>
                   <LogOut :size="16" :stroke-width="1.8" />
                 </button>
               </div>
 
-              <!-- ~ 编辑资料：只提交变化字段；留空可清除头像和联系方式，昵称必填 -->
-              <form v-else-if="mode === 'editProfile'" class="account-form" @submit.prevent="saveProfile">
+              <!-- ~ 编辑资料：只提交变化字段；联系方式留空可清除，昵称必填 -->
+              <form v-else-if="mode === 'editProfile'" class="account-form account-profile-form" @submit.prevent="saveProfile">
+                <!-- ~ 头像更换：点击头像选图即上传并保存；上传中禁用重复操作，失败保留原头像并提示重试 -->
+                <div class="account-avatar-editor">
+                  <input ref="avatarFileField" type="file" accept="image/jpeg,image/png,image/webp" hidden :disabled="isSubmitting || isUploadingAvatar" @change="uploadSelectedAvatar" />
+                  <button type="button" class="account-avatar account-avatar-edit" aria-label="选择图片上传头像" title="点击更换头像" :aria-busy="isUploadingAvatar" :disabled="isSubmitting || isUploadingAvatar" @click="changeAvatar">
+                    <img v-if="avatarSource && !avatarFailed" :src="avatarSource" alt="" referrerpolicy="no-referrer" @error="avatarFailed = true" />
+                    <UserRound v-else :size="28" :stroke-width="1.6" />
+                    <span class="account-avatar-edit-hint"><Camera :size="13" /></span>
+                  </button>
+                  <div class="account-avatar-editor-copy">
+                    <p aria-live="polite" :role="avatarUploadError ? 'alert' : undefined">{{ isUploadingAvatar ? '正在上传，成功后自动保存；可以关闭窗口。' : avatarUploadError || (avatarFailed ? '头像图片加载失败，可点击头像重新上传' : '点击头像上传，选择后立即保存。JPEG / PNG / WebP，最大 2 MiB。') }}</p>
+                  </div>
+                </div>
                 <label class="account-field">
                   <span>昵称</span>
                   <span class="account-input-wrap">
                     <UserRound :size="16" :stroke-width="1.8" />
-                    <input v-model="profileDraft.nickName" type="text" autocomplete="nickname" maxlength="32" placeholder="1 至 32 个字符" />
-                  </span>
-                </label>
-                <label class="account-field">
-                  <span>头像地址</span>
-                  <span class="account-input-wrap">
-                    <Link2 :size="16" :stroke-width="1.8" />
-                    <input v-model="profileDraft.headerImg" type="text" autocomplete="photo" placeholder="https://… 或相对路径（可选）" />
+                    <input ref="firstField" v-model="profileDraft.nickName" type="text" autocomplete="nickname" maxlength="32" placeholder="1 至 32 个字符" />
                   </span>
                 </label>
                 <label class="account-field">
@@ -527,10 +548,10 @@ const signOut = async (): Promise<void> => {
                     <input v-model="profileDraft.phone" type="tel" autocomplete="tel" placeholder="可选" />
                   </span>
                 </label>
-                <div class="account-form-meta"><span>头像、邮箱和手机留空可清除，昵称必填</span></div>
+                <div class="account-form-meta"><span>昵称必填，邮箱和手机留空可清除。</span></div>
                 <div class="account-form-actions">
                   <button type="button" class="account-secondary" :disabled="isSubmitting" @click="backToProfile">返回</button>
-                  <button type="submit" class="account-submit" :disabled="isSubmitting">
+                  <button type="submit" class="account-submit" :disabled="isSubmitting || isUploadingAvatar">
                     <span>保存资料</span>
                     <ArrowRight :size="17" :stroke-width="1.8" />
                   </button>
@@ -611,6 +632,8 @@ const signOut = async (): Promise<void> => {
             </div>
           </Transition>
         </div>
+        </div>
+        </Transition>
       </section>
     </div>
   </Transition>
@@ -634,8 +657,7 @@ const signOut = async (): Promise<void> => {
 
 // =============== 弹窗卡片与品牌区配色 ===============
 // 说明：品牌区配色随主题切换；日间沿用石墨黑无彩色基调，夜间使用深空蓝底与炫蓝脉冲。
-// 布局：卡片宽高在两种模式下完全一致（高度按注册表单确定），品牌区占 42cqw、表单区占 58cqw，
-//       两者只通过 transform 对向平移换位，尺寸与形状不参与过渡，避免切换时拉伸变形。
+// 布局：各模式保留卡片尺寸；编辑资料隐藏品牌区、将表单居中，窄窗口单独处理滚动。
 .account-modal-card {
   --account-motion: 620ms cubic-bezier(0.65, 0, 0.35, 1);
   // 品牌区斜边的水平跨度
@@ -648,7 +670,6 @@ const signOut = async (): Promise<void> => {
   --account-art-pulse-glow: rgb(255 255 255 / 0.35);
   --account-art-kicker: rgb(245 245 245 / 0.62);
   --account-art-text: #f5f5f5;
-  --account-art-muted: rgb(245 245 245 / 0.6);
 
   position: relative;
   width: min(760px, calc(100vw - 32px));
@@ -665,6 +686,11 @@ const signOut = async (): Promise<void> => {
   container-type: inline-size;
 }
 
+.account-modal-view {
+  position: absolute;
+  inset: 0;
+}
+
 :root[data-theme='dark'] .account-modal-card {
   --account-art-bg:
     radial-gradient(ellipse 80% 55% at 18% 12%, rgb(76 194 255 / 0.14), transparent 70%),
@@ -675,7 +701,6 @@ const signOut = async (): Promise<void> => {
   --account-art-pulse-glow: rgb(76 194 255 / 0.6);
   --account-art-kicker: var(--ds-brand);
   --account-art-text: #f3f6ff;
-  --account-art-muted: rgb(217 227 255 / 0.66);
 }
 
 .account-close {
@@ -765,22 +790,50 @@ const signOut = async (): Promise<void> => {
   stroke-width: 1;
 }
 
-// 脉冲：pathLength 归一化为 100，短划从起点外 (-12) 走到终点外 (100)，剩余时间静止，形成间歇脉冲
+// 脉冲：pathLength 归一化为 100，短划在周期前 55% 内从起点走到终点，其余时间静止，形成间歇信号。
+// 行进用缓入缓出曲线（起步加速、抵达前减速落入节点），透明度独立动画让短划在两端淡入淡出，不在边缘突然出现或消失。
 .account-circuit-pulse {
   stroke: var(--account-art-pulse);
   stroke-width: 1.5;
   stroke-linecap: round;
-  stroke-dasharray: 12 100;
-  stroke-dashoffset: 12;
-  filter: drop-shadow(0 0 3px var(--account-art-pulse-glow));
-  animation: account-circuit-pulse linear infinite both;
+  stroke-dasharray: 14 100;
+  stroke-dashoffset: 14;
+  opacity: 0;
+  animation-name: account-circuit-travel, account-circuit-fade;
+  animation-timing-function: cubic-bezier(0.55, 0, 0.25, 1), linear;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
 }
 
+.account-circuit-pulse.is-glow {
+  stroke: var(--account-art-pulse-glow);
+  stroke-width: 5;
+  stroke-opacity: 0.5;
+}
+
+.account-circuit-node,
+.account-circuit-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+}
+
+// 节点与对应脉冲同周期：脉冲抵达（55%）时快速点亮并轻微放大，随后缓慢回落
 .account-circuit-node {
   fill: var(--account-art-pulse);
   opacity: 0.28;
-  // 与对应走线的脉冲同周期，在脉冲抵达终点（55%）时点亮
-  animation: account-circuit-node ease-in-out infinite both;
+  animation-name: account-circuit-node;
+}
+
+// 抵达时向外扩散一圈涟漪，强调信号落点
+.account-circuit-ring {
+  fill: none;
+  stroke: var(--account-art-pulse);
+  stroke-width: 1;
+  opacity: 0;
+  animation-name: account-circuit-ring;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 // 文案始终对齐卡片内的可见槽位：登录时槽位在品牌区内偏移一个斜边跨度，注册时偏移为 0
@@ -818,14 +871,9 @@ const signOut = async (): Promise<void> => {
   letter-spacing: 0.02em;
 }
 
-.account-art-caption {
-  color: var(--account-art-muted);
-  font-size: 12px;
-}
-
 // =============== 表单区 ===============
 // 说明：新旧表单内容叠放在同一网格单元内交叉过渡，离场内容不占位，避免切换时跳动。
-// 边界：卡片高度已按最长的注册表单确定，表单区不滚动，新增字段时需同步检查卡片高度
+// 边界：登录注册共用固定高度；编辑资料单独允许纵向滚动，保证窄窗口操作可达。
 .account-form-panel {
   z-index: 1;
   display: grid;
@@ -846,18 +894,8 @@ const signOut = async (): Promise<void> => {
   width: min(320px, 100%);
 }
 
-.account-form-kicker {
-  display: block;
-  color: var(--ds-brand);
-  font-size: 10px;
-  font-family: var(--ds-font-display);
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  line-height: 1.2;
-}
-
 .account-form-heading h2 {
-  margin: 8px 0 4px;
+  margin: 0 0 4px;
   color: var(--ds-text-primary);
   font-size: 25px;
   font-weight: 700;
@@ -978,7 +1016,7 @@ const signOut = async (): Promise<void> => {
 }
 
 // =============== 账号信息与资料编辑 ===============
-// 说明：资料概览使用扁平分隔线，次要操作并排、退出登录单独一行；高度需容纳在固定卡片内。
+// 说明：概览仅展示身份与操作；编辑模式使用单栏表单与头像草稿预览，低窗口允许滚动。
 .account-profile {
   display: grid;
   gap: 14px;
@@ -1043,36 +1081,69 @@ const signOut = async (): Promise<void> => {
   font-size: 12px;
 }
 
-.account-profile-list {
-  margin: 0;
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
-.account-profile-list > div {
+.account-avatar-editor {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--ds-border-subtle);
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ds-border-default);
+}
+
+.account-profile-form {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.account-profile-form > .account-field {
+  min-width: 0;
   font-size: 12px;
 }
 
-.account-profile-list dt {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 7px;
-  color: var(--ds-text-muted);
+.account-profile-form > .account-form-actions {
+  padding-top: 14px;
+  border-top: 1px solid var(--ds-border-default);
 }
 
-.account-profile-list dd {
+.account-avatar-edit {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-basis: 64px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.account-avatar-edit-hint {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  background: var(--ds-brand);
+  color: var(--ds-brand-contrast-text);
+}
+
+.account-avatar-editor-copy {
   min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--ds-text-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.account-avatar-editor button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.account-avatar-editor button:focus-visible {
+  outline: 2px solid var(--ds-brand);
+  outline-offset: 3px;
+}
+
+.account-avatar-editor-copy p {
+  margin: 4px 0 0;
+  color: var(--ds-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .account-profile-actions,
@@ -1086,23 +1157,49 @@ const signOut = async (): Promise<void> => {
   grid-template-columns: auto 1fr;
 }
 
-.account-secondary {
+// =============== 弹窗按钮 ===============
+// 说明：主按钮（提交）与次按钮（返回、编辑、改密、退出）共用高度、圆角、字号与焦点环，只以填充区分层级。
+// 交互：悬停变色，按下轻微下沉；禁用时降低不透明度，提交中显示等待光标。
+.account-secondary,
+.account-submit {
   display: flex;
+  width: 100%;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 40px;
-  margin-top: 2px;
-  padding: 0 16px;
-  border: 1px solid var(--ds-border-default);
+  margin-top: 4px;
+  padding: 0 18px;
+  border: 1px solid transparent;
   border-radius: 4px;
-  background: transparent;
-  color: var(--ds-text-primary);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
   font-weight: 650;
-  transition: background-color 160ms ease, border-color 160ms ease;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+
+.account-secondary:focus-visible,
+.account-submit:focus-visible {
+  outline: 2px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+}
+
+.account-secondary:active:not(:disabled),
+.account-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.account-secondary {
+  border-color: var(--ds-border-default);
+  background: var(--ds-bg-panel);
+  color: var(--ds-text-primary);
 }
 
 .account-secondary:hover:not(:disabled) {
@@ -1115,8 +1212,16 @@ const signOut = async (): Promise<void> => {
   opacity: 0.55;
 }
 
-.account-signout {
-  width: 100%;
+// 退出登录为次按钮，悬停时以错误色提示这是离开会话的操作。
+.account-signout:hover:not(:disabled) {
+  border-color: var(--ds-error-border);
+  background: var(--ds-error-bg);
+  color: var(--ds-error);
+}
+
+.account-form-actions .account-secondary {
+  width: auto;
+  min-width: 88px;
 }
 
 .is-spinning {
@@ -1155,27 +1260,24 @@ const signOut = async (): Promise<void> => {
 }
 
 .account-submit {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  min-height: 40px;
-  margin-top: 2px;
-  border: 1px solid var(--ds-brand);
-  border-radius: 4px;
+  border-color: var(--ds-brand);
   background: var(--ds-brand);
   color: var(--ds-brand-contrast-text);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
   font-weight: 700;
-  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
-.account-submit:hover {
+.account-submit:hover:not(:disabled) {
   border-color: var(--ds-brand-hover);
   background: var(--ds-brand-hover);
-  transform: translateY(-1px);
+}
+
+// 箭头图标随悬停向右轻移，提示“继续”方向。
+.account-submit svg {
+  transition: transform 160ms ease;
+}
+
+.account-submit:hover:not(:disabled) svg {
+  transform: translateX(2px);
 }
 
 .account-switch {
@@ -1189,6 +1291,31 @@ const signOut = async (): Promise<void> => {
 }
 
 // =============== 过渡动画 ===============
+.account-edit-open-enter-active,
+.account-edit-open-leave-active,
+.account-edit-return-enter-active,
+.account-edit-return-leave-active {
+  pointer-events: none;
+  transition: transform 260ms cubic-bezier(0.23, 1, 0.32, 1), opacity 260ms ease;
+}
+
+.account-edit-open-leave-active,
+.account-edit-return-leave-active {
+  transition-duration: 200ms;
+}
+
+.account-edit-open-leave-to,
+.account-edit-return-enter-from {
+  opacity: 0;
+  transform: translateX(-24px);
+}
+
+.account-edit-open-enter-from,
+.account-edit-return-leave-to {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
 .account-modal-enter-active,
 .account-modal-leave-active {
   transition: opacity 260ms ease;
@@ -1249,17 +1376,52 @@ const signOut = async (): Promise<void> => {
   100% { transform: translateX(0); }
 }
 
-@keyframes account-circuit-pulse {
-  0% { stroke-dashoffset: 12; }
+// 短划头部在 55% 到达终点（dashoffset 0 时短划尾端位于起点，-86 时头部位于终点）
+@keyframes account-circuit-travel {
+  0% { stroke-dashoffset: 14; }
   55%,
-  100% { stroke-dashoffset: -100; }
+  100% { stroke-dashoffset: -86; }
+}
+
+@keyframes account-circuit-fade {
+  0% { opacity: 0; }
+  8%,
+  50% { opacity: 1; }
+  60%,
+  100% { opacity: 0; }
 }
 
 @keyframes account-circuit-node {
   0%,
-  45%,
-  100% { opacity: 0.28; }
-  55% { opacity: 0.8; }
+  52% {
+    opacity: 0.28;
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+  57% {
+    opacity: 0.95;
+    transform: scale(1.5);
+    animation-timing-function: ease-out;
+  }
+  85%,
+  100% {
+    opacity: 0.28;
+    transform: scale(1);
+  }
+}
+
+@keyframes account-circuit-ring {
+  0%,
+  54% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  56% { opacity: 0.6; }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(4);
+  }
 }
 
 @media (max-width: 700px) {
@@ -1315,12 +1477,33 @@ const signOut = async (): Promise<void> => {
   }
 }
 
+// 编辑时使用完整面板居中表单；覆盖窄窗口品牌区占位，滚动只作用于表单内容。
+.is-edit-profile .account-form-panel {
+  inset: 0;
+  width: 100%;
+  align-items: safe center;
+  padding: 28px 24px;
+  overflow-y: auto;
+  transform: none;
+}
+
+.is-edit-profile .account-form-inner {
+  width: min(400px, 100%);
+}
+
+.account-close.is-edit-profile-close {
+  border-color: var(--ds-border-default);
+  color: var(--ds-text-primary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .account-art,
   .account-art-copy,
   .account-form-panel,
   .account-close,
-  .account-submit {
+  .account-secondary,
+  .account-submit,
+  .account-submit svg {
     transition: none;
   }
 
@@ -1329,7 +1512,8 @@ const signOut = async (): Promise<void> => {
     animation: none;
   }
 
-  .account-circuit-pulse {
+  .account-circuit-pulse,
+  .account-circuit-ring {
     display: none;
     animation: none;
   }
@@ -1344,6 +1528,20 @@ const signOut = async (): Promise<void> => {
   .account-form-backward-enter-active,
   .account-form-backward-leave-active {
     transition: opacity 160ms ease;
+  }
+
+  .account-edit-open-enter-active,
+  .account-edit-open-leave-active,
+  .account-edit-return-enter-active,
+  .account-edit-return-leave-active {
+    transition: opacity 160ms ease;
+  }
+
+  .account-edit-open-enter-from,
+  .account-edit-open-leave-to,
+  .account-edit-return-enter-from,
+  .account-edit-return-leave-to {
+    transform: none;
   }
 
   .account-form-forward-leave-to,

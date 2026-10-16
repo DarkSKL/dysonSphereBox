@@ -5,6 +5,8 @@ package multiplayer
 // Capabilities 描述原生数据面的服务端授权。
 // 职责：区分协议支持、中继启动与游戏回退；使用：客户端仅按明确 true 开启；边界：旧响应默认全 false。
 type Capabilities struct {
+	// ManagementEvents 职责：广告动态策略协议；使用：识别新版管理能力；边界：旧服务缺失为 false。
+	ManagementEvents bool `json:"managementEvents"`
 	// NativeDCUtR 职责：原生 DCUtR 契约；使用：中继协商准入；边界：false 禁止中继协商。
 	NativeDCUtR bool `json:"nativeDcutr"`
 	// RelayV2 职责：原生中继是否可用；使用：预约及拨号；边界：必须还有有效指定入口。

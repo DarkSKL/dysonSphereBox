@@ -21,6 +21,13 @@ var needChangePasswordState struct {
 	value bool
 }
 
+// sessionMutationState 职责：串行会话替换与响应副作用，记录登录/退出/切服代次。
+// 使用：SaveToken、请求快照及响应接受检查；边界：静默续期不递增，避免误拒同会话并发请求。
+var sessionMutationState struct {
+	sync.Mutex
+	generation uint64
+}
+
 // Token 返回当前保存的账号 token。
 // 职责：读取 Account/Token 配置。
 // 使用：Request 附加鉴权头、Logout 判断是否需要请求服务端时调用。
@@ -39,9 +46,17 @@ func Token() string {
 
 // SaveToken 保存服务端签发的账号 token。
 // 职责：写入 Account/Token 配置，供后续请求与重启后恢复会话使用。
-// 使用：登录成功与响应头携带 new-token 时调用。
-// 边界：配置未初始化时返回错误；空 token 等同于清除。
+// 使用：登录成功或显式替换会话时调用；静默续期由 applySessionResponse 写入。
+// 边界：递增会话代次以作废旧响应；配置未初始化时返回错误，空 token 等同于清除。
 func SaveToken(token string) error {
+	sessionMutationState.Lock()
+	defer sessionMutationState.Unlock()
+	sessionMutationState.generation++
+	return saveTokenValue(token)
+}
+
+// saveTokenValue 职责：写入 token 配置；使用：持有会话锁的替换或续期流程；边界：不变更会话代次。
+func saveTokenValue(token string) error {
 	if core.GLOBAL.Configure == nil || core.GLOBAL.Configure.AccountToken == nil {
 		return errors.New("configure account token is not initialized")
 	}
@@ -55,13 +70,46 @@ func SaveToken(token string) error {
 func ClearSession() error {
 	setNeedChangePassword(false)
 	err := SaveToken("")
+	notifySessionCleared()
+	return err
+}
+
+// notifySessionCleared 职责：在会话锁外通知连接清理；使用：主动注销或服务器401；边界：回调不得再次清除会话。
+func notifySessionCleared() {
 	sessionClearedHooks.Lock()
 	hooks := append([]func(){}, sessionClearedHooks.list...)
 	sessionClearedHooks.Unlock()
 	for _, hook := range hooks {
 		hook()
 	}
-	return err
+}
+
+// requestSessionSnapshot 职责：原子读取会话代次及 token；使用：认证请求发起前；边界：不缓存配置。
+func requestSessionSnapshot() (uint64, string) {
+	sessionMutationState.Lock()
+	defer sessionMutationState.Unlock()
+	return sessionMutationState.generation, Token()
+}
+
+// applySessionResponse 职责：原子检查会话并处理续期或401；使用：认证响应解码前；边界：旧会话响应无副作用，同会话续期不改变代次。
+func applySessionResponse(generation uint64, client *core.HTTPClient, refreshedToken string, unauthorized bool) (valid bool, refreshErr, clearErr error) {
+	sessionMutationState.Lock()
+	if sessionMutationState.generation != generation || client != core.GLOBAL.ServerClient {
+		sessionMutationState.Unlock()
+		return false, nil, nil
+	}
+	if unauthorized {
+		sessionMutationState.generation++
+		setNeedChangePassword(false)
+		clearErr = saveTokenValue("")
+	} else if refreshedToken != "" {
+		refreshErr = saveTokenValue(refreshedToken)
+	}
+	sessionMutationState.Unlock()
+	if unauthorized {
+		notifySessionCleared()
+	}
+	return true, refreshErr, clearErr
 }
 
 // sessionClearedHooks 保存会话清除后的回调。

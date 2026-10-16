@@ -1,0 +1,20 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><div id="app"></div><script type="module">
+import {createApp,h,ref,nextTick} from '/node_modules/.vite/deps/vue.js'
+import {NMessageProvider} from '/node_modules/.vite/deps/naive-ui.js'
+import AccountModal from '/src/components/layout/account-modal.vue'
+import * as account from '/src/services/account.ts'
+import '/src/style.scss'
+const oldImage='/avatar-old.png',newImage='/avatar-new.png'
+let stored={ID:7,userName:'avatarTester',nickName:'原昵称',headerImg:oldImage,phone:'123',email:'old@example.com'}
+const state={uploads:[],saves:[],pending:null,failure:false}
+window.go={system:{ConfigurationService:{GetConfig:async()=> 'http://127.0.0.1:5177'},AccountService:{
+GetSessionState:async()=>({authenticated:true,needChangePassword:false}),
+GetCurrentUser:async()=>({...stored}),
+UploadAvatar:(name,base64)=>new Promise((resolve,reject)=>{state.uploads.push({name,base64}); state.pending=()=>{if(state.failure)reject('服务器拒绝图片');else{stored={...stored,headerImg:newImage};resolve({...stored})}}}),
+SetSelfInfo:async payload=>{const present=Object.fromEntries(Object.entries(payload).filter(([,v])=>v!==undefined&&v!==null));state.saves.push(present);stored={...stored,...present}}
+}}}
+await account.restoreAccountSession()
+const open=ref(true)
+createApp({setup:()=>()=>h(NMessageProvider,null,{default:()=>h(AccountModal,{open:open.value,onClose:()=>open.value=false})})}).mount('#app')
+window.avatarTest={account,state,open,stored:()=>stored,nextTick}
+</script></html>

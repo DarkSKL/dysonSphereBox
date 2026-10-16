@@ -22,8 +22,10 @@ import (
 	"DysonSphereBox/helper/multiplayer/socket"
 
 	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // options 是控制器的可注入依赖。
@@ -44,16 +46,20 @@ type options struct {
 // session 是一次控制链路会话。
 // 职责：持有 socket、临时密钥 host 与会话信息；使用：事件处理以指针比较判断是否仍是当前会话；边界：断开后整体丢弃。
 type session struct {
-	conn        *socket.Conn
-	host        *p2p.Host
-	info        mpAPI.SessionOpenReply
-	port        int
-	stop        chan struct{}
+	conn *socket.Conn
+	host *p2p.Host
+	info mpAPI.SessionOpenReply
+	port int
+	stop chan struct{}
+	// initialized 职责：阻止打开会话回复覆盖紧接着到达的策略；使用：事件分发等待初始化；边界：失败时由 stop 解除等待。
+	initialized chan struct{}
 	firstReport chan struct{}
 	reportOnce  sync.Once
 	terminate   int
 	report      p2p.Report
 	observed    []p2p.Observation
+	// autoNATReachability 职责：官方 AutoNAT 入站判断；使用：地址上报和本地诊断；边界：初始 unknown，事件只影响诊断，不筛除 observed 候选。
+	autoNATReachability string
 	// observeResults 职责：最近一次观测的逐节点结果；使用：投影中拿不到 observed 地址的原因；边界：每次重新观测整体替换。
 	observeResults []p2p.ObserverResult
 	// tracer 职责：本会话的 link.trace 上报器；使用：各 stage；边界：socket 建立后创建、endSession 关闭；nil 时上报为空操作。
@@ -82,10 +88,14 @@ type controller struct {
 	stopLoop   chan struct{}
 	connState  string
 	lastErr    int
-	sess       *session
-	lobby      LobbyView
-	room       *roomState
-	pending    map[string]int
+	// lastMessage 职责：保留服务器拒绝说明；使用：离线反馈；边界：新连接清空。
+	lastMessage string
+	// notice 职责：保留最近房间管理原因；使用：回到大厅展示；边界：不驱动重连。
+	notice  *NoticeView
+	sess    *session
+	lobby   LobbyView
+	room    *roomState
+	pending map[string]int
 }
 
 func newController(opts options) *controller {
@@ -119,6 +129,8 @@ func (c *controller) connect() ActionResult {
 	}
 	c.wantOnline = true
 	c.lastErr = 0
+	c.lastMessage = ""
+	c.notice = nil
 	c.connState = mpConstant.ConnConnecting
 	stop := make(chan struct{})
 	c.stopLoop = stop
@@ -233,7 +245,7 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		if err != nil {
 			return false, mpConstant.CodeNotConnected, false
 		}
-		sess := &session{host: h, port: port, stop: make(chan struct{}), firstReport: make(chan struct{})}
+		sess := &session{host: h, port: port, stop: make(chan struct{}), initialized: make(chan struct{}), firstReport: make(chan struct{}), autoNATReachability: "unknown"}
 		conn, err := socket.Dial(context.Background(), socket.Config{URL: url, Token: c.opts.token()},
 			func(frame *mpAPI.ActiveFrame) (int, string) { return c.handleEvent(sess, frame) })
 		if err != nil {
@@ -266,7 +278,7 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		c.mu.Unlock()
 
 		reply, err := conn.Request(context.Background(), mpConstant.OpSessionOpen, mpAPI.SessionOpenRequest{
-			ProtocolVersion: mpConstant.ProtocolVersion, ClientVersion: c.opts.clientVersion, PeerID: h.ID().String()})
+			ProtocolVersion: mpConstant.ProtocolVersion, ClientVersion: c.opts.clientVersion, PeerID: h.ID().String(), ManagementEvents: true})
 		if err == nil && reply.Code == mpConstant.CodePeerIDInUse {
 			c.endSession(sess)
 			continue
@@ -277,10 +289,23 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 				code = reply.Code
 			}
 			c.endSession(sess)
-			permanent := code == mpConstant.CodeProtocolVersion || code == mpConstant.CodeClientTooOld
+			c.mu.Lock()
+			if c.stopLoop == stop && err == nil {
+				c.lastMessage = socket.ReplyMessage(reply)
+			}
+			c.mu.Unlock()
+			permanent := code == mpConstant.CodeProtocolVersion || code == mpConstant.CodeClientTooOld || code == mpConstant.CodeAdmissionPaused
 			return false, code, permanent
 		}
+		c.mu.Lock()
 		_ = json.Unmarshal(reply.Data, &sess.info)
+		if sess.info.Policy != nil && sess.info.Policy.MaxMembers > 0 {
+			sess.info.Limits.MaxMembers = sess.info.Policy.MaxMembers
+		}
+		c.mu.Unlock()
+		// 官方 AutoNAT 回拨使用独立临时 PeerID；准入仅限 observer
+		// 入口与服务端明确配置的公网出口，不授予游戏协议权限。
+		h.Gater.SetAutoNATSources(p2p.AutoNATSources(context.Background(), sess.info.Observers, sess.info.AutoNATEgressIPs))
 		if err := h.ConfigureRelay(sess.info.Capabilities, sess.info.Relays, func(state p2p.RelayState, duration time.Duration) {
 			sess.tracer.Trace(mpAPI.LinkTraceRequest{Stage: mpConstant.TraceRelayReserve, OK: state.ExpiresAtMs > time.Now().UnixMilli(),
 				DurationMs: duration.Milliseconds(), Error: state.Error, Detail: fmt.Sprintf("relay=%s expires=%d duration=%ds data=%d", state.PeerID, state.ExpiresAtMs, state.LimitDurationSeconds, state.LimitDataBytes)})
@@ -293,6 +318,7 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		c.mu.Lock()
 		c.connState, c.lastErr = mpConstant.ConnOnline, 0
 		watching := c.lobby.Watching
+		close(sess.initialized)
 		c.mu.Unlock()
 		c.emit()
 		go c.addrLoop(sess)
@@ -308,8 +334,10 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 			conn.Close()
 		}
 		c.endSession(sess)
+		c.mu.Lock()
 		reason := sess.terminate
-		if reason >= mpConstant.ReasonTokenInvalid && reason <= mpConstant.ReasonReplaced {
+		c.mu.Unlock()
+		if reason != 0 {
 			return true, reason, true
 		}
 		if reason == 0 {
@@ -370,15 +398,40 @@ func teardownRoom(sess *session, room *roomState) {
 // addrLoop 观测地址、上报 peer.addrs，并在网卡或 libp2p 地址变化时重报。
 // 防火墙每个会话（新的 libp2p host）检测一次，与首次观测并行执行。
 func (c *controller) addrLoop(sess *session) {
+	// 会话关闭立即取消观测和地址上报，避免旧 host 继续拨号或覆盖新会话诊断。
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-sess.stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	firewallCh := make(chan bool, 1)
 	go func() { firewallCh <- c.opts.firewall() }()
 	firewall, firewallKnown := true, false
 	var last p2p.Report
 	reported := false
+	// lastObserve 限制断线事件触发的观测重建频率。观测轮次会主动关闭并重建
+	// observer 连接，不能在一连串 connectedness 事件中递归重建。
+	var lastObserve time.Time
 	report := func(observe bool) {
 		if observe {
-			observed, results := c.opts.observe(context.Background(), sess.host, sess.info.Observers, c.opts.observeTimeout)
+			if !lastObserve.IsZero() && time.Since(lastObserve) < 15*time.Second {
+				observe = false
+			} else {
+				lastObserve = time.Now()
+			}
+		}
+		if observe {
+			observed, results := c.opts.observe(ctx, sess.host, sess.info.Observers, c.opts.observeTimeout)
+			sess.host.SetObservedAddrs(sess.info.Observers, observed)
 			c.mu.Lock()
+			if c.sess != sess || ctx.Err() != nil {
+				c.mu.Unlock()
+				return
+			}
 			sess.observed = observed
 			sess.observeResults = results
 			c.mu.Unlock()
@@ -395,14 +448,14 @@ func (c *controller) addrLoop(sess *session) {
 		c.mu.Lock()
 		observed := sess.observed
 		c.mu.Unlock()
-		current := p2p.Collect(sess.host, observed, firewall, c.opts.keepLoopback)
+		current := p2p.Collect(sess.host, observed, firewall, c.opts.keepLoopback, sess.autoNATReachability)
 		c.mu.Lock()
 		sess.report = current
 		c.mu.Unlock()
 		if reported && slices.Equal(current.Addrs, last.Addrs) && sameNet(current.Net, last.Net) {
 			return
 		}
-		reply, err := sess.conn.Request(context.Background(), mpConstant.OpPeerAddrs,
+		reply, err := sess.conn.Request(ctx, mpConstant.OpPeerAddrs,
 			mpAPI.PeerAddrsRequest{Addrs: current.Addrs, Net: current.Net})
 		if err == nil && reply.Code == 0 {
 			last, reported = current, true
@@ -412,7 +465,7 @@ func (c *controller) addrLoop(sess *session) {
 	}
 	report(true)
 
-	sub, err := sess.host.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
+	sub, err := sess.host.EventBus().Subscribe([]interface{}{new(event.EvtLocalAddressesUpdated), new(event.EvtLocalReachabilityChanged), new(event.EvtPeerConnectednessChanged)})
 	var updates <-chan interface{}
 	if err == nil {
 		defer sub.Close()
@@ -425,8 +478,22 @@ func (c *controller) addrLoop(sess *session) {
 		select {
 		case <-sess.stop:
 			return
-		case <-updates:
-			report(false)
+		case raw, open := <-updates:
+			if !open {
+				updates = nil
+				continue
+			}
+			if evt, ok := raw.(event.EvtLocalReachabilityChanged); ok {
+				sess.autoNATReachability = autoNATText(evt.Reachability)
+			} else if evt, ok := raw.(event.EvtPeerConnectednessChanged); ok && evt.Connectedness == network.NotConnected && observerPeer(sess.info.Observers, evt.Peer) {
+				// observedaddrs.Manager 在连接断开时立即移除该连接贡献的
+				// observed 地址。仅在 observer 断线时重观测，且由 15s 冷却
+				// 保证有界，避免高频重建冲掉最后候选。
+				report(true)
+			}
+			if _, ok := raw.(event.EvtPeerConnectednessChanged); !ok {
+				report(false)
+			}
 		case <-sess.host.RelayUpdates():
 			report(false)
 		case <-ticker.C:
@@ -439,6 +506,12 @@ func (c *controller) addrLoop(sess *session) {
 				}
 				c.mu.Unlock()
 				report(true)
+			} else if observerDisconnected(sess.host, sess.info.Observers) {
+				report(true)
+			} else if time.Since(lastObserve) >= 5*time.Minute {
+				// NAT 映射变化未必伴随网卡事件；低频刷新 identify 的
+				// observed 地址，避免长期使用旧映射。
+				report(true)
 			} else if !reported {
 				report(false)
 			}
@@ -446,10 +519,51 @@ func (c *controller) addrLoop(sess *session) {
 	}
 }
 
+// observerPeer 判断断线事件是否来自 session.open 指定的观测节点。
+// 职责：限定 observed 地址重建触发源；使用：addrLoop；边界：非法入口忽略，不影响游戏成员连接。
+func observerPeer(observers []string, id peer.ID) bool {
+	for _, raw := range p2p.FirstObserverAddrs(observers) {
+		addr, err := ma.NewMultiaddr(raw)
+		if err != nil {
+			continue
+		}
+		info, err := peer.AddrInfoFromP2pAddr(addr)
+		if err == nil && info.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// observerDisconnected 检查指定观测节点是否仍有连接承载原生 observed 地址。
+// 职责：兜底丢失的断线事件；使用：addrLoop 的 10s 检查；边界：无合法 observer 时不触发重试。
+func observerDisconnected(h *p2p.Host, observers []string) bool {
+	observers = p2p.FirstObserverAddrs(observers)
+	if len(observers) == 0 {
+		return false
+	}
+	addr, err := ma.NewMultiaddr(observers[0])
+	if err != nil {
+		return false
+	}
+	info, err := peer.AddrInfoFromP2pAddr(addr)
+	return err == nil && h.Network().Connectedness(info.ID) != network.Connected
+}
+
 func sameNet(a, b mpAPI.NetInfo) bool {
-	return a.UPnP == b.UPnP && a.IPv6 == b.IPv6 && a.FirewallRule == b.FirewallRule &&
-		(a.NATConsistent == nil) == (b.NATConsistent == nil) &&
-		(a.NATConsistent == nil || *a.NATConsistent == *b.NATConsistent)
+	return a.UPnP == b.UPnP && a.IPv6 == b.IPv6 && a.FirewallRule == b.FirewallRule && a.AutoNATReachability == b.AutoNATReachability
+}
+
+// autoNATText 职责：把官方 AutoNAT 状态转换成控制链路诊断枚举；使用：reachability 事件；边界：未知枚举保守上报 unknown。
+func autoNATText(reachability network.Reachability) string {
+	switch reachability {
+	case network.ReachabilityPublic:
+		return "public"
+	case network.ReachabilityPrivate:
+		return "private"
+	default:
+		return "unknown"
+	}
 }
 
 // ===================== 意图方法 =====================
@@ -462,6 +576,10 @@ func (c *controller) request(name string, opcode int, data any, out any) ActionR
 	if sess == nil || !online {
 		c.mu.Unlock()
 		return ActionResult{Code: mpConstant.CodeNotConnected, Msg: "控制链路未连接"}
+	}
+	if policy := sess.info.Policy; policy != nil && (!policy.AdmissionEnabled || policy.Maintenance) && (opcode == mpConstant.OpRoomCreate || opcode == mpConstant.OpRoomJoin) {
+		c.mu.Unlock()
+		return ActionResult{Code: mpConstant.CodeAdmissionPaused, Msg: policy.Message}
 	}
 	c.pending[name]++
 	c.mu.Unlock()
@@ -484,6 +602,9 @@ func (c *controller) request(name string, opcode int, data any, out any) ActionR
 		return ActionResult{Code: mpConstant.CodeDisconnected, Msg: err.Error()}
 	}
 	result := ActionResult{Code: reply.Code, Msg: reply.Msg}
+	if reply.Code != 0 {
+		result.Msg = socket.ReplyMessage(reply)
+	}
 	if reply.Code == 0 && out != nil {
 		if err := json.Unmarshal(reply.Data, out); err == nil {
 			result.Data = out
@@ -582,6 +703,16 @@ func (c *controller) retryLink() ActionResult {
 
 // handleEvent 处理一个服务器事件并返回回复码。
 func (c *controller) handleEvent(sess *session, frame *mpAPI.ActiveFrame) (int, string) {
+	if sess.initialized != nil {
+		select {
+		case <-sess.initialized:
+		case <-sess.stop:
+			return 0, ""
+		}
+	}
+	if frame.Opcode == mpConstant.EvSessionPolicyAfter {
+		return c.applyPolicy(sess, frame)
+	}
 	c.mu.Lock()
 	if c.sess != sess {
 		// 已拆除的旧会话上的残余事件不再应用
@@ -600,15 +731,28 @@ func (c *controller) handleEvent(sess *session, frame *mpAPI.ActiveFrame) (int, 
 func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, string, bool) {
 	selfID := sess.info.User.UserID
 	switch frame.Opcode {
-	case mpConstant.EvSessionTerminateBefore, mpConstant.EvLobbyChangeBefore, mpConstant.EvRoomCreateBefore,
+	case mpConstant.EvSessionPolicyBefore, mpConstant.EvLobbyChangeBefore, mpConstant.EvRoomCreateBefore,
 		mpConstant.EvRoomInviteBefore, mpConstant.EvMemberLinkBefore, mpConstant.EvHostAddrsBefore:
+		return 0, "", false
+
+	case mpConstant.EvSessionTerminateBefore:
+		// before 只告知终止即将发生，等 after 再拆除数据面，避免过早关闭事件回复所需的控制链路。
 		return 0, "", false
 
 	case mpConstant.EvSessionTerminateAfter:
 		var data mpAPI.EventBase
-		_ = json.Unmarshal(frame.Data, &data)
+		if json.Unmarshal(frame.Data, &data) != nil {
+			return mpConstant.CodeApplyFailed, "bad data", false
+		}
 		sess.terminate = data.Reason
-		return 0, "", false
+		c.lastErr, c.lastMessage = data.Reason, data.Message
+		c.notice = &NoticeView{Code: data.Reason, Message: data.Message}
+		teardownRoom(sess, c.room)
+		c.room = nil
+		c.connState = mpConstant.ConnReconnecting
+		// 控制链路仍回复事件；数据面立即撤销，随后由 endSession 完成会话释放。
+		go sess.host.Close()
+		return 0, "", true
 
 	case mpConstant.EvLobbyChangeAfter:
 		var data mpAPI.LobbyChangeEvent
@@ -629,10 +773,15 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		forwarder.Start()
 		c.room = &roomState{view: RoomView{Snapshot: *data.Room, Role: mpConstant.RoleHost},
 			hostForwarder: forwarder, pendingJoin: map[int64]peer.ID{}, leaving: map[int64]peer.ID{}}
+		c.notice = nil
 		return 0, "", true
 
 	case mpConstant.EvRoomCloseBefore:
-		if c.room != nil {
+		var data mpAPI.EventBase
+		if json.Unmarshal(frame.Data, &data) != nil {
+			return mpConstant.CodePrepareFailed, "bad data", false
+		}
+		if c.room != nil && data.RoomID == c.room.view.Snapshot.RoomID {
 			if c.room.hostForwarder != nil {
 				c.room.hostForwarder.SetClosing()
 			}
@@ -644,10 +793,16 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 
 	case mpConstant.EvRoomCloseAfter:
 		var data mpAPI.EventBase
-		_ = json.Unmarshal(frame.Data, &data)
-		if c.room != nil && (data.RoomID == "" || data.RoomID == c.room.view.Snapshot.RoomID) {
+		if json.Unmarshal(frame.Data, &data) != nil {
+			return mpConstant.CodeApplyFailed, "bad data", false
+		}
+		if data.Result != 0 {
+			return 0, "", false
+		}
+		if c.room != nil && data.RoomID == c.room.view.Snapshot.RoomID {
 			teardownRoom(sess, c.room)
 			c.room = nil
+			c.notice = &NoticeView{Code: data.Reason, Message: data.Message}
 			return 0, "", true
 		}
 		return 0, "", false
@@ -739,6 +894,7 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		if data.UserID == selfID {
 			teardownRoom(sess, c.room)
 			c.room = nil
+			c.notice = &NoticeView{Code: data.Reason, Message: data.Message}
 			return 0, "", true
 		}
 		if c.room.hostForwarder != nil {
@@ -773,10 +929,11 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 			return mpConstant.CodeApplyFailed, "bad data", false
 		}
 		if c.room != nil && data.RoomID == c.room.view.Snapshot.RoomID && data.Host != nil && c.room.link != nil {
+			data.Host.Addrs = sess.host.FilterRelayAddrs(data.Host.Addrs, c.room.link.hostID)
 			c.room.endpoint = data.Host
 			c.room.link.updateEndpoint(*data.Host)
 		}
-		return 0, "", false
+		return 0, "", true
 
 	}
 	return mpConstant.CodeUnknownOpcode, "unknown opcode", false
@@ -784,10 +941,12 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 
 // startMember 加入已提交：开本地端口 M 并启动链路。
 func (c *controller) startMember(sess *session, data mpAPI.MemberJoinEvent) (int, string, bool) {
+	c.notice = nil
 	hostID, err := peer.Decode(data.Host.PeerID)
 	if err != nil {
 		return mpConstant.CodeApplyFailed, "bad host peerId", false
 	}
+	data.Host.Addrs = sess.host.FilterRelayAddrs(data.Host.Addrs, hostID)
 	room := &roomState{view: RoomView{Snapshot: *data.Room, Role: mpConstant.RoleMember}, endpoint: data.Host,
 		pendingJoin: map[int64]peer.ID{}, leaving: map[int64]peer.ID{}}
 	// 打洞时房主回拨，成员只放行房主
@@ -882,13 +1041,14 @@ func (c *controller) snapshotState() State {
 	c.revision++
 	state := State{
 		StateRevision: c.revision,
-		Connection:    ConnectionView{State: c.connState, LastErrorCode: c.lastErr},
+		Connection:    ConnectionView{State: c.connState, LastErrorCode: c.lastErr, LastErrorMessage: c.lastMessage},
+		Notice:        c.notice,
 		Account:       AccountView{LoggedIn: c.opts.token() != ""},
 		Lobby:         LobbyView{Watching: c.lobby.Watching, Total: c.lobby.Total, List: append([]mpAPI.RoomSummary{}, c.lobby.List...)},
 		Links:         []LinkView{},
 		LocalPorts:    []forward.LocalPort{},
 		Network: NetworkView{ObservedAddrs: []string{}, Targets: []forward.TargetState{}, ReportedAddrs: []p2p.ClassifiedAddr{},
-			Observed: []p2p.ClassifiedAddr{}, ObserveErrors: []string{}, HostAddrs: []p2p.ClassifiedAddr{}, NATMappings: []string{}},
+			Observed: []p2p.ClassifiedAddr{}, ObserveErrors: []string{}, HostAddrs: []p2p.ClassifiedAddr{}},
 		Pending: []string{},
 	}
 	for name := range c.pending {
@@ -899,12 +1059,11 @@ func (c *controller) snapshotState() State {
 		state.Account.UserID, state.Account.Nickname = sess.info.User.UserID, sess.info.User.Nickname
 		if sess.info.SessionID != "" {
 			state.Session = &SessionView{SessionID: sess.info.SessionID, PeerID: sess.host.ID().String(),
-				ListenPort: sess.port, Limits: sess.info.Limits, Capabilities: sess.info.Capabilities, Relays: sess.host.RelayStates()}
+				ListenPort: sess.port, Limits: sess.info.Limits, Policy: sess.info.Policy, Capabilities: sess.info.Capabilities, Relays: sess.host.RelayStates()}
 		}
 		state.Network.UPnP = sess.report.Net.UPnP
 		state.Network.IPv6 = sess.report.Net.IPv6
-		state.Network.NATConsistent = sess.report.Net.NATConsistent
-		state.Network.NATMappings = append(state.Network.NATMappings, sess.report.NATMappings...)
+		state.Network.AutoNATReachability = sess.report.Net.AutoNATReachability
 		state.Network.FirewallRule = sess.report.Net.FirewallRule
 		state.Network.ObservedAddrs = append(state.Network.ObservedAddrs, sess.report.Observed...)
 		state.Network.ReportedAddrs = p2p.ClassifyAddrs(sess.report.Addrs)

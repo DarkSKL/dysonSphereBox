@@ -103,6 +103,20 @@ const handleUserEntry = (): void => {
   isAccountModalOpen.value = true
 }
 
+// =============== 登录限制入口 ===============
+// 说明：requiresAuth 入口在未登录时保持可见但降低亮度；点击时提示先登录并打开账号弹窗，不进入页面。
+// 边界：在捕获阶段 preventDefault，RouterLink 检测到 defaultPrevented 后跳过导航；只拦截点击，不拦截已在页面内的停留。
+const isEntryLocked = (entry: {readonly requiresAuth?: boolean}): boolean => (
+  Boolean(entry.requiresAuth) && !isAccountAuthenticated.value
+)
+
+const guardLockedEntry = (event: MouseEvent, entry: {readonly requiresAuth?: boolean, readonly label: string}): void => {
+  if (!isEntryLocked(entry)) return
+  event.preventDefault()
+  message.warning(`请先登录账号，再使用${entry.label}`)
+  isAccountModalOpen.value = true
+}
+
 const title = computed(() => route.meta.title || '戴森球盒子')
 const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模式' : '切换到夜间模式'))
 
@@ -190,10 +204,12 @@ const closeWindow = (): void => {
           :to="workspace.to"
           class="app-rail-button app-rail-game"
           role="tab"
-          :class="{'is-selected': workspace.key === currentWorkspace?.key}"
-          :title="workspace.label"
+          :class="{'is-selected': workspace.key === currentWorkspace?.key, 'is-locked': isEntryLocked(workspace)}"
+          :title="isEntryLocked(workspace) ? `${workspace.label}（登录后可用）` : workspace.label"
           :aria-label="workspace.label"
           :aria-selected="workspace.key === currentWorkspace?.key"
+          :aria-disabled="isEntryLocked(workspace) || undefined"
+          @click.capture="guardLockedEntry($event, workspace)"
         >
           <component :is="workspace.icon" :size="20" aria-hidden="true" />
           <span class="app-rail-game-label">{{ workspace.shortLabel }}</span>
@@ -319,9 +335,12 @@ const closeWindow = (): void => {
               :key="item.key"
               :to="item.to"
               class="app-nav-link"
+              :class="{'is-locked': isEntryLocked(item)}"
               exact-active-class="app-nav-link-active"
               :aria-label="item.label"
-              :title="isSidebarCollapsed ? item.label : undefined"
+              :aria-disabled="isEntryLocked(item) || undefined"
+              :title="isEntryLocked(item) ? `${item.label}（登录后可用）` : isSidebarCollapsed ? item.label : undefined"
+              @click.capture="guardLockedEntry($event, item)"
             >
               <component :is="item.icon" :size="20" class="app-nav-icon" aria-hidden="true" />
               <span class="app-nav-label">{{ item.label }}</span>
@@ -762,6 +781,12 @@ const closeWindow = (): void => {
   border-color: transparent;
   background: transparent;
   color: var(--ds-brand);
+}
+
+// 未登录时的受限入口：降低亮度提示不可用，点击仍可触发登录提示。
+.app-rail-game.is-locked,
+.app-nav-link.is-locked {
+  opacity: 0.45;
 }
 
 // 全局入口列表：悬浮在触发按钮正上方，按钮尺寸与样式和快捷栏按钮一致，不使用抽屉面板。

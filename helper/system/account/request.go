@@ -30,6 +30,24 @@ const responseBodyLimit = 4 << 20
 // 使用：本包的 Captcha、Login、GetCurrentUser 等流程调用。
 // 边界：路径按服务器基础地址的相对路径解析，保留基础地址中的路径前缀；payload 为 nil 时不发送请求体。
 func request[T any](ctx context.Context, method string, path string, payload interface{}, authenticated bool) (result T, resultErr error) {
+	var body io.Reader
+	contentType := ""
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			recordRequestFailure(method, path, "encodeRequest", 0, 0, err)
+			return result, fmt.Errorf("编码请求数据失败：%w", err)
+		}
+		body = bytes.NewReader(data)
+		contentType = "application/json"
+	}
+	return requestBody[T](ctx, method, path, body, contentType, authenticated)
+}
+
+// requestBody 职责：统一发送 JSON 或 multipart 账号请求并处理鉴权与响应。
+// 使用：request 和头像上传传入已编码正文及匹配的 Content-Type。
+// 边界：不记录正文，复用 token 续期、401 清理及业务错误语义。
+func requestBody[T any](ctx context.Context, method, path string, body io.Reader, contentType string, authenticated bool) (result T, resultErr error) {
 	// 传输错误已有 URL 与错误链记录；只补齐构造、业务拒绝和响应解析失败，不记录成功读取与请求正文。
 	stage, status, code := "initialize", 0, 0
 	transportFailed := false
@@ -47,28 +65,25 @@ func request[T any](ctx context.Context, method string, path string, payload int
 		return result, errors.New("服务器连接尚未初始化，请稍后重试。")
 	}
 
-	var body io.Reader
-	if payload != nil {
-		stage = "encodeRequest"
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return result, fmt.Errorf("编码请求数据失败：%w", err)
-		}
-		body = bytes.NewReader(data)
-	}
-
 	stage = "constructRequest"
 	httpRequest, err := client.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
 	if err != nil {
 		return result, fmt.Errorf("构造服务器请求失败：%w", err)
 	}
 	httpRequest.Header.Set("Accept", "application/json")
-	if payload != nil {
-		httpRequest.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		httpRequest.Header.Set("Content-Type", contentType)
 	}
+	requestToken := ""
+	var requestGeneration uint64
 	if authenticated {
-		if token := Token(); token != "" {
-			httpRequest.Header.Set(systemAPI.AccountTokenHeader, token)
+		requestGeneration, requestToken = requestSessionSnapshot()
+		// 快照前若已切换客户端，不得把新会话 token 发给先前构造请求的服务器。
+		if client != core.GLOBAL.ServerClient {
+			return result, errors.New("服务器已切换，请重试。")
+		}
+		if requestToken != "" {
+			httpRequest.Header.Set(systemAPI.AccountTokenHeader, requestToken)
 		}
 	}
 
@@ -79,15 +94,17 @@ func request[T any](ctx context.Context, method string, path string, payload int
 	}
 	defer response.Body.Close()
 	status = response.StatusCode
-
-	if refreshedToken := response.Header.Get(systemAPI.AccountNewTokenHeader); refreshedToken != "" {
-		if err := SaveToken(refreshedToken); err != nil {
-			recordRequestFailure(method, path, "persistSession", status, code, err)
+	// 同一会话中的并发续期仍接受，旧会话的续期和401由同一锁下的代次检查阻断。
+	if authenticated {
+		valid, refreshErr, clearErr := applySessionResponse(requestGeneration, client, response.Header.Get(systemAPI.AccountNewTokenHeader), status == http.StatusUnauthorized)
+		if !valid {
+			return result, errors.New("账号会话或服务器已切换，请重试。")
 		}
-	}
-	if response.StatusCode == http.StatusUnauthorized {
-		if err := ClearSession(); err != nil {
-			recordRequestFailure(method, path, "clearSession", status, code, err)
+		if refreshErr != nil {
+			recordRequestFailure(method, path, "persistSession", status, code, refreshErr)
+		}
+		if clearErr != nil {
+			recordRequestFailure(method, path, "clearSession", status, code, clearErr)
 		}
 	}
 

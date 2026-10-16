@@ -7,6 +7,7 @@ package p2p
 import (
 	"crypto/rand"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // Host 是一次控制链路生命周期内的 libp2p host。
@@ -44,6 +46,10 @@ type Host struct {
 	closeOnce sync.Once
 	// closeErr 职责：首次关闭结果；使用：重复 Close 返回；边界：由 closeOnce 同步。
 	closeErr error
+	// observeGate 职责：串行化同一 host 的观测轮次；使用：ObserveDetailed 可取消获取；边界：不锁住游戏或中继拨号。
+	observeGate chan struct{}
+	// observedFactory 职责：将指定 observer 证实的当前公网地址提供给官方 AutoNAT 与地址宣告；使用：观测结果更新；边界：仅在对应原生连接存活时生效。
+	observedFactory *observedAddrFactory
 }
 
 // ListenAddrs 返回监听端口 port 的 IPv4/IPv6 QUIC 与 TCP 监听地址。
@@ -75,6 +81,7 @@ func NewHost(port int, listen []string) (*Host, error) {
 	// DisableMetrics 只关闭 prometheus 指标；逐地址拨号错误另由 dialRecorder 经 swarm MetricsTracer 收集
 	dials := newDialRecorder()
 	punches := &punchTracer{}
+	observedFactory := &observedAddrFactory{}
 	h, err := libp2p.New(
 		libp2p.SwarmOpts(swarm.WithMetricsTracer(dials)),
 		libp2p.Identity(key),
@@ -84,6 +91,7 @@ func NewHost(port int, listen []string) (*Host, error) {
 		libp2p.NATPortMap(),
 		libp2p.EnableRelay(),
 		libp2p.EnableHolePunching(holepunch.WithTracer(punches)),
+		libp2p.AddrsFactory(observedFactory.addrs),
 		libp2p.ResourceManager(manager),
 		libp2p.ConnectionGater(gater),
 		libp2p.DisableMetrics(),
@@ -92,12 +100,14 @@ func NewHost(port int, listen []string) (*Host, error) {
 		_ = manager.Close()
 		return nil, err
 	}
-	return &Host{Host: h, Gater: gater, Port: port, dials: dials, punches: punches,
-		relay: &relayPolicy{entries: map[peer.ID][]ma.Multiaddr{}, states: map[peer.ID]RelayState{}, expiry: map[peer.ID]*time.Timer{}, updates: make(chan struct{}, 1)}}, nil
+	observedFactory.setNetwork(h.Network())
+	return &Host{Host: h, Gater: gater, Port: port, dials: dials, punches: punches, observeGate: make(chan struct{}, 1),
+		observedFactory: observedFactory,
+		relay:           &relayPolicy{entries: map[peer.ID][]ma.Multiaddr{}, states: map[peer.ID]RelayState{}, expiry: map[peer.ID]*time.Timer{}, updates: make(chan struct{}, 1)}}, nil
 }
 
 // newResourceManager 构建显式限额的资源管理器。
-// 职责：按 16 人 × 每人 64 TCP + 32 UDP stream 计算上限；使用：NewHost；边界：不使用自动缩放默认值。
+// 职责：按支持的人数硬上界 × 每人 64 TCP + 32 UDP stream 计算容量；使用：NewHost；边界：实际准入由服务端动态限制，不使用自动缩放默认值。
 func newResourceManager() (network.ResourceManager, error) {
 	perPeerStreams := mpConstant.MaxTCPStreamsPerPeer + mpConstant.MaxUDPSessionsPerPeer + 16
 	peers := mpConstant.MaxRoomMembers + 8 // 成员 + 观测节点与余量
@@ -130,6 +140,10 @@ type Gater struct {
 	allowed map[peer.ID]struct{}
 	// revoked 职责：禁止原生后台重新拨被撤销成员；使用：Remove/Clear；边界：重新 Allow 时恢复。
 	revoked map[peer.ID]bool
+	// observations 职责：专用观测 peer 当前允许探测的传输；使用：独立探测期间过滤 identify 并发写回的异传输地址；边界：不变更游戏白名单。
+	observations map[peer.ID]string
+	// autoNATSources 职责：session.open 指定观测节点的公网来源 IP；使用：放行其独立临时 PeerID 的 AutoNAT 回拨基础连接；边界：不授予游戏 Allowed，随会话 host 销毁。
+	autoNATSources map[string]struct{}
 	// relays 职责：基础设施入口；使用：握手准入；边界：不进入游戏 Allowed/List。
 	relays   map[peer.ID][]ma.Multiaddr
 	onReject func(id peer.ID, remoteAddr string)
@@ -145,7 +159,7 @@ func (gater *Gater) SetOnReject(callback func(id peer.ID, remoteAddr string)) {
 
 // NewGater 创建空白名单 gater。
 func NewGater() *Gater {
-	return &Gater{allowed: map[peer.ID]struct{}{}, revoked: map[peer.ID]bool{}, relays: map[peer.ID][]ma.Multiaddr{}}
+	return &Gater{allowed: map[peer.ID]struct{}{}, revoked: map[peer.ID]bool{}, relays: map[peer.ID][]ma.Multiaddr{}, observations: map[peer.ID]string{}, autoNATSources: map[string]struct{}{}}
 }
 
 // Allow 把 PeerID 加入白名单。
@@ -207,6 +221,9 @@ func (gater *Gater) InterceptAddrDial(id peer.ID, addr ma.Multiaddr) bool {
 	if gater.revoked[id] {
 		return false
 	}
+	if transport := gater.observations[id]; transport != "" && observerTransport(addr) != transport {
+		return false
+	}
 	if !IsCircuit(addr) {
 		return true
 	}
@@ -225,7 +242,7 @@ func (gater *Gater) InterceptSecured(direction network.Direction, id peer.ID, ad
 		ok = false
 	} else if addrs != nil && IsCircuit(addrs.RemoteMultiaddr()) {
 		ok = ok && trustedCircuitConnection(addrs.RemoteMultiaddr(), gater.relays)
-	} else if direction == network.DirOutbound || len(gater.relays[id]) > 0 {
+	} else if direction == network.DirOutbound || len(gater.relays[id]) > 0 || direction == network.DirInbound && addrs != nil && gater.autoNATSource(addrs.RemoteMultiaddr()) {
 		ok = true
 	}
 	onReject := gater.onReject
@@ -251,7 +268,35 @@ func (gater *Gater) InterceptUpgraded(conn network.Conn) (bool, control.Disconne
 		_, allowed := gater.allowed[conn.RemotePeer()]
 		return allowed && trustedCircuitConnection(conn.RemoteMultiaddr(), gater.relays), 0
 	}
+	if conn.Stat().Direction == network.DirInbound && gater.autoNATSource(conn.RemoteMultiaddr()) {
+		return true, 0
+	}
 	return true, 0
+}
+
+// SetAutoNATSources 职责：原子替换允许官方回拨的来源 IP；使用：session.open 下发指定 observer 后；边界：只接收公网 IP，不扩大游戏白名单。
+func (gater *Gater) SetAutoNATSources(ips []net.IP) {
+	gater.mu.Lock()
+	defer gater.mu.Unlock()
+	gater.autoNATSources = map[string]struct{}{}
+	for _, ip := range ips {
+		if ip != nil {
+			gater.autoNATSources[ip.String()] = struct{}{}
+		}
+	}
+}
+
+// autoNATSource 职责：比对入站连接远端 IP；使用：secured/upgraded；边界：调用方已持 gater 锁，relay 路径不得进入。
+func (gater *Gater) autoNATSource(addr ma.Multiaddr) bool {
+	if addr == nil || IsCircuit(addr) {
+		return false
+	}
+	ip, err := manet.ToIP(addr)
+	if err != nil {
+		return false
+	}
+	_, ok := gater.autoNATSources[ip.String()]
+	return ok
 }
 
 // setRelays 分离基础设施准入。职责：接入 WS 指定入口；使用：ConfigureRelay；边界：不授予游戏 Allowed。

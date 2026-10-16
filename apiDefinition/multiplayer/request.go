@@ -7,6 +7,8 @@ package multiplayer
 // SessionOpenRequest 是 session.open（1001）请求 data。
 // 职责：上报协议版本、客户端版本与临时 PeerID；使用：控制链路首帧；边界：PeerID 被占用时服务器回复 20008。
 type SessionOpenRequest struct {
+	// ManagementEvents 职责：声明客户端可处理动态管理事件；使用：服务端兼容旧客户端；边界：不改变协议版本。
+	ManagementEvents bool `json:"managementEvents"`
 	// ProtocolVersion 职责：协议版本；使用：服务器兼容判断；边界：当前为 2，不回退旧打洞。
 	ProtocolVersion int `json:"protocolVersion"`
 	// ClientVersion 职责：盒子版本（去掉 v 前缀）；使用：最低版本校验；边界：开发构建为 0.0.0。
@@ -18,12 +20,16 @@ type SessionOpenRequest struct {
 // SessionOpenReply 是 session.open 回复 data。
 // 职责：返回会话、用户、观测节点与限制；使用：控制器保存会话信息并连接观测节点；边界：sessionId 只用于日志。
 type SessionOpenReply struct {
+	// Policy 职责：当前管理策略；使用：显示准入通知；边界：旧服务可缺失。
+	Policy *SessionPolicy `json:"policy,omitempty"`
 	// SessionID 职责：会话 ID；使用：日志与排障；边界：后续请求不携带。
 	SessionID string `json:"sessionId"`
 	// User 职责：当前用户；使用：身份判断；边界：不含 token。
 	User UserInfo `json:"user"`
 	// Observers 职责：地址观测节点 multiaddr（带 /p2p）；使用：identify 获取 observed address；边界：可为空。
 	Observers []string `json:"observers"`
+	// AutoNATEgressIPs 职责：指定 AutoNAT 独立拨号 swarm 的公网出口 IP；使用：临时回拨 PeerID 的来源准入；边界：仅接受合法公网 IP，与 observer 入口 IP 合并。
+	AutoNATEgressIPs []string `json:"autoNatEgressIps,omitempty"`
 	// Limits 职责：服务器限制；使用：表单与打洞；边界：以服务器为准。
 	Limits SessionLimits `json:"limits"`
 	// Capabilities 职责：原生数据面能力；使用：预约和转发策略；边界：缺失字段按 false。
@@ -174,6 +180,10 @@ type LinkTraceRequest struct {
 	Round int `json:"round"`
 	// OK 职责：这一步是否成功；使用：时间线着色；边界：无。
 	OK bool `json:"ok"`
+	// Result 职责：显式进度或结果；使用：progress/success/failure；边界：缺失沿用 OK。
+	Result string `json:"result,omitempty"`
+	// Diagnostic 职责：结构化证据；使用：房间导出；边界：附件 JSON 最大8192字节、不含凭证。
+	Diagnostic *TraceDiagnostic `json:"diagnostic,omitempty"`
 	// DurationMs 职责：这一步耗时；使用：排障；边界：未知为 0。
 	DurationMs int64 `json:"durationMs"`
 	// Addr 职责：相关地址（拨号成功的地址、observed 地址、目标地址）；使用：排障；边界：最长 256。

@@ -173,7 +173,7 @@ type AddrError struct {
 }
 
 // DialReport 是一次拨号的诊断结果。
-// 职责：携带目标地址、实际连上的地址、顶层错误与逐地址错误；使用：trace、盒子日志与 links[].detail；边界：成功时 AddrErrors 为空。
+// 职责：携带目标地址、实际连上的地址、顶层错误与逐地址错误；使用：trace、盒子日志与 links[].detail；边界：成功时也可保留已收集的其他候选错误，不声称记录全部实际尝试。
 type DialReport struct {
 	// Targets 职责：本次拨号的目标地址（下发地址 ∪ peerstore 已有地址）；使用：诊断；边界：已去重。
 	Targets []ma.Multiaddr
@@ -293,18 +293,18 @@ func (report DialReport) TargetsDetail(max int) string {
 	return JoinLimited("目标地址 "+KindSummary(report.Targets)+"：", report.TargetTexts(), ", ", max)
 }
 
-// NoResponse 判断失败时是否所有目标都没有逐地址结果（全部无响应）。
+// NoResponse 职责：判断失败是否缺少逐地址证据；使用：诊断展示；边界：不证明全部候选已尝试或网络无响应。
 func (report DialReport) NoResponse() bool {
 	return report.Err != nil && len(report.Targets) > 0 && len(report.AddrErrors) == 0
 }
 
-// noResponseText 返回“全部 N 个地址在 Xs 内无响应”。
+// noResponseText 职责：描述逐地址证据缺失；使用：ErrorText/AddrLines；边界：不能把候选误称为实际拨号失败。
 func (report DialReport) noResponseText() string {
-	return "全部 " + strconv.Itoa(len(report.Targets)) + " 个地址在 " +
-		strconv.FormatFloat(report.Duration.Seconds(), 'f', 1, 64) + "s 内无响应"
+	return "全部 " + strconv.Itoa(len(report.Targets)) + " 个候选缺少逐地址结果（未尝试或尚未完成，耗时 " +
+		strconv.FormatFloat(report.Duration.Seconds(), 'f', 1, 64) + "s）"
 }
 
-// ErrorText 返回 trace error：顶层错误 + 逐地址错误（全部无结果时为“全部 N 个地址在 Xs 内无响应”），按条截断到 max 字节；成功为空。
+// ErrorText 职责：组合顶层及逐地址错误；使用：trace error；边界：证据缺失明确注明，按条限制 max 字节，成功为空。
 func (report DialReport) ErrorText(max int) string {
 	if report.Err == nil {
 		return ""
@@ -351,13 +351,23 @@ func (h *Host) ConnectReport(ctx context.Context, info peer.AddrInfo) DialReport
 	err := h.Connect(ctx, info)
 	report := DialReport{Targets: targets, Err: err, Duration: time.Since(started)}
 	if err == nil {
-		h.dials.unwatch(watch)
+		errs := h.dials.unwatch(watch)
+		for _, addr := range targets {
+			if text, ok := errs[addr.String()]; ok {
+				report.AddrErrors = append(report.AddrErrors, AddrError{Addr: addr, Err: text})
+			}
+		}
 		limited, _ := network.GetAllowLimitedConn(ctx)
 		if conn := BestConn(h, info.ID, limited); conn != nil {
 			report.Connected = conn.RemoteMultiaddr()
 		}
 		return report
 	}
+	return h.finishDialFailure(watch, report)
+}
+
+// finishDialFailure 职责：合并 swarm 逐地址回调和类型化错误；使用：普通拨号及观测拨号；边界：只收集实际错误，不将未拨号候选描述为失败。
+func (h *Host) finishDialFailure(watch *dialWatch, report DialReport) DialReport {
 	timer := time.NewTimer(dialSettle)
 	select {
 	case <-watch.done:
@@ -366,7 +376,7 @@ func (h *Host) ConnectReport(ctx context.Context, info peer.AddrInfo) DialReport
 	timer.Stop()
 	errs := h.dials.unwatch(watch)
 	var dialErr *swarm.DialError
-	if errors.As(err, &dialErr) {
+	if errors.As(report.Err, &dialErr) {
 		for _, item := range dialErr.DialErrors {
 			key := item.Address.String()
 			if _, ok := errs[key]; !ok && item.Cause != nil {

@@ -51,7 +51,8 @@ function close(): void { if (!props.loading) emit('update:show', false) }
 <template>
   <n-modal :show="show" :mask-closable="!loading" :close-on-esc="!loading" @update:show="emit('update:show', $event)">
   <!-- ~ 创建房间：基础信息优先，端口扩展按需展开；创建后端口表不可修改 -->
-  <section class="create-dialog" role="dialog" aria-modal="true" aria-labelledby="create-title">
+  <!-- * 当前 vueuc 的焦点锁定只识别 div 根节点，保留此结构以支持输入和 Tab 导航。 -->
+  <div class="create-dialog" role="dialog" aria-modal="true" aria-labelledby="create-title">
     <header class="dialog-header">
       <div><h2 id="create-title">创建房间</h2><p class="panel-intro">你来当房主，邀请好友一起探索。</p></div>
       <n-button quaternary circle size="small" aria-label="关闭" :disabled="loading" @click="close"><template #icon><X :size="16" /></template></n-button>
@@ -82,7 +83,7 @@ function close(): void { if (!props.loading) emit('update:show', false) }
         <n-button type="primary" attr-type="submit" :loading="loading" :disabled="!online || busy">创建并进入房间</n-button>
       </div>
     </form>
-  </section>
+  </div>
   </n-modal>
 </template>
 

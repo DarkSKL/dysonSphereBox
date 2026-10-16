@@ -105,14 +105,14 @@ type RoomSummary struct {
 }
 
 // NetInfo 是 peer.addrs 上报的网络诊断。
-// 职责：描述 UPnP、IPv6、NAT 一致性与防火墙规则；使用：peer.addrs 请求、HostEndpoint.net、前端诊断；边界：natConsistent 只有一个观测节点时为 null。
+// 职责：描述 UPnP、IPv6、AutoNAT 与防火墙规则；使用：peer.addrs 请求、HostEndpoint.net、前端诊断；边界：AutoNAT unknown 不表示不可达。
 type NetInfo struct {
 	// UPnP 职责：是否拿到 UPnP/NAT-PMP 映射；使用：路径判定与诊断；边界：失败不阻塞。
 	UPnP bool `json:"upnp"`
 	// IPv6 职责：是否有全局 IPv6 地址；使用：诊断；边界：只看本机地址。
 	IPv6 bool `json:"ipv6"`
-	// NATConsistent 职责：不同观测节点（按 PeerID 区分）看到的 QUIC 映射是否一致；使用：20402 分类与打洞前置判断；边界：拿不到两个节点的 QUIC 观测地址时为 null。
-	NATConsistent *bool `json:"natConsistent"`
+	// AutoNATReachability 职责：官方 AutoNAT 对本机公网入站的聚合判断；使用：peer.addrs 与本地诊断；边界：unknown 不代表不可达，public 不保证每种传输均可达。
+	AutoNATReachability string `json:"autoNatReachability"`
 	// FirewallRule 职责：入站不会被 Windows 防火墙拦截（生效配置文件全关，或有允许当前 exe 的入站规则）；使用：20405 分类与诊断；边界：检测失败视为 true。
 	FirewallRule bool `json:"firewallRule"`
 }

@@ -15,6 +15,7 @@ import {
   Register,
   SetSelfInfo,
   SetSelfSetting,
+  UploadAvatar,
 } from '../../wailsjs/go/system/AccountService'
 import {system} from '../../wailsjs/go/models'
 
@@ -40,6 +41,9 @@ try {
 const authenticated = ref(false)
 const currentUser = ref<AccountUser | null>(null)
 const needChangePassword = ref(false)
+const avatarUploading = ref(false)
+let sessionRevision = 0
+let userRevision = 0
 const isAuthenticated = computed(() => authenticated.value)
 
 export class AccountApiError extends Error {
@@ -50,6 +54,7 @@ export class AccountApiError extends Error {
 }
 
 function clearLocalSession(): void {
+  sessionRevision++
   authenticated.value = false
   currentUser.value = null
   needChangePassword.value = false
@@ -116,15 +121,53 @@ export async function loginAccount(payload: {
 // =============== 已登录账号接口 ===============
 // 说明：统一处理用户信息、资料、个人设置、改密与注销，token 续期和 401 清理由后端完成。
 export async function fetchCurrentUser(): Promise<AccountUser> {
+  const revision = userRevision
+  const session = sessionRevision
   const user = await callAccount(() => GetCurrentUser())
-  currentUser.value = user
+  if (session === sessionRevision && revision === userRevision && authenticated.value) currentUser.value = user
   return user
+}
+
+// =============== 头像即时上传 ===============
+// 说明：上传状态由模块共享，关闭弹窗也继续完成；仅以服务器返回用户替换全局资料。
+// 边界：失败保留当前头像；会话切换后丢弃旧响应，重复调用不会再次上传。
+export const accountAvatarUploading = computed(() => avatarUploading.value)
+
+export async function uploadAccountAvatar(file: File): Promise<AccountUser> {
+  if (avatarUploading.value) throw new AccountApiError('头像正在上传，请稍候。')
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || !file.size || file.size > 2 * 1024 * 1024) {
+    throw new AccountApiError('请选择不超过 2 MiB 的 JPEG、PNG 或 WebP 图片。')
+  }
+  avatarUploading.value = true
+  const session = sessionRevision
+  const userID = currentUser.value?.ID
+  try {
+    const content = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => typeof reader.result === 'string'
+        ? resolve(reader.result.slice(reader.result.indexOf(',') + 1))
+        : reject(new AccountApiError('读取图片失败，请重新选择图片重试。'))
+      reader.onerror = () => reject(new AccountApiError('读取图片失败，请重新选择图片重试。'))
+      reader.onabort = () => reject(new AccountApiError('读取图片已取消，请重新选择图片。'))
+      reader.readAsDataURL(file)
+    })
+    if (session !== sessionRevision) throw new AccountApiError('账号会话已切换，请重新选择图片。')
+    const user = await callAccount(() => UploadAvatar(file.name, content))
+    if (session !== sessionRevision || !authenticated.value || user.ID !== userID) {
+      throw new AccountApiError('账号会话已变化，请重新打开资料页确认头像。')
+    }
+    userRevision++
+    currentUser.value = user
+    return user
+  } finally {
+    avatarUploading.value = false
+  }
 }
 
 // updateSelfInfo 部分更新当前用户资料；省略字段保持原值，显式空字符串清除头像和联系方式。
 export function updateSelfInfo(payload: {
   nickName?: string
-  headerImg?: string
+  headerImg?: ''
   phone?: string
   email?: string
 }): Promise<void> {

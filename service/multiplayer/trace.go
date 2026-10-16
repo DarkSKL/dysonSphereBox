@@ -77,14 +77,23 @@ func (c *controller) traceObserve(sess *session, results []p2p.ObserverResult) {
 		return
 	}
 	c.mu.Lock()
+	if c.sess != sess {
+		c.mu.Unlock()
+		return
+	}
 	roomID := ""
-	if c.sess == sess && c.room != nil {
+	if c.room != nil {
 		roomID = c.room.view.Snapshot.RoomID
 	}
 	c.mu.Unlock()
 	for _, result := range results {
 		sess.tracer.Trace(mpAPI.LinkTraceRequest{RoomID: roomID, Stage: mpConstant.TraceObserve, OK: result.OK,
-			DurationMs: result.Duration.Milliseconds(), Addr: result.Addr, Error: result.Err, Detail: observeDetail(result)})
+			Diagnostic: result.Diagnostic, DurationMs: result.Duration.Milliseconds(), Addr: result.Addr, Error: result.Err, Detail: result.Transport + " " + observeDetail(result)})
+		if recovery := result.Recovery; recovery != nil {
+			sess.tracer.Trace(mpAPI.LinkTraceRequest{RoomID: roomID, Stage: mpConstant.TraceObserve, OK: recovery.OK,
+				Diagnostic: recovery.Diagnostic, DurationMs: recovery.Duration.Milliseconds(), Addr: recovery.Addr,
+				Error: recovery.Err, Detail: "恢复TCP观测连接 " + observeDetail(*recovery)})
+		}
 	}
 }
 
@@ -98,7 +107,7 @@ func observeDetail(result p2p.ObserverResult) string {
 		kind := p2p.ClassifyAddr(result.Addr)
 		detail := observer + " observed=" + p2p.DescribeAddr(result.Addr)
 		if kind != p2p.AddrPublic {
-			detail += "（不是公网地址：观测节点可能经 frp 等转发，或本机在 CGNAT 后）"
+			detail += "（非公网观测，不能据此判断公网入站可达性或 UDP 阻断）"
 		}
 		return detail
 	}

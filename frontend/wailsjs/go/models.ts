@@ -2111,6 +2111,7 @@ export namespace multiplayer {
 	    }
 	}
 	export class Capabilities {
+	    managementEvents: boolean;
 	    nativeDcutr: boolean;
 	    relayV2: boolean;
 	    relayFallback: boolean;
@@ -2121,12 +2122,14 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.managementEvents = source["managementEvents"];
 	        this.nativeDcutr = source["nativeDcutr"];
 	        this.relayV2 = source["relayV2"];
 	        this.relayFallback = source["relayFallback"];
 	    }
 	}
 	export class ConnectionView {
+	    lastErrorMessage: string;
 	    state: string;
 	    lastErrorCode: number;
 	
@@ -2136,6 +2139,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.lastErrorMessage = source["lastErrorMessage"];
 	        this.state = source["state"];
 	        this.lastErrorCode = source["lastErrorCode"];
 	    }
@@ -2184,7 +2188,6 @@ export namespace multiplayer {
 	    rttMs: number;
 	    error: number;
 	    detail: string;
-	    natBlocked: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LinkView(source);
@@ -2199,7 +2202,6 @@ export namespace multiplayer {
 	        this.rttMs = source["rttMs"];
 	        this.error = source["error"];
 	        this.detail = source["detail"];
-	        this.natBlocked = source["natBlocked"];
 	    }
 	}
 	export class LobbyListRequest {
@@ -2359,8 +2361,7 @@ export namespace multiplayer {
 	export class NetworkView {
 	    upnp: boolean;
 	    ipv6: boolean;
-	    natConsistent?: boolean;
-	    natMappings: string[];
+	    autoNatReachability: string;
 	    observedAddrs: string[];
 	    reportedAddrs: p2p.ClassifiedAddr[];
 	    observed: p2p.ClassifiedAddr[];
@@ -2378,8 +2379,7 @@ export namespace multiplayer {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.upnp = source["upnp"];
 	        this.ipv6 = source["ipv6"];
-	        this.natConsistent = source["natConsistent"];
-	        this.natMappings = source["natMappings"];
+	        this.autoNatReachability = source["autoNatReachability"];
 	        this.observedAddrs = source["observedAddrs"];
 	        this.reportedAddrs = this.convertValues(source["reportedAddrs"], p2p.ClassifiedAddr);
 	        this.observed = this.convertValues(source["observed"], p2p.ClassifiedAddr);
@@ -2407,6 +2407,20 @@ export namespace multiplayer {
 		    }
 		    return a;
 		}
+	}
+	export class NoticeView {
+	    code: number;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoticeView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.message = source["message"];
+	    }
 	}
 	
 	export class RoomCreateRequest {
@@ -2592,7 +2606,28 @@ export namespace multiplayer {
 	        this.punchRounds = source["punchRounds"];
 	    }
 	}
+	export class SessionPolicy {
+	    revision: number;
+	    admissionEnabled: boolean;
+	    maintenance: boolean;
+	    message: string;
+	    maxMembers: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionPolicy(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.revision = source["revision"];
+	        this.admissionEnabled = source["admissionEnabled"];
+	        this.maintenance = source["maintenance"];
+	        this.message = source["message"];
+	        this.maxMembers = source["maxMembers"];
+	    }
+	}
 	export class SessionView {
+	    policy?: SessionPolicy;
 	    sessionId: string;
 	    peerId: string;
 	    listenPort: number;
@@ -2606,6 +2641,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.policy = this.convertValues(source["policy"], SessionPolicy);
 	        this.sessionId = source["sessionId"];
 	        this.peerId = source["peerId"];
 	        this.listenPort = source["listenPort"];
@@ -2633,6 +2669,7 @@ export namespace multiplayer {
 		}
 	}
 	export class State {
+	    notice?: NoticeView;
 	    stateRevision: number;
 	    connection: ConnectionView;
 	    account: AccountView;
@@ -2650,6 +2687,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.notice = this.convertValues(source["notice"], NoticeView);
 	        this.stateRevision = source["stateRevision"];
 	        this.connection = this.convertValues(source["connection"], ConnectionView);
 	        this.account = this.convertValues(source["account"], AccountView);

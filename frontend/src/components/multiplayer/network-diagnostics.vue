@@ -3,7 +3,8 @@ import {computed} from 'vue'
 import type {ClassifiedAddr, MultiplayerState} from '../../types/multiplayer'
 // =============== 网络诊断投影 ===============
 // 说明：只展示 Go 的观测事实与服务端授权；不推断 NAT 必然失败，不自动改变连接方式。
-const props = defineProps<{state: MultiplayerState | null; online: boolean}>()
+const props = defineProps<{show: boolean; state: MultiplayerState | null; online: boolean}>()
+const emit = defineEmits<{'update:show': [show: boolean]}>()
 const network = computed(() => props.state?.network)
 // 说明：仅按服务端能力展示中继政策，默认关闭；预约限额用于理解游戏连接何时可能需要重连。
 const relayModeText = computed(() => {
@@ -22,10 +23,6 @@ const diagnostics = computed(() => {
   return items
 })
 
-// 说明：两个观测节点看到的 QUIC 映射不同时显示诊断提示，不等加入房间；natConsistent 为 null 时不提示。
-const selfSymmetric = computed(() => props.online && network.value?.natConsistent === false)
-const natMappingsText = computed(() => (network.value?.natMappings ?? []).join(' / '))
-
 // 说明：地址分组展示（本机上报、observed、房主下发），按 IP 标注私网/公网；房主地址只在成员侧有值。
 const addrKindTexts: Record<string, string> = {public: '公网', private: '私网', loopback: '回环', cgnat: 'CGNAT', unknown: '未知', relay: '中继'}
 const addrGroups = computed(() => {
@@ -42,14 +39,19 @@ const hostNoPublic = computed(() => !!network.value?.hostNoPublic && !!props.sta
 
 </script>
 <template>
-  <!-- ~ 折叠诊断：地址、NAT 观测、防火墙与中继政策；大厅先突出房间操作 -->
-  <section v-if="online" class="network-panel" aria-label="网络诊断">
-    <details class="addr-diagnostics" :open="hostNoPublic">
-      <summary>连接诊断与网络地址<span class="summary-meta">连接遇到问题时查看</span></summary>
-    <!-- * NAT 诊断：本机两个观测映射不同，显示观测事实，不断言 NAT 类型或升级结果 -->
-    <div v-if="selfSymmetric" class="notice notice-warning" role="status">
-      <p>观测节点看到的 NAT 映射随目标变化，原生直连升级可能受限；这不代表必然失败。服务器允许中继回退时仍可尝试联机</p>
-      <p v-if="natMappingsText" class="nat-mappings">观测节点看到的映射：<code>{{ natMappingsText }}</code></p>
+  <!-- ~ 诊断抽屉 -->
+  <!-- * 说明：展示地址、NAT 观测、防火墙与中继政策；交互：页头打开，关闭按钮、遮罩和 Esc 收起；依赖：Go 状态投影；边界：离线时不展示失效地址 -->
+  <n-drawer :show="show" width="min(560px, 100vw)" placement="right" @update:show="emit('update:show', $event)">
+    <n-drawer-content title="连接诊断与网络地址" closable>
+      <section class="network-panel" aria-label="网络诊断">
+        <p v-if="!online" class="hint" role="status">联机大厅尚未连接。请先登录账号并连接大厅，再查看网络地址与诊断信息。</p>
+        <template v-else>
+    <!-- * AutoNAT 诊断：官方整体入站判断只用于解释网络状态，不决定是否尝试原生 DCUtR -->
+    <div v-if="network?.autoNatReachability === 'private'" class="notice notice-warning" role="status">
+      <p>官方 AutoNAT 暂未确认本机可公网入站；仍会继续尝试原生直连升级，并按服务器授权使用中继</p>
+    </div>
+    <div v-else-if="network?.autoNatReachability === 'unknown'" class="notice notice-warning" role="status">
+      <p>官方 AutoNAT 尚未完成公网入站判断；仍会继续尝试原生直连升级</p>
     </div>
     <ul v-if="diagnostics.length" class="diagnostics" aria-label="网络诊断">
       <li v-for="item in diagnostics" :key="item">{{ item }}</li>
@@ -78,14 +80,13 @@ const hostNoPublic = computed(() => !!network.value?.hostNoPublic && !!props.sta
         <p v-else class="hint">{{ group.empty }}</p>
         <p v-for="error in group.errors" :key="error" class="hint addr-error">{{ error }}</p>
       </div>
-    </details>
-
-  </section>
+        </template>
+      </section>
+    </n-drawer-content>
+  </n-drawer>
 </template>
 <style scoped lang="scss">
-.network-panel { margin-top: 24px; border-top: 1px solid var(--ds-border-subtle); }
-.summary-meta { margin-left: auto; color: var(--ds-text-muted); font-size: 12px; font-weight: 400; }
-.addr-diagnostics summary { padding-block: 16px; color: var(--ds-text-primary); font-weight: 700; }
+.network-panel { color: var(--ds-text-primary); }
 code { font-family: var(--ds-font-mono); font-size: 12px; overflow-wrap: anywhere; }
 .hint { color: var(--ds-text-secondary); font-size: 12px; line-height: 1.8; }
 .notice { margin: 12px 0 0; padding: 8px 12px; border: 1px solid; border-radius: 4px; font-size: 12px; }
@@ -94,12 +95,12 @@ code { font-family: var(--ds-font-mono); font-size: 12px; overflow-wrap: anywher
 .notice p { margin: 0; }
 .notice .nat-mappings { margin-top: 4px; }
 .diagnostics { margin: 12px 0 0; padding-left: 18px; color: var(--ds-text-secondary); font-size: 12px; line-height: 1.8; }
-.addr-diagnostics { margin: 12px 0 0; font-size: 12px; color: var(--ds-text-secondary); }
-.addr-diagnostics summary { cursor: pointer; }
-.addr-group h3 { margin: 10px 0 4px; font-size: 12px; }
+.addr-group { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--ds-border-subtle); }
+.addr-group h3 { margin: 0 0 6px; font-size: 12px; }
 .addr-list { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; }
-.addr-list li { display: inline-flex; align-items: center; gap: 6px; }
-.addr-kind { padding: 0 5px; border: 1px solid var(--ds-border-default); border-radius: 3px; font-size: 11px; }
+.addr-list li { display: flex; align-items: flex-start; gap: 6px; min-width: 0; width: 100%; }
+.addr-list code { min-width: 0; }
+.addr-kind { flex-shrink: 0; padding: 0 5px; border: 1px solid var(--ds-border-default); border-radius: 3px; font-size: 11px; }
 .kind-public { color: var(--ds-success); border-color: var(--ds-success-border); }
 .kind-private, .kind-cgnat { color: var(--ds-warning); border-color: var(--ds-warning-border); }
 .addr-error { margin: 4px 0 0; word-break: break-all; }

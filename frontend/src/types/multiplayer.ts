@@ -49,12 +49,14 @@ const codeTexts: Record<number, string> = {
   20007: '盒子版本过低，请更新',
   20008: '会话标识冲突，正在重试',
   20009: '操作过于频繁，请稍后再试',
+  20010: '服务器已暂停联机准入，请稍后手动重试',
   20099: '服务器内部错误，请稍后再试',
   20101: '登录已失效，请重新登录',
   20102: '账户已被禁用',
   20103: '需要修改密码',
   20104: '账户已在其他盒子上线',
-  20105: '服务器维护中，稍后自动重连',
+  20105: '服务器维护中，恢复后请手动连接大厅',
+  20106: '管理员已断开本次联机会话，请联系管理员或稍后手动连接',
   20201: '房间不存在',
   20202: '房间已关闭',
   20203: '房间人数已满',
@@ -76,11 +78,14 @@ const codeTexts: Record<number, string> = {
   20222: '服务器维护',
   20223: '房主账户在其他盒子上线',
   20224: '房主账户已失效',
+  20225: '管理员已关闭房间，当前游戏连接已结束',
+  20226: '服务器已降低人数上限，当前房间已关闭',
   20230: '成员主动退出',
   20231: '被房主移出房间',
   20232: '成员已离线',
   20233: '成员账户在其他盒子上线',
   20234: '成员账户已失效',
+  20235: '管理员已将你移出房间，无法再次加入该房间',
   20240: '发起者在提交前离线',
   20241: '房主未就绪，加入已取消',
   20242: '打洞协调失败',
@@ -106,11 +111,12 @@ const linkErrorTexts: Record<number, {title: string; hint: string}> = {
 }
 
 export function codeText(code: number, fallback = ''): string {
+  if ([20010, 20105, 20106, 20225, 20226, 20235].includes(code) && fallback) return `${codeTexts[code]}：${fallback}`
   return codeTexts[code] ?? (fallback || `操作失败（${code}）`)
 }
 
 // 说明：v2 仅把 NAT 观测作为失败诊断，不能据此断言原生 DCUtR 必然失败。
-export function linkErrorText(code: number, _natBlocked = '', _selfView = false): {title: string; hint: string} | null {
+export function linkErrorText(code: number): {title: string; hint: string} | null {
   return linkErrorTexts[code] ?? null
 }
 

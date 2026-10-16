@@ -14,6 +14,8 @@ export interface NavigationEntry {
   readonly label: string
   readonly to: string
   readonly icon: Component
+  /** 需要登录后才能进入；未登录时点击改为提示并打开登录弹窗 */
+  readonly requiresAuth?: boolean
 }
 
 /** 描述快捷栏中的工作区，以及该工作区的第二层选项。 */
@@ -24,6 +26,8 @@ export interface WorkspaceNavigationDefinition {
   readonly to: string
   readonly icon: Component
   readonly navigation: readonly NavigationEntry[]
+  /** 需要登录后才能进入；未登录时点击改为提示并打开登录弹窗 */
+  readonly requiresAuth?: boolean
 }
 
 /** 全局导航入口由快捷栏渲染，统一使用 Tabler 图标，不混入游戏选项列表。 */
@@ -55,8 +59,9 @@ export const workspaceNavigationRegistry: readonly WorkspaceNavigationDefinition
     shortLabel: '社区',
     to: '/community',
     icon: IconMessages,
+    requiresAuth: true,
     navigation: [
-      { key: 'multiplayer', label: '联机', to: '/community/multiplayer', icon: IconNetwork },
+      { key: 'multiplayer', label: '联机', to: '/community/multiplayer', icon: IconNetwork, requiresAuth: true },
     ],
   },
 ]

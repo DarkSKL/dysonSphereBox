@@ -56,8 +56,8 @@ const (
 	MaxTCPStreamsPerPeer = 64
 	// MaxUDPSessionsPerPeer 职责：每成员 UDP 会话上限；使用：房主 handler；边界：超限回 HOST_BUSY。
 	MaxUDPSessionsPerPeer = 32
-	// MaxRoomMembers 职责：房间人数上限（含房主）；使用：rcmgr 限额计算；边界：协议规定 16。
-	MaxRoomMembers = 16
+	// MaxRoomMembers 职责：支持的房间容量硬上界（含房主）；使用：rcmgr 限额计算；边界：有效人数仍由服务端策略限制，当前契约最多 64。
+	MaxRoomMembers = 64
 	// LocalPortMin 职责：成员本地端口 M 与 libp2p 监听端口随机下界；使用：端口分配；边界：避开常用低位端口。
 	LocalPortMin = 20000
 	// LocalPortMax 职责：随机端口上界；使用：端口分配；边界：不含该值。
@@ -168,16 +168,6 @@ const (
 	TraceDetailMax = 256
 	// TracePerMinute 职责：每会话每分钟最多发送的 trace 条数；使用：本地限频，超出直接丢弃；边界：与服务器每 socket 限额一致。
 	TracePerMinute = 120
-)
-
-// 对称 NAT 打洞前置判断结果。
-// 职责：标记跳过打洞的原因；使用：成员链路、link.trace detail、前端 links[].natBlocked；
-// 边界：只有房主 natConsistent = false 才跳过；只有成员为 false 时照常打洞，不产生这些值；只在本地使用，不是协议字段。
-const (
-	// NATBlockedHost 职责：房主为对称 NAT、成员不是；使用：trace detail "skipped: host_symmetric"。
-	NATBlockedHost = "host"
-	// NATBlockedBoth 职责：房主与成员都是对称 NAT；使用：trace detail "skipped: both_symmetric"。
-	NATBlockedBoth = "both"
 )
 
 // 前端连接状态与事件名。

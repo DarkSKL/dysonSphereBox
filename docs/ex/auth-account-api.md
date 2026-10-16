@@ -186,6 +186,16 @@
 - Client 使用 `*string` + `omitempty` 区分省略与显式空字符串，UI 只发送变化字段，保存后刷新共享用户状态；刷新失败明确提示并在下次打开时重试。旧 Server 会忽略空串，清除能力需与新版 Server 同步发布。
 - 实际路由和 Swagger 均为小写开头的 `/user/setSelfInfo`。
 
+### 6.1 上传并保存头像 `POST /user/uploadAvatar`
+
+2026-10-15 双端确认：需要 `x-token`，用户身份取自 JWT；使用 `multipart/form-data`，文件字段名为 `file`，不传 JSON 或本地文件路径。仅支持 JPEG、PNG、WebP，文件最大 **2097152 字节（2 MiB）**；服务端验证实际图片内容，宽高各不超过 4096、总像素不超过 16777216。
+
+成功响应为 `HTTP 200 / code = 0 / data.user = 完整当前用户`，其中 `user.headerImg` 已提交到数据库，可为 HTTP(S) URL 或服务器相对 URL。**上传成功即保存，不需再调用 `setSelfInfo`**；客户端直接用返回用户刷新共享账号状态。失败为业务错误 `HTTP 200 / code = 7 / msg` 或认证错误，不改原头像；存储成功但数据库失败时清理本次上传对象，不删除原头像。
+
+Client 接入为 Vue 选图 → Wails `AccountService.UploadAvatar(fileName, contentBase64)` → Go helper 构造 multipart → 服务器。Base64 仅用于 Wails 桥接，前端不直接请求应用服务器、不持有 token。选图自动上传，上传中禁止重复选择及保存资料；失败保留原头像并允许重新选择同一文件重试，关闭弹窗不取消成功后的共享状态同步。
+
+后续昵称、电话和邮箱保存不包含头像草稿；只有明确“移除头像”时才发送 `headerImg: ""`，避免旧草稿覆盖刚上传的头像。认证响应副作用按请求发起时的会话代次接受，静默续期不切换代次；退出或切换服务器后的旧响应不得恢复旧 token、用户或清除新会话。
+
 ## 7. 保存个人界面配置 `PUT /user/setSelfSetting`
 
 需要 `x-token`。请求体是任意 JSON 对象，**整体覆盖** `originSetting`(不是合并)，客户端应先读取、合并后再提交。成功 `msg = "设置成功"`。
@@ -229,6 +239,7 @@
 
 - `GET /user/getUserInfo`
 - `PUT /user/setSelfInfo`
+- `POST /user/uploadAvatar`
 - `PUT /user/setSelfSetting`
 - `POST /user/changePassword`
 - `POST /jwt/jsonInBlacklist`

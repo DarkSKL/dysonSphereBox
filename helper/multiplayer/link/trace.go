@@ -56,6 +56,7 @@ func (tracer *Tracer) Trace(request mpAPI.LinkTraceRequest) {
 	if tracer == nil || tracer.ctx.Err() != nil {
 		return
 	}
+	request.Diagnostic = boundDiagnostic(request.Diagnostic)
 	request.Addr = truncateUTF8(request.Addr, mpConstant.TraceAddrMax)
 	request.Error = truncateUTF8(request.Error, mpConstant.TraceErrorMax)
 	request.Detail = truncateUTF8(request.Detail, mpConstant.TraceDetailMax)

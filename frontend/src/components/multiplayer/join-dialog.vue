@@ -7,7 +7,7 @@ import {portText} from '../../utils/multiplayer'
 // =============== 加入房间对话框 ===============
 // 说明：父页面保存目标并执行 resolve/join；改目标立即清除旧预览，密码仅存在于此表单。
 // 使用：mode=invite 时输入邀请码或房间 ID 查找；mode=room 时目标来自大厅列表，直接展示预览。
-const props = defineProps<{show: boolean; mode: 'invite' | 'room'; target: string; resolved: RoomResolveResult | null; online: boolean; resolving: boolean; joining: boolean; busy: boolean}>()
+const props = defineProps<{show: boolean; mode: 'invite' | 'room'; target: string; resolved: RoomResolveResult | null; online: boolean; resolving: boolean; joining: boolean; busy: boolean; maxMembers: number}>()
 const emit = defineEmits<{
   (event: 'update:show', value: boolean): void
   (event: 'update:target', value: string): void
@@ -16,7 +16,7 @@ const emit = defineEmits<{
 }>()
 const password = ref('')
 watch(() => [props.target, props.online, props.show], () => { password.value = '' })
-const full = computed(() => !!props.resolved && props.resolved.room.memberCount >= props.resolved.room.maxMembers)
+const full = computed(() => !!props.resolved && props.resolved.room.memberCount >= Math.min(props.resolved.room.maxMembers, props.maxMembers))
 const canJoin = computed(() => props.online && !!props.resolved && !props.busy && !props.resolving && !full.value && (!props.resolved.needPassword || !!password.value))
 const title = computed(() => props.mode === 'invite' ? '邀请码加入' : '加入房间')
 function submit(): void { if (canJoin.value) emit('join', password.value) }
@@ -26,7 +26,8 @@ function close(): void { if (!props.joining) emit('update:show', false) }
 <template>
   <n-modal :show="show" :mask-closable="!joining" :close-on-esc="!joining" @update:show="emit('update:show', $event)">
     <!-- ~ 加入入口：邀请码查房与大厅选择共用预览；密码房只在需要时显示密码框 -->
-    <section class="join-dialog" role="dialog" aria-modal="true" aria-labelledby="join-title">
+    <!-- * 当前 vueuc 的焦点锁定只识别 div 根节点，保留此结构以支持输入和 Tab 导航。 -->
+    <div class="join-dialog" role="dialog" aria-modal="true" aria-labelledby="join-title">
       <header class="dialog-header">
         <div class="dialog-title"><KeyRound :size="18" /><h2 id="join-title">{{ title }}</h2></div>
         <n-button quaternary circle size="small" aria-label="关闭" :disabled="joining" @click="close"><template #icon><X :size="16" /></template></n-button>
@@ -61,7 +62,7 @@ function close(): void { if (!props.joining) emit('update:show', false) }
         </form>
       </div>
       <p v-else-if="mode === 'room' && !resolving" class="hint">未能读取房间信息，请关闭后刷新大厅重试。</p>
-    </section>
+    </div>
   </n-modal>
 </template>
 

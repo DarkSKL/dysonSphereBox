@@ -36,6 +36,8 @@ const (
 	// 使用：AccountService.SetSelfInfo 调用。
 	// 边界：仅更新四个资料字段；省略或 null 保持原值，空字符串可清除头像和联系方式。
 	APIURLSetSelfInfo = "/user/setSelfInfo"
+	// APIURLUploadAvatar 职责：描述头像上传并持久化的接口；使用：AccountService.UploadAvatar 发起 POST multipart file；边界：必须携带 x-token，成功返回 data.user。
+	APIURLUploadAvatar = "/user/uploadAvatar"
 	// APIURLSetSelfSetting 是保存个人界面配置的接口路径（PUT，需 x-token）。
 	// 职责：描述 `PUT /user/setSelfSetting` 接口的相对路径。
 	// 使用：AccountService.SetSelfSetting 调用。
@@ -148,6 +150,12 @@ type AccountRegisterRequest struct {
 // 边界：注册成功不签发 token。
 type AccountRegisterData struct {
 	// User 职责：新建用户；使用：返回给前端；边界：不代表已登录。
+	User AccountUser `json:"user"`
+}
+
+// AccountAvatarData 职责：承载头像提交后的当前用户；使用：解码上传响应 data.user；边界：缺少 user 视为协议错误。
+type AccountAvatarData struct {
+	// User 职责：服务器已保存的用户；使用：同步全局资料；边界：不得用本地图片地址替代。
 	User AccountUser `json:"user"`
 }
 
