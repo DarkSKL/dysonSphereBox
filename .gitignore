@@ -6,4 +6,5 @@ remotion
 .gocache
 .cache
 /build
+build
 /runtime-shots

@@ -49,7 +49,9 @@ type HostForwarder struct {
 	IdleTimeout time.Duration
 	// OnTrace 职责：stream_accept / target_probe 记录回调；使用：控制器转成 link.trace；边界：Start 前设置，调用时不持锁，必须不阻塞。
 	OnTrace func(TraceEvent)
-	okSeen  map[firstOKKey]bool
+	// OnTargets 职责：主动探测使目标状态变化时通知；使用：控制器推送新投影；边界：Start 前设置，调用时不持锁，必须不阻塞。
+	OnTargets func()
+	okSeen    map[firstOKKey]bool
 	done    chan struct{}
 }
 
@@ -103,6 +105,43 @@ func (forwarder *HostForwarder) Start() {
 	forwarder.host.SetStreamHandler(mpConstant.StreamProtocolTCP, forwarder.handleTCP)
 	forwarder.host.SetStreamHandler(mpConstant.StreamProtocolUDP, forwarder.handleUDP)
 	go forwarder.janitor()
+	go forwarder.prober()
+}
+
+// prober 周期性主动探测 TCP 端口声明的游戏监听。
+// 职责：房主开房后无成员连入时也能展示“监听中 / 未监听”；使用：Start 启动，Stop 结束；
+// 边界：只拨本机候选并立即关闭连接，不转发数据；UDP 声明无法确认监听，保持 unknown。
+func (forwarder *HostForwarder) prober() {
+	probe := func() {
+		changed := false
+		for index, decl := range forwarder.ports {
+			if decl.Proto == mpConstant.ProtoUDP {
+				continue
+			}
+			select {
+			case <-forwarder.done:
+				return
+			default:
+			}
+			if forwarder.targets.probeTCP(index, decl.Port) {
+				changed = true
+			}
+		}
+		if changed && forwarder.OnTargets != nil {
+			forwarder.OnTargets()
+		}
+	}
+	probe()
+	ticker := time.NewTicker(mpConstant.TargetProbeInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-forwarder.done:
+			return
+		case <-ticker.C:
+			probe()
+		}
+	}
 }
 
 // SetClosing 停止接受新 stream（room.close before）。

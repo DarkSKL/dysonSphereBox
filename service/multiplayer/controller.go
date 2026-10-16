@@ -770,6 +770,8 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		teardownRoom(sess, c.room)
 		forwarder := forward.NewHostForwarder(sess.host, data.Room.Ports)
 		forwarder.OnTrace = func(event forward.TraceEvent) { go c.traceForward(sess, event) }
+		// 主动探测发现游戏开始/停止监听时推送新投影；emit 需取控制器锁，另起 goroutine 避免阻塞探测循环
+		forwarder.OnTargets = func() { go c.emit() }
 		forwarder.Start()
 		c.room = &roomState{view: RoomView{Snapshot: *data.Room, Role: mpConstant.RoleHost},
 			hostForwarder: forwarder, pendingJoin: map[int64]peer.ID{}, leaving: map[int64]peer.ID{}}

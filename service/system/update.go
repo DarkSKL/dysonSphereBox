@@ -27,7 +27,7 @@ func (service *UpdateService) GetAppVersion() string {
 }
 
 // CheckAppUpdate 检查 Gitee Release 是否存在可用的新版本。
-// 职责：调用更新 helper 检查最新版本并记录检查结果。
+// 职责：调用更新 helper 检查最新版本，只记录检查失败。
 // 使用：前端点击检查更新或页面初始化更新状态时调用。
 // 边界：只检查不写入程序文件；网络或版本源错误会记录日志并返回错误。
 func (service *UpdateService) CheckAppUpdate() (*appUpdater.CheckResult, error) {
@@ -37,7 +37,6 @@ func (service *UpdateService) CheckAppUpdate() (*appUpdater.CheckResult, error) 
 		return nil, err
 	}
 
-	systemHelper.RecordUpdateCheckSuccess(core.Version, result)
 	return result, nil
 }
 

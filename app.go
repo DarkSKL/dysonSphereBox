@@ -10,7 +10,6 @@ import (
 	logStore "DysonSphereBox/helper/system/logging"
 	"context"
 	"fmt"
-	"time"
 
 	"DysonSphereBox/core"
 	legacyMigration "DysonSphereBox/helper/modDependence/installer/migration/legacy"
@@ -70,7 +69,6 @@ func (a *App) startup(ctx context.Context) {
 	if _, err := environmentManagerService.RecoverInterruptedOperations(); err != nil {
 		systemHelper.RecordFailure("system", "recovery", "environment", "恢复环境操作失败", err, nil)
 	}
-	diagnostics.Default.Record(logging.Entry{Action: "客户端初始化完成", Level: logging.Info, Source: "backend.startup", Reason: "启动初始化与恢复检查完成", Namespace: "system.lifecycle.ready", Handler: logging.System, Data: map[string]interface{}{"result": "success", "time": time.Now().Format(time.RFC3339Nano)}})
 }
 
 // shutdown 在 Wails 退出时释放数据库等基础设施资源。
@@ -117,11 +115,14 @@ func (a *App) SelectDysonSphereDirectory() (string, error) {
 		systemHelper.RecordGamePathFailure("selectGamePath", "用户选择游戏目录失败", err, normalizedDirPath)
 		return "", err
 	}
+	previousPath, readErr := core.GLOBAL.Configure.GameStartFilePath.Get()
 	if err := core.GLOBAL.Configure.GameStartFilePath.Set(normalizedDirPath); err != nil {
 		systemHelper.RecordGamePathFailure("selectGamePath", "用户选择游戏目录失败", err, normalizedDirPath)
 		return "", err
 	}
 
-	systemHelper.RecordGamePathSuccess("selectGamePath", "用户已选择游戏目录", normalizedDirPath, "manual")
+	if readErr != nil || dysonsphere.NormalizeDir(previousPath) != normalizedDirPath {
+		systemHelper.RecordGamePathSuccess("selectGamePath", "用户已选择游戏目录", normalizedDirPath, "manual")
+	}
 	return normalizedDirPath, nil
 }

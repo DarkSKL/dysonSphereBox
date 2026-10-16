@@ -23,7 +23,8 @@ func RecordHeadlessStatusObservation(status headlessContract.HeadlessEnvironment
 	headlessStatusSnapshots[status.GameDir] = nextSnapshot
 	headlessStatusSnapshotMutex.Unlock()
 
-	if !hasPrevious {
+	// 主动启动或停止已记录最终结果；更新观测基线即可，后续异步端口变化仍正常记录。
+	if !hasPrevious || source == "start" || source == "stop" {
 		return
 	}
 

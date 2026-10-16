@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import {Copy, Crown, Link2, LogOut, Monitor, RotateCcw, Server, UserPlus, UserX} from '@lucide/vue'
+import {Copy, Link2, LogOut, Monitor, RotateCcw, Server, UserPlus, UserX} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
-import {computed} from 'vue'
+import {computed, onMounted, ref, watch} from 'vue'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
+import {accountUser, resolveAvatarUrl} from '../../services/account'
+import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../../services/server'
 import {linkErrorText, linkPathTexts, linkStateTexts, type LinkView, type MultiplayerState, type RoomMember} from '../../types/multiplayer'
 import {portText, protoLabel} from '../../utils/multiplayer'
 // =============== 当前房间与用户操作 ===============
@@ -83,6 +85,16 @@ const seats = computed<Seat[]>(() => {
   return list
 })
 const initial = (name = ''): string => Array.from(name.trim())[0]?.toUpperCase() ?? '?'
+
+// =============== 座位头像 ===============
+// 说明：只有自己的座位能渲染真实头像；房间快照只下发昵称，其他成员的头像需要服务端补充字段后才能展示。
+// 边界：头像地址解析失败或图片加载失败时回退首字母，不额外请求账号服务器。
+const selfAvatarFailed = ref(false)
+const selfAvatar = computed(() => (
+  resolveAvatarUrl(accountUser.value?.headerImg, serverEffectiveAddress.value, serverAddressReady.value)
+))
+watch(selfAvatar, () => { selfAvatarFailed.value = false })
+onMounted(() => { void loadServerAddress().catch(() => { selfAvatarFailed.value = true }) })
 // 说明：延迟按常见游戏阈值分三档，仅影响信号格颜色。
 function rttLevel(ms?: number): number {
   if (!ms) return 0
@@ -189,7 +201,10 @@ const flowRtt = computed(() => {
       <div class="seats">
         <article v-for="seat in seats" :key="seat.key" class="seat" :class="{'is-empty': !seat.name, 'is-host': seat.host, 'is-self': seat.self}">
           <template v-if="seat.name">
-            <div class="seat-avatar" aria-hidden="true">{{ initial(seat.name) }}<Crown v-if="seat.host" class="seat-crown" :size="14" /></div>
+            <div class="seat-avatar" aria-hidden="true">
+              <img v-if="seat.self && selfAvatar && !selfAvatarFailed" :src="selfAvatar" alt="" referrerpolicy="no-referrer" @error="selfAvatarFailed = true" />
+              <template v-else>{{ initial(seat.name) }}</template>
+            </div>
             <div class="seat-info">
               <strong :title="seat.name">{{ seat.name }}<span v-if="seat.self" class="self-tag">我</span></strong>
               <template v-if="seat.host"><span class="seat-state tone-host">房主</span></template>
@@ -316,7 +331,7 @@ code { font-family: var(--ds-font-mono); font-variant-numeric: tabular-nums; }
 .seat-avatar { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; border: 1px solid var(--ds-border-default); border-radius: 4px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 16px; font-weight: 700; }
 .is-host .seat-avatar { color: var(--ds-brand); border-color: var(--ds-border-strong); }
 .is-empty .seat-avatar { border: 0; background: transparent; color: var(--ds-text-disabled); }
-.seat-crown { position: absolute; top: -8px; right: -7px; color: var(--ds-warning); }
+.seat-avatar img { width: 100%; height: 100%; border-radius: 3px; object-fit: cover; }
 .seat-info { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
 .seat-info strong { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; color: var(--ds-text-primary); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .self-tag { flex: none; padding: 0 5px; border: 1px solid var(--ds-border-default); border-radius: 3px; color: var(--ds-text-secondary); font-size: 10px; font-weight: 400; }

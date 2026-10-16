@@ -13,6 +13,7 @@ import {
   loginAccount,
   logoutAccount,
   registerAccount,
+  resolveAvatarUrl,
   updateSelfInfo,
   uploadAccountAvatar,
   type CaptchaInfo,
@@ -63,16 +64,9 @@ const avatarFailed = ref(false)
 const isLoadingUser = ref(false)
 const needsUserRefresh = ref(false)
 // 相对头像路径属于账号服务器，不能落到 Wails 本地资源根；地址加载前暂用图标，不发送 token。
-const avatarSource = computed(() => {
-  const raw = user.value?.headerImg?.trim() ?? ''
-  if (!raw || !serverAddressReady.value || raw.startsWith('//')) return ''
-  try {
-    const url = new URL(raw, `${serverEffectiveAddress.value}/`)
-    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''
-  } catch {
-    return ''
-  }
-})
+const avatarSource = computed(() => (
+  resolveAvatarUrl(user.value?.headerImg, serverEffectiveAddress.value, serverAddressReady.value)
+))
 watch(avatarSource, () => { avatarFailed.value = false })
 // 会话在编辑资料时失效（401、切换服务器），回到登录表单
 watch(isAuthenticated, (authenticated) => {

@@ -113,7 +113,8 @@ function createdText(ms: number): string {
 </template>
 
 <style scoped lang="scss">
-.lobby-browser { min-width: 0; }
+// 大厅撑满页面剩余高度：表格区域随窗口伸缩，空状态居中占满表格剩余空间
+.lobby-browser { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
 .lobby-toolbar, .lobby-pager, .lobby-footer { display: flex; align-items: center; }
 .lobby-toolbar { gap: 8px; margin-bottom: 20px; }
 .search-input { width: 320px; flex-shrink: 1; min-width: 180px; }
@@ -124,7 +125,7 @@ function createdText(ms: number): string {
 .size-select { width: 108px; }
 
 // 说明：桌面表格与表头共用同一列模板，窄窗口依次隐藏创建时间、房主与密码列。
-.room-table { border-top: 1px solid var(--ds-border-default); }
+.room-table { display: flex; flex: 1 1 auto; flex-direction: column; border-top: 1px solid var(--ds-border-default); }
 .room-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px 112px 112px 52px 92px; gap: 20px; align-items: center; padding-inline: 12px; }
 .room-columns { padding-block: 10px; border-bottom: 1px solid var(--ds-border-default); color: var(--ds-text-secondary); font-size: 12px; }
 .col-lock { display: flex; justify-content: center; color: var(--ds-text-secondary); }
@@ -143,7 +144,7 @@ function createdText(ms: number): string {
 .created-text { color: var(--ds-text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--ds-text-muted); }
 .room-loading .loading-row { min-height: 64px; padding-block: 12px; border-bottom: 1px solid var(--ds-border-subtle); }
-.lobby-empty { min-height: 360px; padding: 56px 24px 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border-bottom: 1px solid var(--ds-border-subtle); }
+.lobby-empty { flex: 1 1 auto; min-height: 360px; padding: 56px 24px 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border-bottom: 1px solid var(--ds-border-subtle); }
 .lobby-empty h3 { margin: 0; font-size: 18px; font-weight: 700; }
 .lobby-empty p { max-width: 340px; margin: 12px 0 24px; color: var(--ds-text-secondary); font-size: 13px; line-height: 1.8; }
 .lobby-footer { justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 0; color: var(--ds-text-muted); font-size: 11px; }

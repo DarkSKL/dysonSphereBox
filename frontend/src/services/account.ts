@@ -215,6 +215,20 @@ export function resetAccountSession(): void {
   void syncSessionState()
 }
 
+// resolveAvatarUrl 把账号头像字段解析为可直接渲染的绝对地址。
+// 说明：相对路径属于账号服务器，不能落到 Wails 本地资源根；地址未加载完成时返回空串，由调用方回退到图标或首字母。
+// 边界：只接受 http/https，拒绝带账号信息的地址和协议相对地址；不附带 token。
+export function resolveAvatarUrl(raw: string | undefined, serverAddress: string, ready: boolean): string {
+  const value = raw?.trim() ?? ''
+  if (!value || !ready || value.startsWith('//')) return ''
+  try {
+    const url = new URL(value, `${serverAddress}/`)
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''
+  } catch {
+    return ''
+  }
+}
+
 export const accountUser = currentUser
 export const accountIsAuthenticated = isAuthenticated
 export const accountNeedsPasswordChange = needChangePassword

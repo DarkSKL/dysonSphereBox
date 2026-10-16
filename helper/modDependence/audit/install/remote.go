@@ -17,9 +17,9 @@ import (
 // RecordRemotePackageInstallSuccess 记录 Mod 包安装成功事件。
 // 职责：把远端统一包安装成功结果写入系统审计日志。
 // 使用：InstallRemotePackage 或 ContinueRemotePackageInstall 成功后调用。
-// 边界：result 为空时直接返回；不负责安装文件、更新进度或保存安装记录。
+// 边界：result 为空或跳过时不记录；不负责安装文件、更新进度或保存安装记录。
 func RecordRemotePackageInstallSuccess(result *contract.PackageInstallResult) {
-	if result == nil {
+	if result == nil || result.Skipped {
 		return
 	}
 
@@ -69,9 +69,9 @@ func RecordRemotePackageInstallFailure(pack modDependenceResponse.RemoteModPacka
 // RecordRemotePackageUninstallSuccess 记录 Mod 包卸载成功事件。
 // 职责：把远端统一包卸载成功结果写入系统审计日志。
 // 使用：UninstallRemotePackage 成功后调用。
-// 边界：result 为空时直接返回；不负责执行卸载或清理共享依赖。
+// 边界：result 为空或跳过时不记录；不负责执行卸载或清理共享依赖。
 func RecordRemotePackageUninstallSuccess(result *contract.PackageInstallResult) {
-	if result == nil {
+	if result == nil || result.Skipped {
 		return
 	}
 

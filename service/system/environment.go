@@ -42,7 +42,9 @@ func (model *EnvironmentService) LoadOrInitDysonSphereExe() (dirPath string, err
 
 	dirPath, err = dysonsphere.FindDirFromSteam()
 	if err != nil || dirPath == "" {
-		systemHelper.RecordGamePathFailure("loadOrInitGamePath", "游戏目录加载或初始化失败", err, dirPath)
+		if err != nil {
+			systemHelper.RecordGamePathFailure("loadOrInitGamePath", "游戏目录加载或初始化失败", err, dirPath)
+		}
 		return dirPath, err
 	}
 

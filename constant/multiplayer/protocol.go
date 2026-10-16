@@ -44,6 +44,8 @@ const (
 	HandshakeTimeout = 5 * time.Second
 	// TargetProbeTimeout 职责：目标地址单个候选拨号上限；使用：房主目标地址探测；边界：500 毫秒。
 	TargetProbeTimeout = 500 * time.Millisecond
+	// TargetProbeInterval 职责：房主主动探测游戏监听的周期；使用：HostForwarder.prober；边界：只探测 TCP 声明，UDP 无法确认监听。
+	TargetProbeInterval = 5 * time.Second
 	// UDPIdleTimeout 职责：UDP 会话空闲关闭时限；使用：房主与成员 UDP 会话表；边界：60 秒。
 	UDPIdleTimeout = 60 * time.Second
 	// UDPQueuePackets 职责：UDP 发送队列报文数上限；使用：成员会话有界队列；边界：超出丢最旧。

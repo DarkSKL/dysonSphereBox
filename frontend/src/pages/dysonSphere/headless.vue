@@ -49,7 +49,7 @@ const confirmStop = (): void => {
     content: '将强制终止服务器进程并断开所有玩家连接。尚未保存的游戏进度可能丢失，请先确认存档已保存。',
     positiveText: '停止服务器',
     negativeText: '取消',
-    onPositiveClick: () => stop(),
+    onPositiveClick: () => { void stop() },
   })
 }
 

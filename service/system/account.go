@@ -85,11 +85,7 @@ func (service *AccountService) SetSelfInfo(payload systemAPI.AccountSelfInfoRequ
 // 使用：需要保存账号级界面配置时调用。
 // 边界：调用方负责先读取并合并。
 func (service *AccountService) SetSelfSetting(settings map[string]interface{}) error {
-	err := accountHelper.SetSelfSetting(context.Background(), settings)
-	if err == nil {
-		accountHelper.RecordStateChange("settingsUpdated", "账号设置更新完成")
-	}
-	return err
+	return accountHelper.SetSelfSetting(context.Background(), settings)
 }
 
 // ChangePassword 修改当前账号密码。

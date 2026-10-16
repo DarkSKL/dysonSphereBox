@@ -49,12 +49,16 @@ func (model *ConfigurationService) SetConfig(group string, key string, value str
 		return model.setServerAddress(group, key, value)
 	}
 
-	if err := core.InitConfigUnit(group, key).Set(value); err != nil {
+	unit := core.InitConfigUnit(group, key)
+	previous, readErr := unit.Get()
+	if err := unit.Set(value); err != nil {
 		systemHelper.RecordSetConfigFailure(group, key, err)
 		return err
 	}
 
-	systemHelper.RecordSetConfigSuccess(group, key)
+	if readErr != nil || previous != value {
+		systemHelper.RecordSetConfigSuccess(group, key)
+	}
 	return nil
 }
 
@@ -92,9 +96,9 @@ func (model *ConfigurationService) setServerAddress(group string, key string, va
 	// 旧服务器签发的 token 不应发往新服务器
 	if previousAddress != httpClient.BaseURL() {
 		_ = accountHelper.ClearSession()
+		systemHelper.RecordSetConfigSuccess(group, key)
 	}
 
-	systemHelper.RecordSetConfigSuccess(group, key)
 	return nil
 }
 

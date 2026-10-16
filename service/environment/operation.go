@@ -258,7 +258,6 @@ func (service *EnvironmentManagerService) recordEnvironmentOperationStart(operat
 	}
 
 	service.emitEnvironmentOperationEvent(environmentOperationStartedEvent, record.ID, operation, kind, itemID, envOperationStatusRunning, "操作执行中")
-	diagnostics.Default.Record(logging.Entry{Action: "开始环境资源操作", Level: logging.Info, Source: "backend.environment", Reason: "资源服务准备执行文件与状态操作", Namespace: "environment.resource." + operation, Handler: logging.Unknown, OperationID: fmt.Sprintf("environment-%d", record.ID), Data: map[string]interface{}{"result": "started", "kind": kind, "itemId": itemID, "plan": plan}})
 	service.emitEnvironmentOperationEvent(environmentOperationProgressEvent, record.ID, operation, kind, itemID, envOperationStatusRunning, "正在处理文件与状态")
 	return record.ID, nil
 }

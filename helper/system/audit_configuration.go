@@ -9,8 +9,11 @@ import systemModel "DysonSphereBox/constant/logging"
 // RecordSetConfigSuccess 记录配置保存成功事件。
 // 职责：写入配置保存成功的系统审计日志。
 // 使用：ConfigurationService.SetConfig 在配置成功保存并完成必要运行时刷新后调用。
-// 边界：不保存配置值，避免日志泄露敏感内容。
+// 边界：不保存配置值；主题等已知界面偏好保存不产生日志，其它配置变更保留审计。
 func RecordSetConfigSuccess(group string, key string) {
+	if group == "System" && key == "AppTheme" {
+		return
+	}
 	RecordLogSilently(LogEntry{
 		Namespace: "system.configuration." + "setConfig",
 		Source:    "backend.configuration",

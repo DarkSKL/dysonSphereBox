@@ -15,21 +15,19 @@ import (
 // RecordHeadlessStartResult 记录无头服务器启动动作结果。
 // 职责：把启动、跳过或启动异常状态写入系统审计日志。
 // 使用：StartEnvironment 服务完成启动尝试后调用。
-// 边界：result 为空时直接返回；不负责启动进程，只依据结果生成日志。
+// 边界：result 为空或跳过时不记录；不负责启动进程，只依据结果生成日志。
 func RecordHeadlessStartResult(result *headlessContract.HeadlessStartResult) {
-	if result == nil {
+	if result == nil || result.Skipped {
 		return
 	}
 
 	level := systemModel.Info
-	if !result.Started && !result.Skipped {
+	if !result.Started {
 		level = systemModel.Warn
 	}
 	content := result.Message
 	if result.Started {
 		content = fmt.Sprintf("已启动 DSPGAME.exe 无头服务器进程 PID %d，目标监听端口 :%d", result.ProcessID, result.Status.HostPort)
-	} else if result.Skipped && result.ProcessID > 0 {
-		content = fmt.Sprintf("DSPGAME.exe 无头服务器已在运行，PID %d，监听端口 :%d", result.ProcessID, result.Status.HostPort)
 	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{

@@ -21,7 +21,7 @@ func (service *LogService) ListLogs(query systemHelper.LogQuery) (systemHelper.L
 	return logStore.List(core.GLOBAL.DB, query)
 }
 
-// DeleteLog 职责：删除用户指定的单条日志并记录操作；使用：日志页右键菜单；边界：校验 ID，持久化失败不报告成功，原始文件由诊断保留策略管理。
+// DeleteLog 职责：删除用户指定的单条日志；使用：日志页右键菜单；边界：校验 ID，持久化失败不报告成功，日志管理操作本身不产生日志。
 func (service *LogService) DeleteLog(id string) error {
 	if strings.TrimSpace(id) == "" || len(id) > 40 || strings.TrimSpace(id) != id {
 		return fmt.Errorf("日志标识无效")
@@ -29,7 +29,6 @@ func (service *LogService) DeleteLog(id string) error {
 	if err := logStore.Delete(core.GLOBAL.DB, id); err != nil {
 		return err
 	}
-	systemHelper.RecordOperation("system", "logging", "delete", "删除日志", map[string]interface{}{"logId": id})
 	if core.GLOBAL.RuntimeContext != nil {
 		runtime.EventsEmit(core.GLOBAL.RuntimeContext, logging.ChangedEvent)
 	}
@@ -75,6 +74,5 @@ func (service *LogService) ExportDiagnostics(query systemHelper.LogQuery) (strin
 	if err := logStore.Export(core.GLOBAL.DB, target, query, service.GetLogHealth()); err != nil {
 		return "", err
 	}
-	systemHelper.RecordOperation("system", "logging", "export", "导出诊断包", map[string]interface{}{"target": target})
 	return target, nil
 }

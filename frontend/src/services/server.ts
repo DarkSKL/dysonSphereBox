@@ -12,7 +12,7 @@ const SERVER_CONFIG_GROUP = 'System'
 const SERVER_CONFIG_KEY = 'ServerAddress'
 
 // 需与后端 constant/system/server.go 中的 DefaultServerAddress 保持一致
-export const DEFAULT_SERVER_ADDRESS = 'http://127.0.0.1:8888'
+export const DEFAULT_SERVER_ADDRESS = 'https://dysonbox.cn:32888'
 
 export interface ServerProbeResult {
   readonly ok: boolean

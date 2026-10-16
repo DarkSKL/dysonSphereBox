@@ -19,7 +19,8 @@ import {usePageTutorial} from '../composables/usePageTutorial'
 import {useThemeMode} from '../composables/useThemeMode'
 import AccountModal from '../components/layout/account-modal.vue'
 import {workspaceNavigationRegistry, globalNavigationEntries} from '../navigation/registry'
-import {accountIsAuthenticated, accountUser, restoreAccountSession} from '../services/account'
+import {accountIsAuthenticated, accountUser, resolveAvatarUrl, restoreAccountSession} from '../services/account'
+import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../services/server'
 
 const route = useRoute()
 const message = useMessage()
@@ -28,6 +29,12 @@ const isAccountModalOpen = ref(false)
 const isAccountAuthenticated = accountIsAuthenticated
 const accountDisplayName = computed(() => accountUser.value?.nickName || accountUser.value?.userName || '已登录')
 const accountEntryTitle = computed(() => isAccountAuthenticated.value ? accountDisplayName.value : '登录或注册账号')
+// 快捷栏复用账号头像解析规则；登录、换图或切换账号后重新加载，失败时保留用户图标。
+const accountAvatarFailed = ref(false)
+const accountAvatarSource = computed(() => isAccountAuthenticated.value
+  ? resolveAvatarUrl(accountUser.value?.headerImg, serverEffectiveAddress.value, serverAddressReady.value)
+  : '')
+watch([accountAvatarSource, () => accountUser.value?.ID], () => { accountAvatarFailed.value = false })
 const globalMenuTrigger = ref<HTMLButtonElement | null>(null)
 const globalMenuRoot = ref<HTMLDivElement | null>(null)
 const {appVersion, loadAppVersion} = useAppVersion()
@@ -122,6 +129,7 @@ const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模�
 
 onMounted(() => {
   void loadAppVersion()
+  void loadServerAddress()
   void restoreAccountSession()
   void loadThemeMode()
   void tryAutoStartGlobalTutorial()
@@ -192,7 +200,15 @@ const closeWindow = (): void => {
         :aria-label="accountEntryTitle"
         @click="handleUserEntry"
       >
-        <UserRound :size="20" :stroke-width="1.7" />
+        <img
+          v-if="accountAvatarSource && !accountAvatarFailed"
+          :key="accountAvatarSource"
+          :src="accountAvatarSource"
+          alt=""
+          referrerpolicy="no-referrer"
+          @error="accountAvatarFailed = true"
+        />
+        <UserRound v-else :size="20" :stroke-width="1.7" aria-hidden="true" />
       </button>
 
       <div class="app-rail-divider" />
@@ -572,6 +588,15 @@ const closeWindow = (): void => {
 .app-rail-avatar:hover {
   border-color: var(--ds-border-strong);
   color: var(--ds-brand);
+}
+
+.app-rail-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: inherit;
+  object-fit: cover;
 }
 
 .app-rail-divider {

@@ -16,6 +16,9 @@ var webViewReadyPattern = regexp.MustCompile(`^(?:\d{4}/\d{2}/\d{2} \d{2}:\d{2}:
 
 // IsNoise 职责：排除没有业务状态信息的自动输出；使用：实时采集和历史回放；边界：致命错误、业务失败和未识别的运行时错误始终保留。
 func IsNoise(e logging.Entry) bool {
+	if isRoutineOperation(e) {
+		return true
+	}
 	if e.Level == logging.Fatal {
 		return false
 	}

@@ -136,8 +136,7 @@ func (service *HeadlessService) StartEnvironment() (*headlessContract.HeadlessSt
 			StartCommandText: prepareResult.Status.StartCommandText,
 			Status:           prepareResult.Status,
 		}
-		headlessAudit.RecordHeadlessStartResult(result)
-		headlessAudit.RecordHeadlessStatusObservation(result.Status, "start")
+		headlessAudit.RecordHeadlessStatusObservation(result.Status, "status")
 		return result, nil
 	}
 
@@ -148,7 +147,11 @@ func (service *HeadlessService) StartEnvironment() (*headlessContract.HeadlessSt
 	}
 
 	headlessAudit.RecordHeadlessStartResult(result)
-	headlessAudit.RecordHeadlessStatusObservation(result.Status, "start")
+	observationSource := "start"
+	if result.Skipped {
+		observationSource = "status"
+	}
+	headlessAudit.RecordHeadlessStatusObservation(result.Status, observationSource)
 	return result, nil
 }
 
@@ -172,7 +175,11 @@ func (service *HeadlessService) StopEnvironment() (*headlessContract.HeadlessSto
 	}
 
 	headlessAudit.RecordHeadlessStopResult(result)
-	headlessAudit.RecordHeadlessStatusObservation(result.Status, "stop")
+	observationSource := "stop"
+	if result.Skipped {
+		observationSource = "status"
+	}
+	headlessAudit.RecordHeadlessStatusObservation(result.Status, observationSource)
 	return result, nil
 }
 

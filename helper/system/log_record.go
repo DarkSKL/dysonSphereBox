@@ -23,11 +23,6 @@ func toEntry(entry LogEntry) logging.Entry {
 // RecordLogSilently 职责：不改变业务结果地记录事实；使用：业务埋点；边界：不再吞错，失败输出 stderr 并维护健康状态。
 func RecordLogSilently(entry LogEntry) { diagnostics.Default.Record(toEntry(entry)) }
 
-// RecordOperation 职责：记录明确完成的普通操作；使用：服务层完成后；边界：具体结果依据业务验证，不能代替就绪检查。
-func RecordOperation(namespace, module, event, action string, data map[string]interface{}) {
-	RecordLogSilently(LogEntry{Action: action, Level: logging.Info, Namespace: namespace + "." + module + "." + event, Source: "backend." + module, Reason: "服务调用完成，结果由业务层返回", Handler: logging.User, Data: data})
-}
-
 // RecordFailure 职责：记录业务失败的原始错误链；使用：服务捕获返回错误；边界：未知发起者标记 Unknown，不推测根因。
 func RecordFailure(namespace, module, event, action string, err error, data map[string]interface{}) {
 	clean := diagnostics.CleanData(data)

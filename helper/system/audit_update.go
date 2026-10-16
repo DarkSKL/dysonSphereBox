@@ -6,25 +6,6 @@ package system
 
 import systemModel "DysonSphereBox/constant/logging"
 
-// RecordUpdateCheckSuccess 记录应用更新检查成功事件。
-// 职责：写入应用更新检查成功的审计日志。
-// 使用：UpdateService.CheckAppUpdate 在远端版本检查完成后调用。
-// 边界：result 仅作为 metadata 保存，不在日志层解释是否必须更新。
-func RecordUpdateCheckSuccess(version string, result interface{}) {
-	RecordLogSilently(LogEntry{
-		Namespace: "system.update." + "checkAppUpdate",
-		Source:    "backend.update",
-		Reason:    "业务流程返回以下结果，原始证据见 data",
-		Handler:   "Unknown",
-		Level:     systemModel.Info,
-		Action:    "应用更新检查完成",
-		Data: map[string]interface{}{
-			"version": version,
-			"result":  result,
-		},
-	})
-}
-
 // RecordUpdateCheckFailure 记录应用更新检查失败事件。
 // 职责：写入应用更新检查失败的审计日志。
 // 使用：UpdateService.CheckAppUpdate 捕获版本源或网络错误后调用。

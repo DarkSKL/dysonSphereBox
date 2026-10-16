@@ -134,6 +134,30 @@ func (cache *targetCache) dialTCP(index int, port int) (net.Conn, targetProbe, e
 	return nil, targetProbe{probed: true, duration: time.Since(started), err: lastErr}, lastErr
 }
 
+// probeTCP 主动探测一个 TCP 端口声明的目标地址，连通后立即关闭连接。
+// 职责：房主无成员连入时也能得知游戏是否在监听；使用：HostForwarder.prober 周期调用；边界：只拨本机候选，返回投影状态是否变化。
+func (cache *targetCache) probeTCP(index int, port int) bool {
+	before := cache.status(index)
+	conn, _, err := cache.dialTCP(index, port)
+	if err == nil {
+		_ = conn.Close()
+	}
+	return cache.status(index) != before
+}
+
+// status 返回单个端口声明的投影状态。
+func (cache *targetCache) status(index int) string {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if address := cache.address[index]; address != "" {
+		return "ok:" + address
+	}
+	if cache.refused[index] {
+		return "refused"
+	}
+	return "unknown"
+}
+
 // states 生成前端投影。
 func (cache *targetCache) states(ports []mpAPI.PortDecl) []TargetState {
 	cache.mu.Lock()

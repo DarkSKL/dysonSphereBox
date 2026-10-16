@@ -163,7 +163,7 @@ function closeRoom(): void {
 </template>
 
 <style scoped lang="scss">
-.mp-page { width: 100%; max-width: 1680px; min-height: 100%; margin-inline: auto; padding: var(--ds-page-padding-top) var(--ds-page-padding-x) var(--ds-page-padding-bottom); color: var(--ds-text-primary); }
+.mp-page { display: flex; flex-direction: column; width: 100%; min-height: 100%; padding: var(--ds-page-padding-top) var(--ds-page-padding-x) var(--ds-page-padding-bottom); color: var(--ds-text-primary); }
 .mp-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
 .title-block { flex: 1; min-width: 0; }
 h1 { margin: 0; font-size: 26px; font-weight: 700; line-height: 1.4; }

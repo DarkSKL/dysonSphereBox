@@ -62,7 +62,6 @@ func CleanupInterrupted(packageKey string, status string) error {
 		logging.RecordItem(packageKey, "session", "", "skip", "清理会话已完成，跳过重复清理", nil)
 		return nil
 	}
-	logging.RecordStart(record, status, manifest)
 	if err := cleanupFiles.CleanupFiles(db, record.PackageKey, manifest); err != nil {
 		logging.RecordDone(record.PackageKey, status, manifest, err)
 		return err

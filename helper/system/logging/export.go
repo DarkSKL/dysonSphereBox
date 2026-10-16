@@ -89,6 +89,9 @@ func Export(db *gorm.DB, target string, q systemHelper.LogQuery, health systemHe
 					break
 				}
 				item := systemHelper.ToLogEntries([]systemModel.LogEntry{row})[0]
+				if diagnostics.IsNoise(item) {
+					continue
+				}
 				item.Data = diagnostics.CleanData(item.Data)
 				if err := encoder.Encode(item); err != nil {
 					rows.Close()

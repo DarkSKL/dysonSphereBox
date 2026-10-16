@@ -13,9 +13,9 @@ import (
 // RecordHeadlessPrepareResult 记录无头服务器环境准备结果。
 // 职责：把无头服务器环境准备结果写入系统审计日志。
 // 使用：PrepareEnvironment 服务完成 BepInEx 与基础文件准备后调用。
-// 边界：result 为空时直接返回；只记录准备结果，不创建文件或启动进程。
+// 边界：result 为空或环境已就绪且没有变更时不记录；不创建文件或启动进程。
 func RecordHeadlessPrepareResult(result *headlessContract.HeadlessPrepareResult) {
-	if result == nil {
+	if result == nil || (!result.Changed && result.Status.Ready) {
 		return
 	}
 

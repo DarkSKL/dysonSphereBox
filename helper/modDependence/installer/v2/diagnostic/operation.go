@@ -54,11 +54,14 @@ func Apply(entry systemHelper.LogEntry, key string) systemHelper.LogEntry {
 			entry.Data = map[string]interface{}{}
 		}
 		entry.Data["durationMs"] = time.Since(op.begin).Milliseconds()
+		if op.stage != "" {
+			entry.Data["lastProgress"] = op.stage
+		}
 	}
 	return entry
 }
 
-// Observe 职责：仅在阶段或状态变化时记录进度；使用：安装器 event；边界：不记录每个下载百分比，保持证据可读。
+// Observe 职责：关联进度并记录冲突与取消状态；使用：安装器 event；边界：常规进度只推送前端，失败进度随服务最终错误记录，避免同一错误重复写入。
 func Observe(data payload.Payload) {
 	operations.Lock()
 	op := operations.items[data.PackageKey]
@@ -72,12 +75,14 @@ func Observe(data payload.Payload) {
 		return
 	}
 	op.stage = stage
+	if data.State == "running" || data.State == "installed" || data.State == "uninstalled" || data.State == "failed" {
+		operations.Unlock()
+		return
+	}
 	id, handler, elapsed := op.id, op.handler, time.Since(op.begin).Milliseconds()
 	operations.Unlock()
 	level := logging.Info
-	if data.State == "failed" {
-		level = logging.Error
-	} else if data.State == "conflict" {
+	if data.State == "conflict" {
 		level = logging.Warn
 	}
 	info := map[string]interface{}{"packageKey": data.PackageKey, "stage": data.Stage, "state": data.State, "percent": data.Percent, "message": data.Message, "durationMs": elapsed, "result": data.State}

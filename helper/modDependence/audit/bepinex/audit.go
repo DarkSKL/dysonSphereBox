@@ -21,16 +21,13 @@ func RecordBepInExFailure(event string, content string, err error) {
 // RecordBepInExUninstallSuccess 记录 BepInEx 卸载成功事件。
 // 职责：把卸载结果转换为系统审计日志。
 // 使用：BepInEx 卸载服务成功返回后调用。
-// 边界：result 为空时直接返回；不负责执行卸载或清理文件。
+// 边界：result 为空或跳过时不记录；不负责执行卸载或清理文件。
 func RecordBepInExUninstallSuccess(result *bepinexContract.BepInExUninstallResult) {
-	if result == nil {
+	if result == nil || result.Skipped {
 		return
 	}
 
 	resultText := "已移除"
-	if result.Skipped {
-		resultText = "已跳过"
-	}
 
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{
 		Namespace: "modDependence.bepInEx." + "uninstall",
@@ -52,16 +49,13 @@ func RecordBepInExUninstallSuccess(result *bepinexContract.BepInExUninstallResul
 // RecordBepInExInstallResult 记录 BepInEx 安装或更新结果。
 // 职责：把安装、更新或跳过结果转换为系统审计日志。
 // 使用：BepInEx 安装和更新服务成功或跳过后调用。
-// 边界：result 为空时直接返回；不负责选择版本、下载或解压 BepInEx。
+// 边界：result 为空或跳过时不记录；不负责选择版本、下载或解压 BepInEx。
 func RecordBepInExInstallResult(event string, result *bepinexContract.BepInExInstallResult) {
-	if result == nil {
+	if result == nil || result.Skipped {
 		return
 	}
 
 	resultText := "已安装"
-	if result.Skipped {
-		resultText = "已跳过"
-	}
 
 	packageVersion := ""
 	if result.Package != nil {

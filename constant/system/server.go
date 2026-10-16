@@ -8,4 +8,4 @@ package system
 // 职责：作为 System/ServerAddress 为空或历史值无效时的兜底地址。
 // 使用：core.NewServerClient / core.InitServerClient 创建全局 HTTP 客户端时读取。
 // 边界：只描述本机默认部署位置，不保证该地址上的服务一定在运行；修改时需同步前端 services/server.ts 中的 DEFAULT_SERVER_ADDRESS。
-const DefaultServerAddress = "http://127.0.0.1:8888"
+const DefaultServerAddress = "https://dysonbox.cn:32888"

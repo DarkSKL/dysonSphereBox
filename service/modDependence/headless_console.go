@@ -15,7 +15,6 @@ import (
 	"DysonSphereBox/helper/modDependence/headless"
 	"DysonSphereBox/helper/modDependence/headless/console"
 	headlessContract "DysonSphereBox/helper/modDependence/headless/contract"
-	systemHelper "DysonSphereBox/helper/system"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -55,7 +54,6 @@ func (service *HeadlessService) ExportServerLog(source string) (string, error) {
 		headlessAudit.RecordHeadlessFailure("exportLog", "导出服务器日志失败", err)
 		return "", err
 	}
-	systemHelper.RecordOperation("modDependence", "headless", "exportLog", "已导出服务器日志", map[string]interface{}{"source": source, "target": target})
 	return target, nil
 }
 
