@@ -56,15 +56,19 @@ function createdText(ms: number): string {
 <template>
   <!-- ~ 公开大厅：顶部工具栏、带分页的房间表格与明确的连接/加载/空状态 -->
   <section class="lobby-browser" aria-label="公开房间" :aria-busy="loading">
-    <!-- * 工具栏：左侧搜索与排序，右侧刷新、邀请码加入与创建房间 -->
+    <!-- ~ 大厅工具栏 -->
+    <!-- * 说明：左侧搜索与排序，右侧方形图标按钮与创建房间主操作 -->
+    <!-- * 交互：悬停图标查看提示，刷新时原位展示加载状态 -->
+    <!-- * 依赖：查询、连接、准入与忙碌状态，由页面处理各操作事件 -->
+    <!-- * 边界：离线禁用查询和刷新，暂停准入或房间操作中禁用加入与创建 -->
     <form class="lobby-toolbar" @submit.prevent="search">
       <n-input v-model:value="searchDraft" class="search-input" placeholder="搜索房间名，回车确认" aria-label="搜索房间名" clearable :disabled="!online" @clear="emit('search', '')">
         <template #prefix><Search :size="16" /></template>
       </n-input>
       <n-select :value="query.sort" :options="sortOptions" :disabled="!online || loading" aria-label="房间排序" class="sort-select" @update:value="emit('sort', $event)" />
       <span class="toolbar-spacer" />
-      <n-tooltip><template #trigger><n-button :disabled="!online || loading" :loading="loading" aria-label="刷新大厅" @click="emit('refresh')"><template #icon><RefreshCw :size="16" /></template></n-button></template>刷新大厅</n-tooltip>
-      <n-button :disabled="!admissionEnabled || busy" @click="emit('invite')"><template #icon><KeyRound :size="16" /></template>邀请码加入</n-button>
+      <n-tooltip><template #trigger><n-button class="toolbar-icon-button" :disabled="!online || loading" :loading="loading" aria-label="刷新大厅" @click="emit('refresh')"><template #icon><RefreshCw :size="16" /></template></n-button></template>刷新大厅</n-tooltip>
+      <n-tooltip><template #trigger><n-button class="toolbar-icon-button" :disabled="!admissionEnabled || busy" aria-label="邀请码加入" aria-haspopup="dialog" @click="emit('invite')"><template #icon><KeyRound :size="16" /></template></n-button></template>邀请码加入</n-tooltip>
       <n-button type="primary" :disabled="!admissionEnabled || busy" @click="emit('create')"><template #icon><Plus :size="17" /></template>创建房间</n-button>
     </form>
 
@@ -120,6 +124,7 @@ function createdText(ms: number): string {
 .search-input { width: 320px; flex-shrink: 1; min-width: 180px; }
 .sort-select { width: 128px; flex-shrink: 0; }
 .toolbar-spacer { flex: 1; }
+.toolbar-icon-button { width: 34px; height: 34px; padding: 0; flex-shrink: 0; }
 .lobby-pager { justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--ds-border-subtle); }
 .updated-text { color: var(--ds-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .size-select { width: 108px; }

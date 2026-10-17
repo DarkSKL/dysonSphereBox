@@ -58,7 +58,7 @@ const {
     <div class="mod-page-body" :class="{'is-gated': isCheckingGamePath || !canOpenModPage}">
       <!-- ~ 工具栏 -->
       <!-- * 说明：BepInEx 状态条占满剩余宽度，右侧为搜索、来源切换与刷新 -->
-      <!-- * 交互：未安装 BepInEx 时状态条内提供安装按钮；搜索输入 300ms 后刷新第一页 -->
+      <!-- * 交互：滚动时工具栏吸附在内容区顶部；未安装 BepInEx 时提供安装按钮；搜索输入 300ms 后刷新第一页 -->
       <!-- * 依赖：依赖 bepinExStatusTitle / Description、searchKeyword、selectedSource -->
       <!-- * 边界：所有控件统一 34px 高度；窄屏时搜索与按钮整体换到下一行 -->
       <div class="mod-toolbar">
@@ -240,12 +240,17 @@ const {
 }
 
 // =============== 工具栏 ===============
+// 说明：相对页面宿主吸顶，背景保持透明；上下留白保持首屏控件与网格的位置。
 .mod-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+  margin: -12px calc(-1 * var(--ds-page-padding-x)) 4px;
+  padding: 12px var(--ds-page-padding-x);
 }
 
 .mod-bepinex {
@@ -259,17 +264,18 @@ const {
   padding: 0 6px 0 12px;
   border: 1px solid;
   border-radius: 4px;
+  background: var(--ds-bg-panel);
   font-size: 13px;
 
   &.is-ready {
     border-color: var(--ds-success-border);
-    background: var(--ds-success-bg);
+    background: color-mix(in srgb, var(--ds-success) 10%, var(--ds-bg-panel));
     color: var(--ds-success);
   }
 
   &.is-missing {
     border-color: var(--ds-warning-border);
-    background: var(--ds-warning-bg);
+    background: color-mix(in srgb, var(--ds-warning) 10%, var(--ds-bg-panel));
     color: var(--ds-warning);
   }
 }
@@ -316,6 +322,14 @@ const {
 .mod-toolbar-actions :deep(.n-button) {
   --n-height: var(--mod-control-height) !important;
   height: var(--mod-control-height);
+}
+
+// 控件使用不透明底色，避免吸顶时透出滚动卡片；保留悬停、按下与聚焦的明暗反馈。
+.mod-toolbar-actions :deep(.n-button) {
+  --n-color: var(--ds-bg-panel) !important;
+  --n-color-hover: var(--ds-bg-panel-elevated) !important;
+  --n-color-pressed: var(--ds-bg-shell) !important;
+  --n-color-focus: var(--ds-bg-panel-elevated) !important;
 }
 
 // =============== 模组网格 ===============

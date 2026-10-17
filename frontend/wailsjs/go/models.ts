@@ -1,5 +1,5 @@
 export namespace announcement {
-
+	
 	export class NoticeHistoryDTO {
 	    subjectId: string;
 	    serverTime: string;
@@ -7,11 +7,11 @@ export namespace announcement {
 	    total: number;
 	    page: number;
 	    pageSize: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new NoticeHistoryDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.subjectId = source["subjectId"];
@@ -21,7 +21,7 @@ export namespace announcement {
 	        this.page = source["page"];
 	        this.pageSize = source["pageSize"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -44,18 +44,18 @@ export namespace announcement {
 	    subjectId: string;
 	    serverTime: string;
 	    item?: system.ClientNoticeItem;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new NoticeLatestDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.subjectId = source["subjectId"];
 	        this.serverTime = source["serverTime"];
 	        this.item = this.convertValues(source["item"], system.ClientNoticeItem);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -3038,7 +3038,7 @@ export namespace system {
 	        this.serverKey = source["serverKey"];
 	    }
 	}
-
+	
 	export class ClientNoticeHistoryEntry {
 	    id: string;
 	    revision: number;
@@ -3052,11 +3052,11 @@ export namespace system {
 	    state: string;
 	    read: boolean;
 	    readAt?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ClientNoticeHistoryEntry(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -3083,11 +3083,11 @@ export namespace system {
 	    publishedAt: string;
 	    startsAt?: string;
 	    endsAt?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ClientNoticeItem(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -3106,7 +3106,7 @@ export namespace system {
 	    id: string;
 	    revision: number;
 	    firstReadAt: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ClientNoticeMarkReadReceipt(source);
 	    }

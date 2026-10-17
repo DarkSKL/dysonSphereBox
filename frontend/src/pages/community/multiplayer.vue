@@ -115,7 +115,7 @@ function closeRoom(): void {
         <span class="room-attr" :title="snapshot.visibility === 'public' ? '公开房间：大厅可见，也可用邀请码加入' : '私密房间：仅限邀请码加入'"><Globe v-if="snapshot.visibility === 'public'" :size="13" /><EyeOff v-else :size="13" />{{ snapshot.visibility === 'public' ? '公开' : '私密' }}</span>
         <span v-if="snapshot.hasPassword" class="room-attr" title="加入需要密码"><Lock :size="13" />密码</span>
       </div>
-      <div v-else class="title-block"><h1 id="mp-title">多人联机</h1><p class="page-subtitle">浏览公开房间，或用邀请码加入好友的星系。</p></div>
+      <div v-else class="title-block"><h1 id="mp-title">多人联机</h1></div>
       <div class="header-status" aria-live="polite">
         <!-- * 连接状态：房间内在线时只保留状态点（悬停查看），异常时展开为文字标签以提高优先级 -->
         <n-tooltip v-if="snapshot && connectionState === 'online'">
@@ -167,7 +167,6 @@ function closeRoom(): void {
 .mp-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
 .title-block { flex: 1; min-width: 0; }
 h1 { margin: 0; font-size: 26px; font-weight: 700; line-height: 1.4; }
-.page-subtitle { margin: 6px 0 0; font-size: 13px; color: var(--ds-text-secondary); }
 // 说明：房间页头单行——标题可截断，其后的人数与属性不换行、不收缩；整行与右侧状态区垂直居中。
 .room-line { display: flex; align-items: center; gap: 14px; }
 .room-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

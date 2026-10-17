@@ -203,7 +203,7 @@ export async function logoutAccount(): Promise<void> {
   await callAccount(() => Logout())
 }
 
-// restoreAccountSession 启动时同步后端会话，并用已保存 token 获取用户资料；网络异常时保留会话以便稍后重试。
+// restoreAccountSession 启动时同步后端会话，并用已保存 token 获取用户资料；资料请求失败时清除会话。
 let restorePromise: Promise<void> | undefined
 export function restoreAccountSession(): Promise<void> {
   return restorePromise ??= restoreSessionOnce()
@@ -216,10 +216,19 @@ async function restoreSessionOnce(): Promise<void> {
   if (!authenticated.value) {
     return
   }
+  const restoreRevision = sessionRevision
   try {
     await fetchCurrentUser()
   } catch {
-    // 网络不可用时保留会话；401 响应已由后端清理并在同步时反映到前端。
+    if (restoreRevision !== sessionRevision) {
+      return
+    }
+    // 启动恢复必须得到一次有效资料；网络或鉴权失败都清除后端 token，避免进入空资料账号页。
+    try {
+      await logoutAccount()
+    } catch {
+      // logoutAccount 已先清理本地状态；后端也会在注销流程开始时清除 token。
+    }
   }
 }
 

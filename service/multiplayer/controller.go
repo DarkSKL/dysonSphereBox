@@ -16,6 +16,7 @@ import (
 
 	mpAPI "DysonSphereBox/apiDefinition/multiplayer"
 	mpConstant "DysonSphereBox/constant/multiplayer"
+	"DysonSphereBox/core/diagnostics"
 	"DysonSphereBox/helper/multiplayer/forward"
 	"DysonSphereBox/helper/multiplayer/link"
 	"DysonSphereBox/helper/multiplayer/p2p"
@@ -88,7 +89,7 @@ type controller struct {
 	stopLoop   chan struct{}
 	connState  string
 	lastErr    int
-	// lastMessage 职责：保留服务器拒绝说明；使用：离线反馈；边界：新连接清空。
+	// lastMessage 职责：保留最近控制链路失败原因；使用：离线反馈；边界：写入前脱敏限长，新连接成功后清空。
 	lastMessage string
 	// notice 职责：保留最近房间管理原因；使用：回到大厅展示；边界：不驱动重连。
 	notice  *NoticeView
@@ -212,6 +213,9 @@ func (c *controller) setOffline(stop chan struct{}, code int) {
 }
 
 // startHost 用持久化端口启动 host，端口不可用时换号重试。
+// 职责：建立后续联机所需的数据面 host；使用：runSession 每次控制链路拨号前调用。
+// 边界：三次失败后返回最后一个监听原因；没有 IPv4 QUIC 地址时明确报错，不将 nil 误作原因。
+// 逻辑流：1. 读取持久化端口 => 2. 最多尝试三次监听 => 3. 失败时关闭 host 并换端口 => 4. 返回真实末次错误。
 func (c *controller) startHost() (*p2p.Host, int, error) {
 	if c.opts.listenAddrs != nil {
 		h, err := p2p.NewHost(0, c.opts.listenAddrs)
@@ -221,16 +225,19 @@ func (c *controller) startHost() (*p2p.Host, int, error) {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		h, err := p2p.NewHost(port, nil)
-		if err == nil && p2p.HasIPv4QUIC(h) {
+		if err == nil && h != nil && p2p.HasIPv4QUIC(h) {
 			return h, port, nil
 		}
 		if h != nil {
 			_ = h.Close()
 		}
 		lastErr = err
+		if lastErr == nil {
+			lastErr = errors.New("本机未能建立 IPv4 QUIC 监听")
+		}
 		port = p2p.NewRandomListenPort()
 	}
-	return nil, 0, fmt.Errorf("libp2p 监听失败：%v", lastErr)
+	return nil, 0, fmt.Errorf("libp2p 监听失败：%w", lastErr)
 }
 
 // runSession 建立一次控制链路并阻塞到断开。
@@ -238,11 +245,13 @@ func (c *controller) startHost() (*p2p.Host, int, error) {
 func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 	url, err := c.opts.socketURL()
 	if err != nil {
+		c.setConnectionMessage(stop, "联机服务器地址无效："+err.Error())
 		return false, mpConstant.CodeNotConnected, true
 	}
 	for attempt := 0; attempt < 3; attempt++ {
 		h, port, err := c.startHost()
 		if err != nil {
+			c.setConnectionMessage(stop, "启动本机联机监听失败："+err.Error())
 			return false, mpConstant.CodeNotConnected, false
 		}
 		sess := &session{host: h, port: port, stop: make(chan struct{}), initialized: make(chan struct{}), firstReport: make(chan struct{}), autoNATReachability: "unknown"}
@@ -256,8 +265,23 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 				if code == 0 {
 					code = handshake.Status
 				}
+				message := strings.TrimSpace(handshake.Msg)
+				if handshake.Status != 0 {
+					message = fmt.Sprintf("WebSocket 握手被拒绝（HTTP %d）", handshake.Status)
+					if handshake.Code != 0 {
+						message += fmt.Sprintf("，服务器码 %d", handshake.Code)
+					}
+					if strings.TrimSpace(handshake.Msg) != "" {
+						message += "：" + strings.TrimSpace(handshake.Msg)
+					}
+				}
+				if message == "" {
+					message = "WebSocket 握手未完成"
+				}
+				c.setConnectionMessage(stop, message)
 				return false, code, handshake.Permanent()
 			}
+			c.setConnectionMessage(stop, "连接联机服务器失败："+err.Error())
 			return false, mpConstant.CodeNotConnected, false
 		}
 		sess.conn = conn
@@ -285,15 +309,27 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		}
 		if err != nil || reply.Code != 0 {
 			code := mpConstant.CodeDisconnected
+			message := ""
 			if err == nil {
 				code = reply.Code
+				message = socket.ReplyMessage(reply)
+			} else {
+				var localErr *socket.LocalError
+				if errors.As(err, &localErr) {
+					code = localErr.Code
+					switch localErr.Code {
+					case mpConstant.CodeRequestTimeout:
+						message = "服务器未在规定时间内响应会话握手"
+					case mpConstant.CodeDisconnected:
+						message = "发送会话握手请求时控制链路已断开"
+					}
+				}
+				if message == "" {
+					message = err.Error()
+				}
 			}
+			c.setConnectionMessage(stop, message)
 			c.endSession(sess)
-			c.mu.Lock()
-			if c.stopLoop == stop && err == nil {
-				c.lastMessage = socket.ReplyMessage(reply)
-			}
-			c.mu.Unlock()
 			permanent := code == mpConstant.CodeProtocolVersion || code == mpConstant.CodeClientTooOld || code == mpConstant.CodeAdmissionPaused
 			return false, code, permanent
 		}
@@ -316,7 +352,7 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		h.RunReservations()
 
 		c.mu.Lock()
-		c.connState, c.lastErr = mpConstant.ConnOnline, 0
+		c.connState, c.lastErr, c.lastMessage = mpConstant.ConnOnline, 0, ""
 		watching := c.lobby.Watching
 		close(sess.initialized)
 		c.mu.Unlock()
@@ -333,6 +369,7 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		case <-stop:
 			conn.Close()
 		}
+		connectionErr := conn.Err()
 		c.endSession(sess)
 		c.mu.Lock()
 		reason := sess.terminate
@@ -340,12 +377,45 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		if reason != 0 {
 			return true, reason, true
 		}
+		select {
+		case <-stop:
+			return true, 0, false
+		default:
+		}
 		if reason == 0 {
 			reason = mpConstant.CodeDisconnected
 		}
+		message := "控制链路已断开"
+		if connectionErr != nil {
+			message += "：" + connectionErr.Error()
+		}
+		c.setConnectionMessage(stop, message)
 		return true, reason, false
 	}
 	return false, mpConstant.CodePeerIDInUse, false
+}
+
+// setConnectionMessage 保存可向用户展示的失败原因。
+// 职责：脱敏并限制最近连接错误摘要；使用：控制链路拨号、握手和断线失败时调用。
+// 边界：只更新当前重连循环，旧循环不能覆盖新连接状态。
+func (c *controller) setConnectionMessage(stop chan struct{}, message string) {
+	message = c.cleanConnectionMessage(message)
+	c.mu.Lock()
+	if c.stopLoop == stop {
+		c.lastMessage = message
+	}
+	c.mu.Unlock()
+}
+
+// cleanConnectionMessage 清洗并限制控制链路错误摘要。
+// 职责：避免前端投影携带凭据或过长服务端文本；使用：保存拨号、握手和服务端断开原因。
+// 边界：保留可用于排障的网络错误内容，不将摘要写入服务器协议。
+func (c *controller) cleanConnectionMessage(message string) string {
+	message = strings.TrimSpace(diagnostics.CleanText(message))
+	if runes := []rune(message); len(runes) > 512 {
+		message = string(runes[:512]) + "…"
+	}
+	return message
 }
 
 // endSession 拆除会话：房间、转发、host 全部销毁。
@@ -745,7 +815,7 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 			return mpConstant.CodeApplyFailed, "bad data", false
 		}
 		sess.terminate = data.Reason
-		c.lastErr, c.lastMessage = data.Reason, data.Message
+		c.lastErr, c.lastMessage = data.Reason, c.cleanConnectionMessage(data.Message)
 		c.notice = &NoticeView{Code: data.Reason, Message: data.Message}
 		teardownRoom(sess, c.room)
 		c.room = nil

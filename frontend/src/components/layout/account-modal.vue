@@ -489,9 +489,6 @@ const signOut = async (): Promise<void> => {
                     <strong :title="displayName">{{ displayName || (isLoadingUser ? '正在读取…' : '账号信息暂不可用') }}</strong>
                     <span v-if="user?.userName">@{{ user.userName }}</span>
                   </div>
-                  <button v-if="!user" type="button" class="account-text-button" :disabled="isLoadingUser" @click="reloadUser">
-                    <RefreshCw :size="15" :class="{'is-spinning': isLoadingUser}" />重试
-                  </button>
                 </div>
 
                 <div class="account-profile-actions">

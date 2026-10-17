@@ -18,7 +18,7 @@ import (
 var secretPattern = regexp.MustCompile(`(?i)(bearer\s+)[^\s"']+|((?:password|passwd|token|secret|authorization|cookie|api[_-]?key)\s*[=:]\s*)[^\s&,;"']+`)
 
 // urlPattern 职责：定位文本 URL；使用：移除凭据和查询值；边界：保留服务与路径用于诊断。
-var urlPattern = regexp.MustCompile(`https?://[^\s"'<>\x{ff1a}\x{ff0c}\x{ff08}\x{ff09}\x{3002}]+`)
+var urlPattern = regexp.MustCompile(`(?i)(?:https?|wss?)://[^\s"'<>\x{ff1a}\x{ff0c}\x{ff08}\x{ff09}\x{3002}]+`)
 
 // CleanText 职责：脱敏并限长文本；使用：正文、错误和数据字符串；边界：用户名路径替换为占位符。
 func CleanText(value string) string {
