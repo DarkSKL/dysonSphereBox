@@ -246,4 +246,8 @@ type AccountSessionState struct {
 	Authenticated bool `json:"authenticated"`
 	// NeedChangePassword 职责：是否需要先修改密码；使用：前端切换到改密模式；边界：只在本进程内有效。
 	NeedChangePassword bool `json:"needChangePassword"`
+	// SubjectID、Generation、ServerKey 职责：标识已验证会话；使用：本机公告请求绑定；边界：不包含token。
+	SubjectID  string `json:"subjectId"`
+	Generation string `json:"generation"`
+	ServerKey  string `json:"serverKey"`
 }

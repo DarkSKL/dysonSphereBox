@@ -92,10 +92,10 @@ func (model *ConfigurationService) setServerAddress(group string, key string, va
 	}
 
 	previousAddress := core.GLOBAL.ServerClient.BaseURL()
-	core.GLOBAL.ServerClient = httpClient
-	// 旧服务器签发的 token 不应发往新服务器
+	if err := accountHelper.SwapServer(httpClient); err != nil {
+		return err
+	}
 	if previousAddress != httpClient.BaseURL() {
-		_ = accountHelper.ClearSession()
 		systemHelper.RecordSetConfigSuccess(group, key)
 	}
 

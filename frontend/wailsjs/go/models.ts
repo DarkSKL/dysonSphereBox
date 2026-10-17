@@ -1,3 +1,82 @@
+export namespace announcement {
+
+	export class NoticeHistoryDTO {
+	    subjectId: string;
+	    serverTime: string;
+	    list: system.ClientNoticeHistoryEntry[];
+	    total: number;
+	    page: number;
+	    pageSize: number;
+
+	    static createFrom(source: any = {}) {
+	        return new NoticeHistoryDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.subjectId = source["subjectId"];
+	        this.serverTime = source["serverTime"];
+	        this.list = this.convertValues(source["list"], system.ClientNoticeHistoryEntry);
+	        this.total = source["total"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class NoticeLatestDTO {
+	    subjectId: string;
+	    serverTime: string;
+	    item?: system.ClientNoticeItem;
+
+	    static createFrom(source: any = {}) {
+	        return new NoticeLatestDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.subjectId = source["subjectId"];
+	        this.serverTime = source["serverTime"];
+	        this.item = this.convertValues(source["item"], system.ClientNoticeItem);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace contract {
 	
 	export class BepInExStatus {
@@ -2942,6 +3021,9 @@ export namespace system {
 	export class AccountSessionState {
 	    authenticated: boolean;
 	    needChangePassword: boolean;
+	    subjectId: string;
+	    generation: string;
+	    serverKey: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AccountSessionState(source);
@@ -2951,9 +3033,92 @@ export namespace system {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.authenticated = source["authenticated"];
 	        this.needChangePassword = source["needChangePassword"];
+	        this.subjectId = source["subjectId"];
+	        this.generation = source["generation"];
+	        this.serverKey = source["serverKey"];
 	    }
 	}
+
+	export class ClientNoticeHistoryEntry {
+	    id: string;
+	    revision: number;
+	    kind: string;
+	    title: string;
+	    contentFormat: string;
+	    content: string;
+	    publishedAt: string;
+	    startsAt?: string;
+	    endsAt?: string;
+	    state: string;
+	    read: boolean;
+	    readAt?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ClientNoticeHistoryEntry(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.revision = source["revision"];
+	        this.kind = source["kind"];
+	        this.title = source["title"];
+	        this.contentFormat = source["contentFormat"];
+	        this.content = source["content"];
+	        this.publishedAt = source["publishedAt"];
+	        this.startsAt = source["startsAt"];
+	        this.endsAt = source["endsAt"];
+	        this.state = source["state"];
+	        this.read = source["read"];
+	        this.readAt = source["readAt"];
+	    }
+	}
+	export class ClientNoticeItem {
+	    id: string;
+	    revision: number;
+	    kind: string;
+	    title: string;
+	    contentFormat: string;
+	    content: string;
+	    publishedAt: string;
+	    startsAt?: string;
+	    endsAt?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ClientNoticeItem(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.revision = source["revision"];
+	        this.kind = source["kind"];
+	        this.title = source["title"];
+	        this.contentFormat = source["contentFormat"];
+	        this.content = source["content"];
+	        this.publishedAt = source["publishedAt"];
+	        this.startsAt = source["startsAt"];
+	        this.endsAt = source["endsAt"];
+	    }
+	}
+	export class ClientNoticeMarkReadReceipt {
+	    subjectId: string;
+	    id: string;
+	    revision: number;
+	    firstReadAt: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ClientNoticeMarkReadReceipt(source);
+	    }
 	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.subjectId = source["subjectId"];
+	        this.id = source["id"];
+	        this.revision = source["revision"];
+	        this.firstReadAt = source["firstReadAt"];
+	    }
+	}
 	export class ConfigUnitInfo {
 	    name: string;
 	    group: string;

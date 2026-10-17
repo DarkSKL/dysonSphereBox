@@ -6,7 +6,6 @@ package account
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	systemAPI "DysonSphereBox/apiDefinition/system"
@@ -41,15 +40,11 @@ func Register(ctx context.Context, payload systemAPI.AccountRegisterRequest) (*s
 // 使用：账号弹窗登录模式提交时调用。
 // 边界：token 保存失败视为登录失败，避免前端显示已登录但后续请求无 token。
 func Login(ctx context.Context, payload systemAPI.AccountLoginRequest) (*systemAPI.AccountLoginResult, error) {
-	data, err := request[systemAPI.AccountLoginData](ctx, http.MethodPost, systemAPI.APIURLLogin, payload, false)
+	snapshot := beginLoginRequest()
+	data, err := requestCaptured[systemAPI.AccountLoginData](ctx, snapshot, http.MethodPost, systemAPI.APIURLLogin, payload, false)
 	if err != nil {
 		return nil, err
 	}
-	if err := SaveToken(data.Token); err != nil {
-		recordRequestFailure(http.MethodPost, systemAPI.APIURLLogin, "persistSession", 0, 0, err)
-		return nil, fmt.Errorf("保存登录状态失败：%w", err)
-	}
-	setNeedChangePassword(data.NeedChangePassword)
 
 	return &systemAPI.AccountLoginResult{
 		User:               data.User,
@@ -99,7 +94,6 @@ func ChangePassword(ctx context.Context, payload systemAPI.AccountChangePassword
 	if _, err := request[struct{}](ctx, http.MethodPost, systemAPI.APIURLChangePassword, payload, true); err != nil {
 		return err
 	}
-	setNeedChangePassword(false)
 	return nil
 }
 
@@ -108,15 +102,10 @@ func ChangePassword(ctx context.Context, payload systemAPI.AccountChangePassword
 // 使用：用户退出登录或改密后调用。
 // 边界：未持有 token 时只清除本地状态；服务端请求失败时仍返回该错误供界面提示。
 func Logout(ctx context.Context) error {
-	var requestErr error
-	if Token() != "" {
-		_, requestErr = request[struct{}](ctx, http.MethodPost, systemAPI.APIURLLogout, nil, true)
+	snapshot, err := beginLogoutRequest()
+	if err != nil || snapshot.token == "" {
+		return err
 	}
-	if err := ClearSession(); err != nil {
-		recordRequestFailure(http.MethodPost, systemAPI.APIURLLogout, "clearSession", 0, 0, err)
-		if requestErr == nil {
-			return fmt.Errorf("清除登录状态失败：%w", err)
-		}
-	}
-	return requestErr
+	_, err = requestCaptured[struct{}](ctx, snapshot, http.MethodPost, systemAPI.APIURLLogout, nil, true)
+	return err
 }

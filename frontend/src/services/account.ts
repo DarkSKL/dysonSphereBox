@@ -42,8 +42,11 @@ const authenticated = ref(false)
 const currentUser = ref<AccountUser | null>(null)
 const needChangePassword = ref(false)
 const avatarUploading = ref(false)
+export const verifiedAccountSession = ref<system.AccountSessionState | null>(null)
+let stateSequence = 0
 let sessionRevision = 0
 let userRevision = 0
+export const getAccountSessionRevision = (): number => sessionRevision
 const isAuthenticated = computed(() => authenticated.value)
 
 export class AccountApiError extends Error {
@@ -58,16 +61,20 @@ function clearLocalSession(): void {
   authenticated.value = false
   currentUser.value = null
   needChangePassword.value = false
+  verifiedAccountSession.value = null
 }
 
 // =============== 后端调用与会话同步 ===============
 // 说明：每次调用后从后端同步登录态与强制改密状态，401、续期、改密等状态变化都以后端为准。
 // 边界：Wails 绑定以字符串拒绝 Promise，这里统一转换为 AccountApiError。
-async function syncSessionState(): Promise<void> {
+export async function syncSessionState(expectedRevision = sessionRevision): Promise<void> {
+  const sequence = ++stateSequence
   try {
     const state = await GetSessionState()
+    if (expectedRevision !== sessionRevision || sequence !== stateSequence) return
     authenticated.value = state.authenticated
     needChangePassword.value = state.needChangePassword
+    verifiedAccountSession.value = state.authenticated && !state.needChangePassword && state.subjectId ? state : null
     if (!state.authenticated) {
       currentUser.value = null
     }
@@ -77,16 +84,19 @@ async function syncSessionState(): Promise<void> {
 }
 
 async function callAccount<T>(action: () => Promise<T>): Promise<T> {
+  const revision = sessionRevision
   if (!(window as AccountBridgeWindow).go?.system?.AccountService) {
     throw new AccountApiError('账号功能需要在戴森球盒子桌面应用中运行（wails dev 或打包应用）。')
   }
 
   try {
-    return await action()
+    const result = await action()
+    if (revision !== sessionRevision) throw new AccountApiError('账号会话已切换。')
+    return result
   } catch (error) {
     throw new AccountApiError(error instanceof Error ? error.message : String(error || '请求失败'))
   } finally {
-    await syncSessionState()
+    if (revision === sessionRevision) await syncSessionState(revision)
   }
 }
 
@@ -113,8 +123,10 @@ export async function loginAccount(payload: {
   captcha?: string
   captchaId?: string
 }): Promise<system.AccountLoginResult> {
+  clearLocalSession()
+  const session = sessionRevision
   const result = await callAccount(() => Login(system.AccountLoginRequest.createFrom(payload)))
-  currentUser.value = result.user
+  if (session === sessionRevision) currentUser.value = result.user
   return result
 }
 
@@ -186,15 +198,17 @@ export function changeAccountPassword(password: string, newPassword: string): Pr
 
 // logoutAccount 请求注销；后端无论请求结果如何都会清除已保存的 token。
 export async function logoutAccount(): Promise<void> {
-  try {
-    await callAccount(() => Logout())
-  } finally {
-    clearLocalSession()
-  }
+  clearLocalSession()
+  window.dispatchEvent(new Event('account:cleared'))
+  await callAccount(() => Logout())
 }
 
 // restoreAccountSession 启动时同步后端会话，并用已保存 token 获取用户资料；网络异常时保留会话以便稍后重试。
-export async function restoreAccountSession(): Promise<void> {
+let restorePromise: Promise<void> | undefined
+export function restoreAccountSession(): Promise<void> {
+  return restorePromise ??= restoreSessionOnce()
+}
+async function restoreSessionOnce(): Promise<void> {
   if (!(window as AccountBridgeWindow).go?.system?.AccountService) {
     return
   }
@@ -212,6 +226,7 @@ export async function restoreAccountSession(): Promise<void> {
 // resetAccountSession 清除前端会话状态；服务器地址切换后后端已清除 token，这里同步界面状态。
 export function resetAccountSession(): void {
   clearLocalSession()
+  window.dispatchEvent(new Event('account:cleared'))
   void syncSessionState()
 }
 

@@ -18,8 +18,11 @@ import {useAppVersion} from '../composables/useAppVersion'
 import {usePageTutorial} from '../composables/usePageTutorial'
 import {useThemeMode} from '../composables/useThemeMode'
 import AccountModal from '../components/layout/account-modal.vue'
+import AnnouncementModal from '../components/layout/announcement-modal.vue'
+import AnnouncementHistoryPopover from '../components/layout/announcement-history-popover.vue'
 import {workspaceNavigationRegistry, globalNavigationEntries} from '../navigation/registry'
-import {accountIsAuthenticated, accountUser, resolveAvatarUrl, restoreAccountSession} from '../services/account'
+import {accountIsAuthenticated, accountUser, verifiedAccountSession, resolveAvatarUrl, restoreAccountSession} from '../services/account'
+import {useAnnouncements} from '../composables/useAnnouncements'
 import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../services/server'
 
 const route = useRoute()
@@ -39,7 +42,10 @@ const globalMenuTrigger = ref<HTMLButtonElement | null>(null)
 const globalMenuRoot = ref<HTMLDivElement | null>(null)
 const {appVersion, loadAppVersion} = useAppVersion()
 const {isDarkMode, isSavingThemeMode, loadThemeMode, toggleThemeMode} = useThemeMode()
-const {tryAutoStartTutorial: tryAutoStartGlobalTutorial} = usePageTutorial('global')
+const {isTutorialRunning, tryAutoStartTutorial: tryAutoStartGlobalTutorial} = usePageTutorial('global')
+const announcements = useAnnouncements()
+// 同步撤销旧账号展示，避免登录验证事件发起的查询被下一轮watch误清除。
+watch([() => accountUser.value?.ID, () => verifiedAccountSession.value?.generation, serverEffectiveAddress], () => announcements.resetSession(), {flush: 'sync'})
 
 // =============== 当前工作区上下文 ===============
 // 说明：根据当前路由解析游戏或社区工作区，第二层菜单读取对应注册数据；全局页面不挂载子菜单。
@@ -130,10 +136,17 @@ const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模�
 onMounted(() => {
   void loadAppVersion()
   void loadServerAddress()
-  void restoreAccountSession()
+  void restoreAccountSession().then(() => {
+    if (accountIsAuthenticated.value && accountUser.value?.ID) void announcements.check()
+  })
+  window.addEventListener('account:verified', handleVerifiedAccount)
+  window.addEventListener('account:cleared', handleClearedAccount)
   void loadThemeMode()
   void tryAutoStartGlobalTutorial()
 })
+onBeforeUnmount(() => { window.removeEventListener('account:verified', handleVerifiedAccount); window.removeEventListener('account:cleared', handleClearedAccount) })
+function handleVerifiedAccount(): void { announcements.resetAutoAttempt(); void announcements.check() }
+function handleClearedAccount(): void { announcements.resetSession() }
 
 // =============== 主题切换交互 ===============
 // 说明：从主题按钮中心触发圆形扩散切换，主题值由 useThemeMode 负责持久化。
@@ -281,6 +294,7 @@ const closeWindow = (): void => {
     </aside>
 
     <AccountModal :open="isAccountModalOpen" @close="isAccountModalOpen = false" />
+    <AnnouncementModal :open="!isAccountModalOpen && !isTutorialRunning" @close="announcements.close" />
 
     <section class="app-workspace">
       <!-- ~ 无边框窗口标题栏 -->
@@ -296,6 +310,7 @@ const closeWindow = (): void => {
         </div>
         <div class="app-window-controls">
           <span class="app-version-pill">{{ appVersion }}</span>
+          <AnnouncementHistoryPopover :disabled="!isAccountAuthenticated || !verifiedAccountSession || isAccountModalOpen || isTutorialRunning || announcements.open.value || announcements.checking.value || announcements.pending.value" :has-latest="announcements.hasUnread.value && isAccountAuthenticated" />
           <!-- ~ 日夜模式切换 -->
           <!-- * 说明：在窗口工具栏中提供主题切换入口 -->
           <!-- * 交互：点击后从按钮中心揭示新主题，并将选择保存到系统配置 -->

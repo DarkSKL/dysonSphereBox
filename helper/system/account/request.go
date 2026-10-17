@@ -1,9 +1,8 @@
 package account
 
-// 文件职责：通过全局 HTTP 客户端向应用服务器发送账号请求并解析统一响应。
-// 使用：本包账号流程函数调用 request，前端经 Wails 绑定进入 AccountService 后到达这里。
-// 边界：只处理请求构造、token 附加与续期、统一响应解析；不决定页面交互，不记录密码等敏感字段。
-// 逻辑流：1. 取 GLOBAL.ServerClient => 2. 编码请求体并附加 x-token => 3. 发送请求 => 4. 处理 new-token 与 401 => 5. 解析 {code,data,msg} => 6. 成功时解码 data。
+// 文件职责：共享账号HTTP传输、响应解码和原子会话副作用。
+// 使用：账号helper通过request或requestBody调用；登录和注销使用显式捕获快照。
+// 边界：响应限4MiB且禁止重定向，不把凭据或正文写日志；旧会话结果不能更新当前身份。
 
 import (
 	"bytes"
@@ -16,129 +15,123 @@ import (
 	"strings"
 
 	systemAPI "DysonSphereBox/apiDefinition/system"
-	"DysonSphereBox/core"
 )
 
-// responseBodyLimit 表示账号响应体的最大读取字节数。
-// 职责：防止异常服务返回超大响应体占用内存。
-// 使用：request 读取响应体时通过 io.LimitReader 限制。
-// 边界：账号接口响应远小于该值。
+// responseBodyLimit 职责：限制完整编码响应；使用：limit+1检测；边界：超限拒绝而非截断。
 const responseBodyLimit = 4 << 20
 
-// request 发送账号请求并把成功响应的 data 解码到 T。
-// 职责：统一账号接口的鉴权、续期、401 清理、强制改密识别与错误文案。
-// 使用：本包的 Captcha、Login、GetCurrentUser 等流程调用。
-// 边界：路径按服务器基础地址的相对路径解析，保留基础地址中的路径前缀；payload 为 nil 时不发送请求体。
-func request[T any](ctx context.Context, method string, path string, payload interface{}, authenticated bool) (result T, resultErr error) {
+// request 职责：编码普通账号JSON请求；使用：资料和认证helper；边界：捕获一次凭据后不再读取当前token构造请求。
+func request[T any](ctx context.Context, method, path string, payload interface{}, authenticated bool) (T, error) {
+	return requestCaptured[T](ctx, captureRequest(), method, path, payload, authenticated)
+}
+
+// requestCaptured 职责：编码绑定快照的JSON；使用：登录/注销及普通request；边界：不重新捕获账号或目标。
+func requestCaptured[T any](ctx context.Context, snapshot requestSnapshot, method, path string, payload interface{}, authenticated bool) (result T, err error) {
 	var body io.Reader
 	contentType := ""
 	if payload != nil {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			recordRequestFailure(method, path, "encodeRequest", 0, 0, err)
-			return result, fmt.Errorf("编码请求数据失败：%w", err)
+		raw, encodeErr := json.Marshal(payload)
+		if encodeErr != nil {
+			return result, encodeErr
 		}
-		body = bytes.NewReader(data)
+		body = bytes.NewReader(raw)
 		contentType = "application/json"
 	}
-	return requestBody[T](ctx, method, path, body, contentType, authenticated)
+	return requestBodyCaptured[T](ctx, snapshot, method, path, body, contentType, authenticated)
 }
 
-// requestBody 职责：统一发送 JSON 或 multipart 账号请求并处理鉴权与响应。
-// 使用：request 和头像上传传入已编码正文及匹配的 Content-Type。
-// 边界：不记录正文，复用 token 续期、401 清理及业务错误语义。
-func requestBody[T any](ctx context.Context, method, path string, body io.Reader, contentType string, authenticated bool) (result T, resultErr error) {
-	// 传输错误已有 URL 与错误链记录；只补齐构造、业务拒绝和响应解析失败，不记录成功读取与请求正文。
-	stage, status, code := "initialize", 0, 0
-	transportFailed := false
-	var evidenceErr error
+// requestBody 职责：捕获multipart账号请求上下文；使用：头像上传；边界：与JSON请求共享鉴权实现。
+func requestBody[T any](ctx context.Context, method, path string, body io.Reader, contentType string, authenticated bool) (T, error) {
+	return requestBodyCaptured[T](ctx, captureRequest(), method, path, body, contentType, authenticated)
+}
+
+// requestBodyCaptured 职责：发送固定凭据请求、完整解析再原子接纳；使用：JSON/multipart请求；边界：旧响应无token/401/409/用户身份副作用。
+// 逻辑流：1. 合并调用与会话取消 => 2. 发固定目标请求 => 3. 有界解码 => 4. 提取可信身份/登录凭据 => 5. 同锁检查代次并提交副作用。
+func requestBodyCaptured[T any](ctx context.Context, snapshot requestSnapshot, method, path string, body io.Reader, contentType string, authenticated bool) (result T, resultErr error) {
+	status, code := 0, 0
 	defer func() {
-		if resultErr != nil && !transportFailed {
-			if evidenceErr == nil {
-				evidenceErr = resultErr
-			}
-			recordRequestFailure(method, path, stage, status, code, evidenceErr)
+		if resultErr != nil {
+			recordRequestFailure(method, path, "accountResponse", status, code, resultErr)
 		}
 	}()
-	client := core.GLOBAL.ServerClient
-	if client == nil {
-		return result, errors.New("服务器连接尚未初始化，请稍后重试。")
+	if snapshot.client == nil {
+		return result, errors.New("服务器连接尚未初始化")
 	}
-
-	stage = "constructRequest"
-	httpRequest, err := client.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(snapshot.ctx, cancel)
+	defer stop()
+	req, err := snapshot.client.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
 	if err != nil {
-		return result, fmt.Errorf("构造服务器请求失败：%w", err)
+		return result, err
 	}
-	httpRequest.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "application/json")
 	if contentType != "" {
-		httpRequest.Header.Set("Content-Type", contentType)
+		req.Header.Set("Content-Type", contentType)
 	}
-	requestToken := ""
-	var requestGeneration uint64
 	if authenticated {
-		requestGeneration, requestToken = requestSessionSnapshot()
-		// 快照前若已切换客户端，不得把新会话 token 发给先前构造请求的服务器。
-		if client != core.GLOBAL.ServerClient {
-			return result, errors.New("服务器已切换，请重试。")
-		}
-		if requestToken != "" {
-			httpRequest.Header.Set(systemAPI.AccountTokenHeader, requestToken)
-		}
+		req.Header.Set(systemAPI.AccountTokenHeader, snapshot.token)
 	}
-
-	response, err := client.Do(httpRequest)
+	resp, err := snapshot.client.DoNoRedirect(req)
 	if err != nil {
-		transportFailed = true
-		return result, fmt.Errorf("无法连接服务器 %s，请确认服务已启动，或前往全局设置检查服务器地址。", client.BaseURL())
+		return result, errors.New("无法连接账号服务器，请稍后重试。")
 	}
-	defer response.Body.Close()
-	status = response.StatusCode
-	// 同一会话中的并发续期仍接受，旧会话的续期和401由同一锁下的代次检查阻断。
-	if authenticated {
-		valid, refreshErr, clearErr := applySessionResponse(requestGeneration, client, response.Header.Get(systemAPI.AccountNewTokenHeader), status == http.StatusUnauthorized)
-		if !valid {
-			return result, errors.New("账号会话或服务器已切换，请重试。")
+	defer resp.Body.Close()
+	status = resp.StatusCode
+	if authenticated && status == http.StatusUnauthorized {
+		if err := acceptAccountResponse(snapshot, "", true, false, 0, "", nil, false); err != nil {
+			return result, err
 		}
-		if refreshErr != nil {
-			recordRequestFailure(method, path, "persistSession", status, code, refreshErr)
-		}
-		if clearErr != nil {
-			recordRequestFailure(method, path, "clearSession", status, code, clearErr)
-		}
+		return result, errors.New("登录已失效，请重新登录。")
 	}
-
-	stage = "readResponse"
-	raw, err := io.ReadAll(io.LimitReader(response.Body, responseBodyLimit))
-	if err != nil {
-		evidenceErr = err
-		return result, errors.New("读取服务器响应失败，请稍后重试。")
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, responseBodyLimit+1))
+	if err != nil || len(raw) > responseBodyLimit {
+		return result, errors.New("账号响应读取失败或超过4MiB")
 	}
-
 	var envelope systemAPI.AccountResponse
-	stage = "decodeResponse"
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		evidenceErr = err
-		return result, fmt.Errorf("服务器返回了无法识别的数据 (HTTP %d)。", response.StatusCode)
+		return result, fmt.Errorf("账号响应格式无效 (HTTP %d)", status)
 	}
 	code = envelope.Code
-	if response.StatusCode == http.StatusConflict && envelope.Code == systemAPI.AccountCodeNeedChangePassword {
-		setNeedChangePassword(true)
+	success := status == http.StatusOK && code == systemAPI.AccountCodeSuccess
+	var verifiedID uint
+	var loginToken string
+	var loginPassword *bool
+	if success {
+		if len(envelope.Data) > 0 && string(envelope.Data) != "null" {
+			if err := json.Unmarshal(envelope.Data, &result); err != nil {
+				return result, errors.New("账号响应字段格式无效")
+			}
+		}
+		if path == systemAPI.APIURLGetUserInfo {
+			var data systemAPI.AccountCurrentUserData
+			if json.Unmarshal(envelope.Data, &data) != nil || data.UserInfo.ID == 0 {
+				return result, errors.New("账号验证未返回有效用户ID")
+			}
+			verifiedID = data.UserInfo.ID
+		}
+		if path == systemAPI.APIURLLogin {
+			var data systemAPI.AccountLoginData
+			if json.Unmarshal(envelope.Data, &data) != nil {
+				return result, errors.New("登录响应无效")
+			}
+			loginToken = data.Token
+			loginPassword = &data.NeedChangePassword
+		}
 	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices || envelope.Code != systemAPI.AccountCodeSuccess {
-		stage = "businessResponse"
+	if authenticated || path == systemAPI.APIURLLogin {
+		if err := acceptAccountResponse(snapshot, resp.Header.Get(systemAPI.AccountNewTokenHeader), false, status == http.StatusConflict && code == systemAPI.AccountCodeNeedChangePassword, verifiedID, loginToken, loginPassword, success && path == systemAPI.APIURLChangePassword); err != nil {
+			return result, err
+		}
+	}
+	if err := ensureRequestCurrent(snapshot); err != nil {
+		return result, err
+	}
+	if !success {
 		if envelope.Msg != "" {
 			return result, errors.New(envelope.Msg)
 		}
-		return result, fmt.Errorf("请求失败 (HTTP %d)。", response.StatusCode)
-	}
-
-	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
-		return result, nil
-	}
-	if err := json.Unmarshal(envelope.Data, &result); err != nil {
-		stage, evidenceErr = "decodeData", err
-		return result, errors.New("服务器返回的数据格式不符合账号服务约定。")
+		return result, fmt.Errorf("账号请求失败 (HTTP %d)", status)
 	}
 	return result, nil
 }

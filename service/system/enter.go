@@ -23,6 +23,7 @@ type ServiceGroup struct {
 	ServerService
 	// AccountService 职责：暴露账号认证与资料服务；使用：RegisterServices 绑定给前端账号模块；边界：注册时不发起网络请求、不读取 token。
 	AccountService
+	AnnouncementService
 }
 
 // RegisterServices 返回系统领域需要绑定给前端的服务实例。
@@ -38,5 +39,6 @@ func (serviceGroup *ServiceGroup) RegisterServices() []interface{} {
 		&serviceGroup.TutorialService,
 		&serviceGroup.ServerService,
 		&serviceGroup.AccountService,
+		&serviceGroup.AnnouncementService,
 	}
 }

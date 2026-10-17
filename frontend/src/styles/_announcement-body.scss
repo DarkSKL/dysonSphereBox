@@ -1,0 +1,20 @@
+// 说明：图片延迟到真实可见时加载，为纯图片正文保留可见区域，避免空尺寸使可见性检查永远失败。
+.announcement-body { min-height: 1.7em; max-height: min(60vh, 520px); overflow: auto; line-height: 1.7; }
+.announcement-body :deep(h1), .announcement-body :deep(h2), .announcement-body :deep(h3), .announcement-body :deep(h4), .announcement-body :deep(h5), .announcement-body :deep(h6) { margin: 1em 0 .45em; line-height: 1.25; font-weight: 700; }
+.announcement-body :deep(h1) { font-size: 1.6em; }
+.announcement-body :deep(h2) { font-size: 1.35em; }
+.announcement-body :deep(h3) { font-size: 1.15em; }
+.announcement-body :deep(p) { margin: .65em 0; }
+.announcement-body :deep(ul), .announcement-body :deep(ol) { margin: .65em 0; padding-left: 1.6em; }
+.announcement-body :deep(ul) { list-style: disc; }
+.announcement-body :deep(ol) { list-style: decimal; }
+.announcement-body :deep(blockquote) { margin: .8em 0; padding-left: 1em; border-left: 3px solid var(--ds-border-subtle); color: var(--ds-text-secondary); }
+.announcement-body :deep(table) { width: 100%; margin: 1em 0; border-collapse: collapse; }
+.announcement-body :deep(th), .announcement-body :deep(td) { padding: 6px 8px; border: 1px solid var(--ds-border-subtle); text-align: left; }
+.announcement-body :deep(a[data-external-href]) { color: var(--ds-brand); text-decoration: underline; cursor: pointer; }
+.announcement-body :deep(a[data-external-href]:focus-visible) { outline: 2px solid var(--ds-brand); outline-offset: 2px; }
+.announcement-kind { display: inline-block; margin-bottom: 10px; color: var(--ds-text-secondary); font-size: 12px; }
+.announcement-body :deep(img) { max-width: 100%; height: auto; }
+.announcement-body :deep(pre) { overflow: auto; padding: 12px; border: 1px solid var(--ds-border-subtle); }
+
+.announcement-error { margin-top: 12px; color: var(--ds-error); }

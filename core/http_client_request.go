@@ -38,6 +38,19 @@ func (model *HTTPClient) Do(request *http.Request) (*http.Response, error) {
 	return model.client.Do(request)
 }
 
+// DoNoRedirect发送不自动跟随重定向的HTTP请求。
+// 职责：让敏感鉴权头不会被公告接口重定向带往其他目标。
+// 使用：携带token且协议要求固定目标的读取确认请求调用。
+// 边界：仅复制标准客户端策略，不改变共享连接池和全局重定向行为。
+func (model *HTTPClient) DoNoRedirect(request *http.Request) (*http.Response, error) {
+	if model == nil || model.client == nil {
+		return nil, errors.New("http client is not initialized")
+	}
+	clientCopy := *model.client
+	clientCopy.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	return clientCopy.Do(request)
+}
+
 // ResolveURL 将相对路径解析为完整请求地址。
 // 职责：把 BaseURL 与业务路径组合为可请求 URL。
 // 使用：NewRequest 或需要预览请求地址时调用。

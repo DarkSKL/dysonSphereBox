@@ -5,7 +5,9 @@ package account
 // 边界：token 持久化在 Account/Token 配置中，只在后端与服务器之间传递，不返回给前端；强制改密标志只保存在进程内存。
 
 import (
+	"context"
 	"errors"
+	"strconv"
 	"sync"
 
 	systemAPI "DysonSphereBox/apiDefinition/system"
@@ -26,6 +28,11 @@ var needChangePasswordState struct {
 var sessionMutationState struct {
 	sync.Mutex
 	generation uint64
+	// subject 职责：保存服务端验证过的精确ID；使用：公告捕获；边界：不经JS数值转换。
+	subject string
+	// ctx/cancel 职责：取消旧代次在途请求；使用：替换会话；边界：取消不能撤回已送达写入。
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // Token 返回当前保存的账号 token。
@@ -46,12 +53,13 @@ func Token() string {
 
 // SaveToken 保存服务端签发的账号 token。
 // 职责：写入 Account/Token 配置，供后续请求与重启后恢复会话使用。
-// 使用：登录成功或显式替换会话时调用；静默续期由 applySessionResponse 写入。
+// 使用：登录成功或显式替换会话时调用；静默续期由 acceptAccountResponse 写入。
 // 边界：递增会话代次以作废旧响应；配置未初始化时返回错误，空 token 等同于清除。
 func SaveToken(token string) error {
 	sessionMutationState.Lock()
 	defer sessionMutationState.Unlock()
 	sessionMutationState.generation++
+	invalidateLocked()
 	return saveTokenValue(token)
 }
 
@@ -68,8 +76,12 @@ func saveTokenValue(token string) error {
 // 使用：注销、收到 401、切换服务器地址时调用。
 // 边界：只清除客户端状态，不通知服务端作废 token。
 func ClearSession() error {
+	sessionMutationState.Lock()
+	sessionMutationState.generation++
+	invalidateLocked()
 	setNeedChangePassword(false)
-	err := SaveToken("")
+	err := saveTokenValue("")
+	sessionMutationState.Unlock()
 	notifySessionCleared()
 	return err
 }
@@ -84,32 +96,33 @@ func notifySessionCleared() {
 	}
 }
 
-// requestSessionSnapshot 职责：原子读取会话代次及 token；使用：认证请求发起前；边界：不缓存配置。
-func requestSessionSnapshot() (uint64, string) {
-	sessionMutationState.Lock()
-	defer sessionMutationState.Unlock()
-	return sessionMutationState.generation, Token()
+// HandleAnnouncementAuthResponse按公告原会话处理鉴权副作用。
+// 职责：安全应用401和409；使用：公告HTTP解析响应后调用。
+// 边界：旧代次、旧token、旧client无副作用。
+func HandleAnnouncementAuthResponse(generation uint64, token string, client *core.HTTPClient, refreshedToken string, unauthorized, needPassword bool) bool {
+	return acceptAccountResponse(requestSnapshot{generation: generation, token: token, client: client}, refreshedToken, unauthorized, needPassword, 0, "", nil, false) == nil
 }
 
-// applySessionResponse 职责：原子检查会话并处理续期或401；使用：认证响应解码前；边界：旧会话响应无副作用，同会话续期不改变代次。
-func applySessionResponse(generation uint64, client *core.HTTPClient, refreshedToken string, unauthorized bool) (valid bool, refreshErr, clearErr error) {
+// VerifiedSession 职责：捕获已验证主体、HTTP目标、token及可取消代次；使用：公告GET/POST；边界：token仅留Go内存。
+func VerifiedSession() (generation uint64, subject, serverKey, token string, ctx context.Context, client *core.HTTPClient, ok bool) {
 	sessionMutationState.Lock()
-	if sessionMutationState.generation != generation || client != core.GLOBAL.ServerClient {
-		sessionMutationState.Unlock()
-		return false, nil, nil
+	defer sessionMutationState.Unlock()
+	client = core.GLOBAL.ServerClient
+	token = Token()
+	if client == nil || token == "" || sessionMutationState.subject == "" || needPasswordLocked() {
+		return
 	}
-	if unauthorized {
-		sessionMutationState.generation++
-		setNeedChangePassword(false)
-		clearErr = saveTokenValue("")
-	} else if refreshedToken != "" {
-		refreshErr = saveTokenValue(refreshedToken)
+	if sessionMutationState.ctx == nil {
+		sessionMutationState.ctx, sessionMutationState.cancel = context.WithCancel(context.Background())
 	}
-	sessionMutationState.Unlock()
-	if unauthorized {
-		notifySessionCleared()
-	}
-	return true, refreshErr, clearErr
+	return sessionMutationState.generation, sessionMutationState.subject, client.BaseURL(), token, sessionMutationState.ctx, client, true
+}
+
+// needPasswordLocked 职责：读取改密标志；使用：持会话锁捕获凭据；边界：不改变状态。
+func needPasswordLocked() bool {
+	needChangePasswordState.Lock()
+	defer needChangePasswordState.Unlock()
+	return needChangePasswordState.value
 }
 
 // sessionClearedHooks 保存会话清除后的回调。
@@ -134,13 +147,44 @@ func OnSessionCleared(hook func()) {
 // 使用：AccountService.GetSessionState 返回给前端。
 // 边界：Authenticated 不保证 token 仍被服务端接受。
 func SessionState() systemAPI.AccountSessionState {
+	sessionMutationState.Lock()
+	defer sessionMutationState.Unlock()
 	needChangePasswordState.Lock()
 	defer needChangePasswordState.Unlock()
 
 	return systemAPI.AccountSessionState{
 		Authenticated:      Token() != "",
 		NeedChangePassword: needChangePasswordState.value,
+		SubjectID:          sessionMutationState.subject,
+		Generation:         strconv.FormatUint(sessionMutationState.generation, 10),
+		ServerKey:          core.GLOBAL.ServerClient.BaseURL(),
 	}
+}
+
+// invalidateLocked 职责：作废可信身份并取消旧请求；使用：持锁的代次切换；边界：不写配置。
+func invalidateLocked() {
+	if sessionMutationState.cancel != nil {
+		sessionMutationState.cancel()
+	}
+	sessionMutationState.subject = ""
+	sessionMutationState.ctx, sessionMutationState.cancel = context.WithCancel(context.Background())
+}
+
+// SwapServer 职责：原子切换HTTP目标及会话；使用：配置写入成功后；边界：同基址不清会话、不换客户端。
+func SwapServer(client *core.HTTPClient) error {
+	sessionMutationState.Lock()
+	if core.GLOBAL.ServerClient.BaseURL() == client.BaseURL() {
+		sessionMutationState.Unlock()
+		return nil
+	}
+	core.GLOBAL.ServerClient = client
+	sessionMutationState.generation++
+	invalidateLocked()
+	setNeedChangePassword(false)
+	err := saveTokenValue("")
+	sessionMutationState.Unlock()
+	notifySessionCleared()
+	return err
 }
 
 // setNeedChangePassword 更新强制改密状态。

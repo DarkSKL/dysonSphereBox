@@ -270,6 +270,7 @@ const submit = async (): Promise<void> => {
       return
     }
     await fetchCurrentUser()
+    window.dispatchEvent(new Event('account:verified'))
     message.success('登录成功。')
     emit('close')
   } catch (error) {
