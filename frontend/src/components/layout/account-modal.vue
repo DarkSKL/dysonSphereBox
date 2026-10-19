@@ -86,17 +86,84 @@ watch(accountNeedsPasswordChange, (required) => {
 // 品牌区换位动画：切到注册时向左移出、从右侧移入；回到登录时向右移出、从左侧移入。
 // 为空表示不播放，弹窗每次打开时重置，避免挂载时重放上一次的换位动画。
 const artMotion = ref<'to-login' | 'to-register' | null>(null)
-// 电路走线：各线周期互不整除，避免多条脉冲同时到达；负延迟让弹窗打开时各线已处于不同相位，不会同时从起点出发。
-const circuitTraces = [
-  {d: 'M -10 90 H 72 V 132 H 165', end: [165, 132], duration: 5.2, delay: -1.4},
-  {d: 'M -10 210 H 52 V 178 H 143 V 154 H 210', end: [210, 154], duration: 6.1, delay: -4.3},
-  {d: 'M -10 330 H 86 V 294 H 160 V 260 H 218', end: [218, 260], duration: 5.7, delay: -0.3},
-  {d: 'M 10 470 H 72 V 428 H 142 V 396 H 206', end: [206, 396], duration: 6.4, delay: -2.9},
-] as const
-const circuitTiming = (trace: typeof circuitTraces[number]) => ({
-  animationDuration: `${trace.duration}s`,
-  animationDelay: `${trace.delay}s`,
+// =============== 电路生长 ===============
+// 说明：品牌区固定若干条纵向分带，每条分带同一时间只有一条随机走线；走线按“生长 → 脉冲 → 淡出”
+//       播放一个周期，周期结束（animationend）后在同一分带内重新随机生成，不重复固定轨道。
+// 边界：时间轴百分比由样式中的 account-circuit-* 关键帧定义，这里只提供周期时长与起始延迟。
+interface CircuitTrace {
+  readonly id: number
+  readonly slot: number
+  readonly d: string
+  readonly end: readonly [number, number]
+  readonly cycle: number
+  readonly delay: number
+}
+
+const CIRCUIT_SLOT_COUNT = 5
+const CIRCUIT_AREA = {top: 70, bottom: 500, startX: -10, maxX: 250}
+const circuitRandom = (min: number, max: number): number => min + Math.random() * (max - min)
+let circuitSerial = 0
+
+// 生成一条从左侧出发的折线：水平段为主，穿插垂直段与 45° 斜段，终点限制在 maxX 内。
+const createCircuitTrace = (slot: number, delay: number): CircuitTrace => {
+  const bandHeight = (CIRCUIT_AREA.bottom - CIRCUIT_AREA.top) / CIRCUIT_SLOT_COUNT
+  const bandTop = CIRCUIT_AREA.top + slot * bandHeight
+  const bandBottom = bandTop + bandHeight
+  const points: Array<[number, number]> = [[CIRCUIT_AREA.startX, circuitRandom(bandTop + 8, bandBottom - 8)]]
+  const segmentCount = 4 + Math.floor(Math.random() * 3)
+  let length = 0
+  for (let index = 0; index < segmentCount; index += 1) {
+    const [x, y] = points[points.length - 1]
+    if (x >= CIRCUIT_AREA.maxX - 12) break
+    // 偶数段水平前进；奇数段随机选垂直或 45° 斜段，方向朝分带内较空的一侧
+    let nextX = x
+    let nextY = y
+    if (index % 2 === 0) {
+      nextX = Math.min(CIRCUIT_AREA.maxX, x + circuitRandom(36, 96))
+    } else {
+      const span = circuitRandom(14, 44)
+      const direction = Math.random() < (bandBottom - y) / (bandBottom - bandTop) ? 1 : -1
+      nextY = Math.min(bandBottom + 12, Math.max(bandTop - 12, y + direction * span))
+      if (Math.random() < 0.4) nextX = Math.min(CIRCUIT_AREA.maxX, x + Math.abs(nextY - y))
+    }
+    if (nextX === x && nextY === y) continue
+    length += Math.hypot(nextX - x, nextY - y)
+    points.push([nextX, nextY])
+  }
+  const end = points[points.length - 1]
+  circuitSerial += 1
+  return {
+    id: circuitSerial,
+    slot,
+    d: points.map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' '),
+    end: [end[0], end[1]],
+    // 周期随走线长度增长，使长短走线的生长速度接近
+    cycle: 6 + length / 70 + circuitRandom(0, 1.5),
+    delay,
+  }
+}
+
+// 初始走线用负延迟错开相位，弹窗打开时各分带不会同时从零开始生长
+const seedCircuitTraces = (): CircuitTrace[] => (
+  Array.from({length: CIRCUIT_SLOT_COUNT}, (_, slot) => {
+    const trace = createCircuitTrace(slot, 0)
+    return {...trace, delay: circuitRandom(-trace.cycle * 0.75, 0.6)}
+  })
+)
+const circuitTraces = ref<CircuitTrace[]>(seedCircuitTraces())
+const circuitStyle = (trace: CircuitTrace) => ({
+  '--circuit-cycle': `${trace.cycle}s`,
+  '--circuit-delay': `${trace.delay}s`,
 })
+const circuitTipStyle = (trace: CircuitTrace) => ({offsetPath: `path('${trace.d}')`})
+
+// 只响应整条走线的生命周期动画结束，子元素动画的冒泡事件忽略；scoped 样式会给关键帧名追加作用域后缀，故用前缀匹配
+const handleCircuitEnd = (event: AnimationEvent, trace: CircuitTrace): void => {
+  if (event.target !== event.currentTarget || !event.animationName.startsWith('account-circuit-life')) return
+  const next = [...circuitTraces.value]
+  next[trace.slot] = createCircuitTrace(trace.slot, circuitRandom(0.3, 2.2))
+  circuitTraces.value = next
+}
 
 // =============== 弹窗生命周期 ===============
 // 说明：管理 Escape 关闭、验证码加载、首个输入框聚焦和页面滚动锁定。
@@ -113,6 +180,7 @@ watch(
     if (open) {
       void loadServerAddress().catch(() => { avatarFailed.value = true })
       artMotion.value = null
+      circuitTraces.value = seedCircuitTraces()
       if (accountNeedsPasswordChange.value) mode.value = 'changePassword'
       // 重新打开时从账号信息开始，强制改密状态除外
       if (canLeavePasswordChange.value && (mode.value === 'editProfile' || mode.value === 'changePassword')) {
@@ -446,13 +514,15 @@ const signOut = async (): Promise<void> => {
         <!-- ~ 品牌区：渐变底色 + 电路脉冲线条 -->
         <div v-if="mode !== 'editProfile'" class="account-art" :class="artMotion ? `is-moving-${artMotion}` : ''" aria-hidden="true">
           <svg class="account-circuit" viewBox="0 0 320 580" preserveAspectRatio="xMidYMid slice">
-            <g v-for="(trace, index) in circuitTraces" :key="index">
-              <path class="account-circuit-trace" :d="trace.d" />
+            <!-- 每条走线以 id 作 key：重新生成即重新挂载，动画从头播放 -->
+            <g v-for="trace in circuitTraces" :key="trace.id" class="account-circuit-line" :style="circuitStyle(trace)" @animationend="handleCircuitEnd($event, trace)">
+              <path class="account-circuit-trace" :d="trace.d" pathLength="100" />
               <!-- 光晕与脉冲共用路径和时序：宽而淡的描边代替逐帧 drop-shadow 滤镜 -->
-              <path class="account-circuit-pulse is-glow" :d="trace.d" pathLength="100" :style="circuitTiming(trace)" />
-              <path class="account-circuit-pulse" :d="trace.d" pathLength="100" :style="circuitTiming(trace)" />
-              <circle class="account-circuit-ring" :cx="trace.end[0]" :cy="trace.end[1]" r="2.5" :style="circuitTiming(trace)" />
-              <circle class="account-circuit-node" :cx="trace.end[0]" :cy="trace.end[1]" r="2.5" :style="circuitTiming(trace)" />
+              <path class="account-circuit-pulse is-glow" :d="trace.d" pathLength="100" />
+              <path class="account-circuit-pulse" :d="trace.d" pathLength="100" />
+              <circle class="account-circuit-tip" r="2" :style="circuitTipStyle(trace)" />
+              <circle class="account-circuit-ring" :cx="trace.end[0]" :cy="trace.end[1]" r="2.5" />
+              <circle class="account-circuit-node" :cx="trace.end[0]" :cy="trace.end[1]" r="2.5" />
             </g>
           </svg>
           <div class="account-art-copy">
@@ -777,12 +847,39 @@ const signOut = async (): Promise<void> => {
   mask-image: linear-gradient(180deg, #000 0%, #000 45%, transparent 78%);
 }
 
+// 一条走线的时间轴（占单个周期的百分比）：0–34% 生长，34–68% 脉冲沿线抵达并点亮终点，88–100% 整体淡出。
+// 周期时长与起始延迟由走线元素上的 --circuit-cycle / --circuit-delay 提供，子元素共用同一时序。
+// 周期只播放一次，结束后由脚本在同一分带重新生成走线。
+.account-circuit-line {
+  animation: account-circuit-life var(--circuit-cycle) linear var(--circuit-delay) 1 both;
+}
+
+// 底线：pathLength 归一化为 100，用 dashoffset 从起点向终点“长出”，生长完成后保持完整
 .account-circuit-trace {
   stroke: var(--account-art-line);
   stroke-width: 1;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  animation: account-circuit-grow var(--circuit-cycle) cubic-bezier(0.3, 0.1, 0.4, 1) var(--circuit-delay) 1 both;
 }
 
-// 脉冲：pathLength 归一化为 100，短划在周期前 55% 内从起点走到终点，其余时间静止，形成间歇信号。
+// 生长尖端：沿同一路径与同一缓动前进，与底线生长前沿对齐；不支持 offset-path 时不显示
+.account-circuit-tip {
+  display: none;
+  fill: var(--account-art-pulse);
+  opacity: 0;
+}
+
+@supports (offset-path: path('M 0 0 L 1 1')) {
+  .account-circuit-tip {
+    display: block;
+    animation:
+      account-circuit-tip-move var(--circuit-cycle) cubic-bezier(0.3, 0.1, 0.4, 1) var(--circuit-delay) 1 both,
+      account-circuit-tip-fade var(--circuit-cycle) linear var(--circuit-delay) 1 both;
+  }
+}
+
+// 脉冲：pathLength 归一化为 100，短划在生长完成后从起点走到终点，其余时间静止，形成间歇信号。
 // 行进用缓入缓出曲线（起步加速、抵达前减速落入节点），透明度独立动画让短划在两端淡入淡出，不在边缘突然出现或消失。
 .account-circuit-pulse {
   stroke: var(--account-art-pulse);
@@ -792,8 +889,10 @@ const signOut = async (): Promise<void> => {
   stroke-dashoffset: 14;
   opacity: 0;
   animation-name: account-circuit-travel, account-circuit-fade;
+  animation-duration: var(--circuit-cycle);
+  animation-delay: var(--circuit-delay);
   animation-timing-function: cubic-bezier(0.55, 0, 0.25, 1), linear;
-  animation-iteration-count: infinite;
+  animation-iteration-count: 1;
   animation-fill-mode: both;
 }
 
@@ -807,11 +906,13 @@ const signOut = async (): Promise<void> => {
 .account-circuit-ring {
   transform-box: fill-box;
   transform-origin: center;
-  animation-iteration-count: infinite;
+  animation-duration: var(--circuit-cycle);
+  animation-delay: var(--circuit-delay);
+  animation-iteration-count: 1;
   animation-fill-mode: both;
 }
 
-// 节点与对应脉冲同周期：脉冲抵达（55%）时快速点亮并轻微放大，随后缓慢回落
+// 节点与对应脉冲同周期：生长完成后浮现，脉冲抵达时快速点亮并轻微放大，随后缓慢回落
 .account-circuit-node {
   fill: var(--account-art-pulse);
   opacity: 0.28;
@@ -1368,34 +1469,67 @@ const signOut = async (): Promise<void> => {
   100% { transform: translateX(0); }
 }
 
-// 短划头部在 55% 到达终点（dashoffset 0 时短划尾端位于起点，-86 时头部位于终点）
+@keyframes account-circuit-life {
+  0%,
+  88% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes account-circuit-grow {
+  0% { stroke-dashoffset: 100; }
+  34%,
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes account-circuit-tip-move {
+  0% { offset-distance: 0%; }
+  34%,
+  100% { offset-distance: 100%; }
+}
+
+@keyframes account-circuit-tip-fade {
+  0% { opacity: 0; }
+  3%,
+  32% { opacity: 1; }
+  38%,
+  100% { opacity: 0; }
+}
+
+// 短划头部在 66% 到达终点（dashoffset 0 时短划尾端位于起点，-86 时头部位于终点）
 @keyframes account-circuit-travel {
-  0% { stroke-dashoffset: 14; }
-  55%,
+  0%,
+  38% { stroke-dashoffset: 14; }
+  66%,
   100% { stroke-dashoffset: -86; }
 }
 
 @keyframes account-circuit-fade {
-  0% { opacity: 0; }
-  8%,
-  50% { opacity: 1; }
-  60%,
+  0%,
+  38% { opacity: 0; }
+  42%,
+  62% { opacity: 1; }
+  68%,
   100% { opacity: 0; }
 }
 
 @keyframes account-circuit-node {
   0%,
-  52% {
+  28% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  34%,
+  62% {
     opacity: 0.28;
     transform: scale(1);
     animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
   }
-  57% {
+  67% {
     opacity: 0.95;
     transform: scale(1.5);
     animation-timing-function: ease-out;
   }
-  85%,
+  86%,
   100% {
     opacity: 0.28;
     transform: scale(1);
@@ -1404,12 +1538,12 @@ const signOut = async (): Promise<void> => {
 
 @keyframes account-circuit-ring {
   0%,
-  54% {
+  64% {
     opacity: 0;
     transform: scale(1);
   }
-  56% { opacity: 0.6; }
-  80%,
+  66% { opacity: 0.6; }
+  86%,
   100% {
     opacity: 0;
     transform: scale(4);
@@ -1505,11 +1639,14 @@ const signOut = async (): Promise<void> => {
   }
 
   .account-circuit-pulse,
-  .account-circuit-ring {
+  .account-circuit-ring,
+  .account-circuit-tip {
     display: none;
     animation: none;
   }
 
+  .account-circuit-line,
+  .account-circuit-trace,
   .account-circuit-node,
   .is-spinning {
     animation: none;
