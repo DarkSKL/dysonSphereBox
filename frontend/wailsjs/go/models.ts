@@ -2156,16 +2156,16 @@ export namespace modDependence {
 }
 
 export namespace modTranslation {
-
+	
 	export class Item {
 	    status: string;
 	    reason: string;
 	    data: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Item(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];
@@ -2175,16 +2175,16 @@ export namespace modTranslation {
 	}
 	export class BatchData {
 	    items: Item[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new BatchData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.items = this.convertValues(source["items"], Item);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;

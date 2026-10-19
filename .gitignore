@@ -1,7 +1,8 @@
 build/bin
 node_modules
 frontend/dist
-deploy
+deploy/*
+!deploy/build.bat
 remotion
 .gocache
 .cache

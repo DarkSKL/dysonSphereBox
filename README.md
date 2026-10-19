@@ -153,21 +153,21 @@ wails generate module
 
 ## 发布构建
 
-仓库保留了 Windows 发布脚本：
+Windows 发布脚本会询问版本号；也可以在命令行直接传入：
 
 ```powershell
+deploy\build.bat
 deploy\build.bat v1.0.1
 ```
 
 脚本会：
 
-- 规范化版本号为 `vX.Y.Z`。
-- 使用 `-ldflags "-X DysonSphereBox/core.Version=..."` 注入应用版本。
+- 校验并规范化版本号为 `vX.Y.Z`，通过 `-ldflags` 注入 `DysonSphereBox/core.Version`。
 - 构建 `windows/amd64` 和 `windows/arm64`。
 - 生成 `DysonSphereBox_windows_amd64.zip`、`DysonSphereBox_windows_arm64.zip`。
 - 生成 `checksums.txt`。
 
-发布到 Gitee Release 时，需要上传两个 zip 包和 `checksums.txt`。应用自更新依赖这些附件名称和校验文件。
+产物位于 `deploy/release/<版本号>/`。压缩包只包含根目录下的 `DysonSphereBox.exe`；发布到 Gitee Release 时上传两个 zip 包和 `checksums.txt`。应用自更新依赖这些附件名称和 SHA256 校验清单。
 
 ## 项目结构
 
