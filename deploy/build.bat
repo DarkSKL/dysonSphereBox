@@ -58,7 +58,7 @@ if errorlevel 1 (
 
 echo.
 echo [1/4] Building Windows amd64, version %VERSION% ...
-call wails build -clean -platform windows/amd64 -o DysonSphereBox -ldflags "-X DysonSphereBox/core.Version=%VERSION%"
+call wails build -clean -platform windows/amd64 -ldflags "-X DysonSphereBox/core.Version=%VERSION%"
 if errorlevel 1 goto build_failed
 if not exist "build\bin\DysonSphereBox.exe" goto missing_binary
 copy /y "build\bin\DysonSphereBox.exe" "%WORK_DIR%\amd64\DysonSphereBox.exe" >nul
@@ -66,7 +66,7 @@ if errorlevel 1 goto copy_failed
 
 echo.
 echo [2/4] Building Windows arm64, version %VERSION% ...
-call wails build -clean -platform windows/arm64 -o DysonSphereBox -ldflags "-X DysonSphereBox/core.Version=%VERSION%"
+call wails build -clean -platform windows/arm64 -ldflags "-X DysonSphereBox/core.Version=%VERSION%"
 if errorlevel 1 goto build_failed
 if not exist "build\bin\DysonSphereBox.exe" goto missing_binary
 copy /y "build\bin\DysonSphereBox.exe" "%WORK_DIR%\arm64\DysonSphereBox.exe" >nul
@@ -83,8 +83,9 @@ if errorlevel 1 goto archive_failed
 
 echo.
 echo [4/4] Writing SHA256 checksums ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$names = @('DysonSphereBox_windows_amd64.zip', 'DysonSphereBox_windows_arm64.zip'); $lines = foreach ($name in $names) { $hash = (Get-FileHash -LiteralPath (Join-Path $env:OUTPUT_DIR $name) -Algorithm SHA256).Hash.ToLowerInvariant(); $hash + '  ' + $name }; [IO.File]::WriteAllLines((Join-Path $env:OUTPUT_DIR 'checksums.txt'), $lines, [Text.Encoding]::ASCII)"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $names = @('DysonSphereBox_windows_amd64.zip', 'DysonSphereBox_windows_arm64.zip'); $sha = [System.Security.Cryptography.SHA256]::Create(); try { $lines = foreach ($name in $names) { $stream = [System.IO.File]::OpenRead((Join-Path $env:OUTPUT_DIR $name)); try { $hash = -join ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) } finally { $stream.Dispose() }; $hash + '  ' + $name }; [System.IO.File]::WriteAllLines((Join-Path $env:OUTPUT_DIR 'checksums.txt'), [string[]]$lines, [System.Text.Encoding]::ASCII) } finally { $sha.Dispose() }"
 if errorlevel 1 goto checksum_failed
+if not exist "%OUTPUT_DIR%\checksums.txt" goto checksum_failed
 
 popd
 rmdir /s /q "%WORK_DIR%"
