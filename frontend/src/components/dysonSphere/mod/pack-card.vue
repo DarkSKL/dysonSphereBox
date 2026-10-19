@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import {AlertCircle, CheckCircle2, Download, PackageOpen, Trash2, Wrench, X} from '@lucide/vue'
+import {AlertCircle, CheckCircle2, Download, LoaderCircle, PackageOpen, Trash2, Wrench, X} from '@lucide/vue'
+import {onActivated, onBeforeUnmount, onDeactivated, onMounted, ref} from 'vue'
 
-defineProps<{
+const props = defineProps<{
   packageKey: string
   title: string
   description: string
@@ -17,14 +18,37 @@ defineProps<{
   progressStatus: string
   downloadSpeed: string
   failureMessage: string
+  translationStatus?: string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (event: 'open', key: string): void
   (event: 'uninstall', key: string): void
   (event: 'repair', key: string): void
   (event: 'cancel', key: string): void
+  (event: 'description-visible', key: string, visible: boolean): void
+  (event: 'retry-translation'): void
 }>()
+
+// 说明：只观察描述所在元素，不预取视口之外的卡片；缓存页停用和卸载时清理观察器。
+const descriptionElement = ref<HTMLElement | null>(null)
+let descriptionObserver: IntersectionObserver | undefined
+function observeDescription(): void {
+  descriptionObserver?.disconnect()
+  if (!descriptionElement.value) return
+  descriptionObserver = new IntersectionObserver((entries) => {
+    emit('description-visible', props.packageKey, entries.some((entry) => entry.isIntersecting))
+  })
+  descriptionObserver.observe(descriptionElement.value)
+}
+function stopObservingDescription(): void {
+  descriptionObserver?.disconnect()
+  emit('description-visible', props.packageKey, false)
+}
+onMounted(observeDescription)
+onActivated(observeDescription)
+onDeactivated(stopObservingDescription)
+onBeforeUnmount(stopObservingDescription)
 </script>
 
 <template>
@@ -39,37 +63,57 @@ defineEmits<{
   >
     <div class="mod-pack-card__header flex shrink-0 items-start justify-between gap-3 p-2.5">
       <div class="min-w-0">
-        <h3 class="mod-pack-card__title truncate text-sm font-semibold">{{ title }}</h3>
-        <p class="mod-pack-card__description mt-1 line-clamp-1 text-xs leading-5">{{ description }}</p>
+        <h3 class="mod-pack-card__title truncate text-sm font-semibold" :title="title">{{ title }}</h3>
+        <p ref="descriptionElement" class="mod-pack-card__description mt-1 line-clamp-1 text-xs leading-5" :title="description">{{ description }}</p>
+        <n-button
+          v-if="translationStatus === 'error'"
+          text size="tiny"
+          title="翻译暂不可用，已显示原文。请检查登录状态后重试。"
+          @click.stop="$emit('retry-translation')"
+          @keydown.enter.stop
+          @keydown.space.stop
+        >重试翻译</n-button>
         <p class="mod-pack-card__author mt-1 truncate text-[11px]">{{ author || '未知作者' }}</p>
       </div>
-      <button
-        v-if="installing"
-        class="mod-pack-card__icon-action grid h-7 w-7 shrink-0 place-items-center rounded opacity-100 transition"
-        type="button"
-        title="取消安装"
-        @click.stop="$emit('cancel', packageKey)"
-      >
-        <X :size="14" :stroke-width="1.8" />
-      </button>
-      <button
-        v-else-if="conflicted"
-        class="mod-pack-card__icon-action is-warning grid h-7 w-7 shrink-0 place-items-center rounded opacity-100 transition"
-        type="button"
-        title="修复安装冲突"
-        @click.stop="$emit('repair', packageKey)"
-      >
-        <Wrench :size="14" :stroke-width="1.8" />
-      </button>
-      <button
-        v-else-if="installed && !installing"
-        class="mod-pack-card__icon-action is-danger grid h-7 w-7 shrink-0 place-items-center rounded opacity-0 transition group-hover:opacity-100"
-        type="button"
-        title="卸载"
-        @click.stop="$emit('uninstall', packageKey)"
-      >
-        <Trash2 :size="14" :stroke-width="1.8" />
-      </button>
+      <!-- * 说明：右上角依次为翻译加载圈与安装相关操作；加载圈仅表示状态，不可点击 -->
+      <div class="flex shrink-0 items-center gap-1.5">
+        <span
+          v-if="translationStatus === 'loading'"
+          class="mod-pack-card__translating grid h-7 w-5 place-items-center"
+          role="status"
+          aria-label="正在翻译"
+          title="正在翻译"
+        >
+          <LoaderCircle :size="14" :stroke-width="1.9" class="mod-pack-card__spinner" />
+        </span>
+        <button
+          v-if="installing"
+          class="mod-pack-card__icon-action grid h-7 w-7 shrink-0 place-items-center rounded opacity-100 transition"
+          type="button"
+          title="取消安装"
+          @click.stop="$emit('cancel', packageKey)"
+        >
+          <X :size="14" :stroke-width="1.8" />
+        </button>
+        <button
+          v-else-if="conflicted"
+          class="mod-pack-card__icon-action is-warning grid h-7 w-7 shrink-0 place-items-center rounded opacity-100 transition"
+          type="button"
+          title="修复安装冲突"
+          @click.stop="$emit('repair', packageKey)"
+        >
+          <Wrench :size="14" :stroke-width="1.8" />
+        </button>
+        <button
+          v-else-if="installed && !installing"
+          class="mod-pack-card__icon-action is-danger grid h-7 w-7 shrink-0 place-items-center rounded opacity-0 transition group-hover:opacity-100"
+          type="button"
+          title="卸载"
+          @click.stop="$emit('uninstall', packageKey)"
+        >
+          <Trash2 :size="14" :stroke-width="1.8" />
+        </button>
+      </div>
     </div>
 
     <div v-if="installing" class="mod-pack-card__progress-track h-1">
@@ -175,6 +219,26 @@ defineEmits<{
 
 .mod-pack-card__author {
   color: var(--ds-text-muted);
+}
+
+.mod-pack-card__translating {
+  color: var(--ds-text-muted);
+}
+
+.mod-pack-card__spinner {
+  animation: mod-pack-card-spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mod-pack-card__spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+@keyframes mod-pack-card-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .mod-pack-card__icon-action,

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import {AlertCircle, CheckCircle2, Database, LoaderCircle, RefreshCw, Search} from '@lucide/vue'
+import {AlertCircle, CheckCircle2, Database, Languages, LoaderCircle, RefreshCw, Search} from '@lucide/vue'
+import {useMessage} from 'naive-ui'
+import {verifiedAccountSession} from '../../services/account'
 import ModPackCard from '../../components/dysonSphere/mod/pack-card.vue'
 import ModPackDialog from '../../components/dysonSphere/mod/pack-dialog.vue'
 import {useModPageState} from '../../composables/dysonSphere/useModPageState'
@@ -7,6 +9,12 @@ import {useModPageState} from '../../composables/dysonSphere/useModPageState'
 definePage({ meta: { layout: 'main', title: '模组', keepAlive: true } })
 
 const {
+  showChinese,
+  titleText,
+  descriptionText,
+  translationStatus,
+  retryTranslation,
+  setDescriptionVisible,
   router,
   sourceOptions,
   selectedSource,
@@ -46,6 +54,17 @@ const {
   installBepInExFromModPage,
   resolveCoverUrl,
 } = useModPageState()
+
+const message = useMessage()
+
+// 说明：翻译依赖已验证的账号会话；未登录时给出提示而不是静默无反应，关闭翻译始终允许。
+function toggleChinese(): void {
+  if (!showChinese.value && !verifiedAccountSession.value) {
+    message.warning('请先登录账号，再使用中文翻译')
+    return
+  }
+  showChinese.value = !showChinese.value
+}
 </script>
 
 <template>
@@ -60,7 +79,7 @@ const {
       <!-- * 说明：BepInEx 状态条占满剩余宽度，右侧为搜索、来源切换与刷新 -->
       <!-- * 交互：滚动时工具栏吸附在内容区顶部；未安装 BepInEx 时提供安装按钮；搜索输入 300ms 后刷新第一页 -->
       <!-- * 依赖：依赖 bepinExStatusTitle / Description、searchKeyword、selectedSource -->
-      <!-- * 边界：所有控件统一 34px 高度；窄屏时搜索与按钮整体换到下一行 -->
+      <!-- * 边界：所有控件统一 34px 高度；宽度不足时先截断/隐藏 BepInEx 描述，极窄时搜索与按钮才换到下一行 -->
       <div class="mod-toolbar">
         <div class="mod-bepinex" :class="isBepInExInstalled ? 'is-ready' : 'is-missing'" role="status">
           <LoaderCircle v-if="isCheckingBepInEx" :size="15" :stroke-width="1.9" class="mod-bepinex-icon is-spinning" />
@@ -81,6 +100,24 @@ const {
         </div>
 
         <div class="mod-toolbar-actions">
+          <n-tooltip>
+            <template #trigger>
+              <n-button
+                secondary
+                class="mod-language-toggle"
+                :class="{'is-active': showChinese}"
+                :disabled="isManualSource"
+                :aria-pressed="showChinese"
+                :aria-label="showChinese ? '显示原文' : '显示中文'"
+                @click="toggleChinese"
+              >
+                <template #icon>
+                  <Languages :size="16" :stroke-width="1.8" />
+                </template>
+              </n-button>
+            </template>
+            {{ showChinese ? '显示原文' : verifiedAccountSession ? '显示中文' : '登录账号后可显示中文' }}
+          </n-tooltip>
           <n-input
             v-model:value="searchKeyword"
             class="mod-search"
@@ -121,7 +158,7 @@ const {
       </div>
 
       <!-- ~ 模组网格 -->
-      <!-- * 说明：卡片展示名称、简介、作者、封面、组件数与下载量，并叠加安装进度/失败/冲突状态 -->
+      <!-- * 说明：卡片展示名称、简介（开启中文时均显示译文）、作者、封面、组件数与下载量，并叠加安装进度/失败/冲突状态 -->
       <!-- * 交互：点击卡片打开详情；卡片上可取消安装、卸载或处理冲突 -->
       <!-- * 依赖：依赖 packageList 与按 packageKey 维护的安装状态映射 -->
       <!-- * 边界：首屏加载时展示骨架卡片，列数随内容区宽度自适应 -->
@@ -130,8 +167,9 @@ const {
           v-for="pack in packageList"
           :key="pack.key"
           :package-key="pack.key"
-          :title="pack.displayName || pack.name || '未命名模组'"
-          :description="pack.description || '暂无模组说明。'"
+          :title="titleText(pack)"
+          :description="descriptionText(pack)"
+          :translation-status="translationStatus(pack)"
           :image-url="resolveCoverUrl(pack.coverUrl)"
           :file-count="pack.dependencyCount || pack.dependencies?.length || 0"
           :download-count="pack.downloadCount || 0"
@@ -148,6 +186,8 @@ const {
           @uninstall="handleUninstall"
           @repair="(key) => openConflictDialog(key, true)"
           @cancel="cancelInstall"
+          @description-visible="setDescriptionVisible"
+          @retry-translation="retryTranslation(pack)"
         />
 
         <template v-if="isLoadingPackages && packageList.length === 0">
@@ -211,12 +251,16 @@ const {
     <ModPackDialog
       v-model:show="dialogVisible"
       :pack="selectedPack"
+      :translated-title="titleText(selectedPack)"
+      :translated-description="descriptionText(selectedPack)"
+      :translation-status="translationStatus(selectedPack)"
       :installed="selectedPack ? installedPackageKeys[selectedPack.key] || false : false"
       :installing="selectedPack ? installingPackageKeys[selectedPack.key] || false : false"
       :can-install="canInstallPackages"
       install-disabled-text="需要优先安装 BepInEx 后才能安装模组。"
       @install="handleInstall"
       @uninstall="handleUninstall"
+      @retry-translation="retryTranslation(selectedPack)"
     />
   </section>
 </template>
@@ -241,12 +285,13 @@ const {
 
 // =============== 工具栏 ===============
 // 说明：相对页面宿主吸顶，背景保持透明；上下留白保持首屏控件与网格的位置。
+// 边界：默认不换行，空间不足时优先压缩 BepInEx 描述文字，仅在内容区很窄时才把右侧控件换到下一行。
 .mod-toolbar {
   position: sticky;
   top: 0;
   z-index: 2;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   margin: -12px calc(-1 * var(--ds-page-padding-x)) 4px;
@@ -258,7 +303,8 @@ const {
   box-sizing: border-box;
   height: var(--mod-control-height);
   min-width: 0;
-  flex: 1 1 320px;
+  flex: 1 1 0;
+  overflow: hidden;
   align-items: center;
   gap: 8px;
   padding: 0 6px 0 12px;
@@ -309,13 +355,22 @@ const {
 
 .mod-toolbar-actions {
   display: flex;
+  min-width: 0;
   flex: 0 1 auto;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 8px;
 }
 
-.mod-search {
+.mod-toolbar-actions > * {
+  flex-shrink: 0;
+}
+
+// 搜索框在 BepInEx 状态条压缩到极限后再收窄
+.mod-toolbar-actions > .mod-search {
   width: 240px;
+  min-width: 160px;
+  flex: 0 1 240px;
 }
 
 .mod-toolbar-actions :deep(.n-input),
@@ -330,6 +385,27 @@ const {
   --n-color-hover: var(--ds-bg-panel-elevated) !important;
   --n-color-pressed: var(--ds-bg-shell) !important;
   --n-color-focus: var(--ds-bg-panel-elevated) !important;
+}
+
+// 语言切换为方形图标按钮；显示中文时使用品牌色实底高亮，关闭时与其他工具栏按钮一致。
+.mod-toolbar-actions :deep(.mod-language-toggle) {
+  width: var(--mod-control-height);
+  padding: 0;
+}
+
+.mod-toolbar-actions :deep(.mod-language-toggle.is-active) {
+  --n-color: var(--ds-brand) !important;
+  --n-color-hover: var(--ds-brand-hover) !important;
+  --n-color-pressed: var(--ds-brand-pressed) !important;
+  --n-color-focus: var(--ds-brand-hover) !important;
+  --n-text-color: var(--ds-brand-contrast-text) !important;
+  --n-text-color-hover: var(--ds-brand-contrast-text) !important;
+  --n-text-color-pressed: var(--ds-brand-contrast-text) !important;
+  --n-text-color-focus: var(--ds-brand-contrast-text) !important;
+  --n-border: 1px solid var(--ds-brand) !important;
+  --n-border-hover: 1px solid var(--ds-brand-hover) !important;
+  --n-border-pressed: 1px solid var(--ds-brand-pressed) !important;
+  --n-border-focus: 1px solid var(--ds-brand-hover) !important;
 }
 
 // =============== 模组网格 ===============
@@ -492,14 +568,30 @@ const {
   }
 }
 
-// 内容区较窄时搜索框随工具栏换行后占满整行
-@media (max-width: 900px) {
+// 内容区较窄时隐藏 BepInEx 描述（悬停仍可查看 title），只保留状态标题
+@container mod-market (max-width: 900px) {
+  .mod-bepinex-desc {
+    display: none;
+  }
+}
+
+// 内容区很窄时右侧控件换到下一行，搜索框占满剩余宽度
+@container mod-market (max-width: 640px) {
+  .mod-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .mod-bepinex {
+    flex-basis: 100%;
+  }
+
   .mod-toolbar-actions {
     flex: 1 1 100%;
   }
 
-  .mod-search {
+  .mod-toolbar-actions > .mod-search {
     width: auto;
+    min-width: 0;
     flex: 1 1 auto;
   }
 }

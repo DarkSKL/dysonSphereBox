@@ -100,6 +100,11 @@ func notifySessionCleared() {
 // 职责：安全应用401和409；使用：公告HTTP解析响应后调用。
 // 边界：旧代次、旧token、旧client无副作用。
 func HandleAnnouncementAuthResponse(generation uint64, token string, client *core.HTTPClient, refreshedToken string, unauthorized, needPassword bool) bool {
+	return HandleAuthenticatedResponse(generation, token, client, refreshedToken, unauthorized, needPassword)
+}
+
+// HandleAuthenticatedResponse 职责：按请求捕获的会话接纳续期与鉴权副作用；使用：公告、翻译等认证请求解析完整响应后调用；边界：旧代次或旧目标无副作用，token 不返回前端。
+func HandleAuthenticatedResponse(generation uint64, token string, client *core.HTTPClient, refreshedToken string, unauthorized, needPassword bool) bool {
 	return acceptAccountResponse(requestSnapshot{generation: generation, token: token, client: client}, refreshedToken, unauthorized, needPassword, 0, "", nil, false) == nil
 }
 

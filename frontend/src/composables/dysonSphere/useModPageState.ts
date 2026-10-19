@@ -9,6 +9,7 @@ import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import { gameDirectory, getBepInExStatus, installBepInEx, loadGameDirectory } from '../../services/dysonSphere/game'
 import type { InstallConflictAction, InstallProgressPayload } from '../../types/mod'
 import { formatDownloadSpeed, formatErrorMessage } from '../../utils/format'
+import { useModDescriptionTranslation } from './useModDescriptionTranslation'
 
 // =============== 模组页面状态组合 ===============
 // 说明：集中维护模组市场页的远端列表、安装进度、冲突处理与前置框架状态。
@@ -60,6 +61,12 @@ export const useModPageState = () => {
   const selectedPack = computed<modDependence.RemoteModPackageDTO | undefined>(() => {
   return packageList.value.find((pack) => pack.key === selectedPackKey.value)
 })
+  const descriptionTranslation = useModDescriptionTranslation({
+    packages: packageList,
+    selected: selectedPack,
+    dialogVisible,
+    available: computed(() => canOpenModPage.value && !isCheckingGamePath.value),
+  })
   const hasLoadedAllPackages = computed(() => {
   return reachedPackageEnd.value || (
     totalPackages.value > 0 &&
@@ -720,6 +727,7 @@ export const useModPageState = () => {
   watch(searchKeyword, scheduleSearchRefresh)
 
   return {
+    ...descriptionTranslation,
     router,
     sourceOptions,
     selectedSource,

@@ -11,16 +11,20 @@ const props = defineProps<{
   installing: boolean
   canInstall: boolean
   installDisabledText?: string
+  translatedTitle?: string
+  translatedDescription?: string
+  translationStatus?: string
 }>()
 
 const emit = defineEmits<{
   (event: 'update:show', value: boolean): void
   (event: 'install', key: string): void
   (event: 'uninstall', key: string): void
+  (event: 'retry-translation'): void
 }>()
 
-const title = computed(() => props.pack?.displayName ?? '')
-const description = computed(() => props.pack?.description || '暂无模组说明。')
+const title = computed(() => props.translatedTitle || props.pack?.displayName || '')
+const description = computed(() => props.translatedDescription || props.pack?.description || '暂无模组说明。')
 const dependencies = computed(() => props.pack?.dependencies ?? [])
 const displayComponents = computed(() => {
   if (!props.pack) {
@@ -33,7 +37,7 @@ const displayComponents = computed(() => {
       displayName: props.pack.displayName || props.pack.name,
       name: props.pack.name,
       version: props.pack.version,
-      description: props.pack.description,
+      description: description.value,
     },
     ...dependencies.value,
   ]
@@ -102,6 +106,11 @@ const handleUninstall = (): void => {
 
       <div v-if="pack">
         <p class="pack-dialog-desc mb-5 text-sm leading-6">{{ description }}</p>
+        <p v-if="translationStatus === 'loading'" class="pack-dialog-muted mb-3 text-xs" role="status">正在翻译…</p>
+        <div v-else-if="translationStatus === 'error'" class="mb-3 flex items-center gap-2 text-xs">
+          <span class="pack-dialog-muted">翻译暂不可用，已显示原文。</span>
+          <n-button text size="tiny" @click="$emit('retry-translation')">重试翻译</n-button>
+        </div>
 
         <div class="mb-5 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
           <div class="pack-dialog-stat px-3 py-2">
