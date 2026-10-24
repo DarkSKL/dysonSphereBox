@@ -122,6 +122,8 @@ const dependencyStatus = (installed: boolean): string => installed ? '完整' : 
         <span v-if="status?.processRunning"><b>PID</b><code>{{ status.processId || '--' }}</code></span>
         <span v-if="status?.processRunning"><b>运行时长</b><code>{{ uptimeText }}</code></span>
         <span v-if="status?.portListening" class="port-live"><i />端口监听中</span>
+        <!-- * 说明：明确无头服务器与联机房主是两条路径，避免用户误以为可用无头服直接进游戏当房主 -->
+        <span class="runtime-note">无头服务器无法作为房主加入游戏；本机需要进入游戏游玩时，请在联机页直接创建房间。</span>
       </div>
     </header>
 
@@ -253,6 +255,7 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; line-height: 1.3; }
 .runtime-meta b { color: var(--ds-text-muted); font-weight: 400; }
 code { color: var(--ds-text-secondary); font-family: var(--ds-font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
 .server-name { color: var(--ds-text-primary) !important; }
+.runtime-meta .runtime-note { display: block; margin-left: auto; color: var(--ds-text-muted); font-size: 11px; line-height: 1.6; text-align: right; }
 .port-live { color: var(--ds-success); }
 .error-strip { display: flex; gap: 9px; align-items: center; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--ds-error-border); background: var(--ds-error-bg); color: var(--ds-error); font-size: 12px; }
 .issues-section, .workspace-grid { margin-top: 19px; }

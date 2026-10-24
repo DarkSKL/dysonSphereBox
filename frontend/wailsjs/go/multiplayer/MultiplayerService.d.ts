@@ -10,6 +10,8 @@ export function CreateRoom(arg1:multiplayer.RoomCreateRequest):Promise<multiplay
 
 export function Disconnect():Promise<multiplayer.ActionResult>;
 
+export function GamePortPresets():Promise<Array<multiplayer.GamePortPreset>>;
+
 export function GetState():Promise<multiplayer.State>;
 
 export function InviteRoom():Promise<multiplayer.ActionResult>;

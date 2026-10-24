@@ -6,7 +6,7 @@ package headless
 
 import (
 	"DysonSphereBox/helper/modDependence/headless/contract"
-	"DysonSphereBox/helper/modDependence/headless/wincommand"
+	"DysonSphereBox/utils/wincommand"
 	"fmt"
 	"os/exec"
 	"strconv"

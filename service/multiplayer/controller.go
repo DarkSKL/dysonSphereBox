@@ -15,6 +15,7 @@ import (
 	"time"
 
 	mpAPI "DysonSphereBox/apiDefinition/multiplayer"
+	loggingConstant "DysonSphereBox/constant/logging"
 	mpConstant "DysonSphereBox/constant/multiplayer"
 	"DysonSphereBox/core/diagnostics"
 	"DysonSphereBox/helper/multiplayer/forward"
@@ -53,18 +54,22 @@ type session struct {
 	port int
 	stop chan struct{}
 	// initialized 职责：阻止打开会话回复覆盖紧接着到达的策略；使用：事件分发等待初始化；边界：失败时由 stop 解除等待。
-	initialized chan struct{}
-	firstReport chan struct{}
-	reportOnce  sync.Once
-	terminate   int
-	report      p2p.Report
-	observed    []p2p.Observation
+	initialized             chan struct{}
+	firstReport             chan struct{}
+	reportOnce              sync.Once
+	terminate               int
+	relayAdmissionRequested bool
+	relayAdmissionEnabled   bool
+	report                  p2p.Report
+	observed                []p2p.Observation
 	// autoNATReachability 职责：官方 AutoNAT 入站判断；使用：地址上报和本地诊断；边界：初始 unknown，事件只影响诊断，不筛除 observed 候选。
 	autoNATReachability string
 	// observeResults 职责：最近一次观测的逐节点结果；使用：投影中拿不到 observed 地址的原因；边界：每次重新观测整体替换。
 	observeResults []p2p.ObserverResult
 	// tracer 职责：本会话的 link.trace 上报器；使用：各 stage；边界：socket 建立后创建、endSession 关闭；nil 时上报为空操作。
 	tracer *link.Tracer
+	// relayLog 职责：中继预约最近一次记录的签名；使用：避免续约成功或同一失败重复写日志；边界：由控制器锁保护。
+	relayLog map[string]string
 }
 
 // roomState 是当前房间的运行期状态。
@@ -92,11 +97,14 @@ type controller struct {
 	// lastMessage 职责：保留最近控制链路失败原因；使用：离线反馈；边界：写入前脱敏限长，新连接成功后清空。
 	lastMessage string
 	// notice 职责：保留最近房间管理原因；使用：回到大厅展示；边界：不驱动重连。
-	notice  *NoticeView
-	sess    *session
-	lobby   LobbyView
-	room    *roomState
-	pending map[string]int
+	notice         *NoticeView
+	sess           *session
+	lobby          LobbyView
+	room           *roomState
+	relayAdmission *RelayAdmissionView
+	pending        map[string]int
+	// localBases 职责：按房间记住上次成功的本地端口起点；使用：重进同一房间时复用，避免游戏里的本地地址变化；边界：只在本进程内有效，最多保留 32 个房间。
+	localBases map[string][]int
 }
 
 func newController(opts options) *controller {
@@ -113,7 +121,7 @@ func newController(opts options) *controller {
 		opts.observe = p2p.ObserveDetailed
 	}
 	return &controller{opts: opts, connState: mpConstant.ConnOffline, pending: map[string]int{},
-		lobby: LobbyView{List: []mpAPI.RoomSummary{}}}
+		lobby: LobbyView{List: []mpAPI.RoomSummary{}}, localBases: map[string][]int{}}
 }
 
 // ===================== 连接生命周期 =====================
@@ -212,10 +220,10 @@ func (c *controller) setOffline(stop chan struct{}, code int) {
 	c.emit()
 }
 
-// startHost 用持久化端口启动 host，端口不可用时换号重试。
+// startHost 用持久化端口启动 host，端口不可用时先重试原端口，仍失败才换号。
 // 职责：建立后续联机所需的数据面 host；使用：runSession 每次控制链路拨号前调用。
-// 边界：三次失败后返回最后一个监听原因；没有 IPv4 QUIC 地址时明确报错，不将 nil 误作原因。
-// 逻辑流：1. 读取持久化端口 => 2. 最多尝试三次监听 => 3. 失败时关闭 host 并换端口 => 4. 返回真实末次错误。
+// 边界：同一端口重试 ListenPortRetries 次；只有连续失败才换号并写回，避免一次瞬时占用永久改掉用户端口。
+// 逻辑流：1. 读取持久化端口 => 2. 原端口退避重试 => 3. 仍失败则换号并记录 => 4. 返回真实末次错误。
 func (c *controller) startHost() (*p2p.Host, int, error) {
 	if c.opts.listenAddrs != nil {
 		h, err := p2p.NewHost(0, c.opts.listenAddrs)
@@ -224,18 +232,34 @@ func (c *controller) startHost() (*p2p.Host, int, error) {
 	port := p2p.ListenPort()
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		h, err := p2p.NewHost(port, nil)
-		if err == nil && h != nil && p2p.HasIPv4QUIC(h) {
-			return h, port, nil
+		for retry := 0; retry < mpConstant.ListenPortRetries; retry++ {
+			h, err := p2p.NewHost(port, nil)
+			if err == nil && h != nil && p2p.HasIPv4QUIC(h) {
+				if retry > 0 {
+					recordStateAsync(loggingConstant.Warn, "host.port", "联机监听端口重试成功", "原端口曾被短暂占用，重试后仍在原端口监听",
+						map[string]interface{}{"listenPort": port, "retries": retry})
+				}
+				return h, port, nil
+			}
+			if h != nil {
+				_ = h.Close()
+			}
+			lastErr = err
+			if lastErr == nil {
+				lastErr = errors.New("本机未能建立 IPv4 QUIC 监听")
+			}
+			if retry+1 < mpConstant.ListenPortRetries {
+				time.Sleep(mpConstant.ListenPortRetryDelay)
+			}
 		}
-		if h != nil {
-			_ = h.Close()
+		// 最后一次尝试不再换号：保留原端口，交给下一次重连继续复用
+		if attempt+1 >= 3 {
+			break
 		}
-		lastErr = err
-		if lastErr == nil {
-			lastErr = errors.New("本机未能建立 IPv4 QUIC 监听")
-		}
+		previous := port
 		port = p2p.NewRandomListenPort()
+		recordStateAsync(loggingConstant.Warn, "host.port", "联机监听端口已更换", "原端口连续绑定失败，换号并写回配置",
+			map[string]interface{}{"previousPort": previous, "listenPort": port, "error": link.ErrText(lastErr)})
 	}
 	return nil, 0, fmt.Errorf("libp2p 监听失败：%w", lastErr)
 }
@@ -301,8 +325,10 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		c.sess = sess
 		c.mu.Unlock()
 
+		sess.relayAdmissionRequested = true
 		reply, err := conn.Request(context.Background(), mpConstant.OpSessionOpen, mpAPI.SessionOpenRequest{
-			ProtocolVersion: mpConstant.ProtocolVersion, ClientVersion: c.opts.clientVersion, PeerID: h.ID().String(), ManagementEvents: true})
+			ProtocolVersion: mpConstant.ProtocolVersion, ClientVersion: c.opts.clientVersion, PeerID: h.ID().String(), ManagementEvents: true,
+			RelayAdmissionEvents: sess.relayAdmissionRequested})
 		if err == nil && reply.Code == mpConstant.CodePeerIDInUse {
 			c.endSession(sess)
 			continue
@@ -335,6 +361,9 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		}
 		c.mu.Lock()
 		_ = json.Unmarshal(reply.Data, &sess.info)
+		sess.relayAdmissionEnabled = negotiatedRelayAdmissionEvents(sess.relayAdmissionRequested, sess.info.Capabilities)
+		c.relayAdmission = nil
+		c.clearSessionNotice()
 		if sess.info.Policy != nil && sess.info.Policy.MaxMembers > 0 {
 			sess.info.Limits.MaxMembers = sess.info.Policy.MaxMembers
 		}
@@ -345,25 +374,29 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		if err := h.ConfigureRelay(sess.info.Capabilities, sess.info.Relays, func(state p2p.RelayState, duration time.Duration) {
 			sess.tracer.Trace(mpAPI.LinkTraceRequest{Stage: mpConstant.TraceRelayReserve, OK: state.ExpiresAtMs > time.Now().UnixMilli(),
 				DurationMs: duration.Milliseconds(), Error: state.Error, Detail: fmt.Sprintf("relay=%s expires=%d duration=%ds data=%d", state.PeerID, state.ExpiresAtMs, state.LimitDurationSeconds, state.LimitDataBytes)})
+			c.logRelayReserve(sess, state, duration)
 		}); err != nil {
 			sess.tracer.Trace(mpAPI.LinkTraceRequest{Stage: mpConstant.TraceRelayReserve, Error: err.Error()})
+			recordStateAsync(loggingConstant.Warn, "relay.policy", "中继策略应用失败", "session.open 下发的入口无法应用，本会话不使用中继",
+				map[string]interface{}{"error": link.ErrText(err)})
 		}
 		h.SetDCUtRTracer(func(evt *holepunch.Event) { go c.traceDCUtR(sess, evt) })
 		h.RunReservations()
 
 		c.mu.Lock()
 		c.connState, c.lastErr, c.lastMessage = mpConstant.ConnOnline, 0, ""
-		watching := c.lobby.Watching
 		close(sess.initialized)
 		c.mu.Unlock()
+		recordStateAsync(loggingConstant.Info, "session.online", "联机会话已建立", "session.open 成功，控制链路在线",
+			map[string]interface{}{
+				"sessionId": sess.info.SessionID, "peerId": h.ID().String(), "listenPort": port,
+				"nativeDcutr": sess.info.Capabilities.NativeDCUtR, "relayV2": sess.info.Capabilities.RelayV2,
+				"relayFallback": sess.info.Capabilities.RelayFallback, "relays": sess.info.Relays,
+			})
 		c.emit()
 		go c.addrLoop(sess)
-		if watching {
-			go func() {
-				_, _ = conn.Request(context.Background(), mpConstant.OpLobbyWatch, mpAPI.LobbyWatchRequest{On: true})
-			}()
-		}
 
+		openedAt := time.Now()
 		select {
 		case <-conn.Done():
 		case <-stop:
@@ -374,8 +407,21 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		c.mu.Lock()
 		reason := sess.terminate
 		c.mu.Unlock()
+		level := loggingConstant.Warn
+		if reason == 0 {
+			level = loggingConstant.Info
+		}
+		detail := ""
+		if connectionErr != nil {
+			detail = connectionErr.Error()
+		}
+		recordStateAsync(level, "session.closed", "联机会话已断开", "控制链路读循环结束或被服务端断开",
+			map[string]interface{}{
+				"sessionId": sess.info.SessionID, "reason": reason, "permanent": reason != 0,
+				"error": detail, "onlineMs": durationMs(openedAt),
+			})
 		if reason != 0 {
-			return true, reason, true
+			return true, reason, permanentTerminationReason(reason)
 		}
 		select {
 		case <-stop:
@@ -393,6 +439,21 @@ func (c *controller) runSession(stop chan struct{}) (bool, int, bool) {
 		return true, reason, false
 	}
 	return false, mpConstant.CodePeerIDInUse, false
+}
+
+// permanentTerminationReason 仅对协议指定的维护原因保留自动退避重连。
+func permanentTerminationReason(reason int) bool {
+	return reason != mpConstant.ReasonMaintenance
+}
+
+// negotiatedRelayAdmissionEvents 仅在请求与响应能力都明确为 true 时启用事件。
+func negotiatedRelayAdmissionEvents(requested bool, capabilities mpAPI.Capabilities) bool {
+	return requested && capabilities.RelayAdmissionEvents
+}
+
+// clearSessionNotice 清除上一会话遗留的房间/管理通知。
+func (c *controller) clearSessionNotice() {
+	c.notice = nil
 }
 
 // setConnectionMessage 保存可向用户展示的失败原因。
@@ -426,6 +487,9 @@ func (c *controller) endSession(sess *session) {
 		return
 	}
 	c.sess = nil
+	c.relayAdmission = nil
+	// 新 socket 必未订阅（消息定义：socket 断开即取消订阅），复位后由前端在重连后对齐，避免重连多发一帧。
+	c.lobby.Watching = false
 	room := c.room
 	c.room = nil
 	c.mu.Unlock()
@@ -461,6 +525,59 @@ func teardownRoom(sess *session, room *roomState) {
 			}
 		}()
 	}
+}
+
+// ===================== 状态日志与本地端口复用 =====================
+
+// logRelayReserve 记录中继预约结果的变化。
+// 职责：把预约限额和错误写入本地日志；使用：ConfigureRelay 回调；边界：相同结果只记一次，成功续约不重复刷屏。
+func (c *controller) logRelayReserve(sess *session, state p2p.RelayState, duration time.Duration) {
+	ok := state.ExpiresAtMs > time.Now().UnixMilli()
+	signature := "ok"
+	if !ok {
+		signature = "error:" + state.Error
+	}
+	c.mu.Lock()
+	if c.sess != sess {
+		c.mu.Unlock()
+		return
+	}
+	if sess.relayLog == nil {
+		sess.relayLog = map[string]string{}
+	}
+	previous, seen := sess.relayLog[state.PeerID]
+	sess.relayLog[state.PeerID] = signature
+	c.mu.Unlock()
+	if seen && previous == signature {
+		return
+	}
+	level := loggingConstant.Info
+	if !ok {
+		level = loggingConstant.Warn
+	}
+	recordState(level, "relay.reserve", "中继预约结果", "原生 Circuit Relay v2 预约成功、续约或失败",
+		map[string]interface{}{
+			"relayPeerId": state.PeerID, "expiresAtMs": state.ExpiresAtMs,
+			"limitDurationSeconds": state.LimitDurationSeconds, "limitDataBytes": state.LimitDataBytes,
+			"error": state.Error, "durationMs": duration.Milliseconds(),
+		})
+}
+
+// localPortKey 生成本地端口复用键。
+// 职责：同一房主的同一房间复用上次起点；使用：startMember；边界：换房主或换房间自然换键。
+func localPortKey(roomID, hostPeerID string) string { return roomID + "|" + hostPeerID }
+
+// rememberLocalBases 记住本次分配的本地端口起点。
+// 职责：供重进同一房间时复用，避免游戏里的本地地址变化；使用：startMember 成功后（持控制器锁）；
+// 边界：最多保留 32 个房间，超出后整体清空重新记录。
+func (c *controller) rememberLocalBases(key string, bases []int) {
+	if len(bases) == 0 {
+		return
+	}
+	if c.localBases == nil || len(c.localBases) >= 32 {
+		c.localBases = map[string][]int{}
+	}
+	c.localBases[key] = append([]int(nil), bases...)
 }
 
 // ===================== 地址上报 =====================
@@ -711,9 +828,13 @@ func (c *controller) lobbyWatch(on bool) ActionResult {
 	result := c.request("lobbyWatch", mpConstant.OpLobbyWatch, mpAPI.LobbyWatchRequest{On: on}, nil)
 	if result.Code == 0 {
 		c.mu.Lock()
+		changed := c.lobby.Watching != on
 		c.lobby.Watching = on
 		c.mu.Unlock()
-		c.emit()
+		// 说明：订阅态实际变化才推送；request() 两端的 emit 保留，pending/按钮态依赖它。
+		if changed {
+			c.emit()
+		}
 	}
 	return result
 }
@@ -765,7 +886,11 @@ func (c *controller) retryLink() ActionResult {
 	if c.room == nil || c.room.link == nil {
 		return ActionResult{Code: 20209, Msg: "当前没有成员链路"}
 	}
+	if c.relayAdmission != nil && c.relayAdmission.RoomID == c.room.view.Snapshot.RoomID {
+		c.relayAdmission.Retrying = true
+	}
 	c.room.link.wakeUp()
+	go c.emit()
 	return ActionResult{}
 }
 
@@ -801,6 +926,19 @@ func (c *controller) handleEvent(sess *session, frame *mpAPI.ActiveFrame) (int, 
 func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, string, bool) {
 	selfID := sess.info.User.UserID
 	switch frame.Opcode {
+	case mpConstant.EvSessionRelayAdmissionBefore:
+		if !sess.relayAdmissionEnabled {
+			return mpConstant.CodeUnknownOpcode, "unknown opcode", false
+		}
+		var data mpAPI.RelayAdmissionEvent
+		if json.Unmarshal(frame.Data, &data) != nil {
+			return mpConstant.CodePrepareFailed, "bad data", false
+		}
+		if data.SessionID != sess.info.SessionID || c.sess != sess || c.room == nil || data.RoomID == "" || data.RoomID != c.room.view.Snapshot.RoomID {
+			return 0, "", false
+		}
+		return 0, "", false
+
 	case mpConstant.EvSessionPolicyBefore, mpConstant.EvLobbyChangeBefore, mpConstant.EvRoomCreateBefore,
 		mpConstant.EvRoomInviteBefore, mpConstant.EvMemberLinkBefore, mpConstant.EvHostAddrsBefore:
 		return 0, "", false
@@ -817,6 +955,7 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		sess.terminate = data.Reason
 		c.lastErr, c.lastMessage = data.Reason, c.cleanConnectionMessage(data.Message)
 		c.notice = &NoticeView{Code: data.Reason, Message: data.Message}
+		c.relayAdmission = nil
 		teardownRoom(sess, c.room)
 		c.room = nil
 		c.connState = mpConstant.ConnReconnecting
@@ -832,6 +971,24 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		c.mergeLobby(data)
 		return 0, "", true
 
+	case mpConstant.EvSessionRelayAdmissionAfter:
+		if !sess.relayAdmissionEnabled {
+			return mpConstant.CodeUnknownOpcode, "unknown opcode", false
+		}
+		var data mpAPI.RelayAdmissionEvent
+		if json.Unmarshal(frame.Data, &data) != nil {
+			return mpConstant.CodeApplyFailed, "bad data", false
+		}
+		if data.SessionID != sess.info.SessionID || c.sess != sess || c.room == nil || data.RoomID == "" || data.RoomID != c.room.view.Snapshot.RoomID {
+			return 0, "", false
+		}
+		if data.Stage != "connect" || data.Status != "member_limit" || data.ErrorCode != mpConstant.RelayAdmissionServerFull {
+			return 0, "", false
+		}
+		c.relayAdmission = &RelayAdmissionView{SessionID: data.SessionID, RoomID: data.RoomID, Stage: data.Stage,
+			Status: data.Status, ErrorCode: data.ErrorCode, RelayPeerID: data.RelayPeerID, AtMs: data.AtMs}
+		return 0, "", true
+
 	case mpConstant.EvRoomCreateAfter:
 		var data mpAPI.RoomEvent
 		if json.Unmarshal(frame.Data, &data) != nil || data.Result != 0 || data.Room == nil {
@@ -845,6 +1002,7 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		forwarder.Start()
 		c.room = &roomState{view: RoomView{Snapshot: *data.Room, Role: mpConstant.RoleHost},
 			hostForwarder: forwarder, pendingJoin: map[int64]peer.ID{}, leaving: map[int64]peer.ID{}}
+		c.relayAdmission = nil
 		c.notice = nil
 		return 0, "", true
 
@@ -874,6 +1032,7 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		if c.room != nil && data.RoomID == c.room.view.Snapshot.RoomID {
 			teardownRoom(sess, c.room)
 			c.room = nil
+			c.relayAdmission = nil
 			c.notice = &NoticeView{Code: data.Reason, Message: data.Message}
 			return 0, "", true
 		}
@@ -927,9 +1086,11 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 			return 0, "", true
 		}
 		if data.Result != 0 {
-			return 0, "", false
+			c.notice = &NoticeView{Code: data.Result, Message: data.Message}
+			return 0, "", true
 		}
 		if data.Member.UserID == selfID && c.room == nil && data.Room != nil && data.Host != nil {
+			c.relayAdmission = nil
 			return c.startMember(sess, data)
 		}
 		if c.room != nil && data.RoomID == c.room.view.Snapshot.RoomID {
@@ -966,6 +1127,7 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 		if data.UserID == selfID {
 			teardownRoom(sess, c.room)
 			c.room = nil
+			c.relayAdmission = nil
 			c.notice = &NoticeView{Code: data.Reason, Message: data.Message}
 			return 0, "", true
 		}
@@ -1014,6 +1176,7 @@ func (c *controller) applyEvent(sess *session, frame *mpAPI.ActiveFrame) (int, s
 // startMember 加入已提交：开本地端口 M 并启动链路。
 func (c *controller) startMember(sess *session, data mpAPI.MemberJoinEvent) (int, string, bool) {
 	c.notice = nil
+	c.relayAdmission = nil
 	hostID, err := peer.Decode(data.Host.PeerID)
 	if err != nil {
 		return mpConstant.CodeApplyFailed, "bad host peerId", false
@@ -1023,10 +1186,12 @@ func (c *controller) startMember(sess *session, data mpAPI.MemberJoinEvent) (int
 		pendingJoin: map[int64]peer.ID{}, leaving: map[int64]peer.ID{}}
 	// 打洞时房主回拨，成员只放行房主
 	sess.host.Gater.Allow(hostID)
-	room.local = forward.NewLocalForwarder(sess.host, hostID, data.Room.Ports)
+	// 重进同一房间时复用上次端口起点，游戏里的本地地址才不会变
+	key := localPortKey(data.Room.RoomID, data.Host.PeerID)
+	room.local = forward.NewLocalForwarder(sess.host, hostID, data.Room.Ports, c.localBases[key])
 	room.local.OnTrace = func(event forward.TraceEvent) { go c.traceForward(sess, event) }
 	opened := time.Now()
-	local, err := room.local.Open()
+	local, bases, err := room.local.Open()
 	portsTrace := mpAPI.LinkTraceRequest{RoomID: data.Room.RoomID, PeerUserID: data.Room.Host.UserID,
 		Stage: mpConstant.TracePortsOpen, OK: err == nil, DurationMs: time.Since(opened).Milliseconds(), Error: link.ErrText(err)}
 	if err == nil {
@@ -1035,6 +1200,12 @@ func (c *controller) startMember(sess *session, data mpAPI.MemberJoinEvent) (int
 			addrs = append(addrs, item.Proto+" "+item.Address)
 		}
 		portsTrace.Detail = strings.Join(addrs, ", ")
+		c.rememberLocalBases(key, bases)
+		recordStateAsync(loggingConstant.Info, "room.ports", "本地转发端口已分配", "member.join 提交后绑定本地端口",
+			map[string]interface{}{"roomId": data.Room.RoomID, "hostPeerId": data.Host.PeerID, "bases": bases, "ports": addrs})
+	} else {
+		recordStateAsync(loggingConstant.Warn, "room.ports", "本地转发端口分配失败", "member.join 提交后本地端口无法绑定",
+			map[string]interface{}{"roomId": data.Room.RoomID, "error": link.ErrText(err)})
 	}
 	sess.tracer.Trace(portsTrace)
 	if err != nil {
@@ -1073,6 +1244,25 @@ func (c *controller) applySnapshot(snapshot *mpAPI.RoomSnapshot) {
 		return
 	}
 	c.room.view.Snapshot = *snapshot
+}
+
+// clearRelayAdmission 清理与指定会话/房间关联的准入诊断。
+func (c *controller) clearRelayAdmission(sess *session, roomID string) {
+	c.mu.Lock()
+	if c.relayAdmission != nil && c.sess == sess && c.relayAdmission.SessionID == sess.info.SessionID && c.relayAdmission.RoomID == roomID {
+		c.relayAdmission = nil
+	}
+	c.mu.Unlock()
+}
+
+// finishRelayAdmissionRetry 结束本轮重试标记但保留服务端容量原因，供用户再次操作。
+func (c *controller) finishRelayAdmissionRetry(sess *session, roomID string) {
+	c.mu.Lock()
+	if c.sess == sess && c.relayAdmission != nil && c.relayAdmission.SessionID == sess.info.SessionID &&
+		c.relayAdmission.RoomID == roomID && c.relayAdmission.Retrying {
+		c.relayAdmission.Retrying = false
+	}
+	c.mu.Unlock()
 }
 
 // mergeLobby 合并 lobby.change（持锁调用）。
@@ -1169,6 +1359,10 @@ func (c *controller) snapshotState() State {
 		if room.local != nil {
 			state.LocalPorts = room.local.LocalPorts()
 		}
+	}
+	if c.relayAdmission != nil && c.room != nil && c.relayAdmission.SessionID == c.sess.info.SessionID && c.relayAdmission.RoomID == c.room.view.Snapshot.RoomID {
+		admission := *c.relayAdmission
+		state.RelayAdmission = &admission
 	}
 	return state
 }

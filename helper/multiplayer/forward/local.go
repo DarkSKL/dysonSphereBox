@@ -86,11 +86,14 @@ func (group *boundGroup) close() {
 }
 
 // bindGroup 在 127.0.0.1 上绑定一组连续端口。
-// 职责：随机起点、整段绑定、失败整段重抽；使用：AllocatePorts；边界：最多重试 LocalPortRetries 次。
-func bindGroup(group *portGroup, pick func(span int) int) (*boundGroup, error) {
+// 职责：优先尝试上次的起点，失败后随机起点整段绑定；使用：AllocatePorts；边界：最多重试 LocalPortRetries 次。
+func bindGroup(group *portGroup, pick func(span int) int, preferred int) (*boundGroup, error) {
 	var lastErr error
 	for attempt := 0; attempt < mpConstant.LocalPortRetries; attempt++ {
 		base := pick(group.count)
+		if attempt == 0 && usableBase(preferred, group.count) {
+			base = preferred
+		}
 		bound := &boundGroup{base: base}
 		ok := true
 		for offset := 0; offset < group.count && ok; offset++ {
@@ -118,6 +121,12 @@ func bindGroup(group *portGroup, pick func(span int) int) (*boundGroup, error) {
 		bound.close()
 	}
 	return nil, fmt.Errorf("本地端口分配失败：%w", lastErr)
+}
+
+// usableBase 判断候选起点是否落在允许的本地端口区间内。
+// 职责：避免复用越界或越界后溢出的起点；使用：bindGroup 首选端口；边界：0 表示没有上次记录。
+func usableBase(base, span int) bool {
+	return base >= mpConstant.LocalPortMin && base > 0 && base+span-1 < mpConstant.LocalPortMax
 }
 
 // randomBase 职责：在 [LocalPortMin, LocalPortMax-span] 中随机起点；使用：bindGroup 默认；边界：使用 crypto/rand。
@@ -154,6 +163,8 @@ type LocalForwarder struct {
 	available bool
 	closing   bool
 	closed    bool
+	// preferred 职责：上次为每组分配的起点；使用：重进同一房间时优先复用，避免游戏里的本地地址变化；边界：越界或被占用时回退随机。
+	preferred []int
 	// tcp 职责：跟踪已接受的游戏连接；使用：Close 立即释放本地 socket；边界：不依赖异步 ClosePeer 才结束。
 	tcp      map[*net.TCPConn]struct{}
 	sessions map[string]*localUDPSession
@@ -190,26 +201,35 @@ func (forwarder *LocalForwarder) traceOpen(proto string, header Header, status b
 }
 
 // NewLocalForwarder 创建成员转发器。
-func NewLocalForwarder(host *p2p.Host, hostID peer.ID, ports []mpAPI.PortDecl) *LocalForwarder {
+// 职责：保存端口声明与上次起点；使用：房间加入提交后创建；边界：preferred 长度可短于分组数，缺失的分组随机分配。
+func NewLocalForwarder(host *p2p.Host, hostID peer.ID, ports []mpAPI.PortDecl, preferred []int) *LocalForwarder {
 	return &LocalForwarder{host: host, hostID: hostID, ports: append([]mpAPI.PortDecl(nil), ports...),
-		sessions: map[string]*localUDPSession{}, tcp: map[*net.TCPConn]struct{}{}, pick: randomBase, okSeen: map[firstOKKey]bool{}}
+		preferred: append([]int(nil), preferred...),
+		sessions:  map[string]*localUDPSession{}, tcp: map[*net.TCPConn]struct{}{}, pick: randomBase, okSeen: map[firstOKKey]bool{}}
 }
 
 // Open 分配全部 M 并开始接收。
-// 职责：按第 3 节规则绑定端口、启动 accept/读循环；使用：加入提交后立即调用；边界：任一组分配失败时关闭已绑定的端口并返回错误。
-func (forwarder *LocalForwarder) Open() ([]LocalPort, error) {
+// 职责：按第 3 节规则绑定端口、启动 accept/读循环；使用：加入提交后立即调用；
+// 返回：端口展示项、每组实际起点（供下次复用）、错误；边界：任一组分配失败时关闭已绑定的端口并返回错误。
+func (forwarder *LocalForwarder) Open() ([]LocalPort, []int, error) {
 	groups := groupPorts(forwarder.ports)
 	bound := make([]*boundGroup, 0, len(groups))
+	bases := make([]int, 0, len(groups))
 	local := []LocalPort{}
-	for _, group := range groups {
-		item, err := bindGroup(group, forwarder.pick)
+	for groupIndex, group := range groups {
+		preferred := 0
+		if groupIndex < len(forwarder.preferred) {
+			preferred = forwarder.preferred[groupIndex]
+		}
+		item, err := bindGroup(group, forwarder.pick, preferred)
 		if err != nil {
 			for _, done := range bound {
 				done.close()
 			}
-			return nil, err
+			return nil, nil, err
 		}
 		bound = append(bound, item)
+		bases = append(bases, item.base)
 		address := "127.0.0.1:" + strconv.Itoa(item.base)
 		if group.count > 1 {
 			address += "-" + strconv.Itoa(item.base+group.count-1)
@@ -250,7 +270,7 @@ func (forwarder *LocalForwarder) Open() ([]LocalPort, error) {
 	forwarder.groups = bound
 	forwarder.local = local
 	forwarder.mu.Unlock()
-	return local, nil
+	return local, bases, nil
 }
 
 // LocalPorts 返回已分配的本地端口。

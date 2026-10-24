@@ -44,6 +44,8 @@ const (
 const (
 	// EvSessionTerminateBefore 职责：session.terminate before；使用：记录终止开始；边界：不等待回复。
 	EvSessionTerminateBefore = 2001
+	// EvSessionRelayAdmissionBefore 职责：session.relayAdmission before；使用：确认已识别的定向通知；边界：非阻塞，不改变会话/房间状态。
+	EvSessionRelayAdmissionBefore = 2003
 	// EvLobbyChangeBefore 职责：lobby.change before；使用：无需准备；边界：每秒最多一对。
 	EvLobbyChangeBefore = 2101
 	// EvRoomCreateBefore 职责：room.create before；使用：无需准备；边界：只发给房主。
@@ -65,6 +67,8 @@ const (
 
 	// EvSessionTerminateAfter 职责：session.terminate after；使用：按 reason 决定是否自动重连；边界：之后连接被关闭。
 	EvSessionTerminateAfter = 3001
+	// EvSessionRelayAdmissionAfter 职责：session.relayAdmission after；使用：更新独立准入投影；边界：需匹配 sessionId 与 roomId。
+	EvSessionRelayAdmissionAfter = 3003
 	// EvLobbyChangeAfter 职责：lobby.change after；使用：合并大厅条目；边界：只发给订阅者。
 	EvLobbyChangeAfter = 3101
 	// EvRoomCreateAfter 职责：room.create after；使用：房主注册转发 handler；边界：携带完整快照。

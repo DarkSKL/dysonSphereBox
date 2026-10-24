@@ -7,6 +7,7 @@ import {
   CloseRoom,
   Connect,
   CreateRoom,
+  GamePortPresets,
   GetState,
   InviteRoom,
   JoinRoom,
@@ -19,7 +20,7 @@ import {
 } from '../../wailsjs/go/multiplayer/MultiplayerService'
 import {multiplayer} from '../../wailsjs/go/models'
 import {EventsOn} from '../../wailsjs/runtime/runtime'
-import type {LobbyQuery, MultiplayerActionResult, MultiplayerState, RoomCreateForm} from '../types/multiplayer'
+import type {GamePortPreset, LobbyQuery, MultiplayerActionResult, MultiplayerState, RoomCreateForm} from '../types/multiplayer'
 
 export const MULTIPLAYER_STATE_EVENT = 'multiplayer:state'
 
@@ -57,6 +58,17 @@ export const leaveRoom = () => call(LeaveRoom)
 export const closeRoom = () => call(CloseRoom)
 export const kickMember = (userId: number) => call(() => KickMember(userId))
 export const retryLink = () => call(RetryLink)
+
+// 说明：游戏端口自动识别是本地只读探测，不依赖控制链路；非桌面环境或调用失败时返回空列表。
+// 边界：空列表只表示“没有可用游戏项”，手动 TCP/UDP 输入仍然可用。
+export async function detectGamePortPresets(): Promise<GamePortPreset[]> {
+  if (!bridgeReady()) return []
+  try {
+    return await GamePortPresets()
+  } catch {
+    return []
+  }
+}
 
 export async function getMultiplayerState(): Promise<MultiplayerState | null> {
   if (!bridgeReady()) return null

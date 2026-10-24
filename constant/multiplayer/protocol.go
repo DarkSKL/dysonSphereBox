@@ -66,6 +66,10 @@ const (
 	LocalPortMax = 60000
 	// LocalPortRetries 职责：本地端口段绑定重试次数；使用：M 分配；边界：方案规定 20 次。
 	LocalPortRetries = 20
+	// ListenPortRetries 职责：同一监听端口的连续绑定尝试次数；使用：控制器启动 host；边界：全部失败才换号并写回配置。
+	ListenPortRetries = 3
+	// ListenPortRetryDelay 职责：同一端口两次绑定尝试之间的间隔；使用：控制器启动 host；边界：给 Windows 上刚释放的连接留出回收时间。
+	ListenPortRetryDelay = 300 * time.Millisecond
 	// NetworkCheckInterval 职责：网卡与地址变化检测间隔；使用：控制器地址重报与目标缓存清理；边界：只在线时运行。
 	NetworkCheckInterval = 10 * time.Second
 )

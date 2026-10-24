@@ -139,7 +139,7 @@ type Report struct {
 }
 
 // Collect 汇总本机可达地址与诊断。
-// 职责：接口地址（去回环与链路本地）、UPnP 映射地址、observed 地址合并去重；使用：控制器上报 peer.addrs；边界：顺序为 observed、UPnP、接口地址，keepLoopback 只用于进程内测试。
+// 职责：接口地址（去回环、链路本地与 169.254 自动配置地址）、UPnP 映射地址、observed 地址合并去重；使用：控制器上报 peer.addrs；边界：顺序为 observed、UPnP、接口地址，keepLoopback 只用于进程内测试。
 func Collect(h *Host, observations []Observation, firewallRule bool, keepLoopback bool, reachability string) Report {
 	listen := h.Network().ListenAddresses()
 	ifaceAddrs, _ := manet.InterfaceMultiaddrs()
@@ -155,7 +155,12 @@ func Collect(h *Host, observations []Observation, firewallRule bool, keepLoopbac
 		if (manet.IsIPLoopback(addr) && !keepLoopback) || manet.IsIP6LinkLocal(addr) {
 			continue
 		}
-		if ip, err := manet.ToIP(addr); err == nil && ip.To4() == nil && manet.IsPublicAddr(addr) {
+		// 169.254/16 是网卡自动配置地址，跨公网必然超时，只会消耗对端的拨号预算。
+		ip, ipErr := manet.ToIP(addr)
+		if ipErr == nil && ip.IsLinkLocalUnicast() {
+			continue
+		}
+		if ipErr == nil && ip.To4() == nil && manet.IsPublicAddr(addr) {
 			ipv6 = true
 		}
 		interfaceSet[addr.String()] = true

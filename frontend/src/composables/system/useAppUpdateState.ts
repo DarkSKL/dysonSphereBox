@@ -43,6 +43,10 @@ export const useAppUpdateState = () => {
           appUpdateCheckedAt.value = new Date()
           return result
         })
+        .catch((error: unknown) => {
+          hasCheckedAppUpdateInProgramSession = false
+          throw error
+        })
         .finally(() => {
           isCheckingAppUpdate.value = false
           appUpdateCheckPromise = null

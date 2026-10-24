@@ -18,6 +18,10 @@ export function Disconnect() {
   return window['go']['multiplayer']['MultiplayerService']['Disconnect']();
 }
 
+export function GamePortPresets() {
+  return window['go']['multiplayer']['MultiplayerService']['GamePortPresets']();
+}
+
 export function GetState() {
   return window['go']['multiplayer']['MultiplayerService']['GetState']();
 }

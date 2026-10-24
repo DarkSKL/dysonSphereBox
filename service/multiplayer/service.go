@@ -70,7 +70,7 @@ func (service *MultiplayerService) LobbyList(request mpAPI.LobbyListRequest) Act
 }
 
 // LobbyWatch 订阅或取消订阅大厅变化。
-// 职责：lobby.watch；使用：大厅区块激活/停用；边界：断线重连后自动恢复订阅。
+// 职责：lobby.watch；使用：大厅区块激活/停用；边界：断线后由前端在重连成功时重新对齐订阅。
 func (service *MultiplayerService) LobbyWatch(on bool) ActionResult {
 	return defaultController().lobbyWatch(on)
 }

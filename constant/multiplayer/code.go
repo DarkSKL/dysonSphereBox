@@ -62,6 +62,8 @@ const (
 	LinkErrRejected = 20406
 	// LinkErrTargetRefused 职责：房主游戏端口拒绝连接；使用：TCP 握手回 TARGET_REFUSED 时；边界：链路本身仍可用。
 	LinkErrTargetRefused = 20407
+	// RelayAdmissionServerFull 职责：服务端派发的中继成员额度已满；使用：session.relayAdmission.errorCode；边界：不由客户端本地推断。
+	RelayAdmissionServerFull = 20408
 )
 
 // 客户端本地码。

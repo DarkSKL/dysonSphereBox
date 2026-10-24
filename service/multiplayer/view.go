@@ -24,6 +24,8 @@ type ActionResult struct {
 // State 是 multiplayer:state 投影。
 // 职责：前端渲染联机页面的唯一状态来源；使用：EventsEmit 推送与 GetState 恢复；边界：stateRevision 每次变化 +1。
 type State struct {
+	// RelayAdmission 职责：最近一次服务端 Relay 准入结果；使用：房间容量提示与重试；边界：不改变连接、房间快照或成员链路状态。
+	RelayAdmission *RelayAdmissionView `json:"relayAdmission"`
 	// Notice 职责：最近房间或管理通知；使用：离房后仍展示原因；边界：新会话或加入成功时清空。
 	Notice *NoticeView `json:"notice"`
 	// StateRevision 职责：投影版本；使用：前端丢弃旧投影；边界：进程内单调递增。
@@ -46,6 +48,18 @@ type State struct {
 	Network NetworkView `json:"network"`
 	// Pending 职责：进行中的意图；使用：按钮禁用；边界：取值为意图名。
 	Pending []string `json:"pending"`
+}
+
+// RelayAdmissionView 是本地独立维护的 Relay 准入投影。
+type RelayAdmissionView struct {
+	SessionID   string `json:"sessionId"`
+	RoomID      string `json:"roomId"`
+	Stage       string `json:"stage"`
+	Status      string `json:"status"`
+	ErrorCode   int    `json:"errorCode"`
+	RelayPeerID string `json:"relayPeerId"`
+	AtMs        int64  `json:"atMs"`
+	Retrying    bool   `json:"retrying"`
 }
 
 // ConnectionView 是控制链路状态。
@@ -89,7 +103,7 @@ type SessionView struct {
 
 // LobbyView 是大厅状态。
 type LobbyView struct {
-	// Watching 职责：是否订阅大厅变化；使用：展示；边界：断线后重连自动恢复。
+	// Watching 职责：是否订阅大厅变化；使用：展示；边界：断线后由客户端在重连后对齐。
 	Watching bool `json:"watching"`
 	// Total 职责：总数；使用：分页；边界：合并 lobby.change 后近似值。
 	Total int `json:"total"`

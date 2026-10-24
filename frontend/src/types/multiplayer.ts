@@ -14,6 +14,8 @@ export type LinkView = multiplayer.LinkView
 export type ClassifiedAddr = p2p.ClassifiedAddr
 
 export type PortProto = 'tcp' | 'udp' | 'both'
+export type GamePortPreset = multiplayer.GamePortPreset
+export type GamePortDeclaration = multiplayer.GamePortDeclaration
 
 export interface RoomResolveResult {
   readonly room: RoomSummary
@@ -55,7 +57,7 @@ const codeTexts: Record<number, string> = {
   20102: '账户已被禁用',
   20103: '需要修改密码',
   20104: '账户已在其他盒子上线',
-  20105: '服务器维护中，恢复后请手动连接大厅',
+  20105: '服务器维护中，盒子将在恢复后自动重试连接',
   20106: '管理员已断开本次联机会话，请联系管理员或稍后手动连接',
   20201: '房间不存在',
   20202: '房间已关闭',
@@ -108,6 +110,10 @@ const linkErrorTexts: Record<number, {title: string; hint: string}> = {
   20405: {title: '房主的 Windows 防火墙可能拦截了盒子', hint: '请房主在防火墙中允许 DysonSphereBox（开发构建为 DysonSphereBox-dev.exe），或使用安装包安装'},
   20406: {title: '房主拒绝了连接', hint: '请退出后重新加入；若反复出现请反馈'},
   20407: {title: '房主游戏端口拒绝连接', hint: '房主游戏未开启或端口填写错误'},
+}
+
+export const relayAdmissionTexts: Record<number, string> = {
+  20408: '服务器中继人数已满，请稍后重试或尝试直连',
 }
 
 export function codeText(code: number, fallback = ''): string {

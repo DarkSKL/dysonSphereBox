@@ -15,7 +15,7 @@ definePage({meta: {layout: 'main', title: '联机', keepAlive: true}})
 // =============== 页面意图与连接反馈 ===============
 // 说明：页面只编排大厅列表与创建/加入对话框，房间和网络状态始终来自 Go 投影。
 const mp = useMultiplayerState()
-const {state, lastAction, resolved, online, admissionEnabled, room, isHost, pending, roomBusy, query, lobbyReady, lobbyLoading, lobbyError} = mp
+const {state, lastAction, resolved, online, admissionEnabled, room, isHost, pending, roomBusy, query, lobbyReady, lobbyLoading, lobbyError, gamePortPresets, gamePortPresetsLoading} = mp
 const message = useMessage()
 const dialog = useDialog()
 const createOpen = ref(false)
@@ -31,21 +31,39 @@ const connectionError = computed(() => {
 })
 const connectionTitle = computed(() => !state.value ? '正在读取联机状态' : !state.value.account.loggedIn ? '登录后，开启联机旅程' : connectionState.value === 'reconnecting' ? '正在重新连接大厅' : connectionState.value === 'connecting' ? '正在连接联机大厅' : '连接大厅，找到你的同行者')
 const connectionHint = computed(() => !state.value ? '请在戴森球盒子桌面应用中使用联机。' : !state.value.account.loggedIn ? '点击左侧头像登录账号，再连接大厅。' : connectionState.value === 'reconnecting' ? '连接暂时中断，盒子正在自动重试。连接恢复后回到大厅，请手动选择房间。' : connectionState.value === 'connecting' ? '连接成功后，可浏览公开房间或通过邀请码加入好友。' : connectionError.value || '连接后可浏览公开房间，也可以创建房间邀请好友。')
+// 说明：连接阻塞说明从正文横幅收敛到页头，仍按连接中、重连中和未登录分别给出下一步动作。
+// 边界：仅在已读取投影且离线时生成，完整说明由连接状态与最近错误码组成。
+const connectionNotice = computed(() => {
+  if (!state.value || online.value) return ''
+  const parts = ['控制链路未建立，相关操作已禁用。']
+  if (connectionError.value) parts.push(`${connectionError.value}。`)
+  if (connectionState.value === 'reconnecting') parts.push('正在自动重试，请检查网络或服务器设置。')
+  else if (connectionState.value === 'connecting') parts.push('正在连接大厅，请稍候。')
+  else if (state.value?.account.loggedIn) parts.push('请先连接大厅。')
+  else if (state.value) parts.push('请先登录账号，再连接大厅。')
+  return parts.join('')
+})
 // 说明：进入房间后页头改为房间身份（名称、可见性、密码、创建时间与人数），大厅时保持页面标题。
 const snapshot = computed(() => room.value?.snapshot)
 const roomMemberTotal = computed(() => (snapshot.value?.members.length ?? 0) + 1)
 const roomCreatedText = computed(() => snapshot.value?.createdAtMs
   ? new Date(snapshot.value.createdAtMs).toLocaleString('zh-CN', {hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : '—')
+// 说明：policy.message 是管理员随策略保存的说明，服务器恢复准入后仍可能保留原文；
+// 只有维护中或暂停准入时才展示，避免恢复后继续显示已失效的维护提示。
 const policyNotice = computed(() => {
   const policy = state.value?.session?.policy
-  if (!policy) return ''
-  return [policy.maintenance ? '服务器维护中' : !policy.admissionEnabled ? '服务器已暂停创建和加入房间，已有房间可继续退出或关闭' : '', policy.message].filter(Boolean).join('：')
+  if (!policy || (!policy.maintenance && policy.admissionEnabled)) return ''
+  const status = policy.maintenance ? '服务器维护中' : '服务器已暂停创建和加入房间，已有房间可继续退出或关闭'
+  return [status, policy.message].filter(Boolean).join('：')
 })
 const roomNotice = computed(() => {
   const notice = state.value?.notice
   if (!notice || (!notice.code && !notice.message)) return ''
   return [notice.code ? codeText(notice.code) : '', notice.message].filter(Boolean).join('：')
 })
+// 说明：页头状态区只展示一条当前提示，连接阻塞优先于维护策略，再退到最近房间/管理通知。
+// 边界：长文本在页头截断，完整内容保留在悬停 title 中；正文区不再保留整行提示横幅。
+const headerNotice = computed(() => connectionNotice.value || policyNotice.value || roomNotice.value)
 const maxPorts = computed(() => state.value?.session?.limits.maxPorts || 8)
 const maxMembers = computed(() => state.value?.session?.limits.maxMembers || 16)
 
@@ -75,7 +93,12 @@ function search(keyword: string): void {
 }
 function sort(value: LobbyQuery['sort']): void { if (!online.value) return; query.sort = value; query.page = 1 }
 function pageSize(value: number): void { if (!online.value) return; query.pageSize = value; query.page = 1 }
-function openCreate(): void { if (admissionEnabled.value && !roomBusy.value) createOpen.value = true }
+// 说明：打开创建弹窗时同步探测本机游戏端口；探测失败只禁用游戏选项，不阻塞手动填写。
+function openCreate(): void {
+  if (!admissionEnabled.value || roomBusy.value) return
+  createOpen.value = true
+  void mp.refreshGamePortPresets()
+}
 function openInvite(): void {
   if (!admissionEnabled.value || roomBusy.value) return
   if (joinMode.value === 'room') joinTarget.value = ''
@@ -106,9 +129,10 @@ function closeRoom(): void {
 
 <template>
   <main class="mp-page" aria-labelledby="mp-title">
-    <!-- ~ 页头：左侧标题，右侧连接状态与账号；离开此页面不会主动退出房间 -->
+    <!-- ~ 页头：左侧标题，右侧提示、连接状态与账号；离开此页面不会主动退出房间 -->
     <header class="mp-header">
-      <!-- * 房间页头单行优先级：房间名 > 人数 > 可见性/密码图标 > 连接状态 > 操作；创建时间收进标题悬停提示，账号名由侧栏头像承担 -->
+      <!-- * 房间页头单行优先级：房间名 > 人数 > 可见性/密码图标 > 提示 > 连接状态 > 操作；创建时间收进标题悬停提示，账号名由侧栏头像承担 -->
+      <!-- * 提示内容：连接阻塞、维护/暂停准入与最近房间通知统一放在状态区左侧，正文区不再保留整行横幅 -->
       <div v-if="snapshot" class="title-block room-line">
         <h1 id="mp-title" class="room-title" :title="`${snapshot.name} · 创建于 ${roomCreatedText}`">{{ snapshot.name }}</h1>
         <span class="room-count" :aria-label="`房间人数 ${roomMemberTotal} / ${snapshot.maxMembers}`"><Users :size="14" /><strong class="type-display">{{ roomMemberTotal }}</strong><span class="type-display">/ {{ snapshot.maxMembers }}</span></span>
@@ -117,6 +141,8 @@ function closeRoom(): void {
       </div>
       <div v-else class="title-block"><h1 id="mp-title">多人联机</h1></div>
       <div class="header-status" aria-live="polite">
+        <!-- * 当前提示：页面级状态只保留一条，放在连接状态左侧，不占用内容区 -->
+        <span v-if="headerNotice" class="header-notice" :title="headerNotice"><CircleHelp :size="14" /><span>{{ headerNotice }}</span></span>
         <!-- * 连接状态：房间内在线时只保留状态点（悬停查看），异常时展开为文字标签以提高优先级 -->
         <n-tooltip v-if="snapshot && connectionState === 'online'">
           <template #trigger><span class="state-dot" role="status" aria-label="大厅连接：在线"><i /></span></template>
@@ -143,21 +169,15 @@ function closeRoom(): void {
       </div>
     </header>
 
-    <!-- ~ 操作阻塞提示：未连接、连接中及重连中统一禁用业务操作，连接入口保持可用 -->
-    <p v-if="!online" class="connection-notice" role="status"><CircleHelp :size="15" /><span>控制链路未建立，相关操作已禁用。<template v-if="connectionError">{{ connectionError }}。</template><template v-if="connectionState === 'reconnecting'">正在自动重试，请检查网络或服务器设置。</template><template v-else-if="connectionState === 'connecting'">正在连接大厅，请稍候。</template><template v-else-if="state?.account.loggedIn">请先连接大厅。</template><template v-else-if="state">请先登录账号，再连接大厅。</template></span></p>
-
-    <p v-if="roomNotice" class="connection-notice" role="status"><CircleHelp :size="15" /><span>{{ roomNotice }}</span></p>
-    <p v-if="policyNotice" class="connection-notice" role="status"><CircleHelp :size="15" /><span>{{ policyNotice }}</span></p>
-
     <!-- ~ 当前房间：突出游戏连接地址、成员与邀请，隐藏大厅列表 -->
     <CurrentRoom v-if="room && state" :state="state" :pending="pending" :online="online" :busy="roomBusy" @invite="mp.invite()" @leave="mp.leave()" @retry="mp.retry()" @kick="mp.kick($event)" />
-    <LobbyBrowser v-else :admission-enabled="admissionEnabled" :state="state" :query="query" :online="online" :loading="lobbyLoading" :ready="lobbyReady" :error="lobbyError" :selected="joinOpen && joinMode === 'room' ? joinTarget : ''" :busy="roomBusy" :connection-title="connectionTitle" :connection-hint="connectionHint" @search="search" @sort="sort" @page="query.page = $event" @page-size="pageSize" @join="openRoom" @refresh="mp.refreshLobby()" @create="openCreate" @invite="openInvite" @connect="mp.connect()" />
+    <LobbyBrowser v-else :admission-enabled="admissionEnabled" :state="state" :query="query" :online="online" :loading="lobbyLoading" :ready="lobbyReady" :error="lobbyError" :selected="joinOpen && joinMode === 'room' ? joinTarget : ''" :busy="roomBusy" :connection-title="connectionTitle" :connection-hint="connectionHint" @search="search" @sort="sort" @page="query.page = $event" @page-size="pageSize" @join="openRoom" @refresh="mp.refreshLobby(true)" @create="openCreate" @invite="openInvite" @connect="mp.connect()" />
 
     <!-- ~ 技术诊断：由页头入口打开，连接状态与网络地址随 Go 投影更新 -->
     <NetworkDiagnostics v-model:show="diagnosticsOpen" :state="state" :online="online" />
 
     <!-- ~ 对话框：创建与加入不占用列表空间；创建草稿在关闭后保留 -->
-    <CreateDialog v-model:show="createOpen" :online="admissionEnabled" :loading="pending.has('createRoom')" :busy="roomBusy" :max-members="maxMembers" :max-ports="maxPorts" @create="mp.create($event)" />
+    <CreateDialog v-model:show="createOpen" :online="admissionEnabled" :loading="pending.has('createRoom')" :busy="roomBusy" :max-members="maxMembers" :max-ports="maxPorts" :game-port-presets="gamePortPresets" :presets-loading="gamePortPresetsLoading" @create="mp.create($event)" />
     <JoinDialog :max-members="maxMembers" v-model:show="joinOpen" v-model:target="joinTarget" :mode="joinMode" :resolved="resolved" :online="admissionEnabled" :resolving="pending.has('resolveRoom')" :joining="pending.has('joinRoom')" :busy="roomBusy" @preview="preview" @join="join" />
   </main>
 </template>
@@ -185,7 +205,9 @@ h1 { margin: 0; font-size: 26px; font-weight: 700; line-height: 1.4; }
 .state-label i { width: 6px; height: 6px; border-radius: 50%; background: var(--ds-text-muted); }
 .state-online { color: var(--ds-success); border-color: var(--ds-success-border); } .state-online i { background: var(--ds-success); }
 .state-connecting, .state-reconnecting { color: var(--ds-warning); border-color: var(--ds-warning-border); } .state-connecting i, .state-reconnecting i { background: var(--ds-warning); }
-.connection-notice { display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px; margin: 0 0 24px; background: var(--ds-warning-bg); color: var(--ds-warning); border: 1px solid var(--ds-warning-border); border-radius: 4px; font-size: 12px; line-height: 1.8; }
-.connection-notice svg { flex-shrink: 0; margin-top: 3px; }
-@media (max-width: 760px) { .mp-header { flex-direction: column; gap: 12px; } .header-status { justify-content: flex-start; padding-top: 0; } h1 { font-size: 22px; } }
+// 说明：页头提示与连接状态同排，长文本单行截断，完整内容通过悬停 title 查看。
+.header-notice { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: min(520px, 34vw); color: var(--ds-warning); font-size: 12px; line-height: 1.6; }
+.header-notice > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-notice svg { flex-shrink: 0; }
+@media (max-width: 760px) { .mp-header { flex-direction: column; gap: 12px; } .header-status { justify-content: flex-start; padding-top: 0; } .header-notice { max-width: 100%; } h1 { font-size: 22px; } }
 </style>

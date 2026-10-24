@@ -7,6 +7,8 @@ package multiplayer
 // SessionOpenRequest 是 session.open（1001）请求 data。
 // 职责：上报协议版本、客户端版本与临时 PeerID；使用：控制链路首帧；边界：PeerID 被占用时服务器回复 20008。
 type SessionOpenRequest struct {
+	// RelayAdmissionEvents 职责：声明客户端可处理 Relay 准入事件；使用：与服务端响应能力双向协商；边界：缺失字段兼容为 false。
+	RelayAdmissionEvents bool `json:"relayAdmissionEvents"`
 	// ManagementEvents 职责：声明客户端可处理动态管理事件；使用：服务端兼容旧客户端；边界：不改变协议版本。
 	ManagementEvents bool `json:"managementEvents"`
 	// ProtocolVersion 职责：协议版本；使用：服务器兼容判断；边界：当前为 2，不回退旧打洞。
@@ -36,6 +38,24 @@ type SessionOpenReply struct {
 	Capabilities Capabilities `json:"capabilities"`
 	// Relays 职责：服务器指定中继入口；使用：仅向这些节点预约；边界：为空时禁用中继。
 	Relays []string `json:"relays"`
+}
+
+// RelayAdmissionEvent 是 session.relayAdmission 的事件数据。
+// 职责：携带服务端确认的 Relay CONNECT 配额拒绝；使用：独立更新本地准入诊断；边界：必须匹配当前 sessionId 与 roomId。
+type RelayAdmissionEvent struct {
+	EventBase
+	// SessionID 职责：产生事件的控制会话；使用：丢弃过期代际；边界：精确匹配当前 session。
+	SessionID string `json:"sessionId"`
+	// Stage 职责：拒绝阶段；使用：提示与诊断；边界：当前仅 connect。
+	Stage string `json:"stage"`
+	// Status 职责：服务端确认的结果；使用：容量提示；边界：当前仅 member_limit。
+	Status string `json:"status"`
+	// ErrorCode 职责：服务端权威拒绝码；使用：只按 20408 渲染中继已满；边界：不从本地 native 错误推断。
+	ErrorCode int `json:"errorCode"`
+	// RelayPeerID 职责：发生拒绝的 Relay；使用：诊断；边界：不含地址。
+	RelayPeerID string `json:"relayPeerId"`
+	// AtMs 职责：事件时间；使用：诊断展示；边界：服务器 Unix 毫秒。
+	AtMs int64 `json:"atMs"`
 }
 
 // PeerAddrsRequest 是 peer.addrs（1002）请求 data。

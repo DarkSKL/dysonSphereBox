@@ -2241,6 +2241,7 @@ export namespace multiplayer {
 	    }
 	}
 	export class Capabilities {
+	    relayAdmissionEvents: boolean;
 	    managementEvents: boolean;
 	    nativeDcutr: boolean;
 	    relayV2: boolean;
@@ -2252,6 +2253,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.relayAdmissionEvents = source["relayAdmissionEvents"];
 	        this.managementEvents = source["managementEvents"];
 	        this.nativeDcutr = source["nativeDcutr"];
 	        this.relayV2 = source["relayV2"];
@@ -2273,6 +2275,58 @@ export namespace multiplayer {
 	        this.state = source["state"];
 	        this.lastErrorCode = source["lastErrorCode"];
 	    }
+	}
+	export class GamePortDeclaration {
+	    proto: string;
+	    port: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GamePortDeclaration(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.proto = source["proto"];
+	        this.port = source["port"];
+	    }
+	}
+	export class GamePortPreset {
+	    id: string;
+	    name: string;
+	    available: boolean;
+	    reason: string;
+	    ports: GamePortDeclaration[];
+	
+	    static createFrom(source: any = {}) {
+	        return new GamePortPreset(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.available = source["available"];
+	        this.reason = source["reason"];
+	        this.ports = this.convertValues(source["ports"], GamePortDeclaration);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class InviteView {
 	    code: string;
@@ -2553,6 +2607,32 @@ export namespace multiplayer {
 	    }
 	}
 	
+	export class RelayAdmissionView {
+	    sessionId: string;
+	    roomId: string;
+	    stage: string;
+	    status: string;
+	    errorCode: number;
+	    relayPeerId: string;
+	    atMs: number;
+	    retrying: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RelayAdmissionView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.roomId = source["roomId"];
+	        this.stage = source["stage"];
+	        this.status = source["status"];
+	        this.errorCode = source["errorCode"];
+	        this.relayPeerId = source["relayPeerId"];
+	        this.atMs = source["atMs"];
+	        this.retrying = source["retrying"];
+	    }
+	}
 	export class RoomCreateRequest {
 	    name: string;
 	    visibility: string;
@@ -2799,6 +2879,7 @@ export namespace multiplayer {
 		}
 	}
 	export class State {
+	    relayAdmission?: RelayAdmissionView;
 	    notice?: NoticeView;
 	    stateRevision: number;
 	    connection: ConnectionView;
@@ -2817,6 +2898,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.relayAdmission = this.convertValues(source["relayAdmission"], RelayAdmissionView);
 	        this.notice = this.convertValues(source["notice"], NoticeView);
 	        this.stateRevision = source["stateRevision"];
 	        this.connection = this.convertValues(source["connection"], ConnectionView);

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	mpAPI "DysonSphereBox/apiDefinition/multiplayer"
+	loggingConstant "DysonSphereBox/constant/logging"
 	mpConstant "DysonSphereBox/constant/multiplayer"
 	"DysonSphereBox/helper/multiplayer/link"
 	"DysonSphereBox/helper/multiplayer/p2p"
@@ -50,9 +51,13 @@ type memberLink struct {
 	// connections 职责：原生连接变化；使用：更新路径；边界：不触发 failed 状态手动重试。
 	connections  chan struct{}
 	disconnected chan struct{}
-	ctx          context.Context
-	cancel       context.CancelFunc
-	closeOnce    sync.Once
+	// logged 职责：最近一次写入本地日志的状态签名；使用：只在 state/path/error 变化时记录；边界：由 mu 保护。
+	logged string
+	// pingFails 职责：连续 RTT 探测失败次数；使用：发现"连接还在但数据不通"的半死路径；边界：由 mu 保护，成功即清零。
+	pingFails int
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
 }
 
 func newMemberLink(c *controller, sess *session, room *roomState, hostID peer.ID, endpoint mpAPI.HostEndpoint) *memberLink {
@@ -119,10 +124,35 @@ func (l *memberLink) setState(update func(state *mpAPI.LinkState)) {
 	l.changed()
 }
 
-// changed 上报（state/path/error 变化时）并推送投影。
+// changed 上报（state/path/error 变化时）、记录状态日志并推送投影。
 func (l *memberLink) changed() {
 	l.report(false)
+	l.logState()
+	if l.current().State == mpConstant.LinkFailed {
+		l.c.finishRelayAdmissionRetry(l.sess, l.roomID)
+	}
 	l.c.emit()
+}
+
+// logState 在链路状态变化时写一条本地日志。
+// 职责：补齐掉线复盘所需的 state/path/error 轨迹；使用：changed；边界：同一签名只记一次，避免 RTT 刷新刷屏。
+func (l *memberLink) logState() {
+	l.mu.Lock()
+	signature := l.state.State + "|" + l.state.Path + "|" + strconv.Itoa(l.state.Error)
+	if signature == l.logged {
+		l.mu.Unlock()
+		return
+	}
+	l.logged = signature
+	state, path, code := l.state.State, l.state.Path, l.state.Error
+	roomID, hostUser := l.roomID, l.hostUserID
+	l.mu.Unlock()
+	level := loggingConstant.Info
+	if state == mpConstant.LinkReconnecting || state == mpConstant.LinkFailed {
+		level = loggingConstant.Warn
+	}
+	recordStateAsync(level, "link.state", "成员链路状态变化", "成员到房主的数据链路状态机推进",
+		map[string]interface{}{"roomId": roomID, "peerUserId": hostUser, "state": state, "path": path, "error": code})
 }
 
 // report 发送 link.report：state/path/error 变化即报；force 用于 RTT 节流上报。
@@ -355,6 +385,7 @@ func (l *memberLink) view(userID int64) LinkView {
 
 // onConnected 连通后设置实际路径并开放本地端口；职责：投影可用游戏链路；使用：状态机；边界：仅协商电路不调用。
 func (l *memberLink) onConnected() {
+	l.c.clearRelayAdmission(l.sess, l.roomID)
 	conn := p2p.BestConn(l.sess.host, l.hostID, l.sess.host.RelayFallback())
 	l.mu.Lock()
 	hostNet := l.endpoint.Net
@@ -411,7 +442,7 @@ func (l *memberLink) holdConnection() {
 	}
 }
 
-// measureRTT 用 libp2p ping 测 RTT，最多每 10 秒上报一次。
+// measureRTT 用 libp2p ping 测 RTT，最多每 10 秒上报一次；连续失败时判定路径半死并重建。
 func (l *memberLink) measureRTT() {
 	pingCtx := network.WithNoDial(l.ctx, "rtt")
 	if l.sess.host.RelayFallback() {
@@ -421,8 +452,10 @@ func (l *memberLink) measureRTT() {
 	defer cancel()
 	result, ok := <-ping.Ping(ctx, l.sess.host, l.hostID)
 	if !ok || result.Error != nil {
+		l.pingFailed()
 		return
 	}
+	l.pingSucceeded()
 	l.mu.Lock()
 	l.state.RTTMs = result.RTT.Milliseconds()
 	l.mu.Unlock()
@@ -436,6 +469,39 @@ func (l *memberLink) measureRTT() {
 		l.report(true)
 	}
 	l.c.emit()
+}
+
+// pingSucceeded 清零连续 RTT 失败计数。
+// 职责：路径恢复后不误判；使用：measureRTT 成功分支；边界：只改计数。
+func (l *memberLink) pingSucceeded() {
+	l.mu.Lock()
+	l.pingFails = 0
+	l.mu.Unlock()
+}
+
+// pingFailed 记录一次 RTT 失败，连续 3 次仍无可用连接时主动关闭到房主的连接。
+// 职责：发现"连接还在但数据不通"的半死路径，交给状态机重建，避免用户一直卡住；
+// 使用：holdConnection 的 10 秒周期；边界：只关闭到房主的连接，不判定房间或会话，也不影响其他成员。
+func (l *memberLink) pingFailed() {
+	l.mu.Lock()
+	l.pingFails++
+	fails := l.pingFails
+	if fails >= 3 {
+		l.pingFails = 0
+	}
+	l.mu.Unlock()
+	if fails < 3 {
+		return
+	}
+	conns := l.sess.host.Network().ConnsToPeer(l.hostID)
+	if len(conns) == 0 {
+		return
+	}
+	recordStateAsync(loggingConstant.Warn, "link.stale", "成员链路数据不通，主动重建", "连续 3 次 RTT 探测失败，关闭到房主的连接",
+		map[string]interface{}{"roomId": l.roomID, "peerUserId": l.hostUserID, "connections": len(conns)})
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
 }
 
 // fail 进入 failed 并归类失败原因。

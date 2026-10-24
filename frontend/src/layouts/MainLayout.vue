@@ -14,6 +14,8 @@ import {useMessage} from 'naive-ui'
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useRoute} from 'vue-router'
 import {Quit, WindowMinimise, WindowToggleMaximise} from '../../wailsjs/runtime/runtime'
+import AppUpdateDialog from '../components/system/app-update-dialog.vue'
+import {useAppUpdateState} from '../composables/system/useAppUpdateState'
 import {useAppVersion} from '../composables/useAppVersion'
 import {usePageTutorial} from '../composables/usePageTutorial'
 import {useThemeMode} from '../composables/useThemeMode'
@@ -40,7 +42,10 @@ const accountAvatarSource = computed(() => isAccountAuthenticated.value
 watch([accountAvatarSource, () => accountUser.value?.ID], () => { accountAvatarFailed.value = false })
 const globalMenuTrigger = ref<HTMLButtonElement | null>(null)
 const globalMenuRoot = ref<HTMLDivElement | null>(null)
+const isUpdateDialogOpen = ref(false)
 const {appVersion, loadAppVersion} = useAppVersion()
+const {appUpdateInfo, checkAppUpdate} = useAppUpdateState()
+const hasAppUpdate = computed(() => Boolean(appUpdateInfo.value?.hasUpdate && appUpdateInfo.value.assetName))
 const {isDarkMode, isSavingThemeMode, loadThemeMode, toggleThemeMode} = useThemeMode()
 const {isTutorialRunning, tryAutoStartTutorial: tryAutoStartGlobalTutorial} = usePageTutorial('global')
 const announcements = useAnnouncements()
@@ -135,6 +140,8 @@ const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模�
 
 onMounted(() => {
   void loadAppVersion()
+  // 启动时检查一次；设置页复用本次结果，网络失败时可在设置页重新检查。
+  void checkAppUpdate().catch(() => undefined)
   void loadServerAddress()
   void restoreAccountSession().then(() => {
     if (accountIsAuthenticated.value && accountUser.value?.ID) void announcements.check()
@@ -295,6 +302,7 @@ const closeWindow = (): void => {
 
     <AccountModal :open="isAccountModalOpen" @close="isAccountModalOpen = false" />
     <AnnouncementModal :open="!isAccountModalOpen && !isTutorialRunning" @close="announcements.close" />
+    <AppUpdateDialog v-model:show="isUpdateDialogOpen" />
 
     <section class="app-workspace">
       <!-- ~ 无边框窗口标题栏 -->
@@ -309,7 +317,19 @@ const closeWindow = (): void => {
           <span class="app-header-title" data-tour="main-header-title">{{ title }}</span>
         </div>
         <div class="app-window-controls">
-          <span class="app-version-pill">{{ appVersion }}</span>
+          <button
+            type="button"
+            v-if="hasAppUpdate"
+            class="app-version-pill is-update-available"
+            title="发现新版本，点击查看更新内容"
+            aria-label="发现新版本，查看更新内容"
+            aria-haspopup="dialog"
+            @click="isUpdateDialogOpen = true"
+          >
+            <span>{{ appVersion }}</span>
+            <span class="app-version-update-label">更新</span>
+          </button>
+          <span v-else class="app-version-pill">{{ appVersion }}</span>
           <AnnouncementHistoryPopover :disabled="!isAccountAuthenticated || !verifiedAccountSession || isAccountModalOpen || isTutorialRunning || announcements.open.value || announcements.checking.value || announcements.pending.value" :has-latest="announcements.hasUnread.value && isAccountAuthenticated" />
           <!-- ~ 日夜模式切换 -->
           <!-- * 说明：在窗口工具栏中提供主题切换入口 -->
@@ -1061,6 +1081,28 @@ const closeWindow = (): void => {
   font-family: var(--ds-font-mono);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+
+.app-version-pill.is-update-available {
+  appearance: none;
+  gap: 7px;
+  border-color: var(--ds-warning-border);
+  background: var(--ds-warning-bg);
+  color: var(--ds-warning);
+  cursor: pointer;
+  line-height: normal;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.app-version-pill.is-update-available:hover {
+  border-color: var(--ds-warning);
+}
+
+.app-version-update-label {
+  padding-left: 7px;
+  border-left: 1px solid currentColor;
+  font-family: var(--ds-font-ui);
+  font-weight: 600;
 }
 
 .theme-toggle-button,

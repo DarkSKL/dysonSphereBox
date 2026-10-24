@@ -12,8 +12,8 @@ import (
 	"DysonSphereBox/core"
 	"DysonSphereBox/helper/modDependence/gamepath"
 	"DysonSphereBox/helper/modDependence/headless/contract"
-	headlessNebula "DysonSphereBox/helper/modDependence/headless/nebula"
-	"DysonSphereBox/helper/modDependence/headless/winprocess"
+	nebulaConfig "DysonSphereBox/helper/modDependence/nebula"
+	"DysonSphereBox/helper/modDependence/winprocess"
 )
 
 // SaveHeadlessSettings 保存开服页设置并同步 Nebula 配置文件。
@@ -31,7 +31,7 @@ func SaveHeadlessSettings(gameDir string, hostPort int, serverArchive string) (*
 	if processID, running := winprocess.FindDysonSphereHeadlessProcess(gameDir, dysonSphereProcessName, nebulaServerArgument); running && processID > 0 {
 		return nil, fmt.Errorf("服务器运行中，请先中止服务器再保存配置")
 	}
-	currentPort := headlessNebula.ReadHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, defaultNebulaHostPort)
+	currentPort := nebulaConfig.ReadHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, defaultNebulaHostPort)
 	if hostPort != currentPort && winprocess.IsPortOccupied(hostPort) {
 		return nil, fmt.Errorf("开服端口 %d 已被占用，请更换端口后再保存", hostPort)
 	}
@@ -44,11 +44,11 @@ func SaveHeadlessSettings(gameDir string, hostPort int, serverArchive string) (*
 	if core.GLOBAL.Configure == nil || core.GLOBAL.Configure.GameServerArchive == nil {
 		return nil, fmt.Errorf("GameServerArchive config is not initialized")
 	}
-	if err := headlessNebula.WriteHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, hostPort); err != nil {
+	if err := nebulaConfig.WriteHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, hostPort); err != nil {
 		return nil, err
 	}
 	if err := core.GLOBAL.Configure.GameServerArchive.Set(normalizedArchive); err != nil {
-		rollbackErr := headlessNebula.WriteHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, currentPort)
+		rollbackErr := nebulaConfig.WriteHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, currentPort)
 		if rollbackErr != nil {
 			return nil, fmt.Errorf("保存存档配置失败，端口回滚也失败（%v）: %w", rollbackErr, err)
 		}

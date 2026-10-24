@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"DysonSphereBox/helper/modDependence/headless/wincommand"
+	"DysonSphereBox/utils/wincommand"
 )
 
 // readHeadlessNetworkCounter 读取系统网卡累计计数。

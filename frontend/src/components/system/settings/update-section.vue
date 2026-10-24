@@ -6,6 +6,7 @@ import {BrowserOpenURL, Quit} from '../../../../wailsjs/runtime/runtime'
 import {useAppUpdateState} from '../../../composables/system/useAppUpdateState'
 import {useAppVersion} from '../../../composables/useAppVersion'
 import {formatErrorMessage} from '../../../utils/format'
+import {describeUpdateError} from '../../../utils/update-error'
 import SettingsSection from './section.vue'
 import SettingsValueBox, {type SettingsValueTone} from './value-box.vue'
 
@@ -22,6 +23,7 @@ const {
   updateAppSelf,
 } = useAppUpdateState()
 const checkError = ref('')
+const lastCheckAt = ref<Date | null>(null)
 const updatedTargetVersion = ref('')
 
 // =============== 更新状态归纳 ===============
@@ -37,16 +39,19 @@ const status = computed<UpdateStatus>(() => {
 const latestVersionText = computed(() => appUpdateInfo.value?.latestVersion || '—')
 const releaseTitle = computed(() => appUpdateInfo.value?.releaseName || appUpdateInfo.value?.latestVersion || '')
 const releaseNotes = computed(() => appUpdateInfo.value?.releaseNotes?.trim() || '')
+const checkErrorInfo = computed(() => describeUpdateError(checkError.value))
 const platformText = computed(() => {
   const info = appUpdateInfo.value
   return info?.os ? `${info.os}/${info.arch}` : '—'
 })
-const lastCheckedText = computed(() => (
-  appUpdateCheckedAt.value ? appUpdateCheckedAt.value.toLocaleString('zh-CN', {hour12: false}) : '—'
-))
+// 说明：优先展示本页最近一次检查（含失败）的时间；复用启动时缓存结果时回退到成功缓存时间。
+const lastCheckedText = computed(() => {
+  const checkedAt = lastCheckAt.value ?? appUpdateCheckedAt.value
+  return checkedAt ? checkedAt.toLocaleString('zh-CN', {hour12: false}) : '—'
+})
 
 // =============== 值框文案 ===============
-// 说明：值框用一句话说明当前版本与更新结论，颜色随状态变化。
+// 说明：值框用一句话说明当前版本与更新结论，颜色随状态变化；检查失败时展示可读原因，完整错误放在下方详情中。
 const valueText = computed(() => {
   switch (status.value) {
     case 'checking':
@@ -56,7 +61,7 @@ const valueText = computed(() => {
     case 'available':
       return `发现新版本 ${latestVersionText.value}（当前 ${appVersion.value}）`
     case 'error':
-      return `检查更新失败：${checkError.value}`
+      return `检查更新失败：${checkErrorInfo.value.summary}`
     case 'updated':
       return `已更新到 ${updatedTargetVersion.value}，重启应用后生效`
     default:
@@ -77,9 +82,12 @@ const valueTone = computed<SettingsValueTone>(() => {
 const runCheck = async (force: boolean): Promise<void> => {
   checkError.value = ''
   try {
-    await checkAppUpdate({force: force || !appUpdateInfo.value})
+    const {skipped} = await checkAppUpdate({force: force || !appUpdateInfo.value})
+    // 说明：复用程序周期缓存时不改写时间，保留产生该结果的检查时刻。
+    if (!skipped) lastCheckAt.value = new Date()
   } catch (error) {
     checkError.value = formatErrorMessage(error)
+    lastCheckAt.value = new Date()
   }
 }
 
@@ -117,7 +125,7 @@ const openReleasePage = (): void => {
   <!-- * 说明：值框展示当前版本与检查结论，右侧为检查与更新；提示行展示运行平台与上次检查时间 -->
   <!-- * 交互：更新需二次确认；更新执行中禁用检查；写入完成后“更新”替换为“退出应用” -->
   <!-- * 依赖：依赖 useAppVersion、useAppUpdateState 与 Wails BrowserOpenURL / Quit 运行时 -->
-  <!-- * 边界：只有检测到匹配当前平台的更新包时才允许更新；发布说明只在有新版本或等待重启时展示 -->
+  <!-- * 边界：只有检测到匹配当前平台的更新包时才允许更新；发布说明只在有新版本或等待重启时展示，检查失败时改为展示处理建议与原始错误 -->
   <SettingsSection id="settings-update" title="应用更新">
     <SettingsValueBox :tone="valueTone" :title="valueText">{{ valueText }}</SettingsValueBox>
     <n-button
@@ -155,6 +163,22 @@ const openReleasePage = (): void => {
     <!-- * 依赖：依赖检查结果中的 releaseName、publishedAt、releaseNotes 与 releaseUrl -->
     <!-- * 边界：说明按纯文本保留换行，不渲染 Markdown -->
     <template #after>
+      <!-- ~ 检查失败说明 -->
+      <!-- * 说明：值框给出可读原因，这里补全处理建议与后端原始错误，避免单行值框截断 -->
+      <!-- * 交互：原始错误默认折叠，需要排障时展开；重新检查仍使用行内“检查”按钮 -->
+      <!-- * 依赖：checkErrorInfo 的可读原因/建议与 checkError 原始错误链 -->
+      <!-- * 边界：仅在检查失败时出现，与发布说明互斥 -->
+      <section v-if="status === 'error'" class="update-error" role="alert" aria-label="更新检查错误说明">
+        <header class="update-error-head">
+          <span class="update-error-title">处理建议</span>
+        </header>
+        <p class="update-error-body">{{ checkErrorInfo.hint }}</p>
+        <details class="update-error-detail">
+          <summary>技术详情</summary>
+          <code>{{ checkError }}</code>
+        </details>
+      </section>
+
       <section
         v-if="(status === 'available' || status === 'updated') && (releaseTitle || releaseNotes)"
         class="update-notes"
@@ -177,6 +201,56 @@ const openReleasePage = (): void => {
 </template>
 
 <style scoped lang="scss">
+.update-error {
+  margin-top: 12px;
+  border: 1px solid var(--ds-error-border);
+  border-radius: 4px;
+  background: var(--ds-bg-panel);
+}
+
+.update-error-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ds-error-border);
+}
+
+.update-error-title {
+  color: var(--ds-error);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.update-error-body {
+  margin: 0;
+  padding: 12px 14px 0;
+  color: var(--ds-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.update-error-detail {
+  padding: 8px 14px 12px;
+  color: var(--ds-text-muted);
+  font-size: 11px;
+}
+
+.update-error-detail summary {
+  cursor: pointer;
+}
+
+.update-error-detail code {
+  display: block;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 4px;
+  background: var(--ds-bg-panel-elevated);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .update-notes {
   margin-top: 12px;
   border: 1px solid var(--ds-border-subtle);

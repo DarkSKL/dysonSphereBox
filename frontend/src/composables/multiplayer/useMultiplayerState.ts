@@ -4,7 +4,7 @@
 import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch} from 'vue'
 import {accountIsAuthenticated} from '../../services/account'
 import * as api from '../../services/multiplayer'
-import {codeText, type LobbyQuery, type MultiplayerActionResult, type MultiplayerState, type RoomCreateForm, type RoomResolveResult} from '../../types/multiplayer'
+import {codeText, type GamePortPreset, type LobbyQuery, type MultiplayerActionResult, type MultiplayerState, type RoomCreateForm, type RoomResolveResult} from '../../types/multiplayer'
 
 const state = ref<MultiplayerState | null>(null)
 const lastAction = ref<{ok: boolean; text: string} | null>(null)
@@ -51,6 +51,25 @@ export function useMultiplayerState() {
   const roomBusy = computed(() => ['createRoom', 'joinRoom', 'leave', 'close'].some((key) => pending.value.has(key)))
   // 说明：lobby.change 不携带搜索分页上下文，仅默认第一页接收实时增量，避免混入其他房间。
   const liveLobby = computed(() => !query.keyword && query.page === 1 && query.sort === 'createdAt')
+
+  // =============== 游戏端口自动识别 ===============
+  // 说明：创建房间弹窗打开时读取后端登记的游戏 provider 结果；不可用游戏也会返回，供下拉框展示禁用态。
+  // 使用：页面在 openCreate 时调用 refreshGamePortPresets，结果传给创建弹窗；不影响手动端口输入。
+  // 边界：本地只读探测，不依赖控制链路；并发请求只保留最后一次结果，失败时保留空列表。
+  const gamePortPresets = ref<GamePortPreset[]>([])
+  const gamePortPresetsLoading = ref(false)
+  let gamePortPresetRevision = 0
+  async function refreshGamePortPresets(): Promise<void> {
+    if (gamePortPresetsLoading.value) return
+    const revision = ++gamePortPresetRevision
+    gamePortPresetsLoading.value = true
+    try {
+      const presets = await api.detectGamePortPresets()
+      if (revision === gamePortPresetRevision) gamePortPresets.value = presets
+    } finally {
+      if (revision === gamePortPresetRevision) gamePortPresetsLoading.value = false
+    }
+  }
 
   // =============== 意图执行与预览失效 ===============
   // 说明：控制链路未在线时阻止业务意图，仅允许连接；立即锁住重复点击，补足后端 pending 推送前的空隙。
@@ -113,7 +132,8 @@ export function useMultiplayerState() {
 
   // =============== 大厅同步 ===============
   // 说明：订阅切换和列表请求串行；换页、筛选、重连后重新读取，不让旧搜索覆盖新搜索。
-  function refreshLobby(): Promise<void> {
+  // 使用：force 只给“刷新大厅”等人工入口，允许在订阅意图未变时显式重发一次 1102；边界：force 只在浏览态生效。
+  function refreshLobby(force = false): Promise<void> {
     const revision = ++syncRevision
     lobbyReady.value = false
     lobbyLoading.value = online.value && active.value && !room.value
@@ -122,24 +142,41 @@ export function useMultiplayerState() {
       if (revision !== syncRevision || !online.value) return
       const browsing = active.value && !room.value
       const watchOn = browsing && liveLobby.value
-      // 后端重连会恢复旧订阅，因此每次同步以当前页面意图为准。
-      const watchResult = await api.watchLobby(watchOn)
-      if (revision !== syncRevision || !online.value || !browsing) return
-      if (watchResult.code !== 0) {
-        lobbyError.value = codeText(watchResult.code, watchResult.msg)
-      } else {
-        const result = await run('lobbyList', () => api.refreshLobby({...query}), '', true)
-        if (revision !== syncRevision) return
-        if (result && result.code !== 0) lobbyError.value = codeText(result.code, result.msg)
-        lobbyReady.value = !!result && result.code === 0
+      // 说明：state.lobby.watching 是后端最近一次成功回复的记忆，不是服务端权威态；
+      // 只在“订阅意图”与“已确认态”不一致时发送，房间内或页面停用时不声明、不重复退订。
+      const confirmed = state.value?.lobby?.watching ?? false
+      const needWatch = watchOn !== confirmed || (force && browsing)
+      if (needWatch) {
+        const watchResult = await api.watchLobby(watchOn)
+        if (revision !== syncRevision || !online.value) return
+        // 20009 等失败不更新确认态，等下一次意图变化或人工刷新再对齐，避免毫秒级紧循环重试。
+        if (watchResult.code !== 0) {
+          lobbyError.value = codeText(watchResult.code, watchResult.msg)
+          return
+        }
       }
+      if (!browsing) return
+      const result = await run('lobbyList', () => api.refreshLobby({...query}), '', true)
+      if (revision !== syncRevision) return
+      if (result && result.code !== 0) lobbyError.value = codeText(result.code, result.msg)
+      lobbyReady.value = !!result && result.code === 0
     }).finally(() => {
       if (revision === syncRevision) lobbyLoading.value = false
     })
     return lobbyQueue
   }
 
-  watch(() => [active.value, online.value, room.value?.snapshot.roomId, query.keyword, query.page, query.pageSize, query.sort], () => {
+  // 说明：多源 getter 逐个比较值，不能写成返回数组的 getter——房间对象每次投影都是新引用，会放大成订阅循环。
+  // 边界：不把 state.lobby.watching 作为触发源，否则成功确认后会再刷一次列表。
+  watch([
+    () => active.value,
+    () => online.value,
+    () => room.value?.snapshot.roomId,
+    () => query.keyword,
+    () => query.page,
+    () => query.pageSize,
+    () => query.sort,
+  ], () => {
     if (!online.value || room.value) clearResolved()
     void refreshLobby()
   })
@@ -182,7 +219,7 @@ export function useMultiplayerState() {
 
   return {
     state, lastAction, resolved, online, admissionEnabled, room, isHost, pending, roomBusy,
-    query, liveLobby, lobbyReady, lobbyLoading, lobbyError,
-    connect, refreshLobby, clearResolved, create, resolve, join, invite, leave, close, kick, retry,
+    query, liveLobby, lobbyReady, lobbyLoading, lobbyError, gamePortPresets, gamePortPresetsLoading,
+    connect, refreshLobby, clearResolved, create, resolve, join, invite, leave, close, kick, retry, refreshGamePortPresets,
   }
 }

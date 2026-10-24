@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"DysonSphereBox/helper/modDependence/headless/wincommand"
+	"DysonSphereBox/utils/wincommand"
 )
 
 // firewallTimeout 职责：单次检测的 PowerShell 超时；使用：FirewallInboundAllowed；边界：超时视为检测失败（返回 true）。

@@ -10,10 +10,10 @@ import (
 	headlessCommand "DysonSphereBox/helper/modDependence/headless/command"
 	"DysonSphereBox/helper/modDependence/headless/contract"
 	headlessDependency "DysonSphereBox/helper/modDependence/headless/dependency"
-	headlessNebula "DysonSphereBox/helper/modDependence/headless/nebula"
 	headlessNetwork "DysonSphereBox/helper/modDependence/headless/network"
-	"DysonSphereBox/helper/modDependence/headless/wincommand"
-	"DysonSphereBox/helper/modDependence/headless/winprocess"
+	nebulaConfig "DysonSphereBox/helper/modDependence/nebula"
+	"DysonSphereBox/helper/modDependence/winprocess"
+	"DysonSphereBox/utils/wincommand"
 	"path/filepath"
 )
 
@@ -43,7 +43,7 @@ func InspectHeadlessEnvironment(gameDir string) (contract.HeadlessEnvironmentSta
 	if err != nil {
 		return contract.HeadlessEnvironmentStatus{}, err
 	}
-	hostPort := headlessNebula.ReadHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, defaultNebulaHostPort)
+	hostPort := nebulaConfig.ReadHostPort(gameDir, nebulaConfigRelative, nebulaSettingsSection, defaultNebulaHostPort)
 	serverArchive := readHeadlessServerArchive()
 	processID, processRunning, uptimeSeconds := winprocess.InspectHeadlessProcess(gameDir, dysonSphereProcessName, nebulaServerArgument)
 	tcpListening := winprocess.IsNetstatPortListening("tcp", hostPort)

@@ -5,7 +5,7 @@ import {computed, onMounted, ref, watch} from 'vue'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
 import {accountUser, resolveAvatarUrl} from '../../services/account'
 import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../../services/server'
-import {linkErrorText, linkPathTexts, linkStateTexts, type LinkView, type MultiplayerState, type RoomMember} from '../../types/multiplayer'
+import {linkErrorText, linkPathTexts, linkStateTexts, relayAdmissionTexts, type LinkView, type MultiplayerState, type RoomMember} from '../../types/multiplayer'
 import {portText, protoLabel} from '../../utils/multiplayer'
 // =============== 当前房间与用户操作 ===============
 // 说明：呈现真实快照与链路，房间变更交给页面；复制仅写剪贴板，不启动游戏。
@@ -70,6 +70,10 @@ const connectionHint = computed(() => {
 })
 const formatTime = (ms: number): string => new Date(ms).toLocaleString('zh-CN', {hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'})
 const selfLinkError = computed(() => (selfLink.value?.error ? linkErrorText(selfLink.value.error) : null))
+const relayAdmission = computed(() => {
+  const admission = props.state.relayAdmission
+  return admission && admission.roomId === snapshot.value?.roomId && relayAdmissionTexts[admission.errorCode] ? admission : null
+})
 
 // =============== 座位网格 ===============
 // 说明：参考游戏房间常见的"座位"布局，按人数上限补齐空位；房主固定首位，成员按快照顺序就座。
@@ -191,6 +195,10 @@ const flowRtt = computed(() => {
 
     <!-- * 链路失败提示与原始错误：横幅下方通栏，避免挤压连接区 -->
     <p v-if="selfLinkError" class="link-error" role="alert"><strong>{{ selfLinkError.title }}</strong>{{ selfLinkError.hint }}</p>
+    <div v-if="relayAdmission" class="relay-admission" role="status">
+      <span>{{ relayAdmission.retrying ? '正在重试连接。' : `${relayAdmissionTexts[relayAdmission.errorCode]}。房间仍保留。` }}</span>
+      <n-button v-if="!isHost" size="small" secondary :disabled="!online || busy" :loading="pending.has('retry')" @click="emit('retry')"><template #icon><RotateCcw :size="14" /></template>重试连接</n-button>
+    </div>
     <details v-if="selfLink?.detail && selfLink.state !== 'connected'" class="link-detail">
       <summary>查看最近一次连接错误</summary><code>{{ selfLink.detail }}</code>
     </details>
@@ -230,7 +238,7 @@ const flowRtt = computed(() => {
     <footer class="room-bar">
       <span class="bar-summary">房主 {{ snapshot.host.nickname }}<span class="sep">·</span>{{ snapshot.visibility === 'public' ? '公开大厅 / 邀请码加入' : '仅限邀请码加入' }}</span>
       <div class="bar-actions">
-        <n-button v-if="!isHost && selfLink && selfLink.state !== 'connected'" secondary :disabled="!online || busy" :loading="pending.has('retry')" @click="emit('retry')"><template #icon><RotateCcw :size="15" /></template>重试连接</n-button>
+        <n-button v-if="!isHost && selfLink && selfLink.state !== 'connected' && !relayAdmission" secondary :disabled="!online || busy" :loading="pending.has('retry')" @click="emit('retry')"><template #icon><RotateCcw :size="15" /></template>重试连接</n-button>
         <n-button v-if="!isHost" secondary :disabled="!online || busy" :loading="pending.has('leave')" @click="emit('leave')"><template #icon><LogOut :size="15" /></template>退出房间</n-button>
       </div>
     </footer>
@@ -305,9 +313,10 @@ code { font-family: var(--ds-font-mono); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .wave, .wave path { animation: none !important; } }
 // ---- 链路错误（横幅下方通栏） ----
 .link-error { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--ds-warning-border); border-radius: 4px; background: var(--ds-warning-bg); color: var(--ds-warning); font-size: 12px; line-height: 1.7; }
+.relay-admission { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--ds-warning-border); border-radius: 4px; background: var(--ds-warning-bg); color: var(--ds-warning); font-size: 12px; line-height: 1.7; }
 .link-detail { margin-top: 8px; color: var(--ds-text-muted); font-size: 11px; }
 .link-detail summary { cursor: pointer; }
-.link-detail code { display: block; margin-top: 8px; padding: 10px; border-radius: 4px; background: var(--ds-bg-panel); white-space: pre-wrap; overflow-wrap: anywhere; }
+.link-detail code { display: block; margin-top: 8px; padding: 10px; border-radius: 4px; background: var(--ds-bg-panel); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow-y: auto; }
 
 // ---- 座位 ----
 .seats-section { margin-top: 24px; }
