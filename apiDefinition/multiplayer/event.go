@@ -113,11 +113,11 @@ type LinkPunchEvent struct {
 }
 
 // LobbyChangeEvent 是 lobby.change after data。
-// 职责：携带合并后的大厅变化；使用：更新大厅列表；边界：满员房间放在 removed。
+// 职责：携带合并后的大厅变化；使用：更新大厅列表；边界：只有关闭的房间放入 removed。
 type LobbyChangeEvent struct {
 	EventBase
-	// Upserted 职责：新增或变化的条目；使用：按 roomId 覆盖；边界：只含公开未满房间。
+	// Upserted 职责：新增或变化的条目；使用：按 roomId 覆盖；边界：只含公开房间，满员时仍下发并更新人数。
 	Upserted []RoomSummary `json:"upserted"`
-	// Removed 职责：移除的 roomId；使用：从列表删除；边界：包含关闭与满员。
+	// Removed 职责：移除的 roomId；使用：从列表删除；边界：只包含关闭的房间。
 	Removed []string `json:"removed"`
 }

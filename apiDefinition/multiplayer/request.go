@@ -83,7 +83,7 @@ type LobbyListRequest struct {
 }
 
 // LobbyListReply 是 lobby.list 回复 data。
-// 职责：返回总数与当前页；使用：大厅列表；边界：只含 public 且未满员的房间。
+// 职责：返回总数与当前页；使用：大厅列表；边界：只含 public 房间，满员房间仍返回，由客户端标记不可加入。
 type LobbyListReply struct {
 	// Total 职责：总数；使用：分页；边界：非负。
 	Total int `json:"total"`

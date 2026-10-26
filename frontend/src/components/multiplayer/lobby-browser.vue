@@ -31,7 +31,7 @@ const list = computed<RoomSummary[]>(() => {
 const total = computed(() => props.state?.lobby.total ?? 0)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / props.query.pageSize)))
 const emptyTitle = computed(() => !props.online ? props.connectionTitle : props.error ? '暂时无法读取大厅' : props.query.keyword ? '没有找到匹配的房间' : '下一段旅程，从你的房间开始')
-const emptyHint = computed(() => !props.online ? props.connectionHint : props.error || (props.query.keyword ? '试试其他房间名，或使用好友发来的邀请码。' : '目前没有可加入的公开房间。创建一个房间，邀请好友一起建设星系。'))
+const emptyHint = computed(() => !props.online ? props.connectionHint : props.error || (props.query.keyword ? '试试其他房间名，或使用好友发来的邀请码。' : '目前大厅还没有公开房间。创建一个房间，邀请好友一起建设星系。'))
 
 // 说明：更新时间只在读取完成或列表内容真正变化时刷新，其他投影推送（链路、诊断）不影响。
 const updatedAt = ref(0)
@@ -80,7 +80,7 @@ function createdText(ms: number): string {
         <div v-for="index in 5" :key="index" class="room-row loading-row"><n-skeleton text :repeat="2" /><n-skeleton class="col-host" text /><n-skeleton width="56px" text /><n-skeleton class="col-created" width="64px" text /><span class="col-lock" /><n-skeleton class="col-action" width="64px" height="28px" /></div>
       </div>
       <template v-else-if="list.length && !error">
-        <div v-for="item in list" :key="item.roomId" class="room-row room-item" role="row" :class="{'is-selected': selected === item.roomId}">
+        <div v-for="item in list" :key="item.roomId" class="room-row room-item" role="row" :class="{'is-selected': selected === item.roomId, 'is-full': full(item)}">
           <div class="room-info" role="cell">
             <h3 :title="item.name">{{ item.name }}</h3>
             <p class="port-text" :title="(item.ports ?? []).map(portText).join(' · ')">{{ (item.ports ?? []).map(portText).join(' · ') || '未声明端口' }}</p>
@@ -93,7 +93,7 @@ function createdText(ms: number): string {
           <span class="col-created created-text" role="cell">{{ createdText(item.createdAtMs) }}</span>
           <span class="col-lock" role="cell"><LockKeyhole v-if="item.hasPassword" :size="15" aria-label="需要密码" /><span v-else class="muted" aria-label="无需密码">—</span></span>
           <span class="col-action" role="cell">
-            <n-button size="small" :type="selected === item.roomId ? 'primary' : 'default'" :disabled="!admissionEnabled || busy || full(item)" :aria-label="`加入房间 ${item.name}`" @click="emit('join', item.roomId)"><template #icon><ArrowRight :size="14" /></template>{{ full(item) ? '已满' : '加入' }}</n-button>
+            <n-button size="small" :type="selected === item.roomId ? 'primary' : 'default'" :disabled="!admissionEnabled || busy || full(item)" :aria-label="full(item) ? `房间已满 ${item.name}` : `加入房间 ${item.name}`" @click="emit('join', item.roomId)"><template #icon><ArrowRight :size="14" /></template>{{ full(item) ? '已满' : '加入' }}</n-button>
           </span>
         </div>
       </template>
@@ -105,7 +105,7 @@ function createdText(ms: number): string {
         <n-button v-else-if="state?.connection.state === 'offline' && state.account.loggedIn" secondary @click="emit('connect')">连接大厅</n-button>
       </div>
     </div>
-    <footer class="lobby-footer"><span>大厅仅显示公开且未满员的房间</span><span>私密房间请使用好友发来的邀请码加入</span></footer>
+    <footer class="lobby-footer"><span>大厅显示全部公开房间；满员房间保留展示，但暂时无法加入</span><span>私密房间请使用好友发来的邀请码加入</span></footer>
 
     <!-- * 分页：仅在有房间时显示，置于列表说明之后，更新时间与分页、每页条数靠右 -->
     <div v-if="online && ready && total > 0" class="lobby-pager">
@@ -138,6 +138,7 @@ function createdText(ms: number): string {
 .room-item { min-height: 64px; padding-block: 12px; border-bottom: 1px solid var(--ds-border-subtle); transition: background 160ms ease-out; }
 .room-item:hover { background: var(--ds-hover-bg); }
 .room-item.is-selected { background: var(--ds-active-bg); }
+.room-item.is-full .room-info h3 { color: var(--ds-text-secondary); }
 .room-info { min-width: 0; }
 .room-info h3 { margin: 0 0 4px; font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .port-text { margin: 0; color: var(--ds-text-secondary); font-family: var(--ds-font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

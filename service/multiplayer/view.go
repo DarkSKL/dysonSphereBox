@@ -36,7 +36,7 @@ type State struct {
 	Account AccountView `json:"account"`
 	// Session 职责：当前会话；使用：展示与限制；边界：离线时为 nil。
 	Session *SessionView `json:"session"`
-	// Lobby 职责：大厅；使用：大厅列表；边界：只含公开未满房间。
+	// Lobby 职责：大厅；使用：大厅列表；边界：只含公开房间，满员房间保留展示。
 	Lobby LobbyView `json:"lobby"`
 	// Room 职责：当前房间；使用：房间区块；边界：不在房间时为 nil。
 	Room *RoomView `json:"room"`

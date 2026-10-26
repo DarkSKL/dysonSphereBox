@@ -84,7 +84,7 @@ type RoomSnapshot struct {
 }
 
 // RoomSummary 是大厅与预览中的房间条目。
-// 职责：描述可加入房间的摘要；使用：lobby.list、lobby.change、room.resolve；边界：不含任何地址。
+// 职责：描述房间摘要；使用：lobby.list、lobby.change、room.resolve；边界：不含任何地址；满员与否由 memberCount 与 maxMembers 比较。
 type RoomSummary struct {
 	// RoomID 职责：房间 ID；使用：加入参数；边界：字符串。
 	RoomID string `json:"roomId"`
@@ -92,7 +92,7 @@ type RoomSummary struct {
 	Name string `json:"name"`
 	// HostNickname 职责：房主昵称；使用：展示；边界：只展示。
 	HostNickname string `json:"hostNickname"`
-	// MemberCount 职责：当前人数（含房主）；使用：展示；边界：大厅只列未满房间。
+	// MemberCount 职责：当前人数（含房主）；使用：展示与满员判断；边界：可等于 maxMembers。
 	MemberCount int `json:"memberCount"`
 	// MaxMembers 职责：人数上限；使用：展示；边界：含房主。
 	MaxMembers int `json:"maxMembers"`
