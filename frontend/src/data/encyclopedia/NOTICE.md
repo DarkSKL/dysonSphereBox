@@ -11,5 +11,5 @@
 分类布局参考 https://wiki.biligame.com/dsp/首页；没有复制 Wiki 正文、脚本或边框图片。离线阅读摘要由本模块编写。
 
 本地 Game Icons 图标遵循 CC BY 3.0，署名位于 `frontend/public/game-icons-license.txt`。
-游戏实体精灵图通过可选的 `frontend/public/encyclopedia-icons/` 本地资源包加载，该目录被 Git 排除。未准备资源包时，UI 使用打包的类别图标。
-正式分发任何实体图标前，由项目维护者确认许可范围；本次不提交、推送或发布图标包。
+游戏实体精灵图和 BWIKI 分类图标保存在 `frontend/public/encyclopedia-icons/`，随源码提交并随程序打包，运行时从本地加载。目录内附来源说明和 FactorioLab 仓库许可证文本；文件缺失或损坏时使用打包的类别图标回退。
+来源记录和随附仓库许可证不代表对游戏素材、名称或商标取得额外授权。

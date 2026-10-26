@@ -1,4 +1,4 @@
-// 职责：将固定提交的 FactorioLab 元数据转换为离线图鉴；使用：维护者手动执行此脚本更新数据；边界：不读取游戏文件，图标仅在 --icons 时准备为本地资源包。
+// 职责：将固定提交的 FactorioLab 元数据转换为离线图鉴；使用：维护者手动更新数据，--icons 刷新项目内置图片；边界：不读取游戏文件，日常构建和运行不依赖此下载流程。
 import {readFile, writeFile, mkdir} from 'node:fs/promises'
 import {createHash} from 'node:crypto'
 import {fileURLToPath} from 'node:url'
@@ -183,6 +183,7 @@ if (withIcons) {
   }
   if (createHash('sha256').update(sprite).digest('hex') !== lock.checksums['icons.webp']) throw new Error('固定图标包校验失败')
   await writeFile(path.join(destination, 'icons.webp'), sprite)
+  await writeFile(path.join(destination, 'LICENSE-FactorioLab.txt'), inputs.LICENSE)
   await mkdir(path.join(destination, 'categories'), {recursive: true})
   for (const asset of lock.categoryIcons) {
     let bytes
@@ -195,6 +196,6 @@ if (withIcons) {
     if (createHash('sha256').update(bytes).digest('hex') !== asset.sha256) throw new Error(`分类图标校验失败：${asset.key}`)
     await writeFile(path.join(destination, 'categories', `${asset.key}.png`), bytes)
   }
-  await writeFile(path.join(destination, 'NOTICE.txt'), `本地开发预览资源包；实体图标来源 FactorioLab ${commit}，分类图标来源用户指定的戴森球计划 BWIKI 首页（原地址和校验和见 scripts/encyclopedia/source-lock.json）。游戏素材权利归 Youthcat Studio / Gamera Games 等原权利人。此文件夹默认排除提交，发布前由项目维护者确认再分发许可。\n`)
+  await writeFile(path.join(destination, 'NOTICE.txt'), `戴森球计划图鉴图片素材\n\n实体精灵图来源：FactorioLab，固定提交 ${commit}\nhttps://github.com/factoriolab/factoriolab/tree/${commit}/public/data/dsp\n分类图标来源：戴森球计划 BWIKI\nhttps://wiki.biligame.com/dsp/首页\n原始图片地址与 SHA-256：项目 scripts/encyclopedia/source-lock.json\nFactorioLab 仓库许可证文本：同目录 LICENSE-FactorioLab.txt\n\n本目录随项目源码提交，并由 Vite/Wails 随程序打包；运行时不依赖图片源站。\n游戏素材、名称及商标的权利归 Youthcat Studio、Gamera Games 等原权利人所有；来源记录和随附仓库许可证不代表取得额外授权。\n`)
 }
 console.log(JSON.stringify({version, commit, counts: manifest.counts, localIcons: withIcons}, null, 2))

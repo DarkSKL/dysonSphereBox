@@ -1,0 +1,11 @@
+戴森球计划图鉴图片素材
+
+实体精灵图来源：FactorioLab，固定提交 d3a6e0eeb98a415a85ed544ee66ff7b8cde1810f
+https://github.com/factoriolab/factoriolab/tree/d3a6e0eeb98a415a85ed544ee66ff7b8cde1810f/public/data/dsp
+分类图标来源：戴森球计划 BWIKI
+https://wiki.biligame.com/dsp/首页
+原始图片地址与 SHA-256：项目 scripts/encyclopedia/source-lock.json
+FactorioLab 仓库许可证文本：同目录 LICENSE-FactorioLab.txt
+
+本目录随项目源码提交，并由 Vite/Wails 随程序打包；运行时不依赖图片源站。
+游戏素材、名称及商标的权利归 Youthcat Studio、Gamera Games 等原权利人所有；来源记录和随附仓库许可证不代表取得额外授权。
