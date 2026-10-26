@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "datasetVersion": "dsp-0.10.29.21950-d3a6e0e",
+  "gameVersion": "0.10.29.21950",
+  "generatedAt": "2026-10-26T14:03:53.374Z",
+  "sources": [
+    {
+      "name": "FactorioLab DSP",
+      "url": "https://github.com/factoriolab/factoriolab/tree/d3a6e0eeb98a415a85ed544ee66ff7b8cde1810f/public/data/dsp",
+      "license": "MIT",
+      "commit": "d3a6e0eeb98a415a85ed544ee66ff7b8cde1810f",
+      "usedFor": [
+        "metadata",
+        "i18n"
+      ]
+    }
+  ],
+  "shards": {
+    "building": "building.json",
+    "item": "item.json",
+    "recipe": "recipe.json",
+    "technology": "technology.json",
+    "resource": "resource.json"
+  },
+  "counts": {
+    "building": 64,
+    "item": 112,
+    "recipe": 496,
+    "technology": 307,
+    "resource": 22
+  },
+  "sprite": {
+    "width": 1472,
+    "height": 1472,
+    "cell": 64,
+    "path": "/encyclopedia-icons/icons.webp"
+  },
+  "checksums": {
+    "data.json": "940d5d6eac72b250ddb87cd717189e87eb9a1645d28cfb6081b28a754dc1684b",
+    "zh.json": "54c8646006eb480c4fd1d0c9a63809b00a75e62483daa83a653e4ddf83f4dafc",
+    "LICENSE": "1b17e7ef58a7fe1f0278c5423fa5da9fb2a1829a23f180c1315e359eceec146d"
+  }
+}

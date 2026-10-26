@@ -58,6 +58,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/dysonSphere/encyclopedia': RouteRecordInfo<
+      '/dysonSphere/encyclopedia',
+      '/dysonSphere/encyclopedia',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/dysonSphere/environment': RouteRecordInfo<
       '/dysonSphere/environment',
       '/dysonSphere/environment',
@@ -161,6 +168,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/dysonSphere/blueprint-generator.vue': {
       routes:
         | '/dysonSphere/blueprint-generator'
+      views:
+        | never
+    }
+    'src/pages/dysonSphere/encyclopedia.vue': {
+      routes:
+        | '/dysonSphere/encyclopedia'
       views:
         | never
     }

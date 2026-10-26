@@ -12,6 +12,11 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     DysonSphereBlueprintViewerPanel: typeof import('./components/dysonSphere/blueprint/viewer-panel.vue')['default']
+    DysonSphereEncyclopediaCategoryGrid: typeof import('./components/dysonSphere/encyclopedia/category-grid.vue')['default']
+    DysonSphereEncyclopediaEntryDetail: typeof import('./components/dysonSphere/encyclopedia/entry-detail.vue')['default']
+    DysonSphereEncyclopediaEntryIcon: typeof import('./components/dysonSphere/encyclopedia/entry-icon.vue')['default']
+    DysonSphereEncyclopediaEntrySection: typeof import('./components/dysonSphere/encyclopedia/entry-section.vue')['default']
+    DysonSphereEncyclopediaRecipePanel: typeof import('./components/dysonSphere/encyclopedia/recipe-panel.vue')['default']
     DysonSphereEnvironmentResourceCard: typeof import('./components/dysonSphere/environment/resource-card.vue')['default']
     DysonSphereHeadlessServerHeroLottie: typeof import('./components/dysonSphere/headless/server-hero-lottie.vue')['default']
     DysonSphereHeadlessServiceStatusLottie: typeof import('./components/dysonSphere/headless/service-status-lottie.vue')['default']

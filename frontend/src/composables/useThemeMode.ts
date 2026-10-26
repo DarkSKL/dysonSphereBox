@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { GetConfig, SetConfig } from '../../wailsjs/go/system/ConfigurationService';
 
 export type ThemeMode = 'light' | 'dark';
@@ -92,7 +92,8 @@ export const useThemeMode = () => {
     }
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const canAnimate = Boolean(document.startViewTransition && point && !reduceMotion);
+    // Wails 后台窗口可能保持 hidden；此时 View Transition 会跳过，直接切换以保证主题状态和保存一致。
+    const canAnimate = Boolean(document.startViewTransition && point && !reduceMotion && document.visibilityState === 'visible');
 
     if (!canAnimate) {
       themeMode.value = mode;
@@ -101,9 +102,10 @@ export const useThemeMode = () => {
       return;
     }
 
-    const transition = document.startViewTransition?.(() => {
+    const transition = document.startViewTransition?.(async () => {
       themeMode.value = mode;
       applyThemeMode(mode);
+      await nextTick();
     });
 
     if (!transition || !point) {
@@ -111,9 +113,15 @@ export const useThemeMode = () => {
       return;
     }
 
-    await transition.ready;
-    await animateThemeReveal(point);
-    await transition.finished;
+    try {
+      await transition.ready;
+      await animateThemeReveal(point);
+      await transition.finished;
+    } catch {
+      // 动画属于展示增强；被后台切换或系统取消时仍完成主题应用，保存错误继续交由调用方提示。
+      themeMode.value = mode;
+      applyThemeMode(mode);
+    }
     await saveThemeMode(mode);
   };
 

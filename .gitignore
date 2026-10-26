@@ -9,3 +9,6 @@ remotion
 /build
 build
 /runtime-shots
+
+# 图鉴游戏图标为可选本地资源包，确认分发许可前不提交。
+/frontend/public/encyclopedia-icons/
