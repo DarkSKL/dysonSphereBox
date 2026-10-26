@@ -13,6 +13,16 @@ import (
 // Transport 职责：包装现有网络传输；使用：HTTP 客户端初始化；边界：保持原响应与错误。
 type Transport struct{ Base http.RoundTripper }
 
+// CloseIdleConnections 释放底层标准 transport 的空闲连接。
+// 职责：透传连接池清理能力，避免一次性客户端保留空闲 socket。
+// 使用：调用方完成独立 HTTP 客户端响应后调用。
+// 边界：不关闭正在使用的请求连接，也不改变 RoundTrip 行为。
+func (t Transport) CloseIdleConnections() {
+	if transport, ok := t.Base.(interface{ CloseIdleConnections() }); ok {
+		transport.CloseIdleConnections()
+	}
+}
+
 // RoundTrip 职责：记录网络错误、HTTP 失败和慢请求；使用：http.Client；边界：200 不代表业务成功，响应解析失败由业务边界补充。
 func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	begin := time.Now()

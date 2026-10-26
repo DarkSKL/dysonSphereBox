@@ -51,6 +51,16 @@ func (model *HTTPClient) DoNoRedirect(request *http.Request) (*http.Response, er
 	return clientCopy.Do(request)
 }
 
+// CloseIdleConnections 释放本客户端连接池中的空闲连接。
+// 职责：允许一次性独立客户端在响应完成后清理 transport 资源。
+// 使用：代理响应体关闭时调用。
+// 边界：共享 transport 未显式配置清理函数，不受影响。
+func (model *HTTPClient) CloseIdleConnections() {
+	if model != nil && model.closeIdleConnections != nil {
+		model.closeIdleConnections()
+	}
+}
+
 // ResolveURL 将相对路径解析为完整请求地址。
 // 职责：把 BaseURL 与业务路径组合为可请求 URL。
 // 使用：NewRequest 或需要预览请求地址时调用。

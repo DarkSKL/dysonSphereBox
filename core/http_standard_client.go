@@ -7,6 +7,7 @@ package core
 import (
 	"DysonSphereBox/core/diagnostics"
 	"crypto/tls"
+	"net"
 	"net/http"
 	"time"
 )
@@ -16,12 +17,23 @@ import (
 // 使用：请求 Thunderstore、Gitee 或直接下载远程文件的代码通过该函数创建客户端客户端。
 // 边界：跳过证书校验会降低 HTTPS 身份验证强度；调用方仍需负责 HTTP 状态码、文件完整性和业务响应校验。
 func NewHTTPStandardClient(timeout time.Duration) *http.Client {
-	return &http.Client{
-		Timeout: timeout,
-		Transport: diagnostics.Transport{Base: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			}},
-		},
+	return newHTTPStandardClient(timeout, 0)
+}
+
+// NewHTTPStandardClientWithStageTimeout 创建带连接阶段超时的标准 HTTP 客户端。
+// 职责：限制连接、TLS 握手和响应头等待，同时保留标准客户端诊断与 TLS 行为。
+// 使用：长总预算的文件下载需要单独限制网络阶段时调用。
+// 边界：只影响返回的独立客户端，不修改现有共享标准客户端。
+func NewHTTPStandardClientWithStageTimeout(timeout, stageTimeout time.Duration) *http.Client {
+	return newHTTPStandardClient(timeout, stageTimeout)
+}
+
+func newHTTPStandardClient(timeout, stageTimeout time.Duration) *http.Client {
+	transport := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	if stageTimeout > 0 {
+		transport.DialContext = (&net.Dialer{Timeout: stageTimeout, KeepAlive: 30 * time.Second}).DialContext
+		transport.TLSHandshakeTimeout = stageTimeout
+		transport.ResponseHeaderTimeout = stageTimeout
 	}
+	return &http.Client{Timeout: timeout, Transport: diagnostics.Transport{Base: transport}}
 }

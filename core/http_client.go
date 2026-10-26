@@ -31,6 +31,8 @@ type HTTPClient struct {
 	// 使用：ResolveURL 解析请求路径时读取。
 	// 边界：允许为空，空值会在请求解析阶段返回明确错误。
 	baseURL *url.URL
+	// closeIdleConnections 仅由独立 transport 设置；共享 transport 不在此处关闭。
+	closeIdleConnections func()
 }
 
 // NewHTTPClient 根据传入的 BaseURL 创建 HTTP 客户端。
