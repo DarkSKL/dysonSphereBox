@@ -321,8 +321,8 @@ func ImportFilesIntoRootSafely(sourcePaths []string, targetRoot string) ([]Impor
 // WriteTextFileIntoRootSafely 将文本内容写入目标根目录下的单个文件。
 // 职责：为蓝图快速导入提供临时文件写入、冲突检测和校验能力。
 // 使用：QuickImportBlueprint 调用，把蓝图编码保存为 .txt 文件。
-// 边界：目标已存在且内容不同会返回冲突；调用方负责校验名称。
-func WriteTextFileIntoRootSafely(targetRoot string, fileName string, content string) (ImportedFilePlan, error) {
+// 边界：overwrite 为 false 时目标已存在且内容不同会返回冲突，为 true 时原子覆盖；调用方负责校验名称。
+func WriteTextFileIntoRootSafely(targetRoot string, fileName string, content string, overwrite bool) (ImportedFilePlan, error) {
 	targetRoot = utils.CleanPath(targetRoot)
 	if targetRoot == "" {
 		return ImportedFilePlan{}, fmt.Errorf("目标根目录为空")
@@ -346,7 +346,11 @@ func WriteTextFileIntoRootSafely(targetRoot string, fileName string, content str
 	if !fileops.IsSubPath(targetRoot, targetPath) {
 		return ImportedFilePlan{}, fmt.Errorf("目标文件越界: %s", targetPath)
 	}
-	syncedPlan, err := CopySingleFileSafely(tempPath, targetPath, fileName)
+	copyFile := CopySingleFileSafely
+	if overwrite {
+		copyFile = OverwriteSingleFileWithEvidence
+	}
+	syncedPlan, err := copyFile(tempPath, targetPath, fileName)
 	if err != nil {
 		return ImportedFilePlan{}, err
 	}

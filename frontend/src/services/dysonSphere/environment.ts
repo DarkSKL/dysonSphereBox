@@ -30,6 +30,7 @@ import {
   PreviewBlueprintMigration as previewBlueprintMigrationBinding,
   PreviewInitialSync as previewInitialSyncBinding,
   QuickImportBlueprint as quickImportBlueprintBinding,
+  SaveGeneratedBlueprint as saveGeneratedBlueprintBinding,
   RecoverInterruptedOperations as recoverInterruptedOperationsBinding,
   RefreshManagedState as refreshManagedStateBinding,
   RefreshSaves as refreshSavesBinding,
@@ -78,6 +79,7 @@ type EnvironmentBridgeMethod =
   | 'CreateBlueprintFolder'
   | 'ImportBlueprintFiles'
   | 'QuickImportBlueprint'
+  | 'SaveGeneratedBlueprint'
   | 'RecoverInterruptedOperations'
   | 'RefreshManagedState'
   | 'EnableBlueprint'
@@ -244,6 +246,16 @@ export const quickImportEnvironmentBlueprint = async (
 ): Promise<environment.EnvironmentOperationResult> => {
   assertEnvironmentBridgeReady('QuickImportBlueprint')
   return quickImportBlueprintBinding(parentId, name, code)
+}
+
+// 量化工作台保存生成结果：同名文件直接覆盖，便于同一方案反复生成后更新。
+export const saveGeneratedEnvironmentBlueprint = async (
+  parentId: string,
+  name: string,
+  code: string,
+): Promise<environment.EnvironmentOperationResult> => {
+  assertEnvironmentBridgeReady('SaveGeneratedBlueprint')
+  return saveGeneratedBlueprintBinding(parentId, name, code)
 }
 
 export const enableEnvironmentBlueprint = async (

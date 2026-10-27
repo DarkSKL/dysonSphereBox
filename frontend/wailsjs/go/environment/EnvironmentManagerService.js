@@ -158,6 +158,10 @@ export function RunInitialSync(arg1) {
   return window['go']['environment']['EnvironmentManagerService']['RunInitialSync'](arg1);
 }
 
+export function SaveGeneratedBlueprint(arg1, arg2, arg3) {
+  return window['go']['environment']['EnvironmentManagerService']['SaveGeneratedBlueprint'](arg1, arg2, arg3);
+}
+
 export function SelectBlueprintImportFiles() {
   return window['go']['environment']['EnvironmentManagerService']['SelectBlueprintImportFiles']();
 }

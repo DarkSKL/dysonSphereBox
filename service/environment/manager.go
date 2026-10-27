@@ -822,13 +822,27 @@ func (service *EnvironmentManagerService) importBlueprintFilesWithoutOperation(p
 // QuickImportBlueprint 通过蓝图编码创建客户端蓝图文件。
 // 职责：创建环境操作记录，并把用户输入的蓝图编码保存为 .txt 文件。
 // 使用：环境页蓝图快速导入入口调用。
-// 边界：只写入客户端镜像目录，不自动启用到游戏蓝图目录。
+// 边界：只写入客户端镜像目录，不自动启用到游戏蓝图目录；同名且内容不同时返回冲突。
 func (service *EnvironmentManagerService) QuickImportBlueprint(parentId string, name string, code string) (EnvironmentOperationResult, error) {
 	return service.runRecordedEnvironmentOperation("quick_import", "blueprint", parentId, map[string]interface{}{
 		"parentId": parentId,
 		"name":     name,
 	}, func() (EnvironmentOperationResult, error) {
-		return service.quickImportBlueprintWithoutOperation(parentId, name, code)
+		return service.quickImportBlueprintWithoutOperation(parentId, name, code, false)
+	})
+}
+
+// SaveGeneratedBlueprint 把生成的蓝图编码保存到客户端资源库。
+// 职责：创建环境操作记录，并以覆盖方式写入同名 .txt 文件。
+// 使用：量化工作台「存入蓝图库」调用；同一方案反复生成后保存应更新原文件。
+// 边界：只写入客户端镜像目录，不自动启用到游戏蓝图目录；覆盖仅限同名文件，记录 overwrite 便于审计。
+func (service *EnvironmentManagerService) SaveGeneratedBlueprint(parentId string, name string, code string) (EnvironmentOperationResult, error) {
+	return service.runRecordedEnvironmentOperation("save_generated", "blueprint", parentId, map[string]interface{}{
+		"parentId":  parentId,
+		"name":      name,
+		"overwrite": true,
+	}, func() (EnvironmentOperationResult, error) {
+		return service.quickImportBlueprintWithoutOperation(parentId, name, code, true)
 	})
 }
 
@@ -836,7 +850,7 @@ func (service *EnvironmentManagerService) QuickImportBlueprint(parentId string, 
 // 职责：校验名称与编码并写入客户端镜像文件。
 // 使用：QuickImportBlueprint 的 operation wrapper 调用。
 // 边界：不创建 operation 记录，不保存完整蓝图编码到 operation。
-func (service *EnvironmentManagerService) quickImportBlueprintWithoutOperation(parentId string, name string, code string) (EnvironmentOperationResult, error) {
+func (service *EnvironmentManagerService) quickImportBlueprintWithoutOperation(parentId string, name string, code string, overwrite bool) (EnvironmentOperationResult, error) {
 	if strings.TrimSpace(code) == "" {
 		return EnvironmentOperationResult{}, fmt.Errorf("蓝图编码不能为空")
 	}
@@ -854,14 +868,18 @@ func (service *EnvironmentManagerService) quickImportBlueprintWithoutOperation(p
 		return EnvironmentOperationResult{}, err
 	}
 	targetRoot := filepath.Join(libraryRoot, filepath.FromSlash(parentPath))
-	if _, err := environmentHelper.WriteTextFileIntoRootSafely(targetRoot, safeName+".txt", code); err != nil {
+	if _, err := environmentHelper.WriteTextFileIntoRootSafely(targetRoot, safeName+".txt", code, overwrite); err != nil {
 		return EnvironmentOperationResult{}, err
 	}
 	page, err := service.ListBlueprints(parentId, "")
 	if err != nil {
 		return EnvironmentOperationResult{}, err
 	}
-	return EnvironmentOperationResult{Message: "蓝图已快速导入", BlueprintPage: &page}, nil
+	message := "蓝图已快速导入"
+	if overwrite {
+		message = fmt.Sprintf("蓝图「%s」已存入蓝图库", safeName)
+	}
+	return EnvironmentOperationResult{Message: message, BlueprintPage: &page}, nil
 }
 
 // EnableBlueprint 启用客户端资源库中的单个蓝图。

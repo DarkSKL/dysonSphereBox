@@ -4,7 +4,7 @@ import {useRoute, useRouter} from 'vue-router'
 import {build, factorycontract, quant} from '../../../wailsjs/go/models'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
 import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, solveFactory} from '../../services/dysonSphere/factory'
-import {getEnvironmentBlueprintDetail, quickImportEnvironmentBlueprint} from '../../services/dysonSphere/environment'
+import {getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../services/dysonSphere/environment'
 import {requestBlueprintLibrary} from '../../services/dysonSphere/blueprint-navigation'
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
@@ -34,7 +34,8 @@ export const useQuantWorkspace = () => {
   const spaceCost = ref<number | null>(1)
   const powerCost = ref<number | null>(0)
   const mode = ref(3)
-  const name = ref('量化产线')
+  // 蓝图名称：默认按目标自动生成（如「电磁矩阵 60 + 能量矩阵 60」）；用户手动修改后保持手动值，清空即恢复自动。
+  const customName = ref('')
   const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, useMixed: false, mix2: true, needCoaterNet: false})
   const plan = ref<quant.Result | null>(null)
   const generated = ref<build.Result | null>(null)
@@ -90,7 +91,17 @@ export const useQuantWorkspace = () => {
   }
   const number = (value: number | undefined): string => (value ?? 0).toLocaleString('zh-CN', {maximumFractionDigits: fixedNum.value ?? 2})
   const itemName = (id: number): string => itemMap.value.get(id)?.name ?? `物品 ${id}`
+  // 自动名称：按目标物品与每分钟产量生成，多目标用「+」连接，超过 3 个目标时概括为「等 N 项」；
+  // 去掉 Windows 文件名不允许的字符并限制 60 字，末尾不留空格或点号（与 Go safeWindowsName 规则一致）。
+  const autoName = computed(() => {
+    const parts = targets.value.filter(target => target.itemId && target.ratePerMinute).map(target => `${itemName(target.itemId as number)} ${Number((target.ratePerMinute as number).toFixed(2))}`)
+    if (!parts.length) return '量化产线'
+    const text = parts.length > 3 ? `${parts.slice(0, 3).join(' + ')} 等 ${parts.length} 项` : parts.join(' + ')
+    return `${text} 每分钟`.replace(/[<>:"/\\|?*]/g, '').slice(0, 60).replace(/[\s.]+$/, '')
+  })
   // 选项 icon 为图鉴中文名：配方取首个产物，设备取设施本身，喷涂取对应等级增产剂；空串表示不显示图标。
+  const name = computed<string>({get: () => customName.value.trim() || autoName.value, set: value => { customName.value = value === autoName.value ? '' : value }})
+  const nameIsAuto = computed(() => !customName.value.trim())
   const recipeOptions = (id: number): {label: string; value: number; icon: string}[] => (detail.value?.recipes ?? []).filter(recipe => recipe.results.includes(id)).map((recipe, index) => ({label: recipe.name, value: index + 1, icon: itemName(recipe.results[0] ?? id)}))
   const selectedRecipe = (id: number): quant.Recipe | null => {
     const choices = (detail.value?.recipes ?? []).filter(recipe => recipe.results.includes(id))
@@ -200,7 +211,7 @@ export const useQuantWorkspace = () => {
       previewRevision.value++
       replay.value = true
       sourceName.value = title
-      name.value = title
+      customName.value = title
       previewState.value = value.summary.buildingCount ? 'loading' : 'empty'
       selectedBuilding.value = null
       selectedProductions.value = []
@@ -221,6 +232,7 @@ export const useQuantWorkspace = () => {
     const positives = (inspection.value?.netRates ?? []).filter(value => value.ratePerMinute > 1e-7)
     if (!positives.length) { error.value = {code: 'Q_E_BAD_REQUEST', message: '未识别出正的净产物，请手动添加目标'}; return }
     targets.value = positives.slice(0, 100).map(value => ({key: ++targetCounter, itemId: value.itemId, ratePerMinute: value.ratePerMinute}))
+    customName.value = ''
     replay.value = false
     plan.value = null
     generatedSignature.value = ''
@@ -262,7 +274,7 @@ export const useQuantWorkspace = () => {
   const save = async (): Promise<void> => {
     if (!await allowExport()) return
     saving.value = true
-    try { const result = await quickImportEnvironmentBlueprint('', name.value || sourceName.value, code.value); message.success(result.message) }
+    try { const result = await saveGeneratedEnvironmentBlueprint('', name.value || sourceName.value, code.value); message.success(result.message) }
     catch (caught) { report(caught) } finally { saving.value = false }
   }
   // =============== 多目标分区 ===============
@@ -329,7 +341,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。
 function planZoneFallback(plan: quant.Result): {key: string; targetItemId: number; productionIndices: number[]}[] {

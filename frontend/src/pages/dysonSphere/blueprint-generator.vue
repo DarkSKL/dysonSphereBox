@@ -87,7 +87,8 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <div v-if="w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
           <n-tooltip v-for="(zone, index) in w.zones" :key="zone.key"><template #trigger><button type="button" class="preview-zone" :class="{'is-active': w.activeZone === zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key)"><i />{{ zone.label }}</button></template>分区 {{ index + 1 }} · {{ zone.productionIndices.length }} 条产线{{ zone.key === 'shared' ? '，产物需分送到各目标分区' : '' }}</n-tooltip>
         </div>
-        <n-input v-model:value="w.name" size="tiny" class="name-input" placeholder="蓝图名称" maxlength="100" aria-label="蓝图名称" />
+        <!-- 蓝图名称：留空即按目标自动命名，输入后改为手动名称 -->
+        <n-input v-model:value="w.customName" size="tiny" class="name-input" :placeholder="w.autoName" maxlength="60" clearable aria-label="蓝图名称（留空自动命名）" :title="w.nameIsAuto ? `自动命名：${w.autoName}` : '手动名称，清空恢复自动命名'" />
         <div class="preview-actions">
           <n-button v-if="!w.autoRun" size="tiny" type="primary" :loading="w.generating" :disabled="!w.plan || w.quantStale || w.solving || w.importing" @click="w.generate"><template #icon><Sparkles :size="13" /></template>生成</n-button>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="复制蓝图" @click="w.copy"><template #icon><Copy :size="14" /></template></n-button></template>复制蓝图编码</n-tooltip>

@@ -80,6 +80,8 @@ export function RestoreGameFromClientMirror(arg1:string,arg2:string):Promise<env
 
 export function RunInitialSync(arg1:environment.EnvironmentInitialSyncRequest):Promise<environment.EnvironmentInitialSyncResult>;
 
+export function SaveGeneratedBlueprint(arg1:string,arg2:string,arg3:string):Promise<environment.EnvironmentOperationResult>;
+
 export function SelectBlueprintImportFiles():Promise<environment.EnvironmentPathSelection>;
 
 export function SelectBlueprintRootDirectory():Promise<environment.EnvironmentPathSelection>;
