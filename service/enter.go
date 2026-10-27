@@ -6,6 +6,7 @@ package service
 
 import (
 	"DysonSphereBox/service/environment"
+	"DysonSphereBox/service/factory"
 	"DysonSphereBox/service/modDependence"
 	"DysonSphereBox/service/multiplayer"
 	"DysonSphereBox/service/system"
@@ -22,6 +23,8 @@ var ServiceGroupApp = new(ServiceGroup)
 // 使用：RegisterServices 遍历各领域服务组时读取。
 // 边界：这里只组合服务组，不放业务流程或 helper 函数。
 type ServiceGroup struct {
+	// FactoryServiceGroup 职责：聚合本地量化与蓝图服务；使用：根注册器；边界：不在启动时执行计算或读写。
+	FactoryServiceGroup factory.ServiceGroup
 	// SystemServiceGroup 职责：聚合系统领域 Wails 服务；使用：RegisterServices 收集环境、配置、更新和日志服务；边界：不执行系统服务方法。
 	SystemServiceGroup system.ServiceGroup
 	// ModDependenceServiceGroup 职责：聚合 Mod 依赖领域 Wails 服务；使用：RegisterServices 收集 BepInEx、开服、安装器和市场服务；边界：不执行 Mod 业务流程。
@@ -44,5 +47,6 @@ func RegisterServices() []interface{} {
 	services = append(services, ServiceGroupApp.EnvironmentServiceGroup.RegisterServices()...)
 	services = append(services, ServiceGroupApp.MultiplayerServiceGroup.RegisterServices()...)
 
+	services = append(services, ServiceGroupApp.FactoryServiceGroup.RegisterServices()...)
 	return services
 }

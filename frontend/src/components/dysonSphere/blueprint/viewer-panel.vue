@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as Vue from 'vue'
-import {nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
+import {claimBlueprintPreview, shareBlueprintScriptLoad} from '../../../services/dysonSphere/blueprint-preview-host'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
 import blueprintEditorScriptUrl from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.js?url'
 
@@ -8,6 +9,10 @@ type BlueprintViewerTheme = ThemeMode | 'auto'
 
 interface BlueprintViewerPanelProps {
   code: string
+  interactive?: boolean
+  selectedIndex?: number | null
+  maxBuildings?: number
+  revision?: number
 }
 
 interface BlueprintViewerConstructorOptions {
@@ -23,10 +28,14 @@ interface BlueprintViewerInstance {
   setSize: (width: number, height: number) => void
   setTheme?: (theme: BlueprintViewerTheme) => void
   dispose: () => void
+  selectBuilding: (index: number | null) => void
+  getBlueprintData: () => { buildings: unknown[] } | null
+  getCanvas?: () => HTMLCanvasElement
+  toDataURL?: () => string
 }
 
 interface DspBlueprintEditorGlobal {
-  BlueprintViewer: new (options: BlueprintViewerConstructorOptions) => BlueprintViewerInstance
+  BlueprintViewer: new (options: BlueprintViewerConstructorOptions, callbacks?: {onBuildingSelect?: (index: number | null) => void}) => BlueprintViewerInstance
 }
 
 interface MinimalVueI18nGlobal {
@@ -68,18 +77,27 @@ interface AppThemeSnapshot {
   readonly blueprintEditorStoredTheme: string | null
 }
 
-const props = defineProps<BlueprintViewerPanelProps>()
+const props = withDefaults(defineProps<BlueprintViewerPanelProps>(), {interactive: false, selectedIndex: null, maxBuildings: 6000, revision: 0})
+const emit = defineEmits<{
+  (event: 'ready', value: {buildingCount: number}): void
+  (event: 'select', value: {index: number | null}): void
+  (event: 'error', value: {code: string; message: string}): void
+}>()
 const {themeMode, isThemeReady} = useThemeMode()
 
 // =============== 蓝图模型预览状态 ===============
 // 说明：在当前资源详情抽屉内挂载 BlueprintViewer，保持预览区域和页面其它 UI 同源协作。
 // 边界：只调用库暴露的纯预览 API，不嵌入独立页面，也不启用完整编辑器的编辑和保存能力。
 const containerRef = ref<HTMLElement | null>(null)
-const viewer = ref<BlueprintViewerInstance | null>(null)
+const viewer = shallowRef<BlueprintViewerInstance | null>(null)
 const isLoadingViewer = ref(false)
 const viewerError = ref('')
 let resizeObserver: ResizeObserver | null = null
 let pendingLoadFrame = 0
+let active = true
+let loadVersion = 0
+let releaseHost: (() => void) | null = null
+const buildingCount = ref(0)
 const blueprintEditorThemeStorageKey = 'dsp-editor-theme'
 
 // =============== 应用主题隔离 ===============
@@ -134,7 +152,7 @@ const withAsyncAppThemeIsolation = async <T>(operation: () => Promise<T>): Promi
 // =============== 预览器脚本加载 ===============
 // 说明：按需加载 dsp-blueprint-editor 的 UMD 资源，复用库对外暴露的 BlueprintViewer 构造函数。
 // 边界：脚本只加载一次；兼容 Wails/WebView 注入 exports 或 module 导致 UMD 未挂到 window 的情况。
-const ensureBlueprintEditor = async (): Promise<DspBlueprintEditorGlobal> => {
+const loadBlueprintEditor = async (): Promise<DspBlueprintEditorGlobal> => {
   const loadedEditor = resolveBlueprintEditorGlobal()
   if (loadedEditor) {
     cleanupBlueprintEditorGlobalStyles()
@@ -272,35 +290,71 @@ const isBlueprintEditorGlobalStyle = (styleText: string): boolean => {
 // =============== 预览器生命周期 ===============
 // 说明：初始化、加载蓝图和同步尺寸都集中在这里，详情切换时复用实例刷新模型。
 // 边界：容器不可用或编码为空时不创建实例；组件卸载时释放 WebGL 资源。
-const loadCurrentBlueprint = async (): Promise<void> => {
-  const container = containerRef.value
-  if (!container || !props.code) {
-    return
-  }
-  if (!hasRenderableSize()) {
-    scheduleBlueprintLoad()
-    return
-  }
+const ensureBlueprintEditor = (): Promise<DspBlueprintEditorGlobal> => shareBlueprintScriptLoad(loadBlueprintEditor)
 
+const selectBuilding = (index: number | null): void => {
+  if (index !== null && (!Number.isInteger(index) || index < 0 || index >= buildingCount.value)) return
+  withAppThemeIsolation(() => viewer.value?.selectBuilding(index))
+}
+const resetCamera = (): void => { withAppThemeIsolation(() => viewer.value?.resetCamera()) }
+const captureImage = (): string | null => withAppThemeIsolation(() => viewer.value?.toDataURL?.() ?? null)
+defineExpose({selectBuilding, resetCamera, captureImage})
+
+// 说明：当前库反复 loadBlueprint 会保留已上传的纹理；通过公开 dispose/getCanvas 释放整个旧实例及 WebGL 上下文，再建立新实例。
+// 边界：不修改第三方包；停止其渲染循环后才丢失上下文，避免隐藏页继续持有 GPU 资源。
+const releaseViewerInstance = (): void => {
+  const canvas = viewer.value?.getCanvas?.() ?? containerRef.value?.querySelector('canvas')
+  withAppThemeIsolation(() => viewer.value?.dispose())
+  viewer.value = null
+  const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl')
+  context?.getExtension('WEBGL_lose_context')?.loseContext()
+}
+
+const disposeViewer = (): void => {
+  loadVersion++
+  if (pendingLoadFrame) window.cancelAnimationFrame(pendingLoadFrame)
+  pendingLoadFrame = 0
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  releaseViewerInstance()
+  releaseHost?.()
+  releaseHost = null
+  isLoadingViewer.value = false
+}
+
+const loadCurrentBlueprint = async (): Promise<void> => {
+  if (!active || !containerRef.value || !props.code) return
+  if (!hasRenderableSize()) return
+  const version = ++loadVersion
   isLoadingViewer.value = true
   viewerError.value = ''
-
+  let phase: 'load' | 'render' = 'load'
   try {
     const editor = await ensureBlueprintEditor()
+    if (!active || version !== loadVersion || !containerRef.value) return
+    phase = 'render'
+    releaseViewerInstance()
     if (!viewer.value) {
-      viewer.value = withAppThemeIsolation(() => new editor.BlueprintViewer({
-        container,
-        theme: themeMode.value,
+      releaseHost = claimBlueprintPreview(disposeViewer)
+      viewer.value = withAppThemeIsolation(() => new editor.BlueprintViewer({container: containerRef.value!, theme: themeMode.value}, {
+        onBuildingSelect: (index) => withAppThemeIsolation(() => {
+          if (active && props.interactive) emit('select', {index})
+        }),
       }))
     }
-
     withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
+    buildingCount.value = viewer.value.getBlueprintData()?.buildings.length ?? 0
     resizeViewer()
-    withAppThemeIsolation(() => viewer.value?.resetCamera())
+    resetCamera()
+    selectBuilding(props.selectedIndex)
+    if (buildingCount.value > props.maxBuildings) emit('error', {code: 'PREVIEW_E_LIMIT', message: `共 ${buildingCount.value} 个建筑，模型交互可能较慢`})
+    emit('ready', {buildingCount: buildingCount.value})
   } catch (error) {
+    if (!active || version !== loadVersion) return
     viewerError.value = error instanceof Error ? error.message : String(error || '蓝图模型渲染失败。')
+    emit('error', {code: phase === 'load' ? 'PREVIEW_E_LOAD' : 'PREVIEW_E_RENDER', message: viewerError.value})
   } finally {
-    isLoadingViewer.value = false
+    if (version === loadVersion) isLoadingViewer.value = false
   }
 }
 
@@ -333,16 +387,23 @@ const scheduleBlueprintLoad = (): void => {
   })
 }
 
-onMounted(async () => {
+const activate = async (): Promise<void> => {
+  active = true
   await nextTick()
-  resizeObserver = new ResizeObserver(() => resizeViewer())
-  if (containerRef.value) {
-    resizeObserver.observe(containerRef.value)
+  if (!active) return
+  if (!resizeObserver) {
+    resizeObserver = new ResizeObserver(() => { if (!viewer.value && props.code && hasRenderableSize()) void loadCurrentBlueprint(); else resizeViewer() })
+    if (containerRef.value) resizeObserver.observe(containerRef.value)
   }
   await loadCurrentBlueprint()
-})
+}
+onMounted(() => { void activate() })
+onActivated(() => { if (!viewer.value) void activate() })
+onDeactivated(() => { active = false; disposeViewer() })
+watch(() => props.selectedIndex, selectBuilding)
 
-watch(() => props.code, () => {
+watch(() => [props.code, props.revision], () => {
+  if (!props.code) { disposeViewer(); buildingCount.value = 0; return }
   void loadCurrentBlueprint()
 })
 
@@ -354,16 +415,8 @@ watch(themeMode, (mode) => {
   withAppThemeIsolation(() => viewer.value?.setTheme?.(mode))
 })
 
-onBeforeUnmount(() => {
-  if (pendingLoadFrame) {
-    window.cancelAnimationFrame(pendingLoadFrame)
-    pendingLoadFrame = 0
-  }
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  viewer.value?.dispose()
-  viewer.value = null
-})
+onBeforeUnmount(() => { active = false; disposeViewer() })
+
 </script>
 
 <template>
@@ -382,7 +435,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="viewerError" class="blueprint-viewer-overlay blueprint-viewer-overlay-error">
-        <strong>模型渲染失败</strong>
+        <strong>预览暂不可用，不影响已自检蓝图的导出</strong>
         <span>{{ viewerError }}</span>
       </div>
     </div>
@@ -395,7 +448,7 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #0d1117;
+  background: var(--ds-bg-panel);
 }
 
 .blueprint-viewer-canvas {
@@ -404,7 +457,7 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #0d1117;
+  background: var(--ds-bg-panel);
 }
 
 .blueprint-viewer-mount {
@@ -419,8 +472,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgb(13 17 23 / 72%);
-  color: #d6dde7;
+  background: color-mix(in srgb, var(--ds-bg-panel) 85%, transparent);
+  color: var(--ds-text-primary);
   font-size: 0.8125rem;
   pointer-events: none;
 }
@@ -431,13 +484,13 @@ onBeforeUnmount(() => {
   text-align: center;
 
   strong {
-    color: #fca5a5;
+    color: var(--ds-error);
     font-weight: 650;
   }
 
   span {
     max-width: 36rem;
-    color: #cbd5e1;
+    color: var(--ds-text-secondary);
     line-height: 1.6;
   }
 }

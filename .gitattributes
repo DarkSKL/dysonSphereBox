@@ -1,0 +1,2 @@
+# 内置参考数据按原始 BOM/换行字节保存，保证跨平台指纹和来源哈希稳定。
+helper/quant/data/*.json -text

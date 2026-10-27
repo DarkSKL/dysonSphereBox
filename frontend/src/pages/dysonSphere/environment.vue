@@ -3,6 +3,7 @@ import {AlertCircle, Archive, ChevronRight, Clock, FolderOpen, Layers, Package, 
 import {useMessage} from 'naive-ui'
 import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
+import {consumeBlueprintLibraryRequest} from '../../services/dysonSphere/blueprint-navigation'
 import {contract, environment} from '../../../wailsjs/go/models'
 import {OnFileDrop, OnFileDropOff} from '../../../wailsjs/runtime/runtime'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
@@ -394,8 +395,18 @@ const refreshCurrentView = async (): Promise<void> => {
   await refreshBepInExReady()
 }
 
+const openBlueprintInGenerator = (): void => {
+  const itemId = selectedBlueprintDetail.value?.item.id
+  if (!itemId) return
+  env.closeBlueprintDetail()
+  void router.push({path: '/dysonSphere/blueprint-generator', query: {itemId}})
+}
+const acceptBlueprintNavigation = (): void => {
+  if (consumeBlueprintLibraryRequest()) { activeTab.value = 'blueprints'; currentBlueprintParentId.value = '' }
+}
 let hasMounted = false
 onMounted(async () => {
+  acceptBlueprintNavigation()
   isPageActive.value = true
   OnFileDrop((_x, _y, paths) => {
     void importDroppedModPaths(paths)
@@ -404,10 +415,12 @@ onMounted(async () => {
   await env.loadOverview()
   await Promise.all([env.loadMods(), installed.loadInstalledPackages()])
   await refreshBepInExReady()
+  if (activeTab.value === 'blueprints') await env.loadBlueprints()
   hasMounted = true
 })
 
 onActivated(() => {
+  acceptBlueprintNavigation()
   isPageActive.value = true
   if (hasMounted) {
     void refreshCurrentView()
@@ -415,6 +428,7 @@ onActivated(() => {
 })
 
 onDeactivated(() => {
+  env.closeBlueprintDetail()
   isPageActive.value = false
   isModDragActive.value = false
   modDragDepth = 0
@@ -929,11 +943,12 @@ watch(activeTab, (tab) => {
     <!-- ~ 蓝图详情抽屉 -->
     <!-- * 说明：嵌入 3D 预览，按蓝图编码渲染模型 -->
     <!-- * 边界：只读预览；viewer-panel 负责主题快照恢复与样式清理 -->
-    <n-drawer v-model:show="blueprintDetailVisible" width="50vw" placement="right" :trap-focus="false">
+    <n-drawer v-if="isPageActive" v-model:show="blueprintDetailVisible" width="50vw" placement="right" :trap-focus="false">
       <n-drawer-content closable body-content-style="padding: 0; height: 100%; overflow: hidden;">
         <template #header>
           <div class="blueprint-detail-header">
             <strong>蓝图详情</strong>
+            <n-button v-if="selectedBlueprintDetail" size="tiny" @click="openBlueprintInGenerator">在生成器中打开</n-button>
             <span v-if="selectedBlueprintDetail" class="blueprint-detail-meta">
               {{ selectedBlueprintDetail.item.name }} · {{ selectedBlueprintDetail.parsed.summary.buildingCount }} 个建筑
             </span>

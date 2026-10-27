@@ -62,6 +62,8 @@ export function useEnvironmentState() {
   const mods = ref<environment.EnvironmentModItem[]>([])
   const selectedModDetail = ref<environment.EnvironmentModDetail | null>(null)
   const selectedBlueprintDetail = ref<environment.EnvironmentBlueprintDetail | null>(null)
+  // 关闭/失活后使晚到的详情请求失效，避免后台缓存页重新占用唯一预览宿主。
+  let blueprintDetailVersion = 0
   const blueprintPage = ref<environment.EnvironmentBlueprintPage | null>(null)
   const saves = ref<environment.EnvironmentSaveItem[]>([])
   const modSearch = ref('')
@@ -152,17 +154,21 @@ export function useEnvironmentState() {
   }
 
   const loadBlueprintDetail = async (itemId: string): Promise<void> => {
+    const version = ++blueprintDetailVersion
     isLoadingBlueprintDetail.value = true
     try {
-      selectedBlueprintDetail.value = await getEnvironmentBlueprintDetail(itemId)
+      const detail = await getEnvironmentBlueprintDetail(itemId)
+      if (version === blueprintDetailVersion) selectedBlueprintDetail.value = detail
     } catch (error) {
-      message.error(`读取蓝图详情失败：${formatEnvironmentError(error)}`)
+      if (version === blueprintDetailVersion) message.error(`读取蓝图详情失败：${formatEnvironmentError(error)}`)
     } finally {
-      isLoadingBlueprintDetail.value = false
+      if (version === blueprintDetailVersion) isLoadingBlueprintDetail.value = false
     }
   }
 
   const closeBlueprintDetail = (): void => {
+    blueprintDetailVersion++
+    isLoadingBlueprintDetail.value = false
     selectedBlueprintDetail.value = null
   }
 
