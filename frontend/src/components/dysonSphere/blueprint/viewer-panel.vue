@@ -2,6 +2,7 @@
 import * as Vue from 'vue'
 import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
 import {claimBlueprintPreview, shareBlueprintScriptLoad} from '../../../services/dysonSphere/blueprint-preview-host'
+import {enableBlueprintPreviewRotation} from '../../../services/dysonSphere/blueprint-preview-interaction'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
 import blueprintEditorScriptUrl from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.js?url'
 
@@ -87,7 +88,7 @@ const {themeMode, isThemeReady} = useThemeMode()
 
 // =============== 蓝图模型预览状态 ===============
 // 说明：在当前资源详情抽屉内挂载 BlueprintViewer，保持预览区域和页面其它 UI 同源协作。
-// 边界：只调用库暴露的纯预览 API，不嵌入独立页面，也不启用完整编辑器的编辑和保存能力。
+// 边界：使用纯预览 API，控制器映射兼容集中在独立输入适配模块；不启用完整编辑器的编辑和保存能力。
 const containerRef = ref<HTMLElement | null>(null)
 const viewer = shallowRef<BlueprintViewerInstance | null>(null)
 const isLoadingViewer = ref(false)
@@ -97,6 +98,7 @@ let pendingLoadFrame = 0
 let active = true
 let loadVersion = 0
 let releaseHost: (() => void) | null = null
+let releaseInteraction: (() => void) | null = null
 const buildingCount = ref(0)
 const blueprintEditorThemeStorageKey = 'dsp-editor-theme'
 
@@ -304,6 +306,8 @@ defineExpose({selectBuilding, resetCamera, captureImage})
 // 边界：不修改第三方包；停止其渲染循环后才丢失上下文，避免隐藏页继续持有 GPU 资源。
 const releaseViewerInstance = (): void => {
   const canvas = viewer.value?.getCanvas?.() ?? containerRef.value?.querySelector('canvas')
+  releaseInteraction?.()
+  releaseInteraction = null
   withAppThemeIsolation(() => viewer.value?.dispose())
   viewer.value = null
   const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl')
@@ -341,6 +345,8 @@ const loadCurrentBlueprint = async (): Promise<void> => {
           if (active && props.interactive) emit('select', {index})
         }),
       }))
+      const canvas = viewer.value.getCanvas?.()
+      if (canvas) releaseInteraction = enableBlueprintPreviewRotation(viewer.value, canvas)
     }
     withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
     buildingCount.value = viewer.value.getBlueprintData()?.buildings.length ?? 0
@@ -428,6 +434,7 @@ onBeforeUnmount(() => { active = false; disposeViewer() })
   <section class="blueprint-viewer-panel">
     <div class="blueprint-viewer-canvas">
       <div ref="containerRef" class="blueprint-viewer-mount" />
+      <span v-if="!isLoadingViewer && !viewerError && buildingCount" class="blueprint-viewer-hint">左键拖动旋转 · 滚轮缩放</span>
 
       <div v-if="isLoadingViewer" class="blueprint-viewer-overlay">
         <n-spin size="small" />
@@ -463,6 +470,24 @@ onBeforeUnmount(() => { active = false; disposeViewer() })
 .blueprint-viewer-mount {
   width: 100%;
   height: 100%;
+
+  :deep(canvas) {
+    cursor: grab;
+    touch-action: none;
+
+    &:active { cursor: grabbing; }
+  }
+}
+
+.blueprint-viewer-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 6px;
+  background: var(--ds-bg-panel);
+  color: var(--ds-text-secondary);
+  font-size: 11px;
+  pointer-events: none;
 }
 
 .blueprint-viewer-overlay {
