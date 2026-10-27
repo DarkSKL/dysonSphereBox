@@ -735,9 +735,8 @@ const signOut = async (): Promise<void> => {
 
   position: relative;
   width: min(760px, calc(100vw - 32px));
-  // 固定高度按最长的注册表单（用户名 + 两次密码 + 验证码）确定，所有模式共用，切换时卡片不缩放；
-  // 窗口最小高度 768px，减去遮罩内边距后仍能完整容纳
-  height: 540px;
+  // 常规高度按最长的注册表单确定，所有模式共用；低窗口缩到可视区内，由表单面板承接纵向滚动。
+  height: min(540px, calc(100vh - 48px));
   overflow: hidden;
   border: 1px solid var(--ds-border-default);
   border-radius: 8px;
@@ -934,10 +933,10 @@ const signOut = async (): Promise<void> => {
   position: absolute;
   z-index: 1;
   bottom: 44px;
-  left: 48px;
+  left: 32px;
   display: grid;
   // 右侧额外让出一个斜边跨度，文案底部不会碰到斜边
-  width: calc(42cqw - 96px - var(--account-slant));
+  width: calc(42cqw - 64px - var(--account-slant));
   gap: 10px;
   color: var(--account-art-text);
   transform: translateX(var(--account-slant));
@@ -966,15 +965,18 @@ const signOut = async (): Promise<void> => {
 
 // =============== 表单区 ===============
 // 说明：新旧表单内容叠放在同一网格单元内交叉过渡，离场内容不占位，避免切换时跳动。
-// 边界：登录注册共用固定高度；编辑资料单独允许纵向滚动，保证窄窗口操作可达。
+// 边界：显式约束网格轨道与子项最小宽度，避免 WebView 按输入框固有宽度撑开表单；低窗口允许纵向滚动。
 .account-form-panel {
   z-index: 1;
+  left: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   width: 58cqw;
-  align-items: center;
+  align-items: safe center;
   justify-items: center;
   padding: 26px 48px 22px;
   overflow: hidden;
+  overflow-y: auto;
   transform: translateX(42cqw);
 }
 
@@ -984,7 +986,9 @@ const signOut = async (): Promise<void> => {
 
 .account-form-inner {
   grid-area: 1 / 1;
-  width: min(320px, 100%);
+  min-width: 0;
+  width: 100%;
+  max-width: 320px;
 }
 
 .account-form-heading h2 {
@@ -1005,12 +1009,14 @@ const signOut = async (): Promise<void> => {
 
 .account-form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin-top: 18px;
 }
 
 .account-field {
   display: grid;
+  min-width: 0;
   gap: 5px;
   color: var(--ds-text-secondary);
   font-size: 11px;
@@ -1020,6 +1026,7 @@ const signOut = async (): Promise<void> => {
 
 .account-input-wrap {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 9px;
   height: 36px;
@@ -1079,7 +1086,7 @@ const signOut = async (): Promise<void> => {
 }
 
 .account-captcha-field {
-  flex: 1;
+  flex: 1 1 0;
 }
 
 .account-captcha-image {
@@ -1614,7 +1621,7 @@ const signOut = async (): Promise<void> => {
 }
 
 .is-edit-profile .account-form-inner {
-  width: min(400px, 100%);
+  max-width: 400px;
 }
 
 .account-close.is-edit-profile-close {
