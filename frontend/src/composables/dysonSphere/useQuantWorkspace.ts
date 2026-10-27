@@ -1,4 +1,4 @@
-import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch} from 'vue'
+import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch, type UnwrapNestedRefs} from 'vue'
 import {useDialog, useMessage} from 'naive-ui'
 import {useRoute, useRouter} from 'vue-router'
 import {build, factorycontract, quant} from '../../../wailsjs/go/models'
@@ -12,6 +12,7 @@ type WorkspaceTarget = {key: number; itemId: number | null; ratePerMinute: numbe
 export type PreviewState = 'idle' | 'loading' | 'ready' | 'stale' | 'error' | 'empty'
 
 // 职责：工作区输入、异步快照与只读回放；使用：生成器页面；边界：所有配方/蓝图计算只走本机 Go，前端仅组装请求和展示。
+// 实时链路：参数变化 => 防抖自动量化 => 量化稳定后防抖自动生成并刷新预览；生成串行执行，进行中再变化只保留最新一次。
 export const useQuantWorkspace = () => {
   const message = useMessage()
   const dialog = useDialog()
@@ -56,6 +57,7 @@ export const useQuantWorkspace = () => {
   const importVisible = ref(false)
   const importText = ref('')
   const sourceName = ref('导入的蓝图')
+  const autoRun = ref(true)
   const solvedSignature = ref('')
   const generatedSignature = ref('')
   const itemMap = computed(() => new Map((detail.value?.items ?? []).map(item => [item.id, item])))
@@ -74,6 +76,9 @@ export const useQuantWorkspace = () => {
   let solveVersion = 0
   let disposed = false
   let media: MediaQueryList | null = null
+  let solveTimer: number | undefined
+  let generateTimer: number | undefined
+  let generateQueued = false
   const updateWidth = (): void => { narrow.value = media?.matches ?? false }
   // 生成操作在长结果列表下方；失败时就地保留详情，并弹窗通知，缓存页失活后不再打断其它页面。
   const report = (caught: unknown, source?: 'generation'): void => {
@@ -83,8 +88,10 @@ export const useQuantWorkspace = () => {
       dialog.error({title: '蓝图生成失败', content: failure.message, positiveText: '知道了'})
     }
   }
+  const number = (value: number | undefined): string => (value ?? 0).toLocaleString('zh-CN', {maximumFractionDigits: fixedNum.value ?? 2})
   const itemName = (id: number): string => itemMap.value.get(id)?.name ?? `物品 ${id}`
-  const recipeOptions = (id: number): {label: string; value: number}[] => (detail.value?.recipes ?? []).filter(recipe => recipe.results.includes(id)).map((recipe, index) => ({label: recipe.name, value: index + 1}))
+  // 选项 icon 为图鉴中文名：配方取首个产物，设备取设施本身，喷涂取对应等级增产剂；空串表示不显示图标。
+  const recipeOptions = (id: number): {label: string; value: number; icon: string}[] => (detail.value?.recipes ?? []).filter(recipe => recipe.results.includes(id)).map((recipe, index) => ({label: recipe.name, value: index + 1, icon: itemName(recipe.results[0] ?? id)}))
   const selectedRecipe = (id: number): quant.Recipe | null => {
     const choices = (detail.value?.recipes ?? []).filter(recipe => recipe.results.includes(id))
     return choices[(itemRecipeChoices[itemName(id)] ?? 1) - 1] ?? null
@@ -98,9 +105,9 @@ export const useQuantWorkspace = () => {
     const index = detail.value?.recipes.findIndex(value => value.id === recipe?.id) ?? -1
     if (index >= 0) recipeOverrides[index] = {...overrideFor(recipe), ...patch}
   }
-  const buildingOptions = (recipe: quant.Recipe | null): {label: string; value: number}[] => (recipe?.factories ?? []).map((id, index) => ({label: itemName(id), value: index}))
-  const sprayModes = (recipe: quant.Recipe | null): {label: string; value: number}[] => [{label: '不喷涂', value: 0}, ...[{label: '加速', value: 1}, {label: '额外产出', value: 2}, {label: '透镜', value: 3}, {label: '分馏', value: 4}].filter(value => Boolean((recipe?.proliferator ?? 0) & (1 << (value.value - 1))))]
-  const pointOptions = computed(() => [{label: '默认', value: 0}, {label: '1 点', value: 1}, {label: '2 点', value: 2}, {label: '4 点', value: 4}, ...(datasetKey.value.includes('FractionateEverything') ? [{label: '10 点', value: 10}] : [])])
+  const buildingOptions = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => (recipe?.factories ?? []).map((id, index) => ({label: itemName(id), value: index, icon: itemName(id)}))
+  const sprayModes = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => [{label: '不喷涂', value: 0, icon: ''}, ...[{label: '加速', value: 1, icon: '增产剂 Mk.III'}, {label: '额外产出', value: 2, icon: '增产剂 Mk.III'}, {label: '透镜', value: 3, icon: '引力透镜'}, {label: '分馏', value: 4, icon: '分馏塔'}].filter(value => Boolean((recipe?.proliferator ?? 0) & (1 << (value.value - 1))))]
+  const pointOptions = computed(() => [{label: '默认', value: 0, icon: ''}, {label: '1 点', value: 1, icon: '增产剂 Mk.I'}, {label: '2 点', value: 2, icon: '增产剂 Mk.II'}, {label: '4 点', value: 4, icon: '增产剂 Mk.III'}, ...(datasetKey.value.includes('FractionateEverything') ? [{label: '10 点', value: 10, icon: '增产剂 Mk.III'}] : [])])
 
   const loadDataset = async (): Promise<void> => {
     const version = ++datasetVersion
@@ -121,9 +128,10 @@ export const useQuantWorkspace = () => {
     } catch (caught) { if (version === datasetVersion) report(caught) }
     finally { if (version === datasetVersion) loadingDataset.value = false }
   }
+  const targetsReady = computed(() => targets.value.length > 0 && targets.value.every(target => target.itemId && target.ratePerMinute && target.ratePerMinute > 0))
   const calculate = async (): Promise<void> => {
     error.value = null
-    if (targets.value.some(target => !target.itemId || !target.ratePerMinute || target.ratePerMinute <= 0)) { error.value = {code: 'Q_E_BAD_REQUEST', message: '每个目标都需要选择物品并输入正产量'}; return }
+    if (!targetsReady.value) { error.value = {code: 'Q_E_BAD_REQUEST', message: '每个目标都需要选择物品并输入正产量'}; return }
     const signature = querySignature.value
     const version = ++solveVersion
     importVersion++
@@ -150,7 +158,8 @@ export const useQuantWorkspace = () => {
     } catch (caught) { report(caught) } finally { saving.value = false }
   }
   const generate = async (): Promise<void> => {
-    if (!plan.value || quantStale.value || generating.value) return
+    if (generating.value) { generateQueued = true; return }
+    if (!plan.value || quantStale.value) return
     error.value = null
     const signature = generationSignature.value
     const source = plan.value.planId
@@ -158,7 +167,7 @@ export const useQuantWorkspace = () => {
     try {
       const result = await generateFactory(new build.Request({plan: plan.value, mode: mode.value, setting: {...layout}, name: name.value}))
       if (disposed) return
-      if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) { if (active.value) message.warning('参数已变化，本次结果未替换预览，请重新量化或生成'); return }
+      if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) { if (active.value && !autoRun.value) message.warning('参数已变化，本次结果未替换预览，请重新量化或生成'); return }
       generated.value = result
       generatedSignature.value = signature
       code.value = result.blueprint
@@ -168,8 +177,12 @@ export const useQuantWorkspace = () => {
       selectedProductions.value = []
       previewNotice.value = ''
       previewState.value = result.buildingCount ? 'loading' : 'empty'
-      if (result.buildingCount > 6000) { showPreview.value = false; previewNotice.value = '建筑超过 6000，已折叠预览；可按需打开，不影响复制与导出' }
-    } catch (caught) { report(caught, 'generation') } finally { generating.value = false }
+      showPreview.value = result.buildingCount <= 6000
+      if (!showPreview.value) previewNotice.value = '建筑超过 6000，已折叠预览；可按需打开，不影响复制与导出'
+    } catch (caught) { report(caught, 'generation') } finally {
+      generating.value = false
+      if (generateQueued) { generateQueued = false; scheduleGenerate(0) }
+    }
   }
   const loadCode = async (text: string, title: string, version = ++importVersion): Promise<void> => {
     const dataset = datasetKey.value
@@ -252,18 +265,83 @@ export const useQuantWorkspace = () => {
     try { const result = await quickImportEnvironmentBlueprint('', name.value || sourceName.value, code.value); message.success(result.message) }
     catch (caught) { report(caught) } finally { saving.value = false }
   }
+  // =============== 多目标分区 ===============
+  // 说明：生成结果按目标划分分区；颜色按分区顺序固定，节点图、预览栏共用同一套，未生成时按量化归属推断。
+  const zonePalette = ['#4cc2ff', '#3ee0b0', '#ffc15a', '#c58bff', '#ff8a65', '#7bd88f', '#f06292', '#90a4ae']
+  const activeZone = ref<string | null>(null)
+  const zones = computed(() => {
+    const source = generated.value?.zones?.length && !previewStale.value ? generated.value.zones : null
+    const list = source ?? (plan.value ? planZoneFallback(plan.value) : [])
+    return list.map((zone, index) => ({key: zone.key, targetItemId: zone.targetItemId, productionIndices: zone.productionIndices ?? [], label: zone.targetItemId ? itemName(zone.targetItemId) : '共用中间产物', color: zone.key === 'shared' ? '#8a8fa3' : zonePalette[index % zonePalette.length]}))
+  })
+  const zoneOfProduction = computed(() => {
+    const map = new Map<number, {key: string; color: string; label: string}>()
+    for (const zone of zones.value) for (const index of zone.productionIndices) map.set(index, zone)
+    return map
+  })
+  const focusZone = (key: string | null): void => {
+    activeZone.value = activeZone.value === key ? null : key
+    const zone = zones.value.find(value => value.key === activeZone.value)
+    if (!zone || previewStale.value || quantStale.value) return
+    const binding = generated.value?.bindings?.find(value => zone.productionIndices.includes(value.productionIndex))
+    selectedProductions.value = [...zone.productionIndices]
+    selectedBuilding.value = binding?.machineIndices?.[0] ?? null
+  }
+  const targetFor = (id: number): WorkspaceTarget | undefined => targets.value.find(target => target.itemId === id)
+  const setTargetRate = (id: number, rate: number): void => { const target = targetFor(id); if (target) target.ratePerMinute = rate }
+  const removeTarget = (id: number): void => { if (targets.value.length > 1) targets.value = targets.value.filter(target => target.itemId !== id) }
+  const addTargetItem = (id: number, rate = 60): void => {
+    const existing = targetFor(id)
+    if (existing) { existing.ratePerMinute = (existing.ratePerMinute ?? 0) + rate; return }
+    if (targets.value.length < 100) targets.value.push({key: ++targetCounter, itemId: id, ratePerMinute: rate})
+  }
+  const isExternal = (id: number): boolean => mineralized.value.includes(itemName(id))
+  const toggleExternal = (id: number, external: boolean): void => {
+    const label = itemName(id)
+    mineralized.value = external ? [...new Set([...mineralized.value, label])] : mineralized.value.filter(value => value !== label)
+  }
   const openLibrary = (): void => { requestBlueprintLibrary(); void router.push('/dysonSphere/environment') }
   const addTarget = (): void => { if (targets.value.length < 100) targets.value.push({key: ++targetCounter, itemId: null, ratePerMinute: 60}) }
   const setExternal = (id: number | null): void => { if (id && !mineralized.value.includes(itemName(id))) mineralized.value.push(itemName(id)) }
+  // =============== 实时量化与生成 ===============
+  // 说明：量化 400ms 防抖；生成在量化结果稳定 700ms 后触发。导入回放、数据集加载或关闭自动时不调度。
+  const scheduleSolve = (): void => {
+    window.clearTimeout(solveTimer)
+    if (!autoRun.value || !initialized || replay.value || !detail.value || !targetsReady.value) return
+    solveTimer = window.setTimeout(() => { if (querySignature.value !== solvedSignature.value || !plan.value) void calculate() }, 400)
+  }
+  const scheduleGenerate = (delay = 700): void => {
+    window.clearTimeout(generateTimer)
+    if (!autoRun.value || replay.value || !plan.value || quantStale.value || !plan.value.productions.length) return
+    if (code.value && !previewStale.value) return
+    generateTimer = window.setTimeout(() => { if (!quantStale.value && (!code.value || previewStale.value)) void generate() }, delay)
+  }
+  watch(querySignature, scheduleSolve)
+  watch(() => [plan.value?.planId, generationSignature.value], () => scheduleGenerate())
+  watch(autoRun, value => { if (value) { scheduleSolve(); scheduleGenerate(0) } else { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer) } })
   watch(generationSignature, () => { if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
   watch(datasetKey, () => { if (initialized) void loadDataset() })
   watch(() => route.query.itemId, value => { if (initialized && typeof value === 'string' && value) void loadLibraryItem(value) })
   onMounted(async () => {
     media = window.matchMedia('(max-width: 1099px)'); updateWidth(); media.addEventListener('change', updateWidth)
-    try { datasets.value = await listFactoryDatasets(); await loadDataset(); initialized = true; if (typeof route.query.itemId === 'string') await loadLibraryItem(route.query.itemId) } catch (caught) { report(caught) }
+    try { datasets.value = await listFactoryDatasets(); await loadDataset(); initialized = true; if (typeof route.query.itemId === 'string') await loadLibraryItem(route.query.itemId); else scheduleSolve() } catch (caught) { report(caught) }
   })
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false })
-  onBeforeUnmount(() => { disposed = true; datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
+  return {zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
+// planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。
+function planZoneFallback(plan: quant.Result): {key: string; targetItemId: number; productionIndices: number[]}[] {
+  const targets = [...new Set((plan.targets ?? []).map(target => target.itemId))]
+  const zones = targets.map(id => ({key: `target-${id}`, targetItemId: id, productionIndices: [] as number[]}))
+  const shared = {key: 'shared', targetItemId: 0, productionIndices: [] as number[]}
+  plan.productions.forEach((production, index) => {
+    const owners = production.targetItemIds ?? []
+    const zone = owners.length === 1 ? zones.find(value => value.targetItemId === owners[0]) : undefined
+    ;(zone ?? shared).productionIndices.push(index)
+  })
+  if (zones.length <= 1) return zones.length ? [{...zones[0], productionIndices: [...shared.productionIndices, ...zones[0].productionIndices]}] : []
+  return [...(shared.productionIndices.length ? [shared] : []), ...zones.filter(zone => zone.productionIndices.length)]
+}
+export type QuantWorkspace = UnwrapNestedRefs<ReturnType<typeof useQuantWorkspace>>

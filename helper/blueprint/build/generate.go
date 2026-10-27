@@ -144,89 +144,146 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	if req.Mode == 6 {
 		return b.generateBus(ctx, req, dataset)
 	}
-	nextX, nextY, columnWidth := 0., 0., 0.
-	for index, p := range req.Plan.Productions {
-		if ctx.Err() != nil {
-			return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过 30 秒"}
-		}
-		if p.MachineCount <= 0 || p.MachineCount > 10000 || p.IncreaseLv < 0 || p.IncreaseLv > 3 {
-			return result, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "方案机器数量或等级无效"}
-		}
-		ri, ok := dataset.RecipeByID[p.RecipeID]
-		if !ok {
-			return result, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "配方已变化"}
-		}
-		recipe := dataset.Recipes[ri]
-		valid := false
-		for _, id := range recipe.Factories {
-			if p.MachineID == id {
-				valid = true
+	// 多目标分区：每个目标的专属产线自成一区，被多个目标共用的产线归入「共用」区；
+	// 区内沿用原有换列规则，区与区之间横向排开并留出间隔，避免不同目标的产线堆叠在一起。
+	zones := planZones(req.Plan)
+	zoneGap := setting.LocalStationHitRadius * 2
+	zoneX := 0.
+	for zi := range zones {
+		zone := &zones[zi]
+		zoneBegin := len(b.all)
+		nextX, nextY, columnWidth := zoneX, 0., 0.
+		for _, index := range zone.ProductionIndices {
+			p := req.Plan.Productions[index]
+			if ctx.Err() != nil {
+				return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过 30 秒"}
 			}
-		}
-		if !valid {
-			return result, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "设施与配方不匹配"}
-		}
-		b.owner = index
-		counts, err := lineCounts(p, recipe, setting, dataset.ByID[p.MachineID].Speed)
-		if err != nil {
-			return result, err
-		}
-		perGroup := len(counts)
-		if req.Mode == 3 || req.Mode == 4 {
-			perGroup = max(1, 12/(len(recipe.Items)+1))
-			slots := 4
-			if req.Mode == 4 {
-				slots = 5
+			if p.MachineCount <= 0 || p.MachineCount > 10000 || p.IncreaseLv < 0 || p.IncreaseLv > 3 {
+				return result, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "方案机器数量或等级无效"}
 			}
-			if len(recipe.Items)+len(recipe.Results) > slots {
-				perGroup = 1
+			ri, ok := dataset.RecipeByID[p.RecipeID]
+			if !ok {
+				return result, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "配方已变化"}
 			}
-		}
-		for groupStart := 0; groupStart < len(counts); groupStart += perGroup {
-			groupEnd := min(groupStart+perGroup, len(counts))
-			begin := len(b.all)
-			lines := []*line{}
-			lineY := 0.
-			for i := groupStart; i < groupEnd; i++ {
-				l, err := b.buildLine(p, recipe, counts[i], req.Mode, i, i == len(counts)-1)
-				if err != nil {
-					return result, err
+			recipe := dataset.Recipes[ri]
+			valid := false
+			for _, id := range recipe.Factories {
+				if p.MachineID == id {
+					valid = true
 				}
-				minPoint, maxPoint := bounds(l.all)
-				shift(l.all, -minPoint.x, lineY-minPoint.y, 0)
-				lineY += math.Ceil(maxPoint.y-minPoint.y) + 1
-				lines = append(lines, l)
 			}
+			if !valid {
+				return result, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "设施与配方不匹配"}
+			}
+			b.owner = index
+			counts, err := lineCounts(p, recipe, setting, dataset.ByID[p.MachineID].Speed)
+			if err != nil {
+				return result, err
+			}
+			perGroup := len(counts)
 			if req.Mode == 3 || req.Mode == 4 {
-				if err := b.attachStations(ctx, lines, req.Mode); err != nil {
-					return result, err
+				perGroup = max(1, 12/(len(recipe.Items)+1))
+				slots := 4
+				if req.Mode == 4 {
+					slots = 5
+				}
+				if len(recipe.Items)+len(recipe.Results) > slots {
+					perGroup = 1
 				}
 			}
-			b.coatSupply(lines)
-			block := b.all[begin:]
-			minimum, maximum := bounds(block)
-			width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
-			if setting.MergeType == 2 && nextY > 0 && nextY+height > setting.BlockWidthLimit {
-				nextX += columnWidth + setting.LocalStationHitRadius
-				nextY = 0
-				columnWidth = 0
+			for groupStart := 0; groupStart < len(counts); groupStart += perGroup {
+				groupEnd := min(groupStart+perGroup, len(counts))
+				begin := len(b.all)
+				lines := []*line{}
+				lineY := 0.
+				for i := groupStart; i < groupEnd; i++ {
+					l, err := b.buildLine(p, recipe, counts[i], req.Mode, i, i == len(counts)-1)
+					if err != nil {
+						return result, err
+					}
+					minPoint, maxPoint := bounds(l.all)
+					shift(l.all, -minPoint.x, lineY-minPoint.y, 0)
+					lineY += math.Ceil(maxPoint.y-minPoint.y) + 1
+					lines = append(lines, l)
+				}
+				if req.Mode == 3 || req.Mode == 4 {
+					if err := b.attachStations(ctx, lines, req.Mode); err != nil {
+						return result, err
+					}
+				}
+				b.coatSupply(lines)
+				block := b.all[begin:]
+				minimum, maximum := bounds(block)
+				width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
+				if setting.MergeType == 2 && nextY > 0 && nextY+height > setting.BlockWidthLimit {
+					nextX += columnWidth + setting.LocalStationHitRadius
+					nextY = 0
+					columnWidth = 0
+				}
+				shift(block, nextX-minimum.x, nextY-minimum.y, 0)
+				nextY += height + setting.LocalStationHitRadius
+				columnWidth = math.Max(columnWidth, width)
+				if len(b.all) > 100000 {
+					return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "建筑超过 10 万，请拆分生成"}
+				}
 			}
-			shift(block, nextX-minimum.x, nextY-minimum.y, 0)
-			nextY += height + setting.LocalStationHitRadius
-			columnWidth = math.Max(columnWidth, width)
-			if len(b.all) > 100000 {
-				return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "建筑超过 10 万，请拆分生成"}
+			actualCapacity := []float64{0, 360, 720, 1800}[setting.BeltLv] * 4
+			if p.OutputCount > actualCapacity {
+				b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 目标 %.2f/min 超过单带四层运力 %.2f/min，需多线供货并确认集装", p.RecipeID, p.OutputCount, actualCapacity))
+			}
+			if len(recipe.Results) > 1 {
+				b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 的多个产物共用输出带，请保证所有副产物有消耗出口", p.RecipeID))
 			}
 		}
-		actualCapacity := []float64{0, 360, 720, 1800}[setting.BeltLv] * 4
-		if p.OutputCount > actualCapacity {
-			b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 目标 %.2f/min 超过单带四层运力 %.2f/min，需多线供货并确认集装", p.RecipeID, p.OutputCount, actualCapacity))
+		if len(b.all) > zoneBegin {
+			_, maximum := bounds(b.all[zoneBegin:])
+			zoneX = math.Ceil(maximum.x) + 1 + zoneGap
 		}
-		if len(recipe.Results) > 1 {
-			b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 的多个产物共用输出带，请保证所有副产物有消耗出口", p.RecipeID))
+		b.zoneRanges = append(b.zoneRanges, zoneRange{zone: zi, begin: zoneBegin, end: len(b.all)})
+	}
+	if len(zones) > 1 {
+		b.warnings = append(b.warnings, fmt.Sprintf("多目标已按 %d 个分区排开：各目标专属产线独立成区，共用中间产物集中在「共用」区，需将共用区产物分送到各目标区", len(zones)))
+	}
+	b.zones = zones
+	return b.finish(ctx, req, dataset)
+}
+
+// planZones 职责：按产线服务的目标划分分区；使用：普通模式布局；边界：只服务一个目标的产线归该目标，多目标或无目标归「共用」。
+func planZones(plan quant.Result) []Zone {
+	zones := []Zone{}
+	byTarget := map[int]int{}
+	for _, target := range plan.Targets {
+		if _, ok := byTarget[target.ItemID]; ok {
+			continue
+		}
+		byTarget[target.ItemID] = len(zones)
+		zones = append(zones, Zone{Key: fmt.Sprintf("target-%d", target.ItemID), TargetItemID: target.ItemID, ProductionIndices: []int{}})
+	}
+	shared := Zone{Key: "shared", ProductionIndices: []int{}}
+	for i, p := range plan.Productions {
+		if len(p.TargetItemIDs) == 1 {
+			if zi, ok := byTarget[p.TargetItemIDs[0]]; ok {
+				zones[zi].ProductionIndices = append(zones[zi].ProductionIndices, i)
+				continue
+			}
+		}
+		shared.ProductionIndices = append(shared.ProductionIndices, i)
+	}
+	result := []Zone{}
+	if len(shared.ProductionIndices) > 0 && len(zones) > 1 {
+		result = append(result, shared)
+	} else if len(shared.ProductionIndices) > 0 && len(zones) == 1 {
+		zones[0].ProductionIndices = append(zones[0].ProductionIndices, shared.ProductionIndices...)
+	}
+	for _, zone := range zones {
+		if len(zone.ProductionIndices) > 0 {
+			result = append(result, zone)
 		}
 	}
-	return b.finish(ctx, req, dataset)
+	if len(result) == 0 {
+		result = append(result, Zone{Key: "shared", ProductionIndices: shared.ProductionIndices})
+	}
+	return result
 }
 
 // finish 职责：构建文档、归属和严格编码；使用：所有模式共同出口；边界：只有 Go 自检通过才返回串。
@@ -246,6 +303,16 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if err != nil {
 		return result, err
 	}
+	zones := []Zone{}
+	for _, r := range b.zoneRanges {
+		if r.end <= r.begin {
+			continue
+		}
+		zone := b.zones[r.zone]
+		minimum, maximum := bounds(b.all[r.begin:r.end])
+		zone.MinX, zone.MinY, zone.MaxX, zone.MaxY = minimum.x, minimum.y, maximum.x, maximum.y
+		zones = append(zones, zone)
+	}
 	minimum, maximum := bounds(b.all)
 	width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
 	if width > 32767 || height > 32767 {
@@ -263,5 +330,5 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if len(records) > 6000 {
 		b.warnings = append(b.warnings, "建筑超过 6000，预览可能较慢，可折叠预览后复制导出")
 	}
-	return Result{Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: 1, Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared}, nil
+	return Result{Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: 1, Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones}, nil
 }

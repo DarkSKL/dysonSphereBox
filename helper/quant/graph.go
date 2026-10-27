@@ -72,6 +72,12 @@ type node struct {
 	scheme RecipeScheme
 	// raw 职责：外部原料标记；使用：结果分类；边界：不生成机器。
 	raw bool
+	// runInputs 职责：单次执行的毛原料（含喷涂）；使用：产线物料流；边界：不参与求解。
+	runInputs *rates
+	// runOutputs 职责：单次执行的毛产物（含额外产出）；使用：产线物料流；边界：不参与求解。
+	runOutputs *rates
+	// runNet 职责：单次执行的主产物净产出；使用：把求解量换算为执行次数；边界：非正值时节点已标记 invalid。
+	runNet float64
 }
 
 // graph 职责：汇总物品图和顺序；使用：一次求解；边界：不跨请求共享。
@@ -229,7 +235,7 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 		}
 	}
 	for _, name := range g.order {
-		g.nodes[name] = &node{inputs: newRates(), consumers: newRates(), sides: newRates(), recipe: -1}
+		g.nodes[name] = &node{inputs: newRates(), consumers: newRates(), sides: newRates(), runInputs: newRates(), runOutputs: newRates(), recipe: -1}
 	}
 	for _, name := range g.order {
 		n := g.nodes[name]
@@ -284,6 +290,7 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 		for i, id := range r.Items {
 			v := r.ItemCounts[i] / output
 			n.inputs.set(d.ByID[id].Name, v)
+			n.runInputs.add(d.ByID[id].Name, r.ItemCounts[i])
 			total += v
 		}
 		n.rate = output
@@ -294,6 +301,7 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 				return nil, err
 			}
 			n.inputs.add(spray, total*cost)
+			n.runInputs.add(spray, total*output*cost)
 			inc, speed, _ := effects(rs.IncreasePoints)
 			switch rs.ProductionMode {
 			case 1:
@@ -311,6 +319,10 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 		for _, k := range n.inputs.keys() {
 			n.inputs.values[k] /= produce
 		}
+		for _, k := range products.keys() {
+			n.runOutputs.add(k, products.values[k]*produce)
+		}
+		n.runNet = output*produce - n.runInputs.values[name]
 		n.rate /= r.TimeSpend / 60
 		selfCost := 0.
 		if v, ok := n.inputs.values[name]; ok {

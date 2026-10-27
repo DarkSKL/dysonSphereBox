@@ -3,7 +3,7 @@
 export const encyclopediaKinds = ['building', 'item', 'recipe', 'technology', 'resource'] as const
 export type EncyclopediaKind = typeof encyclopediaKinds[number]
 export type EncyclopediaKey = `${EncyclopediaKind}:${string}`
-export type EncyclopediaCategory = 'setting' | 'gameplay' | 'combat' | 'technology' | 'achievement' | 'item' | 'building' | 'tutorial' | 'tool' | 'overview'
+export type EncyclopediaCategory = 'building' | 'item' | 'technology' | 'combat' | 'achievement'
 export type EncyclopediaRelationType = 'ingredient' | 'product' | 'producer' | 'prerequisite' | 'unlocks' | 'recipe' | 'usedBy' | 'researchedBy' | 'obtainedFrom'
 
 export interface EncyclopediaRelation {
@@ -59,3 +59,17 @@ export interface EncyclopediaGuide {
 }
 
 export type EncyclopediaErrorCode = 'manifestUnavailable' | 'shardUnavailable' | 'invalidJson' | 'schemaMismatch' | 'duplicateId' | 'brokenRelation' | 'versionMismatch'
+
+// =============== 成就索引契约 ===============
+// 说明：成就为只读阅读数据，不对应 catalog 分片；关联条目仍引用已收录实体。
+export type EncyclopediaAchievementGroup = 'gathering' | 'construction' | 'icarus' | 'exploration' | 'production' | 'power' | 'challenge' | 'combat'
+export interface EncyclopediaAchievement {
+  id: number
+  name: string
+  group: EncyclopediaAchievementGroup
+  condition: string
+  tip?: string
+  combat?: boolean
+  noMetadata?: boolean
+  related?: readonly EncyclopediaKey[]
+}

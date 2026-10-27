@@ -249,6 +249,67 @@
   --ds-page-max-width: 960px;
 }
 
+// =============== 括角卡片 ===============
+// 说明：全局统一的选中 / 强调卡片外框，取代整圈矩形描边与左侧指示条：只在左上、右下两角绘制直角括线。
+//       每段括线从角点向外渐隐；出现时沿路径从角点「生长」到全长，消失时收回。括线用 background 渐变绘制，
+//       不占布局、不改变内容尺寸，宿主只需 position 非 static。
+// 使用：给元素加 .ds-bracket（常亮，挂载时生长一次）或 .ds-bracket-hover（悬停/聚焦/选中时生长）；
+//       通过 --bracket-color、--bracket-size 调整颜色与括线全长。
+// 边界：只绘制外框，不设置背景色与圆角；宿主若已有 border 应改为透明以避免叠框。最外层快捷栏不使用此样式。
+@property --bracket-len {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+:root {
+  --bracket-size: 14px;
+  --bracket-width: 1.5px;
+}
+.ds-bracket,
+.ds-bracket-hover {
+  --bracket-color: var(--ds-border-strong);
+  position: relative;
+}
+.ds-bracket::after,
+.ds-bracket-hover::after {
+  --bracket-len: 0px;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(to right, var(--bracket-color), transparent) left top / var(--bracket-len) var(--bracket-width) no-repeat,
+    linear-gradient(to bottom, var(--bracket-color), transparent) left top / var(--bracket-width) var(--bracket-len) no-repeat,
+    linear-gradient(to left, var(--bracket-color), transparent) right bottom / var(--bracket-len) var(--bracket-width) no-repeat,
+    linear-gradient(to top, var(--bracket-color), transparent) right bottom / var(--bracket-width) var(--bracket-len) no-repeat;
+  pointer-events: none;
+  content: '';
+  transition: --bracket-len 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ds-bracket::after {
+  --bracket-len: var(--bracket-size);
+  animation: ds-bracket-draw 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ds-bracket-hover:hover::after,
+.ds-bracket-hover:focus-visible::after,
+.ds-bracket-hover:focus-within::after,
+.ds-bracket-hover.is-active::after,
+.ds-bracket-hover.is-selected::after,
+.ds-bracket-hover.router-link-active::after,
+.ds-bracket-hover[aria-current='page']::after,
+.ds-bracket-hover[aria-pressed='true']::after,
+.ds-bracket-hover[aria-checked='true']::after,
+.ds-bracket-on::after {
+  --bracket-len: var(--bracket-size);
+}
+@keyframes ds-bracket-draw {
+  from { --bracket-len: 0px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-bracket::after,
+  .ds-bracket-hover::after { transition: none; animation: none; }
+}
+
 html,
 body,
 #app {

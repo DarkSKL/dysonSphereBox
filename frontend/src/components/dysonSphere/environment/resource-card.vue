@@ -108,7 +108,6 @@ withDefaults(defineProps<ResourceCardProps>(), {
   }
 
   &:hover {
-    border-color: var(--ds-border-strong);
     background: var(--ds-hover-bg);
   }
 

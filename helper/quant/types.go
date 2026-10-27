@@ -228,6 +228,14 @@ type Production struct {
 	IncreaseLv int `json:"increaseLv"`
 	// IncreasePoints 职责：保存实际点数；使用：引擎传递；边界：不隐式改变单位。
 	IncreasePoints int `json:"increasePoints"`
+	// Inputs 职责：保存本产线每分钟净消耗（含增产剂）；使用：节点图入边；边界：同一物品出入相抵后只出现在一侧。
+	Inputs []ItemRate `json:"inputs"`
+	// Outputs 职责：保存本产线每分钟净产出（主产物与副产物）；使用：节点图出边；边界：主产物等于 OutputCount。
+	Outputs []ItemRate `json:"outputs"`
+	// PowerMW 职责：保存本产线制造工作功耗 MW；使用：节点功耗显示；边界：按精确台数计算，合计等于 Result.PowerMW。
+	PowerMW float64 `json:"powerMw"`
+	// TargetItemIDs 职责：保存本产线服务的目标物品（按目标顺序）；使用：蓝图按目标分区与节点流着色；边界：多于一个即为共用产线，空表示只供副产物剩余。
+	TargetItemIDs []int `json:"targetItemIds"`
 }
 
 // ItemRate 职责：承载每分钟物品量；使用：量化边界；边界：不访问系统资源。

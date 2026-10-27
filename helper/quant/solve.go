@@ -127,14 +127,17 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		}
 		r := d.Recipes[n.recipe]
 		p := Production{RecipeID: r.ID, MachineCount: count, ExactMachineCount: exact, RoundingMargin: float64(count) - exact, MachineType: typ, MachineLv: lv, BeltLv: 1, MachineID: n.factory.ID, OutputCount: amount, MainItemID: d.ByName[name].ID, ProductionMode: blueprintMode(n.scheme.ProductionMode), ProliferatorMode: n.scheme.ProductionMode, IncreaseLv: level, IncreasePoints: n.scheme.IncreasePoints}
-		out.Productions = append(out.Productions, p)
-		out.MachineCount += count
 		power := 1.
 		if n.scheme.ProductionMode > 0 {
 			_, _, power = effects(n.scheme.IncreasePoints)
 		}
-		out.PowerMW += exact * n.factory.WorkEnergyPerTick * .00006 * power
+		p.PowerMW = exact * n.factory.WorkEnergyPerTick * .00006 * power
+		p.Inputs, p.Outputs = flows(d, n, amount)
+		out.Productions = append(out.Productions, p)
+		out.MachineCount += count
+		out.PowerMW += p.PowerMW
 	}
+	attributeTargets(&out)
 	for _, name := range surplus.keys() {
 		if surplus.values[name] > 1e-8 {
 			out.Leftovers = append(out.Leftovers, ItemRate{ItemID: d.ByName[name].ID, Name: name, RatePerMinute: surplus.values[name]})
@@ -144,6 +147,58 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		return Result{}, qerror("Q_E_TIMEOUT", "量化超过 5 秒")
 	}
 	return out, nil
+}
+
+// attributeTargets 职责：沿物料流反向追溯每个目标依赖的产线；使用：Solve 末尾；边界：只读产线 Inputs/Outputs，循环由 visited 截断。
+func attributeTargets(out *Result) {
+	producers := map[int][]int{}
+	for i, p := range out.Productions {
+		out.Productions[i].TargetItemIDs = []int{}
+		for _, v := range p.Outputs {
+			producers[v.ItemID] = append(producers[v.ItemID], i)
+		}
+	}
+	seen := map[int]bool{}
+	for _, target := range out.Targets {
+		if seen[target.ItemID] {
+			continue
+		}
+		seen[target.ItemID] = true
+		visited := map[int]bool{}
+		queue := append([]int{}, producers[target.ItemID]...)
+		for len(queue) > 0 {
+			index := queue[0]
+			queue = queue[1:]
+			if visited[index] {
+				continue
+			}
+			visited[index] = true
+			out.Productions[index].TargetItemIDs = append(out.Productions[index].TargetItemIDs, target.ItemID)
+			for _, v := range out.Productions[index].Inputs {
+				queue = append(queue, producers[v.ItemID]...)
+			}
+		}
+	}
+}
+
+// flows 职责：把单次执行物料换算为每分钟净流量；使用：节点图边；边界：同一物品出入相抵，主产物净值与 amount 一致。
+func flows(d *Dataset, n *node, amount float64) ([]ItemRate, []ItemRate) {
+	inputs, outputs := []ItemRate{}, []ItemRate{}
+	if n.runNet <= 0 {
+		return inputs, outputs
+	}
+	runs := amount / n.runNet
+	for _, name := range n.runInputs.keys() {
+		if v := (n.runInputs.values[name] - n.runOutputs.values[name]) * runs; v > 1e-9 {
+			inputs = append(inputs, ItemRate{ItemID: d.ByName[name].ID, Name: name, RatePerMinute: v})
+		}
+	}
+	for _, name := range n.runOutputs.keys() {
+		if v := (n.runOutputs.values[name] - n.runInputs.values[name]) * runs; v > 1e-9 {
+			outputs = append(outputs, ItemRate{ItemID: d.ByName[name].ID, Name: name, RatePerMinute: v})
+		}
+	}
+	return inputs, outputs
 }
 
 // blueprintMode 职责：转换人工喷涂为游戏参数枚举；使用：量化桥梁；边界：无喷涂为 -1，额外产出为 0，加速为 1。

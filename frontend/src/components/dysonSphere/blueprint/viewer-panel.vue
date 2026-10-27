@@ -95,6 +95,9 @@ const isLoadingViewer = ref(false)
 const viewerError = ref('')
 let resizeObserver: ResizeObserver | null = null
 let pendingLoadFrame = 0
+let pendingResizeFrame = 0
+let resizeSettleTimer = 0
+let lastSize = {width: 0, height: 0}
 let active = true
 let loadVersion = 0
 let releaseHost: (() => void) | null = null
@@ -260,7 +263,8 @@ const restoreBlueprintEditorGlobals = (snapshot: Partial<BlueprintViewerWindow>)
 
 const cleanupBlueprintEditorInjectedStyles = (existingStyleNodes: Set<HTMLStyleElement>): void => {
   document.head.querySelectorAll<HTMLStyleElement>('style').forEach((styleNode) => {
-    if (existingStyleNodes.has(styleNode)) {
+    // 应用自身样式（开发期 Vite 注入的 style 带 data-vite-dev-id）永不删除，避免文本特征误伤同名类的组件样式。
+    if (existingStyleNodes.has(styleNode) || styleNode.hasAttribute('data-vite-dev-id')) {
       return
     }
     if (isBlueprintEditorGlobalStyle(styleNode.textContent ?? '')) {
@@ -318,6 +322,10 @@ const disposeViewer = (): void => {
   loadVersion++
   if (pendingLoadFrame) window.cancelAnimationFrame(pendingLoadFrame)
   pendingLoadFrame = 0
+  if (pendingResizeFrame) window.cancelAnimationFrame(pendingResizeFrame)
+  pendingResizeFrame = 0
+  window.clearTimeout(resizeSettleTimer)
+  lastSize = {width: 0, height: 0}
   resizeObserver?.disconnect()
   resizeObserver = null
   releaseViewerInstance()
@@ -350,7 +358,8 @@ const loadCurrentBlueprint = async (): Promise<void> => {
     }
     withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
     buildingCount.value = viewer.value.getBlueprintData()?.buildings.length ?? 0
-    resizeViewer()
+    lastSize = {width: 0, height: 0}
+    applyViewerSize()
     resetCamera()
     selectBuilding(props.selectedIndex)
     if (buildingCount.value > props.maxBuildings) emit('error', {code: 'PREVIEW_E_LIMIT', message: `共 ${buildingCount.value} 个建筑，模型交互可能较慢`})
@@ -364,15 +373,28 @@ const loadCurrentBlueprint = async (): Promise<void> => {
   }
 }
 
-const resizeViewer = (): void => {
-  if (!containerRef.value || !viewer.value) {
-    return
-  }
-
+// =============== 尺寸同步 ===============
+// 说明：WebGL setSize 会清空画布，连续拖动时逐帧重设会闪白。拖动期间只用 CSS 拉伸上一帧，
+// 停止约 120ms 后再按最终尺寸重设并立即重绘；同一帧内的多次通知合并为一次。
+const applyViewerSize = (): void => {
+  pendingResizeFrame = 0
+  if (!containerRef.value || !viewer.value) return
   const {width, height} = containerRef.value.getBoundingClientRect()
-  if (width > 0 && height > 0) {
-    viewer.value.setSize(Math.floor(width), Math.floor(height))
-  }
+  const next = {width: Math.floor(width), height: Math.floor(height)}
+  if (next.width <= 0 || next.height <= 0 || (next.width === lastSize.width && next.height === lastSize.height)) return
+  lastSize = next
+  withAppThemeIsolation(() => {
+    viewer.value?.setSize(next.width, next.height)
+    viewer.value?.toDataURL?.()
+  })
+}
+const resizeViewer = (): void => {
+  if (!viewer.value) return
+  window.clearTimeout(resizeSettleTimer)
+  resizeSettleTimer = window.setTimeout(() => {
+    if (pendingResizeFrame) return
+    pendingResizeFrame = window.requestAnimationFrame(applyViewerSize)
+  }, 120)
 }
 
 const hasRenderableSize = (): boolean => {
@@ -472,6 +494,9 @@ onBeforeUnmount(() => { active = false; disposeViewer() })
   height: 100%;
 
   :deep(canvas) {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
     cursor: grab;
     touch-action: none;
 

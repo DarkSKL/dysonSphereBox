@@ -49,6 +49,15 @@ type builder struct {
 	warnings []string
 	// coaterLinks 职责：登记每条喷涂供剂带及剂种；使用：可选网络；边界：指针随块一起平移。
 	coaterLinks map[int][]*placed
+	// zones 职责：多目标分区定义；使用：结果标注；边界：总线模式为空。
+	zones []Zone
+	// zoneRanges 职责：分区在 all 中的连续区间；使用：收尾计算边界；边界：喷涂网络等公共设施追加在区间之外。
+	zoneRanges []zoneRange
+}
+
+// zoneRange 职责：记录分区建筑区间；使用：分区边界；边界：半开区间 [begin, end)。
+type zoneRange struct {
+	zone, begin, end int
 }
 
 // newBuilder 职责：创建纯内存装配器；使用：Generate；边界：模型数据损坏时返回错误。

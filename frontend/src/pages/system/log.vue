@@ -104,7 +104,7 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
         <div class="logs-timeline" role="list" aria-label="日志时间线">
           <article v-for="entry in items" :key="entry.id" role="listitem" class="log-entry" :class="{ selected: selected?.id === entry.id }" tabindex="0" @click="logs.select(entry)" @keydown.enter="logs.select(entry)" @keydown.space.prevent="logs.select(entry)" @contextmenu="showContextMenu($event, entry)">
             <span class="log-node" :data-level="entry.level" aria-hidden="true"></span>
-            <div class="log-card">
+            <div class="log-card ds-bracket-hover">
               <div class="log-card-top"><time class="type-mono">{{ timeLabel(entry.time) }}</time><span class="log-level" :data-level="entry.level">{{ entry.level }}</span><span class="log-namespace type-mono">{{ entry.namespace }}</span></div>
               <div class="log-action">{{ entry.action }}</div>
               <div class="log-reason">{{ entry.reason }}</div>
@@ -168,7 +168,8 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
 .log-node[data-level='Error'], .log-node[data-level='Fatal'] { border-color: var(--ds-error); }
 .log-card { position: relative; min-width: 0; padding: 12px 48px 12px 16px; border: 1px solid var(--ds-border-default); border-radius: 4px; background: var(--ds-bg-panel); overflow-wrap: anywhere; }
 .log-entry:hover .log-card { background: var(--ds-hover-bg); }
-.log-entry.selected .log-card { border-color: var(--ds-brand); background: var(--ds-active-bg); }
+.log-entry.selected .log-card { --bracket-color: var(--ds-brand); border-color: transparent; background: var(--ds-active-bg); }
+.log-entry.selected .log-card::after { --bracket-len: var(--bracket-size); }
 .log-entry:focus-visible { outline: 2px solid var(--ds-focus-ring); outline-offset: 2px; }
 .log-card-top, .log-card-bottom { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--ds-text-muted); }
 .log-card-top { margin-bottom: 7px; }

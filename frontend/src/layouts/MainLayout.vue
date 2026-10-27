@@ -377,7 +377,7 @@ const closeWindow = (): void => {
           <nav id="app-workspace-nav" class="app-nav" data-tour="main-nav" :aria-label="`${currentWorkspace.label}选项`">
             <span
               v-if="activeNavIndex >= 0"
-              class="app-nav-active-highlight"
+              class="app-nav-active-highlight ds-bracket"
               :style="{transform: `translateY(${activeNavIndex * 45}px)`}"
               aria-hidden="true"
             />
@@ -664,6 +664,7 @@ const closeWindow = (): void => {
   gap: 4px;
 }
 
+
 .app-rail-game.is-selected::before {
   position: absolute;
   inset: 12px auto 12px -1px;
@@ -755,7 +756,6 @@ const closeWindow = (): void => {
 }
 
 .app-sidebar-toggle:hover {
-  border-color: var(--ds-border-subtle);
   background: var(--ds-hover-bg);
   color: var(--ds-text-primary);
 }
@@ -778,30 +778,19 @@ const closeWindow = (): void => {
 }
 
 .app-nav-active-highlight {
+  --bracket-color: var(--ds-brand);
   position: absolute;
   z-index: 0;
   top: 0;
   left: 0;
   width: 100%;
   height: 40px;
-  border: 1px solid var(--ds-border-strong);
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--ds-active-bg);
-  box-shadow: var(--ds-active-glow);
   pointer-events: none;
   transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-// 选中高亮左侧的品牌渐变指示条，与快捷栏游戏标签的指示条呼应。
-.app-nav-active-highlight::before {
-  position: absolute;
-  inset: 10px auto 10px -1px;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
-  background: var(--ds-brand-gradient);
-  box-shadow: 0 0 8px var(--ds-brand-glow);
-  content: '';
-}
 
 .app-nav-link {
   position: relative;
@@ -832,7 +821,6 @@ const closeWindow = (): void => {
 }
 
 .app-nav-link:hover:not(.app-nav-link-active) {
-  border-color: var(--ds-border-subtle);
   background: var(--ds-hover-bg);
   color: var(--ds-text-primary);
 }

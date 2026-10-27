@@ -53,7 +53,7 @@ onBeforeUnmount(stopObservingDescription)
 
 <template>
   <div
-    class="mod-pack-card group"
+    class="mod-pack-card group ds-bracket-hover"
     :class="{ 'is-installed': installed, 'is-installing': installing, 'is-failed': failed, 'is-conflicted': conflicted }"
     role="button"
     tabindex="0"
@@ -188,20 +188,30 @@ onBeforeUnmount(stopObservingDescription)
 <style scoped lang="scss">
 .mod-pack-card {
   @apply flex aspect-square w-full flex-col overflow-hidden rounded text-left transition;
-  border: 1px solid var(--ds-border-default);
+  border: 1px solid var(--ds-border-subtle);
   background: var(--ds-bg-panel);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.02);
 
+  // 悬停与状态使用括角卡片强调，整圈描边保持弱化；内容层位于括线之下不受遮挡。
   &:hover {
-    border-color: var(--ds-border-strong);
+    --bracket-color: var(--ds-border-strong);
   }
 
+
   &.is-failed {
+    --bracket-color: var(--ds-error);
+   
     border-color: var(--ds-error-border);
   }
 
   &.is-conflicted {
-    border-color: var(--ds-border-strong);
+    --bracket-color: var(--ds-warning);
+   
+  }
+
+  &.is-failed::after,
+  &.is-conflicted::after {
+    --bracket-len: var(--bracket-size);
   }
 }
 

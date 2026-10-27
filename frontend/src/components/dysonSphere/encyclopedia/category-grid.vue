@@ -10,51 +10,46 @@ const emit = defineEmits<{(event: 'select', category: EncyclopediaCategory): voi
 
 <template>
   <!-- ~ 图鉴分类入口 -->
-  <!-- * 说明：按参考页顺序展示十个图文入口，切角轮廓与实体索引保持同一语言 -->
-  <!-- * 交互：鼠标、触屏或键盘选择分类；选中状态同时提供描边和 aria-pressed -->
+  <!-- * 说明：紧凑切角指令栏，图标与名称横排，序号提供 HUD 层次，尺寸对齐盒子其他工作区控件 -->
+  <!-- * 交互：鼠标、触屏或键盘选择分类；选中状态同时提供描边、强调条和 aria-pressed -->
   <!-- * 依赖：使用本地分类图标包，缺失时回退到打包的 Game Icons -->
-  <!-- * 边界：窄内容区保留五列阅读顺序，不触发远程图标加载 -->
+  <!-- * 边界：建筑、物品、科技、战斗、成就五个入口；窄内容区横排或折为两列，不触发远程图标加载 -->
   <nav class="category-grid" :class="{'animate-entrance': animate}" aria-label="图鉴分类">
     <button v-for="(category, index) in encyclopediaCategories" :key="category.key" type="button"
-      class="category-tile" :class="{'is-active': active !== 'overview' && active === category.key}"
-      :aria-pressed="active === category.key" :style="{'--tile-delay': `${index * 24}ms`}" @click="emit('select', category.key)">
-      <svg class="category-frame" viewBox="0 0 180 164" preserveAspectRatio="none" aria-hidden="true">
-        <path class="frame-base" d="M1 12 12 1H179V151L166 163H1Z" />
-        <path class="frame-corners" d="M1 27V12L12 1H30M151 1H179V26M179 136V151L166 163H147M28 163H1V140" />
-        <path class="frame-detail" d="M145 159H163L175 147" />
-      </svg>
+      class="category-tile" :class="{'is-active': active === category.key}"
+      :aria-pressed="active === category.key" :style="{'--tile-delay': `${index * 20}ms`}" @click="emit('select', category.key)">
       <span v-if="encyclopediaCategoryIconsReady.has(category.key)" class="category-icon category-game-icon" :style="{maskImage: `url(/encyclopedia-icons/categories/${category.key}.png)`, WebkitMaskImage: `url(/encyclopedia-icons/categories/${category.key}.png)`}" aria-hidden="true" />
       <Icon v-else :icon="category.icon" class="category-icon" aria-hidden="true" />
       <span class="category-name">{{ category.label }}</span>
+      <span class="category-index" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span>
     </button>
   </nav>
 </template>
 
 <style scoped lang="scss">
-.category-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
-.category-tile { position: relative; display: flex; min-width: 0; min-height: 112px; aspect-ratio: 1.14; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border: 0; padding: 18px 8px; background: transparent; color: var(--ds-text-primary); cursor: pointer; transition: color 160ms, background-color 160ms, transform 160ms; }
-.animate-entrance .category-tile { animation: category-arrive 360ms both; animation-delay: var(--tile-delay); }
-.category-frame { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; pointer-events: none; }
-.category-frame path { vector-effect: non-scaling-stroke; }
-.frame-base { stroke: var(--ds-border-default); stroke-width: 1; }
-.frame-corners { stroke: var(--ds-text-secondary); stroke-width: 1.6; }
-.frame-detail { stroke: var(--ds-text-muted); stroke-width: 1.2; }
-.category-icon { width: 72px; height: 72px; flex: 0 0 auto; transition: transform 180ms; }
+// 切角使用像素 clip-path，任意宽度下斜边保持一致；::before 绘制 1px 描边内衬。
+.category-grid { --chamfer: 8px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.category-tile { position: relative; display: flex; min-width: 0; height: 76px; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 0; padding: 8px 4px 6px; background: var(--ds-border-default); color: var(--ds-text-secondary); cursor: pointer; isolation: isolate;
+  clip-path: polygon(var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)), calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer));
+  transition: color 160ms, background-color 160ms, transform 160ms; }
+.category-tile::before { content: ''; position: absolute; inset: 1px; z-index: -1; background: var(--ds-bg-panel); clip-path: inherit; transition: background-color 160ms; }
+.category-tile::after { content: ''; position: absolute; bottom: 0; left: 50%; width: 0; height: 2px; background: var(--ds-brand); transform: translateX(-50%); transition: width 200ms; }
+.animate-entrance .category-tile { animation: category-arrive 320ms both; animation-delay: var(--tile-delay); }
+.category-icon { width: 30px; height: 30px; flex: 0 0 auto; transition: transform 180ms; }
 .category-game-icon { background: currentColor; mask-size: contain; mask-repeat: no-repeat; mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
-.category-name { font-size: 16px; font-weight: 700; }
-.category-tile:hover { color: var(--ds-brand); background: var(--ds-hover-bg); transform: translateY(-2px); }
-.category-tile:hover .category-icon { transform: scale(1.06); }
-.category-tile:active { transform: translateY(1px) scale(.98); transition-duration: 70ms; }
-.category-tile:focus-visible { outline: 2px solid var(--ds-focus-ring); outline-offset: 4px; }
-.category-tile.is-active { background: var(--ds-active-bg); color: var(--ds-brand); }
-.is-active .frame-corners { stroke: var(--ds-brand); stroke-width: 2; }
-@keyframes category-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-@container encyclopedia (max-width: 850px) { .category-tile { gap: 10px; padding: 12px 6px; } .category-icon { width: 52px; height: 52px; } }
-@container encyclopedia (max-width: 600px) {
-  .category-grid { gap: 10px; }
-  .category-tile { min-height: 94px; gap: 8px; padding: 12px 4px; }
-  .category-icon { width: 40px; height: 40px; }
-  .category-name { font-size: 14px; }
-}
-@media (prefers-reduced-motion: reduce) { .animate-entrance .category-tile { animation: none; } .category-tile, .category-icon { transition: none; } }
+.category-name { color: var(--ds-text-primary); font-size: 13px; font-weight: 600; line-height: 1.3; white-space: nowrap; }
+.category-index { position: absolute; top: 5px; right: 7px; color: var(--ds-text-muted); font-family: var(--ds-font-display); font-size: 10px; letter-spacing: .04em; }
+.category-tile:hover { background: var(--ds-border-strong); color: var(--ds-text-primary); }
+.category-tile:hover::before { background: var(--ds-bg-panel-elevated); }
+.category-tile:hover .category-icon { transform: translateY(-1px) scale(1.06); }
+.category-tile:active { transform: scale(.97); transition-duration: 70ms; }
+.category-tile:focus-visible { outline: 2px solid var(--ds-focus-ring); outline-offset: 2px; }
+.category-tile.is-active { background: var(--ds-brand); color: var(--ds-brand); }
+.category-tile.is-active::before { background: linear-gradient(180deg, var(--ds-bg-panel-elevated), var(--ds-bg-panel)); }
+.category-tile.is-active::after { width: 40%; }
+.category-tile.is-active .category-index { color: var(--ds-brand); }
+@keyframes category-arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@container encyclopedia (max-width: 1000px) { .category-tile { height: 52px; flex-direction: row; gap: 9px; padding: 6px 10px; } .category-icon { width: 24px; height: 24px; } }
+@container encyclopedia (max-width: 520px) { .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; } .category-tile { height: 44px; justify-content: flex-start; } }
+@media (prefers-reduced-motion: reduce) { .animate-entrance .category-tile { animation: none; } .category-tile, .category-tile::before, .category-tile::after, .category-icon { transition: none; } }
 </style>

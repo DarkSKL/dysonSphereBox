@@ -68,6 +68,24 @@ type Request struct {
 	Name string `json:"name"`
 }
 
+// Zone 职责：承载一个目标（或共用）分区的蓝图范围；使用：预览分区标注与节点流着色；边界：坐标为最终蓝图局部坐标。
+type Zone struct {
+	// Key 职责：分区键，`target-<物品ID>` 或 `shared`；使用：前端匹配节点归属；边界：稳定且唯一。
+	Key string `json:"key"`
+	// TargetItemID 职责：目标物品；使用：标注；边界：共用分区为 0。
+	TargetItemID int `json:"targetItemId"`
+	// ProductionIndices 职责：分区内产线下标；使用：联动；边界：每条产线只属于一个分区。
+	ProductionIndices []int `json:"productionIndices"`
+	// MinX 职责：分区左下角 X；使用：标注；边界：含分区内全部建筑。
+	MinX float64 `json:"minX"`
+	// MinY 职责：分区左下角 Y；使用：标注；边界：含分区内全部建筑。
+	MinY float64 `json:"minY"`
+	// MaxX 职责：分区右上角 X；使用：标注；边界：含分区内全部建筑。
+	MaxX float64 `json:"maxX"`
+	// MaxY 职责：分区右上角 Y；使用：标注；边界：含分区内全部建筑。
+	MaxY float64 `json:"maxY"`
+}
+
 // ProductionBinding 职责：承载生成边界数据；使用：服务与预览联动；边界：不承诺游戏实际验收。
 type ProductionBinding struct {
 	// MachineIndices 职责：制造机器的数组下标；使用：定位首台机器；边界：不让前端按建筑拼接顺序推断。
@@ -98,4 +116,6 @@ type Result struct {
 	Bindings []ProductionBinding `json:"bindings"`
 	// SharedBuildingIndices 职责：保存公共设施映射；使用：桥接传递；边界：保持生成时序。
 	SharedBuildingIndices []int `json:"sharedBuildingIndices"`
+	// Zones 职责：保存多目标分区；使用：预览区分不同目标的节点流；边界：单目标或总线模式只有一个分区。
+	Zones []Zone `json:"zones"`
 }

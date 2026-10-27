@@ -29,7 +29,7 @@ const producers = computed(() => props.recipe.relations.filter(relation => relat
         <div class="flow-items">
           <span v-if="!inputs.length" class="recipe-natural">采集</span>
           <template v-for="input in inputs" :key="input.target">
-            <button v-if="input.entry" type="button" class="flow-item" :aria-label="`查看${input.entry.name.zh}`" @click="emit('open', input.target)">
+            <button v-if="input.entry" type="button" class="flow-item ds-bracket-hover" :aria-label="`查看${input.entry.name.zh}`" @click="emit('open', input.target)">
               <EntryIcon :entry="input.entry" :size="38" /><span>{{ input.entry.name.zh }}</span><strong>× {{ input.quantity }}</strong>
             </button>
           </template>
@@ -40,7 +40,7 @@ const producers = computed(() => props.recipe.relations.filter(relation => relat
         <p class="flow-label">产出</p>
         <div class="flow-items">
           <template v-for="output in outputs" :key="output.target">
-            <button v-if="output.entry" type="button" class="flow-item" :aria-label="`查看${output.entry.name.zh}`" @click="emit('open', output.target)">
+            <button v-if="output.entry" type="button" class="flow-item ds-bracket-hover" :aria-label="`查看${output.entry.name.zh}`" @click="emit('open', output.target)">
               <EntryIcon :entry="output.entry" :size="38" /><span>{{ output.entry.name.zh }}</span><strong>× {{ output.quantity }}{{ output.unit === '哈希' ? ' 哈希' : '' }}</strong>
             </button>
           </template>
@@ -60,7 +60,8 @@ h3 { margin: 0 0 15px; color: var(--ds-text-primary); font-size: 14px; font-weig
 .flow-label { margin: 0 0 8px; color: var(--ds-text-secondary); font-size: 13px; }
 .flow-items { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
 .flow-item { display: flex; max-width: 110px; flex-direction: column; align-items: center; gap: 3px; border: 1px solid transparent; border-radius: 3px; padding: 4px; background: transparent; color: var(--ds-text-primary); font-size: 13px; line-height: 1.5; cursor: pointer; }
-.flow-item:hover, .flow-item:focus-visible { outline: none; border-color: var(--ds-border-strong); background: var(--ds-active-bg); }
+.flow-item { --bracket-color: var(--ds-brand); }
+.flow-item:hover, .flow-item:focus-visible { outline: none; border-color: transparent; background: var(--ds-active-bg); }
 .flow-item strong { font-family: var(--ds-font-display); font-weight: 600; }
 .recipe-direction { display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--ds-text-secondary); }
 .recipe-time { display: inline-flex; align-items: center; gap: 4px; font-family: var(--ds-font-display); font-size: 13px; white-space: nowrap; }
