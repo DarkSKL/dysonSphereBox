@@ -45,7 +45,7 @@ export const useQuantWorkspace = () => {
   const generating = ref(false)
   const importing = ref(false)
   const saving = ref(false)
-  const error = ref<{code: string; message: string} | null>(null)
+  const error = ref<{code: string; message: string; source?: 'generation'} | null>(null)
   const previewState = ref<PreviewState>('idle')
   const previewRevision = ref(0)
   const previewNotice = ref('')
@@ -75,8 +75,13 @@ export const useQuantWorkspace = () => {
   let disposed = false
   let media: MediaQueryList | null = null
   const updateWidth = (): void => { narrow.value = media?.matches ?? false }
-  const report = (caught: unknown): void => {
-    error.value = caught instanceof FactoryError ? {code: caught.code, message: caught.message} : {code: 'REQUEST_FAILED', message: caught instanceof Error ? caught.message : String(caught)}
+  // 生成操作在长结果列表下方；失败时就地保留详情，并弹窗通知，缓存页失活后不再打断其它页面。
+  const report = (caught: unknown, source?: 'generation'): void => {
+    const failure = caught instanceof FactoryError ? {code: caught.code, message: caught.message} : {code: 'REQUEST_FAILED', message: caught instanceof Error ? caught.message : String(caught)}
+    error.value = {...failure, source}
+    if (source === 'generation' && active.value && !disposed) {
+      dialog.error({title: '蓝图生成失败', content: failure.message, positiveText: '知道了'})
+    }
   }
   const itemName = (id: number): string => itemMap.value.get(id)?.name ?? `物品 ${id}`
   const recipeOptions = (id: number): {label: string; value: number}[] => (detail.value?.recipes ?? []).filter(recipe => recipe.results.includes(id)).map((recipe, index) => ({label: recipe.name, value: index + 1}))
@@ -164,7 +169,7 @@ export const useQuantWorkspace = () => {
       previewNotice.value = ''
       previewState.value = result.buildingCount ? 'loading' : 'empty'
       if (result.buildingCount > 6000) { showPreview.value = false; previewNotice.value = '建筑超过 6000，已折叠预览；可按需打开，不影响复制与导出' }
-    } catch (caught) { report(caught) } finally { generating.value = false }
+    } catch (caught) { report(caught, 'generation') } finally { generating.value = false }
   }
   const loadCode = async (text: string, title: string, version = ++importVersion): Promise<void> => {
     const dataset = datasetKey.value

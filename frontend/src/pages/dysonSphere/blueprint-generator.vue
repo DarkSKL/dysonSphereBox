@@ -44,7 +44,7 @@ const onFile = async (event: Event): Promise<void> => {
         <n-button size="small" :type="w.showPreview ? 'primary' : 'default'" @click="w.showPreview = !w.showPreview"><template #icon><PanelRight :size="15" /></template>预览</n-button>
       </div>
     </header>
-    <n-alert v-if="w.error" type="error" closable class="notice" @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
+    <n-alert v-if="w.error && w.error.source !== 'generation'" type="error" closable class="notice" @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
     <div class="workspace-grid" :class="{'has-preview': w.showPreview && !w.narrow}">
       <main class="workspace-main">
         <section class="input-section">
@@ -110,6 +110,8 @@ const onFile = async (event: Event): Promise<void> => {
           <div class="section-heading"><h2>蓝图生成与导出</h2><span v-if="w.previewStale" class="state-warning">预览为上次结果</span></div>
           <div class="generation-inputs"><n-input v-model:value="w.name" placeholder="蓝图名称" maxlength="100" /><n-select v-model:value="w.mode" :options="modes" /></div>
           <div class="generation-actions"><n-button type="primary" :loading="w.generating" :disabled="!w.plan || w.quantStale || w.solving || w.importing || (w.showPreview && Boolean(w.code) && w.previewState === 'loading')" @click="w.generate"><template #icon><Sparkles :size="15" /></template>生成蓝图</n-button><n-button :disabled="!w.code" @click="w.copy"><template #icon><Copy :size="15" /></template>复制</n-button><n-button :disabled="!w.code" @click="w.download"><template #icon><Download :size="15" /></template>导出文本</n-button><n-button :disabled="!w.code" :loading="w.saving" @click="w.save"><template #icon><Save :size="15" /></template>存入蓝图库</n-button></div>
+          <!-- ~ 生成失败详情：紧随操作按钮持久展示，关闭通知弹窗后仍可在原处查看和重试。 -->
+          <n-alert v-if="w.error?.source === 'generation'" title="蓝图生成失败" type="error" closable class="generation-error" @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
           <p v-if="w.code" class="muted">{{ number(w.expectedBuildings) }} 个建筑 · 已通过 Go 编码与结构自检。游戏内实际加载及运行需另行确认。</p>
           <n-alert v-if="warningList.length" :type="hasOverflow ? 'error' : 'warning'" class="warning-list"><div v-for="warning in warningList" :key="warning">{{ warning }}</div></n-alert>
         </section>
@@ -151,6 +153,7 @@ h3 { margin: 14px 0 8px; font-size: 13px; font-weight: 700; }
 .material-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 12px; color: var(--ds-text-secondary); }
 .state-warning { color: var(--ds-warning); font-size: 12px; }
 .generation-inputs { display: grid; grid-template-columns: 1fr 1.1fr; gap: 10px; margin-bottom: 14px; }
+.generation-error { margin-top: 14px; overflow-wrap: anywhere; }
 .notice { margin-bottom: 16px; }
 .warning-list { margin-top: 14px; max-height: 180px; overflow-y: auto; line-height: 1.7; font-size: 12px; }
 .preview-section { position: sticky; top: 16px; align-self: start; min-width: 0; border-left: 1px solid var(--ds-border-default); padding-left: 20px; }
