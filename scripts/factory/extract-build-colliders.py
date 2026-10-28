@@ -255,8 +255,18 @@ class Assets:
         for name in ("WheelCollider", "TerrainCollider"):
             if hasattr(ClassIDType, name):
                 self.collider_types[getattr(ClassIDType, name)] = name.replace("Collider", "")
-        self.env = unitypy.load(os.path.join(data_dir, "globalgamemanagers"),
-                                os.path.join(data_dir, "resources.assets"))
+        # 职责：加载当前版本用于解析 PrefabDesc 的完整 Unity 外部资源集合。
+        # 使用：resolve 通过 globalgamemanagers 的 m_Externals 解析 MonoScript 和 prefab 引用。
+        # 边界：只读加载原版资源；缺失的可选 sharedassets 文件仍由 UnityPy 自身报出，不能伪造脚本字段。
+        resource_files = [
+            "globalgamemanagers",
+            "globalgamemanagers.assets",
+            "resources.assets",
+            "sharedassets0.assets",
+        ]
+        existing_files = [os.path.join(data_dir, name) for name in resource_files
+                          if os.path.isfile(os.path.join(data_dir, name))]
+        self.env = unitypy.load(*existing_files)
         self.files = {n.replace("\\", "/").split("/")[-1].lower(): f for n, f in self.env.files.items()}
         self.gg = self.files["globalgamemanagers"]
         rm = next(o for o in self.env.objects if o.type == ClassIDType.ResourceManager)
@@ -265,9 +275,9 @@ class Assets:
             self.container.setdefault(path, []).append(ptr)
         self.cache = {}
 
-    def resolve(self, ptr):
+    def resolve(self, ptr, source_file=None):
         fid, pid = ptr["m_FileID"], ptr["m_PathID"]
-        target = self.gg if fid == 0 else self.files[self.gg.externals[fid - 1].path.split("/")[-1].lower()]
+        target = source_file if fid == 0 and source_file is not None else self.gg if fid == 0 else self.files[self.gg.externals[fid - 1].path.split("/")[-1].lower()]
         return target.objects[pid]
 
     def raw_of(self, resource_path):
@@ -289,24 +299,105 @@ class Assets:
     def walk(self, go_obj):
         """walk 先序遍历 prefab 层级（根，再按 m_Children 顺序），返回节点列表。"""
         go = self.read(go_obj)
-        root_tr = None
+        root_tr_obj = None
         for c in go.m_Component:
             o = (c.component if hasattr(c, "component") else c).deref()
             if o.type in (self.T.Transform, self.T.RectTransform):
-                root_tr = self.read(o)
+                root_tr_obj = o
                 break
+        if root_tr_obj is None:
+            raise ValueError("prefab 根节点缺少 Transform")
         nodes = []
 
-        def rec(tr, chain, path):
+        def rec(tr_obj, chain, path):
+            tr = self.read(tr_obj)
             g_obj = tr.m_GameObject.deref()
             g = self.read(g_obj)
-            node = {"go": g, "active": bool(g.m_IsActive), "chain": chain + [tr], "path": path + [g.m_Name]}
+            node = {"go": g, "active": bool(g.m_IsActive), "chain": chain + [tr],
+                    "transformPathId": tr_obj.path_id, "transformFile": tr_obj.assets_file.name,
+                    "path": path + [g.m_Name]}
             nodes.append(node)
             for ch in tr.m_Children:
-                rec(self.read(ch.deref()), node["chain"], node["path"])
+                child = ch.deref()
+                rec(child, node["chain"], node["path"])
 
-        rec(root_tr, [], [])
+        rec(root_tr_obj, [], [])
         return nodes
+
+    def transform_pose(self, go_obj, pointer, source_file):
+        """transform_pose 返回 PrefabDesc 读取的 Transform.position/rotation。"""
+        target = self.resolve(pointer, source_file)
+        if target.type not in (self.T.Transform, self.T.RectTransform):
+            raise ValueError(f"SlotConfig 引用了非 Transform 对象: {target.type}")
+        for node in self.walk(go_obj):
+            if node["transformPathId"] != target.path_id or node["transformFile"] != target.assets_file.name:
+                continue
+            transform = node["chain"][-1]
+            return {
+                "position": f32v(transform_point(node["chain"], (0.0, 0.0, 0.0))),
+                "rotation": f32v(world_rotation(node["chain"])),
+                "localScale": f32v(v3(transform.m_LocalScale)),
+                "hierarchy": "/".join(node["path"]),
+            }
+        raise ValueError(f"找不到 SlotConfig 引用的 Transform: {target.path_id}")
+
+    def slot_config(self, go_obj):
+        """slot_config 读取 PrefabDesc.ReadPrefab 所需的 SlotConfig 数值。"""
+        slot_component = None
+        slot_source_file = None
+        for node in self.walk(go_obj):
+            for c in node["go"].m_Component:
+                component = (c.component if hasattr(c, "component") else c).deref()
+                if component.type != self.T.MonoBehaviour:
+                    continue
+                raw = component.get_raw_data()
+                file_id, path_id = struct.unpack_from("<iq", raw, 16)
+                script = self.resolve({"m_FileID": file_id, "m_PathID": path_id})
+                if script.read_typetree().get("m_Name") == "SlotConfig":
+                    slot_component = raw
+                    slot_source_file = component.assets_file
+                    break
+            if slot_component is not None:
+                break
+        if slot_component is None:
+            return None
+
+        raw = slot_component
+        p = 28
+        name_length = struct.unpack_from("<i", raw, p)[0]
+        p += 4 + name_length
+        p = (p + 3) & ~3
+        p += 48  # selectCenter、selectSize 以及 SlotConfig 的 6 个标量字段。
+
+        def pointer_array():
+            nonlocal p
+            count = struct.unpack_from("<i", raw, p)[0]
+            p += 4
+            pointers = []
+            for _ in range(count):
+                file_id, path_id = struct.unpack_from("<iq", raw, p)
+                p += 12
+                pointers.append({"m_FileID": file_id, "m_PathID": path_id})
+            return pointers
+
+        slot_pointers = pointer_array()
+        insert_pointers = pointer_array()
+        addon_pointers = pointer_array()
+        center_count = struct.unpack_from("<i", raw, p)[0]
+        p += 4
+        addon_centers = []
+        for _ in range(center_count):
+            addon_centers.append(f32v(struct.unpack_from("<fff", raw, p)))
+            p += 12
+        if p != len(raw):
+            raise ValueError(f"SlotConfig 解析结束于 {p}，原始长度 {len(raw)}，字段布局与游戏版本不符")
+
+        return {
+            "portPoses": [self.transform_pose(go_obj, pointer, slot_source_file) for pointer in slot_pointers],
+            "slotPoses": [self.transform_pose(go_obj, pointer, slot_source_file) for pointer in insert_pointers],
+            "addonAreaColPoses": [self.transform_pose(go_obj, pointer, slot_source_file) for pointer in addon_pointers],
+            "addonAreaPoses": [{"position": center} for center in addon_centers],
+        }
 
     def colliders(self, go_obj, independent):
         """colliders 按假定的 GetComponentsInChildren 顺序（先序层级 + m_Component 顺序）返回 collider 记录。"""
@@ -511,6 +602,17 @@ def main():
         entry["buildCollider"] = bc
         entry["buildColliders"] = bcs
         entry["colliders"] = cols
+        try:
+            # PrefabDesc.ReadPrefab 始终从主 prefab 读取 SlotConfig；-cl 只提供独立碰撞盒。
+            geometry = assets.slot_config(go)
+            if geometry is not None:
+                geometry["addonAreaSize"] = [
+                    f32v(round_f32(value * 0.5) for value in pose["localScale"])
+                    for pose in geometry["addonAreaColPoses"]
+                ]
+                entry["prefabGeometry"] = geometry
+        except (KeyError, ValueError, struct.error) as error:
+            entry["prefabGeometryError"] = str(error)
 
     build_id, manifest_display = steam_build_id(args.game_dir, args.steam_manifest)
     out = {

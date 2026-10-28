@@ -184,7 +184,14 @@
      "q": [2.1855694e-08, -0.0, -0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "36": {
    "modelId": 36,
@@ -263,7 +270,14 @@
      "q": [2.1855694e-08, -0.0, -0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "37": {
    "modelId": 37,
@@ -342,7 +356,14 @@
      "q": [2.1855694e-08, -0.0, -0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "38": {
    "modelId": 38,
@@ -491,7 +512,39 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 0.0, 0.25],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-a/slot north"
+     },
+     {
+      "position": [0.25, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-a/slot east"
+     },
+     {
+      "position": [0.0, 0.0, -0.25],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-a/slot south"
+     },
+     {
+      "position": [-0.25, 0.0, 0.0],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-a/slot west"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "39": {
    "modelId": 39,
@@ -584,7 +637,39 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 0.0, 0.25],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-b/slot north(0)"
+     },
+     {
+      "position": [0.0, 1.3333334, 0.25],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-b/slot north(1)"
+     },
+     {
+      "position": [0.0, 0.0, -0.25],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-b/slot south(0)"
+     },
+     {
+      "position": [0.0, 1.3333334, -0.25],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-b/slot south(1)"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "40": {
    "modelId": 40,
@@ -733,7 +818,39 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 1.3333334, 0.25],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-c/slot north"
+     },
+     {
+      "position": [0.25, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-c/slot east"
+     },
+     {
+      "position": [0.0, 1.3333334, -0.25],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-c/slot south"
+     },
+     {
+      "position": [-0.25, 0.0, 0.0],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "splitter-c/slot west"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "41": {
    "modelId": 41,
@@ -805,7 +922,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "42": {
    "modelId": 42,
@@ -877,7 +1001,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "43": {
    "modelId": 43,
@@ -949,7 +1080,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "44": {
    "modelId": 44,
@@ -1044,7 +1182,14 @@
      "radius": 0.35,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "45": {
    "modelId": 45,
@@ -1174,7 +1319,39 @@
      "radius": 3.87,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, -0.02, 2.85],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "energy-exchanger/slot(0)"
+     },
+     {
+      "position": [2.85, -0.02, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "energy-exchanger/slot(1)"
+     },
+     {
+      "position": [0.0, -0.02, -2.85],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "energy-exchanger/slot(2)"
+     },
+     {
+      "position": [-2.85, -0.02, 0.0],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "energy-exchanger/slot(3)"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "46": {
    "modelId": 46,
@@ -1267,7 +1444,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "49": {
    "modelId": 49,
@@ -1418,7 +1602,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [1.256, -0.01, 2.7],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (0)"
+     },
+     {
+      "position": [0.0, -0.01, 2.7],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (1)"
+     },
+     {
+      "position": [-1.256, -0.01, 2.7],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (2)"
+     },
+     {
+      "position": [-2.7, -0.01, 1.256],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (3)"
+     },
+     {
+      "position": [-2.7, -0.01, 0.0],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (4)"
+     },
+     {
+      "position": [-2.7, -0.01, -1.256],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (5)"
+     },
+     {
+      "position": [-1.256, -0.01, -2.7],
+      "rotation": [0.0, -1.0, 0.0, 2.8088027e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (6)"
+     },
+     {
+      "position": [0.0, -0.01, -2.7],
+      "rotation": [0.0, -1.0, 0.0, 2.8088027e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (7)"
+     },
+     {
+      "position": [1.256, -0.01, -2.7],
+      "rotation": [0.0, -1.0, 0.0, 2.8088027e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (8)"
+     },
+     {
+      "position": [2.7, -0.01, -1.256],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (9)"
+     },
+     {
+      "position": [2.7, -0.01, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (10)"
+     },
+     {
+      "position": [2.7, -0.01, 1.256],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "logistic-station/slot (11)"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "50": {
    "modelId": 50,
@@ -1569,7 +1833,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [1.256, -0.01, 2.7],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (0)"
+     },
+     {
+      "position": [0.0, -0.01, 2.7],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (1)"
+     },
+     {
+      "position": [-1.256, -0.01, 2.7],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (2)"
+     },
+     {
+      "position": [-2.7, -0.01, 1.256],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (3)"
+     },
+     {
+      "position": [-2.7, -0.01, 0.0],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (4)"
+     },
+     {
+      "position": [-2.7, -0.01, -1.256],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (5)"
+     },
+     {
+      "position": [-1.256, -0.01, -2.7],
+      "rotation": [0.0, -1.0, 0.0, 2.8088027e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (6)"
+     },
+     {
+      "position": [0.0, -0.01, -2.7],
+      "rotation": [0.0, -1.0, 0.0, 2.8088027e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (7)"
+     },
+     {
+      "position": [1.256, -0.01, -2.7],
+      "rotation": [0.0, -1.0, 0.0, 2.8088027e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (8)"
+     },
+     {
+      "position": [2.7, -0.01, -1.256],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (9)"
+     },
+     {
+      "position": [2.7, -0.01, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (10)"
+     },
+     {
+      "position": [2.7, -0.01, 1.256],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "interstellar-logistic-station/slot (11)"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "51": {
    "modelId": 51,
@@ -1662,7 +2006,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(2)"
+     },
+     {
+      "position": [1.0, -0.006, 1.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(3)"
+     },
+     {
+      "position": [1.0, -0.006, 0.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(4)"
+     },
+     {
+      "position": [1.0, -0.006, -1.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(8)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(9)"
+     },
+     {
+      "position": [-1.0, -0.006, 0.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(10)"
+     },
+     {
+      "position": [-1.0, -0.006, 1.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-1/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "52": {
    "modelId": 52,
@@ -1755,7 +2179,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(2)"
+     },
+     {
+      "position": [2.3, -0.02, 1.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(3)"
+     },
+     {
+      "position": [2.3, -0.02, 0.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(4)"
+     },
+     {
+      "position": [2.3, -0.02, -1.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.1],
+      "rotation": [0.0, 0.99998987, -0.0045029637, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.1],
+      "rotation": [0.0, 0.99998987, -0.0045029637, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.1],
+      "rotation": [0.0, 0.99998987, -0.0045029637, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(8)"
+     },
+     {
+      "position": [-2.3, -0.02, -1.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(9)"
+     },
+     {
+      "position": [-2.3, -0.02, 0.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(10)"
+     },
+     {
+      "position": [-2.3, -0.02, 1.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-2/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "53": {
    "modelId": 53,
@@ -1850,7 +2354,14 @@
      "radius": 1.0,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "54": {
    "modelId": 54,
@@ -1943,7 +2454,45 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-2.12, -0.01, 1.0],
+      "rotation": [0.0051956526, -0.7070877, 0.0051956526, 0.7070877],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "power-generator/insert(0)"
+     },
+     {
+      "position": [-2.12, -0.01, 0.0],
+      "rotation": [0.0051956526, -0.7070877, 0.0051956526, 0.7070877],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "power-generator/insert(1)"
+     },
+     {
+      "position": [-2.12, -0.01, -1.0],
+      "rotation": [0.0051956526, -0.7070877, 0.0051956526, 0.7070877],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "power-generator/insert(2)"
+     },
+     {
+      "position": [0.87, -0.004, 0.0],
+      "rotation": [0.0028631876, 0.707101, -0.0028631876, 0.707101],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "power-generator/insert(3)"
+     },
+     {
+      "position": [0.87, -0.004, 1.0],
+      "rotation": [0.0028631876, 0.707101, -0.0028631876, 0.707101],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "power-generator/insert(4)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "55": {
    "modelId": 55,
@@ -2038,7 +2587,14 @@
      "radius": 1.0,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "56": {
    "modelId": 56,
@@ -2224,7 +2780,39 @@
      "radius": 2.6,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [0.0, -0.016, 2.25],
+      "rotation": [0.007688085, 0.0, 0.0, 0.99997044],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-reactor/insert(0)"
+     },
+     {
+      "position": [2.25, -0.016, 0.0],
+      "rotation": [0.0054362975, 0.7070859, -0.0054362975, 0.7070859],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-reactor/insert(1)"
+     },
+     {
+      "position": [0.0, -0.016, -2.25],
+      "rotation": [0.0, 0.99997056, -0.007679378, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-reactor/insert(2)"
+     },
+     {
+      "position": [-2.25, -0.016, 0.0],
+      "rotation": [0.0054362975, -0.7070859, 0.0054362975, 0.7070859],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-reactor/insert(3)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "57": {
    "modelId": 57,
@@ -2408,7 +2996,21 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 0.0, 2.77],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill/slot out"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "60": {
    "modelId": 60,
@@ -2501,7 +3103,21 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 0.0, 1.45],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "water-pump/slot out"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "61": {
    "modelId": 61,
@@ -2594,7 +3210,21 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, -0.045, 5.2],
+      "rotation": [0.013525846, 0.0, 0.0, 0.99990857],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-extractor/slot out"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "62": {
    "modelId": 62,
@@ -2687,7 +3317,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(2)"
+     },
+     {
+      "position": [1.0, -0.006, 1.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(3)"
+     },
+     {
+      "position": [1.0, -0.006, 0.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(4)"
+     },
+     {
+      "position": [1.0, -0.006, -1.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(8)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(9)"
+     },
+     {
+      "position": [-1.0, -0.006, 0.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(10)"
+     },
+     {
+      "position": [-1.0, -0.006, 1.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "63": {
    "modelId": 63,
@@ -2780,7 +3490,69 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(0)"
+     },
+     {
+      "position": [1.1, -0.006, 0.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(1)"
+     },
+     {
+      "position": [1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(2)"
+     },
+     {
+      "position": [-1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(3)"
+     },
+     {
+      "position": [-1.1, -0.006, 0.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(4)"
+     },
+     {
+      "position": [-1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(5)"
+     },
+     {
+      "position": [-1.0, -0.042, -3.6],
+      "rotation": [0.0, 0.9999424, -0.010733539, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(6)"
+     },
+     {
+      "position": [0.0, -0.042, -3.6],
+      "rotation": [0.0, 0.9999424, -0.010733539, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(7)"
+     },
+     {
+      "position": [1.0, -0.042, -3.6],
+      "rotation": [0.0, 0.9999424, -0.010733539, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "oil-refinery/insert(8)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "64": {
    "modelId": 64,
@@ -3005,7 +3777,63 @@
      "radius": 1.4,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.02, 2.1],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant/insert(0)"
+     },
+     {
+      "position": [0.0, -0.02, 2.1],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant/insert(1)"
+     },
+     {
+      "position": [1.0, -0.02, 2.1],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant/insert(2)"
+     },
+     {
+      "position": [2.0, -0.006, -0.9],
+      "rotation": [0.0, -0.9999903, 0.0044069034, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant/insert(3)"
+     },
+     {
+      "position": [1.0, -0.006, -0.9],
+      "rotation": [0.0, -0.9999903, 0.0044069034, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant/insert(4)"
+     },
+     {
+      "position": [0.0, -0.006, -0.9],
+      "rotation": [0.0, -0.9999903, 0.0044069034, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant/insert(5)"
+     },
+     {
+      "position": [-1.0, -0.006, -0.9],
+      "rotation": [0.0, -0.9999903, 0.0044069034, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant/insert(6)"
+     },
+     {
+      "position": [2.0, -0.02, 2.1],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant/insert(7)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "65": {
    "modelId": 65,
@@ -3098,7 +3926,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(2)"
+     },
+     {
+      "position": [1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(3)"
+     },
+     {
+      "position": [1.1, -0.006, 0.0],
+      "rotation": [0.003184076, 0.7070997, -0.0031840764, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(4)"
+     },
+     {
+      "position": [1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(8)"
+     },
+     {
+      "position": [-1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(9)"
+     },
+     {
+      "position": [-1.1, -0.006, 0.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(10)"
+     },
+     {
+      "position": [-1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-1/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "66": {
    "modelId": 66,
@@ -3191,7 +4099,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(2)"
+     },
+     {
+      "position": [1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(3)"
+     },
+     {
+      "position": [1.1, -0.006, 0.0],
+      "rotation": [0.003184076, 0.7070997, -0.0031840764, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(4)"
+     },
+     {
+      "position": [1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(8)"
+     },
+     {
+      "position": [-1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(9)"
+     },
+     {
+      "position": [-1.1, -0.006, 0.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(10)"
+     },
+     {
+      "position": [-1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-2/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "67": {
    "modelId": 67,
@@ -3284,7 +4272,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(2)"
+     },
+     {
+      "position": [1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(3)"
+     },
+     {
+      "position": [1.1, -0.006, 0.0],
+      "rotation": [0.003184076, 0.7070997, -0.0031840764, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(4)"
+     },
+     {
+      "position": [1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(8)"
+     },
+     {
+      "position": [-1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(9)"
+     },
+     {
+      "position": [-1.1, -0.006, 0.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(10)"
+     },
+     {
+      "position": [-1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-3/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "68": {
    "modelId": 68,
@@ -3414,7 +4482,14 @@
      "radius": 1.2,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "69": {
    "modelId": 69,
@@ -3563,7 +4638,69 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.0196, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(0)"
+     },
+     {
+      "position": [-2.0, -0.0196, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(1)"
+     },
+     {
+      "position": [-3.0, -0.0196, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(2)"
+     },
+     {
+      "position": [-4.8, -0.0702, 1.0],
+      "rotation": [0.009743148, -0.70703965, 0.009743148, 0.70703965],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(3)"
+     },
+     {
+      "position": [-4.8, -0.0702, 0.0],
+      "rotation": [0.009743148, -0.70703965, 0.009743148, 0.70703965],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(4)"
+     },
+     {
+      "position": [-4.8, -0.0702, -1.0],
+      "rotation": [0.009743148, -0.70703965, 0.009743148, 0.70703965],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(5)"
+     },
+     {
+      "position": [-3.0, -0.0196, -2.3],
+      "rotation": [0.0, 0.9999716, -0.0075309835, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(6)"
+     },
+     {
+      "position": [-2.0, -0.0196, -2.3],
+      "rotation": [0.0, 0.9999716, -0.0075309835, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.0196, -2.3],
+      "rotation": [0.0, 0.9999716, -0.0075309835, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "hadron-collider/insert(8)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "70": {
    "modelId": 70,
@@ -3676,7 +4813,87 @@
      "radius": 1.6,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [1.0, -0.02, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (0)"
+     },
+     {
+      "position": [0.0, -0.02, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (1)"
+     },
+     {
+      "position": [-1.0, -0.02, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (2)"
+     },
+     {
+      "position": [-2.3, -0.02, 1.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (3)"
+     },
+     {
+      "position": [-2.3, -0.02, 0.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (4)"
+     },
+     {
+      "position": [-2.3, -0.02, -1.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (5)"
+     },
+     {
+      "position": [-1.0, -0.02, -2.3],
+      "rotation": [2.1153046e-09, -0.9999716, 0.0075309835, 2.808723e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (6)"
+     },
+     {
+      "position": [0.0, -0.02, -2.3],
+      "rotation": [0.0, -0.9999716, 0.0075309835, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (7)"
+     },
+     {
+      "position": [1.0, -0.02, -2.3],
+      "rotation": [0.0, -0.9999716, 0.0075309835, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (8)"
+     },
+     {
+      "position": [2.3, -0.02, -1.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (9)"
+     },
+     {
+      "position": [2.3, -0.02, 0.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (10)"
+     },
+     {
+      "position": [2.3, -0.02, 1.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab/slot (11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "71": {
    "modelId": 71,
@@ -3792,7 +5009,14 @@
      "radius": 0.3,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "72": {
    "modelId": 72,
@@ -3885,7 +5109,39 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [2.25, -0.007, 0.0],
+      "rotation": [0.0033136366, 0.707099, -0.0033136366, 0.707099],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "em-rail-ejector/insert(0)"
+     },
+     {
+      "position": [-2.25, -0.007, 0.0],
+      "rotation": [0.0033136366, -0.707099, 0.0033136366, 0.707099],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "em-rail-ejector/insert(1)"
+     },
+     {
+      "position": [0.0, 0.0, 2.25],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "em-rail-ejector/insert(2)"
+     },
+     {
+      "position": [0.0, 0.0, -2.25],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "em-rail-ejector/insert1(3)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "73": {
    "modelId": 73,
@@ -4092,7 +5348,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 0.0, 1.41],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "ray-receiver/slot-0"
+     },
+     {
+      "position": [0.0, 0.0, -1.41],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "ray-receiver/slot-1"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "74": {
    "modelId": 74,
@@ -4276,7 +5552,33 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [0.0, -0.073, 4.9],
+      "rotation": [0.013962198, 0.0, 0.0, 0.9999026],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "vertical-launching-silo/slot-0"
+     },
+     {
+      "position": [4.9, -0.073, 0.0],
+      "rotation": [0.009872763, 0.70703787, -0.009872763, 0.70703787],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "vertical-launching-silo/slot-1"
+     },
+     {
+      "position": [-4.9, -0.073, 0.0],
+      "rotation": [0.009872763, -0.70703787, 0.009872763, 0.70703787],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "vertical-launching-silo/slot-2"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "117": {
    "modelId": 117,
@@ -4427,7 +5729,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "118": {
    "modelId": 118,
@@ -4541,7 +5850,45 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-2.12, -0.01, 1.0],
+      "rotation": [0.0051956526, -0.7070877, 0.0051956526, 0.7070877],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-power-station/insert(0)"
+     },
+     {
+      "position": [-2.12, -0.01, 0.0],
+      "rotation": [0.0051956526, -0.7070877, 0.0051956526, 0.7070877],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-power-station/insert(1)"
+     },
+     {
+      "position": [-2.12, -0.01, -1.0],
+      "rotation": [0.0051956526, -0.7070877, 0.0051956526, 0.7070877],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-power-station/insert(2)"
+     },
+     {
+      "position": [0.87, -0.004, 0.0],
+      "rotation": [0.0028631876, 0.707101, -0.0028631876, 0.707101],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-power-station/insert(3)"
+     },
+     {
+      "position": [0.87, -0.004, 1.0],
+      "rotation": [0.0028631876, 0.707101, -0.0028631876, 0.707101],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fusion-power-station/insert(4)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "119": {
    "modelId": 119,
@@ -4636,7 +5983,33 @@
      "radius": 1.5,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 0.0, 1.4],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fractionator/slot north"
+     },
+     {
+      "position": [1.4, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fractionator/slot east"
+     },
+     {
+      "position": [-1.4, 0.0, 0.0],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "fractionator/slot west"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "120": {
    "modelId": 120,
@@ -4764,7 +6137,37 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.0, -0.25],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [0.6, 0.2, 4.8],
+      "hierarchy": "spray-coater/addonJoint-0"
+     },
+     {
+      "position": [0.0, 1.3333, -1.25],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [0.6, 0.2, 1.4],
+      "hierarchy": "spray-coater/addonJoint-1"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     },
+     {
+      "position": [0.0, 1.3333, -1.25]
+     }
+    ],
+    "addonAreaSize": [
+     [0.3, 0.1, 2.4],
+     [0.3, 0.1, 0.7]
+    ]
+   }
   },
   "121": {
    "modelId": 121,
@@ -4927,7 +6330,39 @@
      "radius": 1.5,
      "derivationExact": false
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 0.0, 1.4],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-tank/slot north"
+     },
+     {
+      "position": [1.4, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-tank/slot east"
+     },
+     {
+      "position": [0.0, 0.0, -1.4],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-tank/slot south"
+     },
+     {
+      "position": [-1.4, 0.0, 0.0],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "storage-tank/slot west"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "194": {
    "modelId": 194,
@@ -5020,7 +6455,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(2)"
+     },
+     {
+      "position": [1.0, -0.006, 1.0],
+      "rotation": [0.0030482926, 0.7071002, -0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(3)"
+     },
+     {
+      "position": [1.0, -0.006, 0.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(4)"
+     },
+     {
+      "position": [1.0, -0.006, -1.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(8)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(9)"
+     },
+     {
+      "position": [-1.0, -0.006, 0.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(10)"
+     },
+     {
+      "position": [-1.0, -0.006, 1.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-2/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "208": {
    "modelId": 208,
@@ -5092,7 +6607,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [0.6, 0.2, 1.4],
+      "hierarchy": "monitor/addonJoint-0"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     }
+    ],
+    "addonAreaSize": [
+     [0.3, 0.1, 0.7]
+    ]
+   }
   },
   "255": {
    "modelId": 255,
@@ -5282,7 +6817,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "256": {
    "modelId": 256,
@@ -5557,7 +7099,69 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [-1.258, 0.0, 1.8],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(1)"
+     },
+     {
+      "position": [0.0, 0.0, 1.8],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(2)"
+     },
+     {
+      "position": [1.258, 0.0, 1.8],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(3)"
+     },
+     {
+      "position": [1.8, 0.0, 1.258],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(4)"
+     },
+     {
+      "position": [1.8, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(5)"
+     },
+     {
+      "position": [1.8, 0.0, -1.258],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(6)"
+     },
+     {
+      "position": [-1.8, 0.0, -1.258],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(7)"
+     },
+     {
+      "position": [-1.8, 0.0, 0.0],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(8)"
+     },
+     {
+      "position": [-1.8, 0.0, 1.258],
+      "rotation": [0.0, -0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "mining-drill-mk2/slot(9)"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "257": {
    "modelId": 257,
@@ -5706,7 +7310,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [
+     {
+      "position": [0.0, 0.0, 0.25],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "piler/slot(1)"
+     },
+     {
+      "position": [0.0, 0.0, -0.25],
+      "rotation": [0.0, -1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "piler/slot(2)"
+     }
+    ],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "371": {
    "modelId": 371,
@@ -5799,7 +7423,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "delivery-machine/addonJoint-0"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     }
+    ],
+    "addonAreaSize": [
+     [0.5, 0.5, 0.5]
+    ]
+   }
   },
   "373": {
    "modelId": 373,
@@ -5983,7 +7627,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "374": {
    "modelId": 374,
@@ -6076,7 +7727,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 0.19999999, 2.516],
+      "hierarchy": "turret-gauss/addonJoint-0"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     }
+    ],
+    "addonAreaSize": [
+     [0.5, 0.099999994, 1.258]
+    ]
+   }
   },
   "375": {
    "modelId": 375,
@@ -6330,7 +8001,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.2, 0.19999999, 5.032],
+      "hierarchy": "turret-cannon/addonJoint-0"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     }
+    ],
+    "addonAreaSize": [
+     [0.6, 0.099999994, 2.516]
+    ]
+   }
   },
   "376": {
    "modelId": 376,
@@ -6555,7 +8246,63 @@
      "radius": 1.4,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.02, 2.1],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant-2/insert(0)"
+     },
+     {
+      "position": [0.0, -0.02, 2.1],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant-2/insert(1)"
+     },
+     {
+      "position": [1.0, -0.02, 2.1],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant-2/insert(2)"
+     },
+     {
+      "position": [2.0, -0.006, -0.9],
+      "rotation": [0.0, -0.9999903, 0.0044069034, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant-2/insert(3)"
+     },
+     {
+      "position": [1.0, -0.006, -0.9],
+      "rotation": [0.0, -0.9999903, 0.0044069034, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant-2/insert(4)"
+     },
+     {
+      "position": [0.0, -0.006, -0.9],
+      "rotation": [0.0, -0.9999903, 0.0044069034, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant-2/insert(5)"
+     },
+     {
+      "position": [-1.0, -0.006, -0.9],
+      "rotation": [0.0, -0.9999903, 0.0044069034, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant-2/insert(6)"
+     },
+     {
+      "position": [2.0, -0.02, 2.1],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "chemical-plant-2/insert(7)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "402": {
    "modelId": 402,
@@ -6774,7 +8521,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "403": {
    "modelId": 403,
@@ -6993,7 +8747,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "407": {
    "modelId": 407,
@@ -7247,7 +9008,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.1, 0.19999999, 5.2],
+      "hierarchy": "turret-missile/addonJoint-0"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     }
+    ],
+    "addonAreaSize": [
+     [0.55, 0.099999994, 2.6]
+    ]
+   }
   },
   "408": {
    "modelId": 408,
@@ -7501,7 +9282,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 0.2, 5.032],
+      "hierarchy": "turret-plasma/addonJoint-0"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     }
+    ],
+    "addonAreaSize": [
+     [0.5, 0.1, 2.516]
+    ]
+   }
   },
   "422": {
    "modelId": 422,
@@ -7687,7 +9488,27 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.100001, 0.19999999, 5.2000036],
+      "hierarchy": "turret-disturb/addonJoint-0"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     }
+    ],
+    "addonAreaSize": [
+     [0.5500005, 0.099999994, 2.6000018]
+    ]
+   }
   },
   "453": {
    "modelId": 453,
@@ -7815,7 +9636,69 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [2.2, 0.0, 1.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (0)"
+     },
+     {
+      "position": [2.2, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (1)"
+     },
+     {
+      "position": [2.2, 0.0, -1.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (2)"
+     },
+     {
+      "position": [1.0, 0.0, -2.3],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (3)"
+     },
+     {
+      "position": [0.0, 0.0, -2.3],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (4)"
+     },
+     {
+      "position": [-1.0, 0.0, -2.3],
+      "rotation": [0.0, 1.0, 0.0, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (5)"
+     },
+     {
+      "position": [-2.2, 0.0, -1.0],
+      "rotation": [0.0, 0.7071068, 0.0, -0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (6)"
+     },
+     {
+      "position": [-2.2, 0.0, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, -0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (7)"
+     },
+     {
+      "position": [-2.2, 0.0, 1.0],
+      "rotation": [0.0, 0.7071068, 0.0, -0.7071068],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "battle-base/slot (8)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "455": {
    "modelId": 455,
@@ -7928,7 +9811,87 @@
      "radius": 1.6,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [1.0, -0.02, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (0)"
+     },
+     {
+      "position": [0.0, -0.02, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (1)"
+     },
+     {
+      "position": [-1.0, -0.02, 2.3],
+      "rotation": [0.0075309835, 0.0, 0.0, 0.9999716],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (2)"
+     },
+     {
+      "position": [-2.3, -0.02, 1.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (3)"
+     },
+     {
+      "position": [-2.3, -0.02, 0.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (4)"
+     },
+     {
+      "position": [-2.3, -0.02, -1.0],
+      "rotation": [0.00532521, -0.70708674, 0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (5)"
+     },
+     {
+      "position": [-1.0, -0.02, -2.3],
+      "rotation": [2.1153046e-09, -0.9999716, 0.0075309835, 2.808723e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (6)"
+     },
+     {
+      "position": [0.0, -0.02, -2.3],
+      "rotation": [0.0, -0.9999716, 0.0075309835, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (7)"
+     },
+     {
+      "position": [1.0, -0.02, -2.3],
+      "rotation": [0.0, -0.9999716, 0.0075309835, 0.0],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (8)"
+     },
+     {
+      "position": [2.3, -0.02, -1.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (9)"
+     },
+     {
+      "position": [2.3, -0.02, 0.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (10)"
+     },
+     {
+      "position": [2.3, -0.02, 1.0],
+      "rotation": [0.00532521, 0.70708674, -0.00532521, 0.70708674],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "lab-2/slot (11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "456": {
    "modelId": 456,
@@ -8021,7 +9984,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.1],
+      "rotation": [0.0045029637, 0.0, 0.0, 0.99998987],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(2)"
+     },
+     {
+      "position": [1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(3)"
+     },
+     {
+      "position": [1.1, -0.006, 0.0],
+      "rotation": [0.003184076, 0.7070997, -0.0031840764, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(4)"
+     },
+     {
+      "position": [1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, 0.7070996, -0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.1],
+      "rotation": [1.2647937e-09, -0.99998987, 0.0045029637, 2.8087743e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(8)"
+     },
+     {
+      "position": [-1.1, -0.006, -1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(9)"
+     },
+     {
+      "position": [-1.1, -0.006, 0.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(10)"
+     },
+     {
+      "position": [-1.1, -0.006, 1.0],
+      "rotation": [0.0031840762, -0.7070996, 0.0031840762, 0.7070996],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "assembler-mk-4/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "457": {
    "modelId": 457,
@@ -8114,7 +10157,87 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [
+     {
+      "position": [-1.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(0)"
+     },
+     {
+      "position": [0.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(1)"
+     },
+     {
+      "position": [1.0, -0.006, 1.0],
+      "rotation": [0.0043109367, 0.0, 0.0, 0.9999907],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(2)"
+     },
+     {
+      "position": [1.0, -0.006, 1.0],
+      "rotation": [0.0030482926, 0.7071002, -0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(3)"
+     },
+     {
+      "position": [1.0, -0.006, 0.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(4)"
+     },
+     {
+      "position": [1.0, -0.006, -1.0],
+      "rotation": [0.0030482926, 0.7071003, -0.0030482928, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(5)"
+     },
+     {
+      "position": [1.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(6)"
+     },
+     {
+      "position": [0.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(7)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.0],
+      "rotation": [1.2108571e-09, -0.9999907, 0.0043109367, 2.8087766e-07],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(8)"
+     },
+     {
+      "position": [-1.0, -0.006, -1.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(9)"
+     },
+     {
+      "position": [-1.0, -0.006, 0.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(10)"
+     },
+     {
+      "position": [-1.0, -0.006, 1.0],
+      "rotation": [0.0030482926, -0.7071002, 0.0030482926, 0.7071002],
+      "localScale": [1.0, 1.0, 1.0],
+      "hierarchy": "smelter-3/insert(11)"
+     }
+    ],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "482": {
    "modelId": 482,
@@ -8300,7 +10423,27 @@
      "radius": 1.25,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [
+     {
+      "position": [0.0, 0.1, 0.0],
+      "rotation": [0.0, 0.7071068, 0.0, 0.7071068],
+      "localScale": [1.0, 0.19999999, 2.516],
+      "hierarchy": "turret-plasma-ground/addonJoint-0"
+     }
+    ],
+    "addonAreaPoses": [
+     {
+      "position": [0.0, 0.0, 0.0]
+     }
+    ],
+    "addonAreaSize": [
+     [0.5, 0.099999994, 1.258]
+    ]
+   }
   },
   "483": {
    "modelId": 483,
@@ -8372,7 +10515,14 @@
      "q": [0.0, 0.0, 0.0, 1.0],
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   },
   "664": {
    "modelId": 664,
@@ -8467,7 +10617,14 @@
      "radius": 0.2,
      "derivationExact": true
     }
-   ]
+   ],
+   "prefabGeometry": {
+    "portPoses": [],
+    "slotPoses": [],
+    "addonAreaColPoses": [],
+    "addonAreaPoses": [],
+    "addonAreaSize": []
+   }
   }
  }
 }

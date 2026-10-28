@@ -24,3 +24,34 @@ func TestCatalogCoversSplitterVariants(t *testing.T) {
 		}
 	}
 }
+
+// TestCatalogCoversPrefabPortGeometry 职责：确保分流器、机器和喷涂机的 PrefabDesc 端口事实已进入目录。
+// 使用：验证动态对象适配阶段不会因为资源提取遗漏而悄悄使用默认端口。
+// 边界：只验证离线目录的字段数量和基本尺寸，不宣称分拣器扫掠或 Unity Physics 已通过。
+func TestCatalogCoversPrefabPortGeometry(t *testing.T) {
+	catalog, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name       string
+		item       int16
+		model      int16
+		ports      int
+		slots      int
+		addonAreas int
+	}{
+		{name: "splitter", item: 2020, model: 39, ports: 4},
+		{name: "assembler", item: 2303, model: 65, slots: 12},
+		{name: "spray-coater", item: 2030, model: 208, addonAreas: 1},
+	}
+	for _, tc := range cases {
+		geometry, err := catalog.Geometry(tc.item, tc.model)
+		if err != nil {
+			t.Fatalf("%s geometry: %v", tc.name, err)
+		}
+		if len(geometry.PortPoses) != tc.ports || len(geometry.SlotPoses) != tc.slots || len(geometry.AddonAreaColPoses) != tc.addonAreas {
+			t.Fatalf("%s geometry counts = ports %d, slots %d, addon %d", tc.name, len(geometry.PortPoses), len(geometry.SlotPoses), len(geometry.AddonAreaColPoses))
+		}
+	}
+}
