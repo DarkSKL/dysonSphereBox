@@ -344,31 +344,8 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		surfacePlan, areas = surface.plan, surface.areas
 		primaryArea = int32(surfacePlan.PrimaryAreaIndex)
 		width, height = float64(surfacePlan.LayoutWidth), float64(surfacePlan.LayoutHeight)
-		var validationErr error
-		for candidateIndex, candidate := range surface.anchorCandidates {
-			if candidateIndex > 0 {
-				surface.reanchorSurfaceEncoding(candidate)
-			}
-			if err := surface.validateBeltDistances(records); err != nil {
-				validationErr = err
-				if !surfaceAnchorRetryable(err) {
-					return result, err
-				}
-				continue
-			}
-			surface.plan.BeltConnectionsChecked = true
-			if err := surface.validateStaticColliders(ctx, records); err != nil {
-				validationErr = err
-				if !surfaceAnchorRetryable(err) {
-					return result, err
-				}
-				continue
-			}
-			validationErr = nil
-			break
-		}
-		if validationErr != nil {
-			return result, validationErr
+		if err := surface.validateAnchorCandidates(ctx, records); err != nil {
+			return result, err
 		}
 		b.warnings = append(b.warnings, "已检查静态建筑的三维建造盒和传送带接线距离；传送带路径及分拣器的完整放置规则仍在验证中。")
 	}

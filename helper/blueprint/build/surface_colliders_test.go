@@ -4,11 +4,31 @@ package build
 // 使用：球面放置预检回归；边界：这些测试没有运行游戏物理场景。
 
 import (
+	"errors"
 	"testing"
 
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build/placement"
 )
+
+// TestStaticColliderResultDoesNotDependOnRecordNumber 职责：对照普通索引和 3999/4000 的冲突与分离结果；使用：排除编号边界误判；边界：合成熔炉样本不冒充用户原始失败蓝图。
+func TestStaticColliderResultDoesNotDependOnRecordNumber(t *testing.T) {
+	for _, distance := range []float32{1, 4} {
+		for _, start := range []int32{0, 3999} {
+			encoding := &surfaceEncoding{areas: []blueprint.Area{{AreaSegments: 200, ParentIndex: -1}}, plan: &SurfacePlan{GridSegment: 200}}
+			records := []blueprint.Building{{Index: start, ItemID: 2302, ModelIndex: 62}, {Index: start + 1, ItemID: 2302, ModelIndex: 62, LocalOffset: blueprint.Point{X: distance}}}
+			err := encoding.validateStaticColliders(t.Context(), records)
+			if distance == 1 {
+				var failure *blueprint.Error
+				if !errors.As(err, &failure) || failure.Code != "GEN_E_COLLISION" {
+					t.Fatalf("overlapping pair %d/%d was not rejected: %v", start, start+1, err)
+				}
+			} else if err != nil {
+				t.Fatalf("separated pair %d/%d was rejected: %v", start, start+1, err)
+			}
+		}
+	}
+}
 
 // TestStaticColliderUsesFullVerticalExtent 职责：保证 Z 不同不能绕过真实体积检查；使用：静态出口回归；边界：研究站合法堆叠另有真实盒净空。
 func TestStaticColliderUsesFullVerticalExtent(t *testing.T) {

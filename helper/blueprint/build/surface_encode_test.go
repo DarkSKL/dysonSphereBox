@@ -174,6 +174,7 @@ func TestSingleSurfaceAreaKeepsPlacementLatitudeRange(t *testing.T) {
 		if result.SurfacePlan.AnchorLatitudeGrid != target {
 			t.Fatalf("single-area anchor changed explicit target: target=%d anchor=%d", target, result.SurfacePlan.AnchorLatitudeGrid)
 		}
+		exportSurfaceContract(t, fmt.Sprintf("anchor-%d", target), document, result.SurfacePlan)
 	}
 }
 
@@ -221,7 +222,15 @@ func exportSurfaceContract(t *testing.T, name string, document blueprint.Documen
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.MarshalIndent(map[string]interface{}{"document": document, "surfacePlan": plan}, "", "  ")
+	positions, err := (&surfaceEncoding{areas: document.Areas, plan: plan}).surfaceWorldPositions(document.Buildings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	world := make([]blueprint.Point, len(positions))
+	for i, position := range positions {
+		world[i] = blueprint.Point{X: float32(position.x), Y: float32(position.y), Z: float32(position.z)}
+	}
+	data, err := json.MarshalIndent(map[string]interface{}{"document": document, "surfacePlan": plan, "worldPositions": world}, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}

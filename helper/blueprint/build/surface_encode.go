@@ -1,11 +1,12 @@
 package build
 
-// 文件职责：把有限纬带装箱结果转换为原生多 Area 元数据与建筑局部坐标。
-// 使用：Generate 保留完整产线块，finish 在统一编号之前执行。
+// 文件职责：为保持旧平面排版的完整蓝图选择单 Area 粘贴锚点。
+// 使用：finish 在统一编号之前计算占地，在最终预检时尝试候选锚点。
 // 边界：只编码原生格网，不写入地心坐标；尚未完成的游戏碰撞验证由 SurfacePlan 单独披露。
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -13,7 +14,7 @@ import (
 	"DysonSphereBox/helper/blueprint"
 )
 
-// surfaceEncoding 职责：保存装箱到蓝图记录的映射；使用：finish 的共同出口；边界：建筑仍按原顺序编号。
+// surfaceEncoding 职责：保存整块平面蓝图的区域和候选锚点；使用：finish 的共同出口；边界：建筑仍按原顺序编号。
 type surfaceEncoding struct {
 	// areas 职责：保存按南到北排列的原生区域；使用：文档写出；边界：父区域朝主区域连接。
 	areas []blueprint.Area
@@ -31,8 +32,7 @@ type surfaceEncoding struct {
 // 逻辑流：1. 计算完整平面 footprint => 2. 选择可容纳的粘贴纬圈 => 3. 仅平移到旧平面原点 => 4. 生成单 Area 与局部坐标映射。
 func (b *builder) prepareSurfaceEncoding(layout *SurfaceLayout) (*surfaceEncoding, error) {
 	// 球面策略只选择整块蓝图的粘贴锚点；建筑仍沿用旧的全局平面 X/Y 排版。
-	// 这样可以保持建筑顺序、物流连接和建筑间距，避免把相邻产线块重新 shelf 装箱后制造
-	// 游戏实际不存在的 3999/4000 类三维建造盒冲突。
+	// 只做与旧流程相同的整体归零；具体建筑冲突仍须按最终姿态检查，不能由编号推断原因。
 	minimum, maximum := bounds(b.all)
 	shift(b.all, -minimum.x, -minimum.y, 0)
 	width := int(math.Ceil(maximum.x-minimum.x)) + 1
@@ -95,7 +95,7 @@ func surfaceAnchorCandidates(mode string, segment, preferred int, expand bool, w
 		}
 	}
 	if mode == "autoTropic" {
-		// 自动模式优先靠近赤道且留有更大的环向余量，再比较纬向余量。
+		// 自动模式从赤道向两极搜索，不受指定锚点的禁止回退选项限制。
 		candidates = candidates[:0]
 		for candidate := -maxLatitude; candidate <= maxLatitude; candidate++ {
 			candidates = append(candidates, candidate)
@@ -106,7 +106,7 @@ func surfaceAnchorCandidates(mode string, segment, preferred int, expand bool, w
 	}
 	valid := make([]int, 0, len(candidates))
 	for i, candidate := range candidates {
-		if i > 0 && !expand {
+		if i > 0 && mode == "explicitTropic" && !expand {
 			break
 		}
 		if candidateFitsRing(candidate, 0, height-1, width, segment) {
@@ -116,7 +116,7 @@ func surfaceAnchorCandidates(mode string, segment, preferred int, expand bool, w
 	return valid
 }
 
-// reanchorSurfaceEncoding 职责：切换整块蓝图的建议粘贴纬圈；使用：候选静态碰撞失败时重试；边界：Area 结构和全部建筑局部坐标保持不变。
+// reanchorSurfaceEncoding 职责：同步切换建议纬圈、区域段数和预检状态；使用：候选静态碰撞失败时重试；边界：全部建筑局部坐标、连接与区域尺寸保持不变。
 func (encoding *surfaceEncoding) reanchorSurfaceEncoding(latitude int) {
 	encoding.plan.AnchorLatitudeGrid = latitude
 	encoding.plan.SelectedLatitudeGrid = latitude
@@ -128,10 +128,32 @@ func (encoding *surfaceEncoding) reanchorSurfaceEncoding(latitude int) {
 		encoding.plan.Bands[0].LongitudeSegments = longitudeSegmentCount(latitude, encoding.plan.GridSegment)
 	}
 	encoding.plan.LongitudeSegments = longitudeSegmentCount(latitude, encoding.plan.GridSegment)
+	encoding.areas[encoding.plan.PrimaryAreaIndex].AreaSegments = int16(encoding.plan.LongitudeSegments)
 	encoding.plan.RingGridCells = encoding.plan.LongitudeSegments * 5
 	encoding.plan.StaticCollidersChecked = false
 	encoding.plan.BeltConnectionsChecked = false
 	encoding.plan.CollisionCoverage = "none"
+	encoding.plan.ColliderGameVersion = ""
+}
+
+// validateAnchorCandidates 职责：对完整平面蓝图逐个执行锚点硬约束预检；使用：finish 的编码出口；边界：空候选、取消或未知规则立即拒绝，只有几何冲突和接线距离失败可以换圈。
+func (encoding *surfaceEncoding) validateAnchorCandidates(ctx context.Context, records []blueprint.Building) error {
+	var lastError error = &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "没有可验证的整块蓝图锚点"}
+	for _, latitude := range encoding.anchorCandidates {
+		if ctx.Err() != nil {
+			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "锚点预检已取消或超时"}
+		}
+		encoding.reanchorSurfaceEncoding(latitude)
+		lastError = encoding.validateBeltDistancesContext(ctx, records)
+		if lastError == nil {
+			encoding.plan.BeltConnectionsChecked = true
+			lastError = encoding.validateStaticColliders(ctx, records)
+		}
+		if lastError == nil || !surfaceAnchorRetryable(lastError) {
+			return lastError
+		}
+	}
+	return lastError
 }
 
 // applyRecords 职责：将最终编号记录转换为所属 Area 的 float32 局部坐标；使用：编码前；边界：不改变连接编号或原始装配视图，量化后越界拒绝。

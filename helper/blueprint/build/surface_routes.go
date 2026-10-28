@@ -5,6 +5,7 @@ package build
 // 边界：目前针对原版半径 200、未旋转的建议锚点；不模拟科技、地形或分拣器端口修正。
 
 import (
+	"context"
 	"fmt"
 	"math"
 
@@ -74,6 +75,14 @@ func (encoding *surfaceEncoding) surfaceWorldPositions(records []blueprint.Build
 
 // validateBeltDistances 职责：检查游戏 TooFar 对应的带连接距离；使用：球面记录出口；边界：不把距离通过当作路线碰撞或科技高度通过。
 func (encoding *surfaceEncoding) validateBeltDistances(records []blueprint.Building) error {
+	return encoding.validateBeltDistancesContext(context.Background(), records)
+}
+
+// validateBeltDistancesContext 职责：检查球面带接线距离并响应生成取消；使用：候选锚点预检；边界：只验证已知距离，不能替代路线或端口碰撞规则。
+func (encoding *surfaceEncoding) validateBeltDistancesContext(ctx context.Context, records []blueprint.Building) error {
+	if ctx.Err() != nil {
+		return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "传送带距离检查已取消或超时"}
+	}
 	positions, err := encoding.surfaceWorldPositions(records)
 	if err != nil {
 		return err
@@ -83,6 +92,9 @@ func (encoding *surfaceEncoding) validateBeltDistances(records []blueprint.Build
 		byIndex[record.Index] = i
 	}
 	for i, record := range records {
+		if ctx.Err() != nil {
+			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "传送带距离检查已取消或超时"}
+		}
 		if !surfaceIsBelt(record.ItemID) {
 			continue
 		}

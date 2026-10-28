@@ -534,6 +534,42 @@ foreach ($file in $documentFiles) {
         if ([int]$areas[$primary].areaSegments -ne $rootCount) {
             Write-Host "  [WARN] 主区域 areaSegments=$($areas[$primary].areaSegments) 与根纬向格 $root 的游戏段数 $rootCount 不同"
         }
+        # 生成器坐标交叉核对 职责：对导出证据中的每条首端原始坐标直接调用 DLL 并比较 Go 结果。
+        # 使用：DSBOX_SURFACE_EVIDENCE_DIR 导出的单 Area 文档；边界：yaw=0、半径200，不包含 RefreshBuildPreview 后续分拣器端口修正与 Physics。
+        $world = Get-OptionalProperty $json 'worldPositions'
+        if ($null -ne $world) {
+            if ($areas.Count -ne 1) { throw '逐建筑世界坐标交叉核对目前仅支持单 Area' }
+            $nativeDocument = [Text.Json.JsonDocument]::Parse([IO.File]::ReadAllText($file.FullName))
+            try {
+                $rawBuildings = $nativeDocument.RootElement.GetProperty('document').GetProperty('buildings')
+                $rawWorld = $nativeDocument.RootElement.GetProperty('worldPositions')
+                if ($rawBuildings.GetArrayLength() -ne $rawWorld.GetArrayLength()) { throw '世界坐标证据条数与建筑条数不一致' }
+                $rootRad = Get-GridLatitudeRad $root $segment
+                $lonSegments = Get-CountFloat $rootRad $segment
+                $lonStep = [single]$mLonRadPerGrid.Invoke($null, @($lonSegments, $segment))
+                $latStep = Get-LatRadPerGrid $segment
+                $mismatches = 0
+                for ($i = 0; $i -lt $rawBuildings.GetArrayLength(); $i++) {
+                    $offset = $rawBuildings[$i].GetProperty('localOffset')
+                    $lng = [single]($offset.GetProperty('x').GetSingle() * $lonStep)
+                    $lat = [single]($rootRad + [single]($offset.GetProperty('y').GetSingle() * $latStep))
+                    $radius = [single]([single]([single]($offset.GetProperty('z').GetSingle() * $heightStep) + $heightBias) + $planetRadius)
+                    $dir = $mGetDir.Invoke($null, @($lng, $lat))
+                    $position = $mVectorScale.Invoke($null, @($dir, $radius))
+                    foreach ($axis in 'x', 'y', 'z') {
+                        $actual = $rawWorld[$i].GetProperty($axis).GetSingle()
+                        $ulp = [Math]::Abs([long][BitConverter]::SingleToInt32Bits($actual) - [long][BitConverter]::SingleToInt32Bits([single]$position.$axis))
+                        if ($ulp -gt 1) {
+                            $mismatches++
+                            if ($mismatches -le 3) { Write-Host "    建筑 $i 轴 $axis：Go=$actual DLL=$($position.$axis) 差异=$ulp ULP" }
+                        }
+                    }
+                }
+                Write-Check ($mismatches -eq 0) "$label 首端原始世界坐标 $($rawBuildings.GetArrayLength()) 条与 DLL 一致（容差1 ULP，差异 $mismatches）"
+            } finally {
+                $nativeDocument.Dispose()
+            }
+        }
     } catch {
         Write-Check $false "$label 无法检查：$($_.Exception.Message)"
     }
