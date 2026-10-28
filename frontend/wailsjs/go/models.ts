@@ -412,6 +412,24 @@ export namespace build {
 	        this.buildingIndices = source["buildingIndices"];
 	    }
 	}
+	export class SurfaceLayout {
+	    mode: string;
+	    gridSegment: number;
+	    latitudeGridIndex: number;
+	    expandAdjacent: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SurfaceLayout(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.gridSegment = source["gridSegment"];
+	        this.latitudeGridIndex = source["latitudeGridIndex"];
+	        this.expandAdjacent = source["expandAdjacent"];
+	    }
+	}
 	export class Setting {
 	    maxMachineInALine: number;
 	    beltLv: number;
@@ -475,6 +493,7 @@ export namespace build {
 	    mode: number;
 	    setting: Setting;
 	    name: string;
+	    surfaceLayout?: SurfaceLayout;
 	
 	    static createFrom(source: any = {}) {
 	        return new Request(source);
@@ -486,6 +505,93 @@ export namespace build {
 	        this.mode = source["mode"];
 	        this.setting = this.convertValues(source["setting"], Setting);
 	        this.name = source["name"];
+	        this.surfaceLayout = this.convertValues(source["surfaceLayout"], SurfaceLayout);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SurfaceBandPlan {
+	    areaIndex: number;
+	    minLatitudeGrid: number;
+	    maxLatitudeGrid: number;
+	    longitudeSegments: number;
+	    buildingCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SurfaceBandPlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.areaIndex = source["areaIndex"];
+	        this.minLatitudeGrid = source["minLatitudeGrid"];
+	        this.maxLatitudeGrid = source["maxLatitudeGrid"];
+	        this.longitudeSegments = source["longitudeSegments"];
+	        this.buildingCount = source["buildingCount"];
+	    }
+	}
+	export class SurfacePlan {
+	    anchorLatitudeGrid: number;
+	    primaryAreaIndex: number;
+	    bands: SurfaceBandPlan[];
+	    mode: string;
+	    gridSegment: number;
+	    preferredLatitudeGrid: number;
+	    selectedLatitudeGrid: number;
+	    latitudeDegrees: number;
+	    longitudeSegments: number;
+	    ringGridCells: number;
+	    layoutWidth: number;
+	    layoutHeight: number;
+	    shiftedGridRows: number;
+	    machineFootprintsChecked: boolean;
+	    beltConnectionsChecked: boolean;
+	    staticCollidersChecked: boolean;
+	    colliderGameVersion: string;
+	    collisionCoverage: string;
+	    placementStatus: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SurfacePlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.anchorLatitudeGrid = source["anchorLatitudeGrid"];
+	        this.primaryAreaIndex = source["primaryAreaIndex"];
+	        this.bands = this.convertValues(source["bands"], SurfaceBandPlan);
+	        this.mode = source["mode"];
+	        this.gridSegment = source["gridSegment"];
+	        this.preferredLatitudeGrid = source["preferredLatitudeGrid"];
+	        this.selectedLatitudeGrid = source["selectedLatitudeGrid"];
+	        this.latitudeDegrees = source["latitudeDegrees"];
+	        this.longitudeSegments = source["longitudeSegments"];
+	        this.ringGridCells = source["ringGridCells"];
+	        this.layoutWidth = source["layoutWidth"];
+	        this.layoutHeight = source["layoutHeight"];
+	        this.shiftedGridRows = source["shiftedGridRows"];
+	        this.machineFootprintsChecked = source["machineFootprintsChecked"];
+	        this.beltConnectionsChecked = source["beltConnectionsChecked"];
+	        this.staticCollidersChecked = source["staticCollidersChecked"];
+	        this.colliderGameVersion = source["colliderGameVersion"];
+	        this.collisionCoverage = source["collisionCoverage"];
+	        this.placementStatus = source["placementStatus"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -541,6 +647,7 @@ export namespace build {
 	    bindings: ProductionBinding[];
 	    sharedBuildingIndices: number[];
 	    zones: Zone[];
+	    surfacePlan?: SurfacePlan;
 	
 	    static createFrom(source: any = {}) {
 	        return new Result(source);
@@ -558,6 +665,7 @@ export namespace build {
 	        this.bindings = this.convertValues(source["bindings"], ProductionBinding);
 	        this.sharedBuildingIndices = source["sharedBuildingIndices"];
 	        this.zones = this.convertValues(source["zones"], Zone);
+	        this.surfacePlan = this.convertValues(source["surfacePlan"], SurfacePlan);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -578,6 +686,9 @@ export namespace build {
 		    return a;
 		}
 	}
+	
+	
+	
 	
 
 }
@@ -2905,6 +3016,7 @@ export namespace factorycontract {
 	    request: quant.Request;
 	    plan: quant.Result;
 	    setting: build.Setting;
+	    surfaceLayout?: build.SurfaceLayout;
 	    mode: number;
 	
 	    static createFrom(source: any = {}) {
@@ -2917,6 +3029,7 @@ export namespace factorycontract {
 	        this.request = this.convertValues(source["request"], quant.Request);
 	        this.plan = this.convertValues(source["plan"], quant.Result);
 	        this.setting = this.convertValues(source["setting"], build.Setting);
+	        this.surfaceLayout = this.convertValues(source["surfaceLayout"], build.SurfaceLayout);
 	        this.mode = source["mode"];
 	    }
 	

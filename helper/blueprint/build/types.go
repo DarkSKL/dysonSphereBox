@@ -66,6 +66,81 @@ type Request struct {
 	Setting Setting `json:"setting"`
 	// Name 职责：保存蓝图标题；使用：桥接传递；边界：保持生成时序。
 	Name string `json:"name"`
+	// SurfaceLayout 职责：保存行星网格布局偏好；使用：生成器选择建议纬圈与检查单区容量；边界：缺省时保持旧平面兼容，不等价于真实碰撞验收。
+	SurfaceLayout *SurfaceLayout `json:"surfaceLayout,omitempty"`
+}
+
+// SurfaceLayout 描述目标行星网格与纬圈选择偏好。
+// 职责：为蓝图的局部 XY 网格选择可容纳完整单区域 footprint 的安全纬圈。
+// 使用：量化蓝图工作台传入 Generate；缺省模式由旧调用保留平面行为。
+// 边界：选择结果是放置建议；当前不把纬圈绝对位置编码进根 Area，也不替代游戏 Physics 碰撞检查。
+type SurfaceLayout struct {
+	// Mode 职责：选择 planar、autoTropic 或 explicitTropic；使用：生成流程决定是否运行纬圈网格预检；边界：未知值拒绝。
+	Mode string `json:"mode"`
+	// GridSegment 职责：保存目标行星纬向分段数；使用：复刻当前 PlanetGrid 的离散经纬网格；边界：必须位于支持范围。
+	GridSegment int `json:"gridSegment"`
+	// LatitudeGridIndex 职责：保存目标纬圈中心索引；使用：explicitTropic 模式定位首选圈；边界：单位为纬度细分格，不是度数。
+	LatitudeGridIndex int `json:"latitudeGridIndex"`
+	// ExpandAdjacent 职责：允许容量不足的后续独立产线块分配到相邻纬带；使用：有限容量装箱；边界：不拆开块内连接。
+	ExpandAdjacent bool `json:"expandAdjacent"`
+}
+
+// SurfaceBandPlan 职责：描述一个实际使用的恒定经度段区域；使用：复现多 Area 编码与展示容量；边界：纬度是绝对细格索引，不能作为预览局部坐标。
+type SurfaceBandPlan struct {
+	// AreaIndex 职责：标识蓝图区域；使用：关联建筑记录；边界：最多64区。
+	AreaIndex int `json:"areaIndex"`
+	// MinLatitudeGrid 职责：记录区域南界；使用：游戏坐标验证；边界：闭区间。
+	MinLatitudeGrid int `json:"minLatitudeGrid"`
+	// MaxLatitudeGrid 职责：记录区域北界；使用：游戏坐标验证；边界：闭区间。
+	MaxLatitudeGrid int `json:"maxLatitudeGrid"`
+	// LongitudeSegments 职责：记录区域的经度段数；使用：Area比例验证；边界：区域内保持不变。
+	LongitudeSegments int `json:"longitudeSegments"`
+	// BuildingCount 职责：记录实际分配建筑数；使用：分项核对；边界：含块内全部辅助设施。
+	BuildingCount int `json:"buildingCount"`
+}
+
+// SurfacePlan 汇报按游戏纬圈分段表选出的建议落点网格。
+// 职责：向前端解释目标纬圈容量和相对用户偏好调整量。
+// 使用：生成成功后展示建议放置圈；边界：不声称已通过建筑碰撞 Physics 检查。
+type SurfacePlan struct {
+	// AnchorLatitudeGrid 职责：记录根区域原点的建议纬度；使用：按当前游戏光标锚点验证；边界：不是绝对位置锁定。
+	AnchorLatitudeGrid int `json:"anchorLatitudeGrid"`
+	// PrimaryAreaIndex 职责：记录目标纬带对应的主区域；使用：粘贴与坐标核对；边界：不一定是最南区域。
+	PrimaryAreaIndex int `json:"primaryAreaIndex"`
+	// Bands 职责：保存实际使用的纬带；使用：展示扩展与按区域验证；边界：按南到北排序。
+	Bands []SurfaceBandPlan `json:"bands"`
+	// Mode 职责：保存实际使用的选择模式；使用：显示自动或手动选择状态；边界：planar 时为空。
+	Mode string `json:"mode"`
+	// GridSegment 职责：保存行星网格分段；使用：复现纬圈容量；边界：只适用于本次配置。
+	GridSegment int `json:"gridSegment"`
+	// PreferredLatitudeGrid 职责：保存用户首选纬圈中心索引；使用：解释自动回退距离；边界：auto 模式为零。
+	PreferredLatitudeGrid int `json:"preferredLatitudeGrid"`
+	// SelectedLatitudeGrid 职责：保存最终推荐圈中心索引；使用：前端展示；边界：游戏粘贴时仍由玩家选择锚点。
+	SelectedLatitudeGrid int `json:"selectedLatitudeGrid"`
+	// LatitudeDegrees 职责：保存纬度索引换算的近似角度；使用：辅助显示；边界：实际游戏位置以离散索引为准。
+	LatitudeDegrees float64 `json:"latitudeDegrees"`
+	// LongitudeSegments 职责：保存该纬度段采用的离散经度分段数；使用：容量和 Area 元数据；边界：来自当前游戏版本段表。
+	LongitudeSegments int `json:"longitudeSegments"`
+	// RingGridCells 职责：保存整圈离散细格容量；使用：评估蓝图宽度；边界：不含建筑安全余量。
+	RingGridCells int `json:"ringGridCells"`
+	// LayoutWidth 职责：保存蓝图横向占用格数；使用：结果诊断；边界：来源为生成布局包围范围。
+	LayoutWidth int `json:"layoutWidth"`
+	// LayoutHeight 职责：保存蓝图纵向占用格数；使用：结果诊断；边界：当前要求完整 footprint 不跨纬圈分段。
+	LayoutHeight int `json:"layoutHeight"`
+	// ShiftedGridRows 职责：保存最终纬圈相对首选圈的偏移；使用：提示用户；边界：零表示未移动。
+	ShiftedGridRows int `json:"shiftedGridRows"`
+	// MachineFootprintsChecked 职责：表示已检查同层制造设备参考 footprint；使用：呈现有限范围校验；边界：不代表带/分拣器/塔及游戏 Physics 全部通过。
+	MachineFootprintsChecked bool `json:"machineFootprintsChecked"`
+	// BeltConnectionsChecked 职责：表示最终坐标通过已知的带接线距离限制；使用：诊断；边界：不覆盖路线碰撞、科技或端口修正。
+	BeltConnectionsChecked bool `json:"beltConnectionsChecked"`
+	// StaticCollidersChecked 职责：标记静态建筑三维建造盒已检查；使用：碰撞诊断；边界：不包含带和分拣器的动态几何。
+	StaticCollidersChecked bool `json:"staticCollidersChecked"`
+	// ColliderGameVersion 职责：记录碰撞目录覆盖版本；使用：来源追踪；边界：不是运行中游戏的自动检测结果。
+	ColliderGameVersion string `json:"colliderGameVersion"`
+	// CollisionCoverage 职责：说明本次静态碰撞检查覆盖范围；使用：前端显示未覆盖对象；边界：machineFootprintsOnly 不是游戏碰撞通过证明。
+	CollisionCoverage string `json:"collisionCoverage"`
+	// PlacementStatus 职责：标记本地预检范围内的状态；使用：前端解释结果；边界：partial 不能作为游戏内可放置保证。
+	PlacementStatus string `json:"placementStatus"`
 }
 
 // Zone 职责：承载一个目标（或共用）分区的蓝图范围；使用：预览分区标注与节点流着色；边界：坐标为最终蓝图局部坐标。
@@ -118,4 +193,6 @@ type Result struct {
 	SharedBuildingIndices []int `json:"sharedBuildingIndices"`
 	// Zones 职责：保存多目标分区；使用：预览区分不同目标的节点流；边界：单目标或总线模式只有一个分区。
 	Zones []Zone `json:"zones"`
+	// SurfacePlan 职责：保存游戏纬圈网格预检结果；使用：前端说明推荐放置位置；边界：不是完整游戏碰撞证明。
+	SurfacePlan *SurfacePlan `json:"surfacePlan,omitempty"`
 }

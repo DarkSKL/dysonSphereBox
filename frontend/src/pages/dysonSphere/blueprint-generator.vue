@@ -83,6 +83,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
       <header class="preview-bar">
         <span class="preview-state" :class="`is-${w.generating ? 'loading' : w.previewState}`"><i />{{ w.generating ? '正在生成' : previewLabels[w.previewState] }}</span>
         <span v-if="w.code" class="preview-meta type-display">{{ w.number(w.expectedBuildings) }} 建筑</span>
+        <span v-if="w.generated?.surfacePlan" class="preview-meta surface-plan" :title="`目标纬圈格 ${w.generated.surfacePlan.selectedLatitudeGrid} · 环向容量 ${w.generated.surfacePlan.ringGridCells} 格`">粘贴锚点 {{ w.number(w.generated.surfacePlan.anchorLatitudeGrid * 360 / (w.generated.surfacePlan.gridSegment * 5)) }}°<small v-if="w.generated.surfacePlan.bands?.length > 1"> · 使用 {{ w.generated.surfacePlan.bands.length }} 个纬带</small></span>
         <!-- 多目标分区：蓝图中各目标的节点流横向分开排布，色块与网格图一致，点击定位该分区首台机器 -->
         <div v-if="w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
           <n-tooltip v-for="(zone, index) in w.zones" :key="zone.key"><template #trigger><button type="button" class="preview-zone" :class="{'is-active': w.activeZone === zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key)"><i />{{ zone.label }}</button></template>分区 {{ index + 1 }} · {{ zone.productionIndices.length }} 条产线{{ zone.key === 'shared' ? '，产物需分送到各目标分区' : '' }}</n-tooltip>
@@ -91,9 +92,9 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <n-input v-model:value="w.customName" size="tiny" class="name-input" :placeholder="w.autoName" maxlength="60" clearable aria-label="蓝图名称（留空自动命名）" :title="w.nameIsAuto ? `自动命名：${w.autoName}` : '手动名称，清空恢复自动命名'" />
         <div class="preview-actions">
           <n-button v-if="!w.autoRun" size="tiny" type="primary" :loading="w.generating" :disabled="!w.plan || w.quantStale || w.solving || w.importing" @click="w.generate"><template #icon><Sparkles :size="13" /></template>生成</n-button>
-          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="复制蓝图" @click="w.copy"><template #icon><Copy :size="14" /></template></n-button></template>复制蓝图编码</n-tooltip>
-          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="导出文本" @click="w.download"><template #icon><Download :size="14" /></template></n-button></template>导出文本</n-tooltip>
-          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" :loading="w.saving" aria-label="存入蓝图库" @click="w.save"><template #icon><Save :size="14" /></template></n-button></template>存入蓝图库</n-tooltip>
+          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code || w.placementExportBlocked" aria-label="复制蓝图" @click="w.copy"><template #icon><Copy :size="14" /></template></n-button></template>{{ w.placementExportBlocked ? '放置验收未完成，暂不可导出' : '复制蓝图编码' }}</n-tooltip>
+          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code || w.placementExportBlocked" aria-label="导出文本" @click="w.download"><template #icon><Download :size="14" /></template></n-button></template>{{ w.placementExportBlocked ? '放置验收未完成，暂不可导出' : '导出文本' }}</n-tooltip>
+          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code || w.placementExportBlocked" :loading="w.saving" aria-label="存入蓝图库" @click="w.save"><template #icon><Save :size="14" /></template></n-button></template>{{ w.placementExportBlocked ? '放置验收未完成，暂不可保存' : '存入蓝图库' }}</n-tooltip>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="重置视角" @click="viewer?.resetCamera()"><template #icon><RotateCcw :size="14" /></template></n-button></template>重置视角</n-tooltip>
         </div>
       </header>
@@ -109,9 +110,10 @@ const resizeByKey = (event: KeyboardEvent): void => {
           </div>
           <div v-if="w.previewStale && w.code" class="preview-overlay">参数已改变，{{ w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览' }}</div>
         </div>
-        <aside v-if="warningList.length || w.previewNotice || w.error?.source === 'generation'" class="preview-notes">
+        <aside v-if="warningList.length || w.previewNotice || w.error?.source === 'generation' || w.generated?.surfacePlan" class="preview-notes">
           <n-alert v-if="w.error?.source === 'generation'" title="蓝图生成失败" type="error" closable @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
           <p v-if="w.previewNotice && w.showPreview" class="note">{{ w.previewNotice }}</p>
+          <p v-if="w.generated?.surfacePlan" class="note surface-safety" role="status">已检查静态建筑的三维占位与带接线距离；完整放置校验尚未通过，当前结果仅供预览。</p>
           <div v-if="warningList.length" class="warning-list ds-bracket" :class="{'is-error': hasOverflow}"><div v-for="warning in warningList" :key="warning">{{ warning }}</div></div>
           <p v-if="w.code" class="note muted">已通过 Go 编码与结构自检，游戏内实际加载及运行需另行确认。</p>
         </aside>
@@ -153,6 +155,9 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-state.is-loading i, .preview-state.is-stale i { background: var(--ds-brand); animation: pulse 1s ease-in-out infinite; }
 .preview-state.is-error i { background: var(--ds-error); }
 .preview-meta { color: var(--ds-text-muted); font-size: 12px; }
+.surface-plan { color: var(--ds-warning); }
+.surface-plan small { color: var(--ds-text-muted); font-size: 10px; }
+.surface-safety { color: var(--ds-warning); }
 .preview-zones { display: flex; min-width: 0; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .preview-zone { --zone: var(--ds-brand); position: relative; display: inline-flex; height: 24px; flex: 0 0 auto; align-items: center; gap: 5px; border: 0; border-radius: 2px; padding: 0 8px; background: transparent; color: var(--ds-text-secondary); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .preview-zone i { width: 8px; height: 8px; border-radius: 1px; background: var(--zone); }

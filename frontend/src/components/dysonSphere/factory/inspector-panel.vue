@@ -10,6 +10,7 @@ const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
 const emit = defineEmits<{(event: 'clear'): void}>()
 
 const merges = [{label: '纵向单列', value: 1, icon: ''}, {label: '按宽度换列', value: 2, icon: ''}]
+const surfaceModes = [{label: '自动选择纬圈', value: 'autoTropic', icon: ''}, {label: '指定纬圈', value: 'explicitTropic', icon: ''}, {label: '旧平面兼容', value: 'planar', icon: ''}]
 
 // 选中节点对应的配方与配置；节点主产物决定配方，喷涂与设备按配方保存。
 const recipe = computed(() => props.node ? props.w.selectedRecipe(props.node.itemId) : null)
@@ -125,6 +126,13 @@ const importedRows = computed(() => {
 
         <h3><Factory :size="13" />蓝图布局</h3>
         <div class="field-row">
+          <label class="field">球面策略<IconSelect v-model:value="w.surfaceLayout.mode" size="small" :options="surfaceModes" /></label>
+          <label class="field" v-if="w.surfaceLayout.mode === 'explicitTropic'">纬向格索引<n-input-number v-model:value="w.surfaceLayout.latitudeGridIndex" size="small" :min="-w.surfaceLayout.gridSegment * 5 / 4" :max="w.surfaceLayout.gridSegment * 5 / 4" :precision="0" /></label>
+        </div>
+        <n-checkbox v-if="w.surfaceLayout.mode !== 'planar'" v-model:checked="w.surfaceLayout.expandAdjacent" size="small">容量不足时将后续产线扩展到邻圈</n-checkbox>
+        <p v-if="w.surfaceLayout.mode !== 'planar'" class="surface-hint">适用于原版星球，按纬圈容量安排完整产线。当前预检未覆盖动态物流碰撞及游戏内 Physics，完成放置验收前可预览，暂不支持导出。</p>
+        <p v-else class="surface-hint">旧平面布局仅保留兼容预览，缺少球面坐标与放置校验；生成结果可预览，暂不支持复制、导出或写入蓝图库。</p>
+        <div class="field-row">
           <label class="field">单列机器<n-input-number v-model:value="w.layout.maxMachineInALine" size="small" :min="1" :max="200" /></label>
           <label class="field">研究站层数<n-input-number v-model:value="w.layout.maxLays" size="small" :min="1" :max="15" /></label>
         </div>
@@ -153,6 +161,7 @@ const importedRows = computed(() => {
 h3 { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(--ds-text-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
 .field { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; color: var(--ds-text-secondary); font-size: 11px; }
 .field-row { display: flex; gap: 8px; }
+.surface-hint { margin: 0; color: var(--ds-text-muted); font-size: 10px; line-height: 1.45; }
 .flags { display: grid; gap: 4px; }
 .count { margin-left: auto; color: var(--ds-text-muted); font-family: var(--ds-font-display); font-weight: 400; letter-spacing: 0; }
 .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--ds-border-subtle); }

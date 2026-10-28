@@ -121,6 +121,11 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	if req.Mode < 1 || req.Mode > 6 {
 		return result, &blueprint.Error{Code: "GEN_E_MODE", Message: "策略必须为 1 到 6"}
 	}
+	surface, err := normalizeSurfaceLayout(req.SurfaceLayout)
+	if err != nil {
+		return result, err
+	}
+	req.SurfaceLayout = surface
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	setting, err := normalizeSetting(req.Setting)
@@ -191,6 +196,10 @@ func Generate(parent context.Context, req Request) (Result, error) {
 					perGroup = 1
 				}
 			}
+			if surface != nil && req.Mode != 3 && req.Mode != 4 {
+				// 每排作为不可拆的装箱单元，防止多排先纵向拼成超过纬带高度的大块。
+				perGroup = 1
+			}
 			for groupStart := 0; groupStart < len(counts); groupStart += perGroup {
 				groupEnd := min(groupStart+perGroup, len(counts))
 				begin := len(b.all)
@@ -213,6 +222,9 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				}
 				b.coatSupply(lines)
 				block := b.all[begin:]
+				if surface != nil {
+					b.surfaceBlocks = append(b.surfaceBlocks, block)
+				}
 				minimum, maximum := bounds(block)
 				width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
 				if setting.MergeType == 2 && nextY > 0 && nextY+height > setting.BlockWidthLimit {
@@ -294,14 +306,32 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 			return result, err
 		}
 	}
-	minimumBefore, _ := bounds(b.all)
-	shift(b.all, -minimumBefore.x, -minimumBefore.y, 0)
+	var surface *surfaceEncoding
+	if req.SurfaceLayout != nil {
+		var err error
+		surface, err = b.prepareSurfaceEncoding(req.SurfaceLayout)
+		if err != nil {
+			return result, err
+		}
+	} else {
+		minimumBefore, _ := bounds(b.all)
+		shift(b.all, -minimumBefore.x, -minimumBefore.y, 0)
+	}
 	if ctx.Err() != nil {
 		return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过 30 秒"}
 	}
 	records, bindings, shared, err := b.records()
 	if err != nil {
 		return result, err
+	}
+	if surface != nil {
+		if err := surface.applyRecords(b.all, records); err != nil {
+			return result, err
+		}
+		if err := surface.validateBeltDistances(records); err != nil {
+			return result, err
+		}
+		surface.plan.BeltConnectionsChecked = true
 	}
 	zones := []Zone{}
 	for _, r := range b.zoneRanges {
@@ -318,11 +348,30 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if width > 32767 || height > 32767 {
 		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "蓝图尺寸超过区域整数上限"}
 	}
+	var surfacePlan *SurfacePlan
+	areas := []blueprint.Area{{Index: 0, ParentIndex: -1, AreaSegments: 200, Width: int16(width), Height: int16(height)}}
+	primaryArea := int32(0)
+	if surface != nil {
+		surfacePlan, areas = surface.plan, surface.areas
+		primaryArea = int32(surfacePlan.PrimaryAreaIndex)
+		width, height = float64(surfacePlan.LayoutWidth), float64(surfacePlan.LayoutHeight)
+		if err := surface.validateStaticColliders(ctx, records); err != nil {
+			return result, err
+		}
+		b.warnings = append(b.warnings, "已检查静态建筑的三维建造盒和传送带接线距离；传送带路径及分拣器的完整放置规则仍在验证中。")
+	}
 	name := req.Name
 	if name == "" {
 		name = "量化产线"
 	}
-	document := blueprint.Document{EnvelopeVersion: 1, BinaryVersion: 2, Patch: 1, Name: name, GameVersion: dataset.Info.GameVersion, Description: "戴森球盒子生成；需确认所有原料及副产物出口", DragBoxSize: blueprint.PointInt{X: int32(width), Y: int32(height)}, Areas: []blueprint.Area{{Index: 0, ParentIndex: -1, AreaSegments: 200, Width: int16(width), Height: int16(height)}}, Buildings: records}
+	dragWidth, dragHeight := int32(width), int32(height)
+	if surface != nil {
+		dragWidth, dragHeight = int32(areas[primaryArea].Width), 0
+		for _, area := range areas {
+			dragHeight += int32(area.Height)
+		}
+	}
+	document := blueprint.Document{EnvelopeVersion: 1, BinaryVersion: 2, Patch: 1, Name: name, GameVersion: dataset.Info.GameVersion, Description: "戴森球盒子生成；需确认所有原料及副产物出口", DragBoxSize: blueprint.PointInt{X: dragWidth, Y: dragHeight}, PrimaryAreaIndex: primaryArea, CursorTargetArea: primaryArea, Areas: areas, Buildings: records}
 	encoded, err := blueprint.Encode(document, 1)
 	if err != nil {
 		return result, err
@@ -330,5 +379,5 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if len(records) > 6000 {
 		b.warnings = append(b.warnings, "建筑超过 6000，预览可能较慢，可折叠预览后复制导出")
 	}
-	return Result{Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: 1, Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones}, nil
+	return Result{Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: len(areas), Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones, SurfacePlan: surfacePlan}, nil
 }
