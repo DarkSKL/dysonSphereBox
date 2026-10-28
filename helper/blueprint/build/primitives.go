@@ -53,8 +53,6 @@ type builder struct {
 	zones []Zone
 	// zoneRanges 职责：分区在 all 中的连续区间；使用：收尾计算边界；边界：喷涂网络等公共设施追加在区间之外。
 	zoneRanges []zoneRange
-	// surfaceBlocks 职责：保留可整体移动的独立产线块；使用：有限纬带装箱；边界：块内两端与连接一起移动，不能拆开塔与接驳带。
-	surfaceBlocks [][]*placed
 }
 
 // zoneRange 职责：记录分区建筑区间；使用：分区边界；边界：半开区间 [begin, end)。

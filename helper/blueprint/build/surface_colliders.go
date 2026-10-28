@@ -24,6 +24,7 @@ func (encoding *surfaceEncoding) validateStaticColliders(ctx context.Context, re
 		return err
 	}
 	boxes := []placement.OwnedBox{}
+	descriptions := make(map[int32]string, len(records))
 	for i, record := range records {
 		if err := ctx.Err(); err != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "静态建筑碰撞检查已取消或超时"}
@@ -31,6 +32,7 @@ func (encoding *surfaceEncoding) validateStaticColliders(ctx context.Context, re
 		if surfaceIsBelt(record.ItemID) || record.ItemID >= 2011 && record.ItemID <= 2014 {
 			continue
 		}
+		descriptions[record.Index] = fmt.Sprintf("物品 %d / 模型 %d / Area %d / 局部(%.3f,%.3f,%.3f)", record.ItemID, record.ModelIndex, record.AreaIndex, record.LocalOffset.X, record.LocalOffset.Y, record.LocalOffset.Z)
 		shapes, err := catalog.Shapes(record.ItemID, record.ModelIndex)
 		if err != nil {
 			return &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
@@ -48,7 +50,7 @@ func (encoding *surfaceEncoding) validateStaticColliders(ctx context.Context, re
 		return &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 	}
 	if left >= 0 {
-		return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("静态建筑三维建造盒冲突：建筑 %d 与建筑 %d（原型规则 %s）", left, right, catalog.Version())}
+		return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("静态建筑三维建造盒冲突：建筑 %d（%s）与建筑 %d（%s）（原型规则 %s；检查覆盖原版静态建造盒，不含传送带/分拣器动态扫掠）", left, descriptions[int32(left)], right, descriptions[int32(right)], catalog.Version())}
 	}
 	encoding.plan.StaticCollidersChecked = true
 	encoding.plan.ColliderGameVersion = catalog.Version()

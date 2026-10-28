@@ -196,10 +196,6 @@ func Generate(parent context.Context, req Request) (Result, error) {
 					perGroup = 1
 				}
 			}
-			if surface != nil && req.Mode != 3 && req.Mode != 4 {
-				// 每排作为不可拆的装箱单元，防止多排先纵向拼成超过纬带高度的大块。
-				perGroup = 1
-			}
 			for groupStart := 0; groupStart < len(counts); groupStart += perGroup {
 				groupEnd := min(groupStart+perGroup, len(counts))
 				begin := len(b.all)
@@ -222,9 +218,6 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				}
 				b.coatSupply(lines)
 				block := b.all[begin:]
-				if surface != nil {
-					b.surfaceBlocks = append(b.surfaceBlocks, block)
-				}
 				minimum, maximum := bounds(block)
 				width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
 				if setting.MergeType == 2 && nextY > 0 && nextY+height > setting.BlockWidthLimit {
@@ -328,10 +321,6 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		if err := surface.applyRecords(b.all, records); err != nil {
 			return result, err
 		}
-		if err := surface.validateBeltDistances(records); err != nil {
-			return result, err
-		}
-		surface.plan.BeltConnectionsChecked = true
 	}
 	zones := []Zone{}
 	for _, r := range b.zoneRanges {
@@ -355,8 +344,31 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		surfacePlan, areas = surface.plan, surface.areas
 		primaryArea = int32(surfacePlan.PrimaryAreaIndex)
 		width, height = float64(surfacePlan.LayoutWidth), float64(surfacePlan.LayoutHeight)
-		if err := surface.validateStaticColliders(ctx, records); err != nil {
-			return result, err
+		var validationErr error
+		for candidateIndex, candidate := range surface.anchorCandidates {
+			if candidateIndex > 0 {
+				surface.reanchorSurfaceEncoding(candidate)
+			}
+			if err := surface.validateBeltDistances(records); err != nil {
+				validationErr = err
+				if !surfaceAnchorRetryable(err) {
+					return result, err
+				}
+				continue
+			}
+			surface.plan.BeltConnectionsChecked = true
+			if err := surface.validateStaticColliders(ctx, records); err != nil {
+				validationErr = err
+				if !surfaceAnchorRetryable(err) {
+					return result, err
+				}
+				continue
+			}
+			validationErr = nil
+			break
+		}
+		if validationErr != nil {
+			return result, validationErr
 		}
 		b.warnings = append(b.warnings, "已检查静态建筑的三维建造盒和传送带接线距离；传送带路径及分拣器的完整放置规则仍在验证中。")
 	}
@@ -380,4 +392,13 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		b.warnings = append(b.warnings, "建筑超过 6000，预览可能较慢，可折叠预览后复制导出")
 	}
 	return Result{Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: len(areas), Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones, SurfacePlan: surfacePlan}, nil
+}
+
+// surfaceAnchorRetryable 职责：判断球面锚点预检失败是否可以换到邻圈重试；使用：Generate 候选循环；边界：未知原型、超时和未验证错误不被软化。
+func surfaceAnchorRetryable(err error) bool {
+	failure, ok := err.(*blueprint.Error)
+	if !ok {
+		return false
+	}
+	return failure.Code == "GEN_E_COLLISION" || failure.Code == "GEN_E_SURFACE_ROUTING"
 }

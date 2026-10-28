@@ -5,8 +5,10 @@ package build
 // 边界：只编码原生格网，不写入地心坐标；尚未完成的游戏碰撞验证由 SurfacePlan 单独披露。
 
 import (
+	"cmp"
 	"fmt"
 	"math"
+	"slices"
 
 	"DysonSphereBox/helper/blueprint"
 )
@@ -21,111 +23,115 @@ type surfaceEncoding struct {
 	latitudeOffsets []int
 	// plan 职责：保存建议锚点和已用纬带；使用：前端及独立游戏校验；边界：不宣称 Physics 已通过。
 	plan *SurfacePlan
+	// anchorCandidates 职责：保存按优先级排列的完整平面锚点候选；使用：最终碰撞预检失败时回退；边界：候选只改变粘贴纬圈，不改变建筑坐标。
+	anchorCandidates []int
 }
 
-// prepareSurfaceEncoding 职责：在保持块内拓扑的前提下装箱并生成原生 Area；使用：球面模式收尾；边界：跨块引用、漏记对象和单块超容量均拒绝。
-// 逻辑流：1. 验证块与引用 => 2. 规划有限纬带 => 3. 整块平移 => 4. 生成父子 Area 与局部坐标映射。
+// prepareSurfaceEncoding 职责：保持旧平面坐标并生成单一原生 Area 的粘贴锚点建议；使用：球面模式收尾；边界：不拆分产线块、不伪造绝对纬度。
+// 逻辑流：1. 计算完整平面 footprint => 2. 选择可容纳的粘贴纬圈 => 3. 仅平移到旧平面原点 => 4. 生成单 Area 与局部坐标映射。
 func (b *builder) prepareSurfaceEncoding(layout *SurfaceLayout) (*surfaceEncoding, error) {
-	blocks := b.surfaceBlocks
-	if len(blocks) == 0 || b.setting.NeedCoaterNet {
-		// 总线和公共供剂网络目前保持整个连通结构，不能拆开以后伪造跨纬带接线。
-		blocks = [][]*placed{b.all}
+	// 球面策略只选择整块蓝图的粘贴锚点；建筑仍沿用旧的全局平面 X/Y 排版。
+	// 这样可以保持建筑顺序、物流连接和建筑间距，避免把相邻产线块重新 shelf 装箱后制造
+	// 游戏实际不存在的 3999/4000 类三维建造盒冲突。
+	minimum, maximum := bounds(b.all)
+	shift(b.all, -minimum.x, -minimum.y, 0)
+	width := int(math.Ceil(maximum.x-minimum.x)) + 1
+	height := int(math.Ceil(maximum.y-minimum.y)) + 1
+	if width <= 0 || height <= 0 || width > 32767 || height > 32767 {
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "平面蓝图占地必须为正数"}
 	}
-	sizes := make([]surfaceBlockSize, len(blocks))
-	minimums := make([]vector, len(blocks))
-	owners := make(map[*placed]int, len(b.all))
-	for i, block := range blocks {
-		if len(block) == 0 {
-			return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "纬带装箱不能包含空产线块"}
-		}
-		minimum, maximum := bounds(block)
-		minimums[i] = minimum
-		sizes[i] = surfaceBlockSize{width: int(math.Ceil(maximum.x-minimum.x)) + 1, height: int(math.Ceil(maximum.y-minimum.y)) + 1}
-		for _, p := range block {
-			if _, exists := owners[p]; exists {
-				return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "纬带装箱的建筑重复归属"}
-			}
-			owners[p] = i
-		}
+	segment := layout.GridSegment
+	preferred := layout.LatitudeGridIndex
+	if layout.Mode == "autoTropic" {
+		preferred = 0
 	}
-	if len(owners) != len(b.all) {
-		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "纬带装箱遗漏了辅助建筑"}
+	candidates := surfaceAnchorCandidates(layout.Mode, segment, preferred, layout.ExpandAdjacent, width, height)
+	if len(candidates) == 0 {
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("平面蓝图占地 %dx%d 无法放入目标纬圈；请启用邻圈扩展或缩小蓝图", width, height)}
+	}
+	selected := candidates[0]
+	longitudeSegments := longitudeSegmentCount(selected, segment)
+	encoded := &surfaceEncoding{
+		areas:      []blueprint.Area{{Index: 0, ParentIndex: -1, AreaSegments: int16(longitudeSegments), Width: int16(width), Height: int16(height)}},
+		byBuilding: make(map[*placed]int, len(b.all)), latitudeOffsets: []int{0}, anchorCandidates: candidates,
+	}
+	encoded.plan = makeSurfacePlan(layout.Mode, segment, preferred, selected, width, height)
+	encoded.plan.AnchorLatitudeGrid, encoded.plan.PrimaryAreaIndex = selected, 0
+	encoded.plan.Bands = []SurfaceBandPlan{{AreaIndex: 0, MinLatitudeGrid: selected, MaxLatitudeGrid: selected + height - 1, LongitudeSegments: longitudeSegments, BuildingCount: len(b.all)}}
+	encoded.plan.LayoutWidth, encoded.plan.LayoutHeight = width, height
+	if !candidateFitsRing(selected, 0, height-1, width, segment) {
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "最终平面占地跨越纬圈段或超出环向容量"}
 	}
 	for _, p := range b.all {
-		owner, exists := owners[p]
-		if !exists {
-			return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "建筑未登记到纬带装箱"}
-		}
-		for _, connected := range []*placed{p.input, p.output} {
-			if connected == nil {
+		encoded.byBuilding[p] = 0
+	}
+	return encoded, nil
+}
+
+// selectSurfaceAnchor 职责：为完整平面 footprint 选择首个粘贴纬圈；使用：兼容旧调用和单元测试；边界：不改变建筑坐标，不把邻圈拆成多个 Area。
+func selectSurfaceAnchor(mode string, segment, preferred int, expand bool, width, height int) (int, bool) {
+	candidates := surfaceAnchorCandidates(mode, segment, preferred, expand, width, height)
+	if len(candidates) == 0 {
+		return 0, false
+	}
+	return candidates[0], true
+}
+
+// surfaceAnchorCandidates 职责：按硬容量约束生成确定性的整块锚点候选；使用：初选和碰撞失败回退；边界：不以软权重放行跨圈或重排。
+func surfaceAnchorCandidates(mode string, segment, preferred int, expand bool, width, height int) []int {
+	maxLatitude := segment * 5 / 4
+	candidates := make([]int, 0, maxLatitude*2+1)
+	seen := make(map[int]struct{}, maxLatitude*2+1)
+	for delta := 0; delta <= maxLatitude*2; delta++ {
+		for _, candidate := range []int{preferred - delta, preferred + delta} {
+			if candidate < -maxLatitude || candidate > maxLatitude {
 				continue
 			}
-			other, exists := owners[connected]
-			if !exists || other != owner {
-				return nil, &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: "产线块包含尚未适配的跨块连接，不能分配到不同纬带"}
+			if _, exists := seen[candidate]; exists {
+				continue
 			}
+			seen[candidate] = struct{}{}
+			candidates = append(candidates, candidate)
 		}
 	}
-	packing, err := planSurfaceBlocks(layout, sizes, max(2, int(math.Ceil(b.setting.LocalStationHitRadius))))
-	if err != nil {
-		return nil, err
+	if mode == "autoTropic" {
+		// 自动模式优先靠近赤道且留有更大的环向余量，再比较纬向余量。
+		candidates = candidates[:0]
+		for candidate := -maxLatitude; candidate <= maxLatitude; candidate++ {
+			candidates = append(candidates, candidate)
+		}
+		slices.SortStableFunc(candidates, func(left, right int) int {
+			return cmp.Or(cmp.Compare(absInt(left), absInt(right)), cmp.Compare(left, right))
+		})
 	}
-	if len(packing.bands) == 1 {
-		// 单 Area 不会触发游戏 SnapTropic，应收紧到实际占用并围绕目标纬度居中。
-		band := &packing.bands[0]
-		low, high := int(^uint(0)>>1), 0
-		for i, block := range packing.blocks {
-			low = min(low, block.y)
-			high = max(high, block.y+sizes[i].height)
+	valid := make([]int, 0, len(candidates))
+	for i, candidate := range candidates {
+		if i > 0 && !expand {
+			break
 		}
-		height := high - low + 4
-		start := max(band.low, min(packing.selected-(height-1)/2, band.high-height+1))
-		for i := range packing.blocks {
-			packing.blocks[i].y = packing.blocks[i].y - low + 2
-		}
-		band.low, band.high = start, start+height-1
-	}
-	primary := packing.blocks[0].band
-	rootLatitude := packing.bands[primary].low
-	encoded := &surfaceEncoding{areas: make([]blueprint.Area, len(packing.bands)), byBuilding: make(map[*placed]int, len(b.all)), latitudeOffsets: make([]int, len(packing.bands))}
-	encoded.plan = makeSurfacePlan(layout.Mode, packing.segment, packing.preferred, packing.selected, 0, 0)
-	encoded.plan.AnchorLatitudeGrid, encoded.plan.PrimaryAreaIndex = rootLatitude, primary
-	encoded.plan.Bands = make([]SurfaceBandPlan, len(packing.bands))
-	for i, band := range packing.bands {
-		parent := i - 1
-		if i < primary {
-			parent = i + 1
-		}
-		offset := 0
-		if i == primary {
-			parent = -1
-		} else {
-			offset = band.low - packing.bands[parent].low
-		}
-		encoded.areas[i] = blueprint.Area{Index: int8(i), ParentIndex: int8(parent), AreaSegments: int16(band.segments), AnchorLocalOffsetY: int16(offset), Width: 1, Height: int16(band.high - band.low + 1)}
-		encoded.latitudeOffsets[i] = band.low - rootLatitude
-		encoded.plan.Bands[i] = SurfaceBandPlan{AreaIndex: i, MinLatitudeGrid: band.low, MaxLatitudeGrid: band.high, LongitudeSegments: band.segments}
-	}
-	for i, position := range packing.blocks {
-		band := position.band
-		shift(blocks[i], float64(position.x)-minimums[i].x, float64(position.y+encoded.latitudeOffsets[band])-minimums[i].y, 0)
-		width := position.x + sizes[i].width
-		if width > int(encoded.areas[band].Width) {
-			encoded.areas[band].Width = int16(width)
-		}
-		for _, p := range blocks[i] {
-			encoded.byBuilding[p] = band
-		}
-		encoded.plan.Bands[band].BuildingCount += len(blocks[i])
-	}
-	for _, area := range encoded.areas {
-		encoded.plan.LayoutWidth = max(encoded.plan.LayoutWidth, int(area.Width))
-		if !candidateFitsRing(packing.bands[area.Index].low, 0, int(area.Height)-1, int(area.Width), packing.segment) {
-			return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: fmt.Sprintf("区域 %d 的最终占地跨越纬带或超出环向容量", area.Index)}
+		if candidateFitsRing(candidate, 0, height-1, width, segment) {
+			valid = append(valid, candidate)
 		}
 	}
-	encoded.plan.LayoutHeight = packing.bands[len(packing.bands)-1].high - packing.bands[0].low + 1
-	return encoded, nil
+	return valid
+}
+
+// reanchorSurfaceEncoding 职责：切换整块蓝图的建议粘贴纬圈；使用：候选静态碰撞失败时重试；边界：Area 结构和全部建筑局部坐标保持不变。
+func (encoding *surfaceEncoding) reanchorSurfaceEncoding(latitude int) {
+	encoding.plan.AnchorLatitudeGrid = latitude
+	encoding.plan.SelectedLatitudeGrid = latitude
+	encoding.plan.LatitudeDegrees = float64(latitude) * 360 / float64(encoding.plan.GridSegment*5)
+	encoding.plan.ShiftedGridRows = latitude - encoding.plan.PreferredLatitudeGrid
+	if len(encoding.plan.Bands) > 0 {
+		encoding.plan.Bands[0].MinLatitudeGrid = latitude
+		encoding.plan.Bands[0].MaxLatitudeGrid = latitude + int(encoding.areas[0].Height) - 1
+		encoding.plan.Bands[0].LongitudeSegments = longitudeSegmentCount(latitude, encoding.plan.GridSegment)
+	}
+	encoding.plan.LongitudeSegments = longitudeSegmentCount(latitude, encoding.plan.GridSegment)
+	encoding.plan.RingGridCells = encoding.plan.LongitudeSegments * 5
+	encoding.plan.StaticCollidersChecked = false
+	encoding.plan.BeltConnectionsChecked = false
+	encoding.plan.CollisionCoverage = "none"
 }
 
 // applyRecords 职责：将最终编号记录转换为所属 Area 的 float32 局部坐标；使用：编码前；边界：不改变连接编号或原始装配视图，量化后越界拒绝。

@@ -71,9 +71,9 @@ type Request struct {
 }
 
 // SurfaceLayout 描述目标行星网格与纬圈选择偏好。
-// 职责：为蓝图的局部 XY 网格选择可容纳完整单区域 footprint 的安全纬圈。
+// 职责：为保持旧平面排版的整块蓝图选择可容纳完整 footprint 的粘贴纬圈。
 // 使用：量化蓝图工作台传入 Generate；缺省模式由旧调用保留平面行为。
-// 边界：选择结果是放置建议；当前不把纬圈绝对位置编码进根 Area，也不替代游戏 Physics 碰撞检查。
+// 边界：纬圈只作为粘贴锚点建议，不把建筑拆到多个 Area，也不替代游戏 Physics 碰撞检查。
 type SurfaceLayout struct {
 	// Mode 职责：选择 planar、autoTropic 或 explicitTropic；使用：生成流程决定是否运行纬圈网格预检；边界：未知值拒绝。
 	Mode string `json:"mode"`
@@ -81,7 +81,7 @@ type SurfaceLayout struct {
 	GridSegment int `json:"gridSegment"`
 	// LatitudeGridIndex 职责：保存目标纬圈中心索引；使用：explicitTropic 模式定位首选圈；边界：单位为纬度细分格，不是度数。
 	LatitudeGridIndex int `json:"latitudeGridIndex"`
-	// ExpandAdjacent 职责：允许容量不足的后续独立产线块分配到相邻纬带；使用：有限容量装箱；边界：不拆开块内连接。
+	// ExpandAdjacent 职责：允许完整平面 footprint 在首选圈容量不足时搜索相邻纬圈；使用：单 Area 锚点选择；边界：不会把建筑分散到多个 Area。
 	ExpandAdjacent bool `json:"expandAdjacent"`
 }
 
@@ -105,9 +105,9 @@ type SurfaceBandPlan struct {
 type SurfacePlan struct {
 	// AnchorLatitudeGrid 职责：记录根区域原点的建议纬度；使用：按当前游戏光标锚点验证；边界：不是绝对位置锁定。
 	AnchorLatitudeGrid int `json:"anchorLatitudeGrid"`
-	// PrimaryAreaIndex 职责：记录目标纬带对应的主区域；使用：粘贴与坐标核对；边界：不一定是最南区域。
+	// PrimaryAreaIndex 职责：记录承载整块平面蓝图的主区域；使用：粘贴与坐标核对；边界：当前球面策略固定为 0。
 	PrimaryAreaIndex int `json:"primaryAreaIndex"`
-	// Bands 职责：保存实际使用的纬带；使用：展示扩展与按区域验证；边界：按南到北排序。
+	// Bands 职责：保存单一平面 Area 对应的建议纬向范围；使用：展示 footprint 与容量；边界：不表示建筑被拆分到多个纬带。
 	Bands []SurfaceBandPlan `json:"bands"`
 	// Mode 职责：保存实际使用的选择模式；使用：显示自动或手动选择状态；边界：planar 时为空。
 	Mode string `json:"mode"`
