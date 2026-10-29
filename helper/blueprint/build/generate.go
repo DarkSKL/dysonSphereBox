@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// generationTimeout 职责：限制单次完整蓝图生成占用时间；使用：所有布局、接驳与预检共享同一截止时间；边界：允许复杂多目标方案更长搜索，但取消仍立即生效。
+const generationTimeout = 4 * time.Minute
+
 // normalizeSetting 职责：补齐参考默认值并限制生成规模；使用：布局前；边界：不截断请求机器总数。
 func normalizeSetting(s Setting) (Setting, error) {
 	defaults := Setting{MaxMachineInALine: 15, BeltLv: 1, InserterLv: 1, MaxLays: 3, BeltSpeed: 7200, SmelterMaxCount: 15, WorkbenchMaxCount: 15, RefineryMaxCount: 15, ChemicalMaxCount: 15, ColliderMaxCount: 15, MatrixMaxCount: 999, MergeType: 2, BlockWidthLimit: 50, LocalStationHitRadius: 7}
@@ -118,6 +121,7 @@ func (b *builder) coatSupply(lines []*line) {
 // Generate 职责：生成并严格自检蓝图；使用：服务对已验证方案调用；边界：超时/布局失败不返回部分串，预览不参与判定。
 func Generate(parent context.Context, req Request) (Result, error) {
 	result := Result{Warnings: []string{}, Bindings: []ProductionBinding{}, SharedBuildingIndices: []int{}}
+	reportProgress(parent, "validate", "正在校验生成参数", 0, 0)
 	if req.Mode < 1 || req.Mode > 6 {
 		return result, &blueprint.Error{Code: "GEN_E_MODE", Message: "策略必须为 1 到 6"}
 	}
@@ -126,7 +130,7 @@ func Generate(parent context.Context, req Request) (Result, error) {
 		return result, err
 	}
 	req.SurfaceLayout = surface
-	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, generationTimeout)
 	defer cancel()
 	setting, err := normalizeSetting(req.Setting)
 	if err != nil {
@@ -151,17 +155,22 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	}
 	// 多目标分区：每个目标的专属产线自成一区，被多个目标共用的产线归入「共用」区；
 	// 区内沿用原有换列规则，区与区之间横向排开并留出间隔，避免不同目标的产线堆叠在一起。
+	reportProgress(ctx, "zones", "正在规划产线分区", 0, 0)
 	zones := planZones(req.Plan)
 	zoneGap := setting.LocalStationHitRadius * 2
 	zoneX := 0.
+	productionNumber := 0
 	for zi := range zones {
 		zone := &zones[zi]
 		zoneBegin := len(b.all)
 		nextX, nextY, columnWidth := zoneX, 0., 0.
 		for _, index := range zone.ProductionIndices {
 			p := req.Plan.Productions[index]
+			productionNumber++
+			productionMessage := "正在铺设" + dataset.ByID[p.MainItemID].Name + "产线"
+			reportProgress(ctx, "production", productionMessage, productionNumber, len(req.Plan.Productions))
 			if ctx.Err() != nil {
-				return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过 30 秒"}
+				return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过 4 分钟"}
 			}
 			if p.MachineCount <= 0 || p.MachineCount > 10000 || p.IncreaseLv < 0 || p.IncreaseLv > 3 {
 				return result, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "方案机器数量或等级无效"}
@@ -186,6 +195,10 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				return result, err
 			}
 			perGroup := len(counts)
+			if req.SurfaceLayout != nil && req.Mode != 3 && req.Mode != 4 {
+				// 球面多 Area 只能移动连接闭合的局部产线块，非塔式模式按单列保留边界。
+				perGroup = 1
+			}
 			if req.Mode == 3 || req.Mode == 4 {
 				perGroup = max(1, 12/(len(recipe.Items)+1))
 				slots := 4
@@ -197,12 +210,17 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				}
 			}
 			for groupStart := 0; groupStart < len(counts); groupStart += perGroup {
+				reportProgress(ctx, "production", productionMessage, productionNumber, len(req.Plan.Productions))
 				groupEnd := min(groupStart+perGroup, len(counts))
 				begin := len(b.all)
 				lines := []*line{}
 				lineY := 0.
 				for i := groupStart; i < groupEnd; i++ {
-					l, err := b.buildLine(p, recipe, counts[i], req.Mode, i, i == len(counts)-1)
+					lineIndex, last := i, i == len(counts)-1
+					if req.SurfaceLayout != nil && req.Mode != 3 && req.Mode != 4 {
+						lineIndex, last = 0, true
+					}
+					l, err := b.buildLine(p, recipe, counts[i], req.Mode, lineIndex, last)
 					if err != nil {
 						return result, err
 					}
@@ -212,11 +230,18 @@ func Generate(parent context.Context, req Request) (Result, error) {
 					lines = append(lines, l)
 				}
 				if req.Mode == 3 || req.Mode == 4 {
+					reportProgress(ctx, "stations", "正在连接物流站与传送带", productionNumber, len(req.Plan.Productions))
 					if err := b.attachStations(ctx, lines, req.Mode); err != nil {
 						return result, err
 					}
 				}
 				b.coatSupply(lines)
+				if req.SurfaceLayout != nil && setting.NeedCoaterNet {
+					reportProgress(ctx, "coaters", "正在连接增产剂供给网络", 0, 0)
+					if err := b.coaterBlockNetwork(ctx, begin); err != nil {
+						return result, err
+					}
+				}
 				block := b.all[begin:]
 				minimum, maximum := bounds(block)
 				width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
@@ -228,8 +253,11 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				shift(block, nextX-minimum.x, nextY-minimum.y, 0)
 				nextY += height + setting.LocalStationHitRadius
 				columnWidth = math.Max(columnWidth, width)
-				if len(b.all) > 100000 {
-					return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "建筑超过 10 万，请拆分生成"}
+				if req.SurfaceLayout != nil {
+					b.surfaceBlocks = append(b.surfaceBlocks, surfaceBlockRange{begin: begin, end: len(b.all)})
+				}
+				if len(b.all) > blueprint.MaxBuildingCount {
+					return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "建筑超过 20 万，请拆分生成"}
 				}
 			}
 			actualCapacity := []float64{0, 360, 720, 1800}[setting.BeltLv] * 4
@@ -294,15 +322,29 @@ func planZones(plan quant.Result) []Zone {
 // finish 职责：构建文档、归属和严格编码；使用：所有模式共同出口；边界：只有 Go 自检通过才返回串。
 func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
 	result := Result{}
-	if b.setting.NeedCoaterNet {
+	if b.setting.NeedCoaterNet && (req.SurfaceLayout == nil || len(b.surfaceBlocks) == 0) {
+		reportProgress(ctx, "coaters", "正在连接增产剂供给网络", 0, 0)
 		if err := b.coaterNetwork(ctx); err != nil {
 			return result, err
 		}
 	}
+	if req.Mode == 6 && req.SurfaceLayout != nil {
+		reportProgress(ctx, "surface", "正在折叠球面总线布局", 0, 0)
+		if err := b.foldSurfaceBus(ctx, req.SurfaceLayout); err != nil {
+			return result, err
+		}
+	}
+	if len(b.all) > blueprint.MaxBuildingCount {
+		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "建筑超过 20 万，请拆分生成"}
+	}
+	if len(b.all) > 100000 {
+		b.warnings = append(b.warnings, "建筑超过 10 万，生成和游戏内粘贴可能较慢；建议按产物拆分，并关闭实时预览")
+	}
 	var surface *surfaceEncoding
 	if req.SurfaceLayout != nil {
 		var err error
-		surface, err = b.prepareSurfaceEncoding(req.SurfaceLayout)
+		reportProgress(ctx, "surface", "正在适配行星网格与纬带", 0, 0)
+		surface, err = b.prepareSurfaceEncodingContext(ctx, req.SurfaceLayout)
 		if err != nil {
 			return result, err
 		}
@@ -311,14 +353,34 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		shift(b.all, -minimumBefore.x, -minimumBefore.y, 0)
 	}
 	if ctx.Err() != nil {
-		return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过 30 秒"}
+		return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过 4 分钟"}
 	}
+	reportProgress(ctx, "records", "正在整理建筑与产线归属", 0, 0)
 	records, bindings, shared, err := b.records()
 	if err != nil {
 		return result, err
 	}
 	if surface != nil {
 		if err := surface.applyRecords(b.all, records); err != nil {
+			return result, err
+		}
+		reportProgress(ctx, "collision", "正在检查球面锚点与建筑碰撞", 0, 0)
+		err = surface.validateAnchorCandidates(ctx, records)
+		if err != nil && surfaceAnchorRetryable(err) && !surface.packed && len(b.surfaceBlocks) > 0 {
+			reportProgress(ctx, "surface-retry", "正在重排产线并复查球面布局", 0, 0)
+			// 矩形容量通过但所有锚点几何失败时，仍可按完整块重排，而不是把容量可行误当成唯一方案。
+			surface, err = b.preparePackedSurfaceEncoding(ctx, req.SurfaceLayout)
+			if err == nil {
+				records, bindings, shared, err = b.records()
+			}
+			if err == nil {
+				err = surface.applyRecords(b.all, records)
+			}
+			if err == nil {
+				err = surface.validateAnchorCandidates(ctx, records)
+			}
+		}
+		if err != nil {
 			return result, err
 		}
 	}
@@ -344,10 +406,6 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		surfacePlan, areas = surface.plan, surface.areas
 		primaryArea = int32(surfacePlan.PrimaryAreaIndex)
 		width, height = float64(surfacePlan.LayoutWidth), float64(surfacePlan.LayoutHeight)
-		if err := surface.validateAnchorCandidates(ctx, records); err != nil {
-			return result, err
-		}
-		b.warnings = append(b.warnings, "已检查静态建筑的三维建造盒和传送带接线距离；传送带路径及分拣器的完整放置规则仍在验证中。")
 	}
 	name := req.Name
 	if name == "" {
@@ -361,6 +419,7 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		}
 	}
 	document := blueprint.Document{EnvelopeVersion: 1, BinaryVersion: 2, Patch: 1, Name: name, GameVersion: dataset.Info.GameVersion, Description: "戴森球盒子生成；需确认所有原料及副产物出口", DragBoxSize: blueprint.PointInt{X: dragWidth, Y: dragHeight}, PrimaryAreaIndex: primaryArea, CursorTargetArea: primaryArea, Areas: areas, Buildings: records}
+	reportProgress(ctx, "encode", "正在编码并校验蓝图", 0, 0)
 	encoded, err := blueprint.Encode(document, 1)
 	if err != nil {
 		return result, err

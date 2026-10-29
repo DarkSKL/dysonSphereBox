@@ -16,7 +16,6 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 // Service 职责：校验输入、保存有限方案快照并编排纯引擎；使用：Wails 绑定；边界：构造无副作用，不将账号或真实游戏资源纳入计算。
@@ -27,8 +26,8 @@ type Service struct {
 	plans map[string]quant.Result
 	// order 职责：快照淘汰顺序；使用：限制内存；边界：不持久化。
 	order []string
-	// busy 职责：限制同一时刻一个生成任务；使用：Generate；边界：失败也必须释放。
-	busy atomic.Bool
+	// generation 职责：新请求取消旧请求并串行接替；使用：Generate；边界：旧任务释放前不并行启动新引擎。
+	generation factoryHelper.GenerationTasks
 	// artifacts 职责：管理大串临时文件；使用：分片读取；边界：不访问用户指定路径。
 	artifacts factoryHelper.Artifacts
 }
@@ -106,12 +105,8 @@ func (s *Service) Encode(req contract.EncodeRequest) contract.EncodeResponse {
 	return contract.EncodeResponse{Status: factoryHelper.Status(nil), Data: &data}
 }
 
-// Generate 职责：复核方案后串行生成、自检；使用：生成按钮；边界：只接受当前进程求解的未篡改方案，不重启过期任务。
+// Generate 职责：复核方案后取消旧生成并串行接替、自检；使用：生成按钮；边界：只接受可信方案，被替代任务不返回成功结果。
 func (s *Service) Generate(req build.Request) contract.GenerateResponse {
-	if !s.busy.CompareAndSwap(false, true) {
-		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_BUSY", Message: "已有生成任务运行中"}}
-	}
-	defer s.busy.Store(false)
 	s.mu.Lock()
 	plan, ok := s.plans[req.Plan.PlanID]
 	s.mu.Unlock()
@@ -119,7 +114,15 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_PLAN_STALE", Message: "方案已过期或内容改变，请重新量化"}}
 	}
 	req.Plan = plan
-	data, err := build.Generate(context.Background(), req)
+	ctx, finish := s.generation.Begin(context.Background())
+	defer finish()
+	if ctx.Err() != nil {
+		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_CANCELED", Message: "已中止旧任务，改为执行新的生成请求"}}
+	}
+	data, err := build.Generate(factoryHelper.GenerationContext(ctx, req.RequestID), req)
+	if ctx.Err() != nil {
+		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_CANCELED", Message: "已中止旧任务，改为执行新的生成请求"}}
+	}
 	if err != nil {
 		systemHelper.RecordFailure("factory", "blueprint", "generate", "蓝图生成失败", err, map[string]interface{}{"planId": plan.PlanID, "mode": req.Mode, "machines": plan.MachineCount})
 		return contract.GenerateResponse{Status: factoryHelper.Status(err)}
@@ -131,6 +134,9 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 		}
 		data.BlueprintLength = len(data.Blueprint)
 		data.Blueprint = ""
+	}
+	if ctx.Err() != nil {
+		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_CANCELED", Message: "已中止旧任务，改为执行新的生成请求"}}
 	}
 	return contract.GenerateResponse{Status: factoryHelper.Status(nil), Data: &data}
 }

@@ -53,11 +53,20 @@ type builder struct {
 	zones []Zone
 	// zoneRanges 职责：分区在 all 中的连续区间；使用：收尾计算边界；边界：喷涂网络等公共设施追加在区间之外。
 	zoneRanges []zoneRange
+	// surfaceBlocks 职责：保存标准模式中不可拆分的产线块范围；使用：球面多纬带装箱；边界：仅记录连续切片，不改变建筑连接。
+	surfaceBlocks []surfaceBlockRange
+	// surfaceBusEncoding 职责：保存共享总线跨纬带重接后的区域坐标系；使用：统一编码出口；边界：仅成功完成全部物理迁移与接驳后设置，不能再按平面原点归一化。
+	surfaceBusEncoding *surfaceEncoding
 }
 
 // zoneRange 职责：记录分区建筑区间；使用：分区边界；边界：半开区间 [begin, end)。
 type zoneRange struct {
 	zone, begin, end int
+}
+
+// surfaceBlockRange 职责：描述 builder.all 中一个可整体平移的产线块；使用：球面布局在多个 Area 间装箱；边界：块内连接保持，跨块连接需由收尾阶段单独处理。
+type surfaceBlockRange struct {
+	begin, end int
 }
 
 // newBuilder 职责：创建纯内存装配器；使用：Generate；边界：模型数据损坏时返回错误。

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import * as Vue from 'vue'
 import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
-import {claimBlueprintPreview, shareBlueprintScriptLoad} from '../../../services/dysonSphere/blueprint-preview-host'
+import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview, shareBlueprintScriptLoad} from '../../../services/dysonSphere/blueprint-preview-host'
 import {enableBlueprintPreviewRotation} from '../../../services/dysonSphere/blueprint-preview-interaction'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
 import blueprintEditorScriptUrl from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.js?url'
@@ -78,7 +78,7 @@ interface AppThemeSnapshot {
   readonly blueprintEditorStoredTheme: string | null
 }
 
-const props = withDefaults(defineProps<BlueprintViewerPanelProps>(), {interactive: false, selectedIndex: null, maxBuildings: 6000, revision: 0})
+const props = withDefaults(defineProps<BlueprintViewerPanelProps>(), {interactive: false, selectedIndex: null, maxBuildings: BLUEPRINT_PREVIEW_BUILDING_LIMIT, revision: 0})
 const emit = defineEmits<{
   (event: 'ready', value: {buildingCount: number}): void
   (event: 'select', value: {index: number | null}): void

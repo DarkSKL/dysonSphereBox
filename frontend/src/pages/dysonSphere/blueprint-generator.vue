@@ -11,8 +11,15 @@ definePage({meta: {layout: 'main', title: '量化与蓝图', keepAlive: true}})
 const w = reactive(useQuantWorkspace())
 const fileInput = ref<HTMLInputElement | null>(null)
 const viewer = ref<{resetCamera: () => void} | null>(null)
-const previewLabels: Record<PreviewState, string> = {idle: '等待生成', loading: '正在加载', ready: '实时预览', stale: '等待刷新', error: '预览不可用', empty: '没有建筑'}
-const warningList = computed(() => [...new Set(w.warnings)])
+const previewLabels: Record<PreviewState, string> = {idle: '等待生成', loading: '正在加载预览模型', ready: '实时预览', stale: '等待刷新', error: '预览不可用', empty: '没有建筑'}
+const previewStatus = computed(() => {
+  if (w.generating) return {state: 'loading', text: w.generationProgress || '正在准备生成'}
+  if (w.error?.source === 'generation') return {state: 'error', text: '蓝图生成失败'}
+  if (w.code && !w.showPreview) return {state: 'idle', text: '预览已折叠'}
+  return {state: w.previewState, text: previewLabels[w.previewState]}
+})
+// 缓存页可能保留旧生成结果：仅隐藏旧版通用验收提醒，供料、运力等具体告警继续展示。
+const warningList = computed(() => [...new Set(w.warnings)].filter(warning => !(warning.startsWith('已检查静态') && warning.includes('仍需游戏内验证'))))
 const hasOverflow = computed(() => w.mode === 6 && warningList.value.some(value => /超过|溢出|缺口|带宽|超出/.test(value)))
 const onFile = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
@@ -55,7 +62,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
   <!-- * 说明：上层为 draw.io 式网格节点图（物品库 · 画布 · 格式面板），下层为实时蓝图预览 -->
   <!-- * 交互：节点或面板中改参数 => 自动量化 => 自动生成并刷新预览；可暂停实时模式改为手动生成 -->
   <!-- * 依赖：useQuantWorkspace 统一编排 Go 量化、生成、导入与导出；预览复用唯一的 BlueprintViewerPanel -->
-  <!-- * 边界：生成串行执行，过程中的修改只保留最新一次；预览超过 6000 建筑时折叠，不影响导出 -->
+  <!-- * 边界：生成串行执行，过程中的修改只保留最新一次；预览超过 10000 建筑时折叠，不影响导出 -->
   <section ref="host" class="quant-workbench" :style="{'--split-ratio': split / 100}">
     <header class="bench-bar">
       <div class="bench-title"><h1>量化与蓝图</h1></div>
@@ -81,7 +88,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
     <!-- ~ 下层：实时蓝图预览 -->
     <section class="bench-preview" aria-label="蓝图预览">
       <header class="preview-bar">
-        <span class="preview-state" :class="`is-${w.generating ? 'loading' : w.previewState}`"><i />{{ w.generating ? '正在生成' : previewLabels[w.previewState] }}</span>
+        <span class="preview-state" :class="`is-${previewStatus.state}`" :title="previewStatus.text" role="status" aria-live="polite" aria-atomic="true"><i aria-hidden="true" /><span class="preview-state-text">{{ previewStatus.text }}</span></span>
         <span v-if="w.code" class="preview-meta type-display">{{ w.number(w.expectedBuildings) }} 建筑</span>
         <span v-if="w.generated?.surfacePlan" class="preview-meta surface-plan" :title="`首选纬圈格 ${w.generated.surfacePlan.selectedLatitudeGrid} · 平面占地 ${w.generated.surfacePlan.layoutWidth}×${w.generated.surfacePlan.layoutHeight} · 环向容量 ${w.generated.surfacePlan.ringGridCells} 格`">整块平面蓝图 · 粘贴锚点 {{ w.number(w.generated.surfacePlan.anchorLatitudeGrid * 360 / (w.generated.surfacePlan.gridSegment * 5)) }}°</span>
         <!-- 多目标分区：蓝图中各目标的节点流横向分开排布，色块与网格图一致，点击定位该分区首台机器 -->
@@ -92,9 +99,9 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <n-input v-model:value="w.customName" size="tiny" class="name-input" :placeholder="w.autoName" maxlength="60" clearable aria-label="蓝图名称（留空自动命名）" :title="w.nameIsAuto ? `自动命名：${w.autoName}` : '手动名称，清空恢复自动命名'" />
         <div class="preview-actions">
           <n-button v-if="!w.autoRun" size="tiny" type="primary" :loading="w.generating" :disabled="!w.plan || w.quantStale || w.solving || w.importing" @click="w.generate"><template #icon><Sparkles :size="13" /></template>生成</n-button>
-          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code || w.placementExportBlocked" aria-label="复制蓝图" @click="w.copy"><template #icon><Copy :size="14" /></template></n-button></template>{{ w.placementExportBlocked ? '放置验收未完成，暂不可导出' : '复制蓝图编码' }}</n-tooltip>
-          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code || w.placementExportBlocked" aria-label="导出文本" @click="w.download"><template #icon><Download :size="14" /></template></n-button></template>{{ w.placementExportBlocked ? '放置验收未完成，暂不可导出' : '导出文本' }}</n-tooltip>
-          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code || w.placementExportBlocked" :loading="w.saving" aria-label="存入蓝图库" @click="w.save"><template #icon><Save :size="14" /></template></n-button></template>{{ w.placementExportBlocked ? '放置验收未完成，暂不可保存' : '存入蓝图库' }}</n-tooltip>
+          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="复制蓝图" @click="w.copy"><template #icon><Copy :size="14" /></template></n-button></template>复制蓝图编码</n-tooltip>
+          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="导出文本" @click="w.download"><template #icon><Download :size="14" /></template></n-button></template>导出文本</n-tooltip>
+          <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" :loading="w.saving" aria-label="存入蓝图库" @click="w.save"><template #icon><Save :size="14" /></template></n-button></template>存入蓝图库</n-tooltip>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="重置视角" @click="viewer?.resetCamera()"><template #icon><RotateCcw :size="14" /></template></n-button></template>重置视角</n-tooltip>
         </div>
       </header>
@@ -104,18 +111,16 @@ const resizeByKey = (event: KeyboardEvent): void => {
           <div v-else class="preview-empty">
             <Sparkles :size="22" />
             <p v-if="w.code && !w.showPreview">{{ w.previewNotice || '预览已折叠' }}</p>
-            <p v-else-if="w.generating">正在生成蓝图…</p>
+            <p v-else-if="w.generating">{{ w.generationProgress || '正在准备生成' }}…</p>
             <p v-else>产线计算完成后会自动生成蓝图，并在这里实时预览。</p>
             <n-button v-if="w.code && !w.showPreview" size="tiny" @click="w.showPreview = true">仍然打开预览</n-button>
           </div>
           <div v-if="w.previewStale && w.code" class="preview-overlay">参数已改变，{{ w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览' }}</div>
         </div>
-        <aside v-if="warningList.length || w.previewNotice || w.error?.source === 'generation' || w.generated?.surfacePlan" class="preview-notes">
+        <aside v-if="warningList.length || w.previewNotice || w.error?.source === 'generation'" class="preview-notes">
           <n-alert v-if="w.error?.source === 'generation'" title="蓝图生成失败" type="error" closable @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
           <p v-if="w.previewNotice && w.showPreview" class="note">{{ w.previewNotice }}</p>
-          <p v-if="w.generated?.surfacePlan" class="note surface-safety" role="status">已检查静态建筑的三维占位与带接线距离；完整放置校验尚未通过，当前结果仅供预览。</p>
           <div v-if="warningList.length" class="warning-list ds-bracket" :class="{'is-error': hasOverflow}"><div v-for="warning in warningList" :key="warning">{{ warning }}</div></div>
-          <p v-if="w.code" class="note muted">已通过 Go 编码与结构自检，游戏内实际加载及运行需另行确认。</p>
         </aside>
       </div>
     </section>
@@ -149,15 +154,15 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .bench-splitter:focus-visible { outline: none; }
 .bench-preview { flex-direction: column; }
 .preview-bar { position: relative; display: flex; min-height: 38px; min-width: 0; align-items: center; gap: 10px; white-space: nowrap; border-bottom: 1px solid var(--ds-border-subtle); padding: 0 16px 0 14px; }
-.preview-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
-.preview-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--ds-text-muted); }
+.preview-state { display: inline-flex; width: 240px; min-width: 100px; flex: 0 1 240px; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.preview-state-text { overflow: hidden; text-overflow: ellipsis; }
+.preview-state i { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--ds-text-muted); }
 .preview-state.is-ready i { background: var(--ds-success); box-shadow: 0 0 6px var(--ds-success); }
 .preview-state.is-loading i, .preview-state.is-stale i { background: var(--ds-brand); animation: pulse 1s ease-in-out infinite; }
 .preview-state.is-error i { background: var(--ds-error); }
 .preview-meta { color: var(--ds-text-muted); font-size: 12px; }
 .surface-plan { color: var(--ds-warning); }
 .surface-plan small { color: var(--ds-text-muted); font-size: 10px; }
-.surface-safety { color: var(--ds-warning); }
 .preview-zones { display: flex; min-width: 0; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .preview-zone { --zone: var(--ds-brand); position: relative; display: inline-flex; height: 24px; flex: 0 0 auto; align-items: center; gap: 5px; border: 0; border-radius: 2px; padding: 0 8px; background: transparent; color: var(--ds-text-secondary); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .preview-zone i { width: 8px; height: 8px; border-radius: 1px; background: var(--zone); }
@@ -174,7 +179,6 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-overlay { position: absolute; top: 10px; left: 50%; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 3px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; transform: translateX(-50%); pointer-events: none; }
 .preview-notes { display: flex; width: 280px; flex: 0 0 auto; flex-direction: column; gap: 8px; overflow-y: auto; border-left: 1px solid var(--ds-border-subtle); padding: 10px 12px; }
 .note { margin: 0; color: var(--ds-text-secondary); font-size: 11px; line-height: 1.6; }
-.note.muted { color: var(--ds-text-muted); }
 .warning-list { --bracket-color: var(--ds-warning-border); display: grid; gap: 4px; padding: 8px 10px 8px 12px; background: var(--ds-warning-bg); color: var(--ds-warning); font-size: 11px; line-height: 1.6; }
 .warning-list.is-error { --bracket-color: var(--ds-error-border); background: var(--ds-error-bg); color: var(--ds-error); }
 .muted { color: var(--ds-text-muted); font-size: 12px; line-height: 1.6; }

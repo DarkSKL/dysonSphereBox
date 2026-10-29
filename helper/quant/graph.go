@@ -213,9 +213,9 @@ func multiplier(out float64, f Item, item string, s Settings) float64 {
 		case "氧":
 			rate = s.MiningSpeedOxygen
 		case "二氧化硫":
-			rate = s.MiningSpeedCarbonDioxide
-		case "二氧化碳":
 			rate = s.MiningSpeedSulfurDioxide
+		case "二氧化碳":
+			rate = s.MiningSpeedCarbonDioxide
 		}
 		return out * s.MiningSpeedMultiple * rate
 	}

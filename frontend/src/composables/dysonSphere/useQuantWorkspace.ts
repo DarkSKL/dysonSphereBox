@@ -4,8 +4,9 @@ import {useRoute, useRouter} from 'vue-router'
 import {build, factorycontract, quant} from '../../../wailsjs/go/models'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
 import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, solveFactory} from '../../services/dysonSphere/factory'
-import {getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../services/dysonSphere/environment'
+import {enableEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../services/dysonSphere/environment'
 import {requestBlueprintLibrary} from '../../services/dysonSphere/blueprint-navigation'
+import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../services/dysonSphere/blueprint-preview-host'
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
 type WorkspaceTarget = {key: number; itemId: number | null; ratePerMinute: number | null}
@@ -13,7 +14,7 @@ type ExportSnapshot = {code: string; name: string; revision: number; generated: 
 export type PreviewState = 'idle' | 'loading' | 'ready' | 'stale' | 'error' | 'empty'
 
 // 职责：工作区输入、异步快照与只读回放；使用：生成器页面；边界：所有配方/蓝图计算只走本机 Go，前端仅组装请求和展示。
-// 实时链路：参数变化 => 防抖自动量化 => 量化稳定后防抖自动生成并刷新预览；生成串行执行，进行中再变化只保留最新一次。
+// 实时链路：参数变化 => 防抖自动量化 => 防抖提交新生成；后端取消旧任务并串行接替，旧响应不更新当前预览。
 export const useQuantWorkspace = () => {
   const message = useMessage()
   const dialog = useDialog()
@@ -47,6 +48,7 @@ export const useQuantWorkspace = () => {
   const loadingDataset = ref(false)
   const solving = ref(false)
   const generating = ref(false)
+  const generationProgress = ref('')
   const importing = ref(false)
   const saving = ref(false)
   const error = ref<{code: string; message: string; source?: 'generation'} | null>(null)
@@ -54,6 +56,14 @@ export const useQuantWorkspace = () => {
   const previewRevision = ref(0)
   const previewNotice = ref('')
   const showPreview = ref(true)
+  // =============== 预览数量策略 ===============
+  // 生成与导入统一重置状态，避免新蓝图继承旧结果的折叠状态或告警；阈值内含 10000 个建筑。
+  const resetPreviewState = (buildingCount: number): void => {
+    showPreview.value = buildingCount <= BLUEPRINT_PREVIEW_BUILDING_LIMIT
+    previewState.value = buildingCount ? 'loading' : 'empty'
+    previewNotice.value = showPreview.value ? '' : `建筑超过 ${BLUEPRINT_PREVIEW_BUILDING_LIMIT}，已折叠预览；可按需打开，不影响复制与导出`
+  }
+
   const narrow = ref(false)
   const selectedBuilding = ref<number | null>(null)
   const selectedProductions = ref<number[]>([])
@@ -81,7 +91,14 @@ export const useQuantWorkspace = () => {
   let media: MediaQueryList | null = null
   let solveTimer: number | undefined
   let generateTimer: number | undefined
-  let generateQueued = false
+  let generationObserver: AbortController | undefined
+  // 入库后的启用确认随工作区关闭，防止缓存页离开后仍接受启用操作或悬挂保存状态。
+  let activationPrompt: {cancel: () => void; destroy: () => void} | undefined
+  const closeActivationPrompt = (): void => {
+    activationPrompt?.cancel()
+    activationPrompt?.destroy()
+    activationPrompt = undefined
+  }
   const updateWidth = (): void => { narrow.value = media?.matches ?? false }
   // 生成操作在长结果列表下方；失败时就地保留详情，并弹窗通知，缓存页失活后不再打断其它页面。
   const report = (caught: unknown, source?: 'generation'): void => {
@@ -171,15 +188,21 @@ export const useQuantWorkspace = () => {
     } catch (caught) { report(caught) } finally { saving.value = false }
   }
   const generate = async (): Promise<void> => {
-    if (generating.value) { generateQueued = true; return }
     if (!plan.value || quantStale.value) return
+    generationObserver?.abort()
     error.value = null
     const signature = generationSignature.value
     const source = plan.value.planId
     generating.value = true
+    generationProgress.value = '正在校验生成参数'
+    const observer = new AbortController()
+    generationObserver = observer
     try {
-      const result = await generateFactory(new build.Request({plan: plan.value, mode: mode.value, setting: {...layout}, surfaceLayout: {...surfaceLayout}, name: name.value}))
-      if (disposed) return
+      const result = await generateFactory(new build.Request({plan: plan.value, mode: mode.value, setting: {...layout}, surfaceLayout: {...surfaceLayout}, name: name.value}), progress => {
+        if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
+        generationProgress.value = progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
+      }, observer.signal)
+      if (disposed || generationObserver !== observer) return
       if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) { if (active.value && !autoRun.value) message.warning('参数已变化，本次结果未替换预览，请重新量化或生成'); return }
       generated.value = result
       generatedSignature.value = signature
@@ -188,13 +211,17 @@ export const useQuantWorkspace = () => {
       replay.value = false
       selectedBuilding.value = null
       selectedProductions.value = []
-      previewNotice.value = ''
-      previewState.value = result.buildingCount ? 'loading' : 'empty'
-      showPreview.value = result.buildingCount <= 6000
-      if (!showPreview.value) previewNotice.value = '建筑超过 6000，已折叠预览；可按需打开，不影响复制与导出'
-    } catch (caught) { report(caught, 'generation') } finally {
-      generating.value = false
-      if (generateQueued) { generateQueued = false; scheduleGenerate(0) }
+      resetPreviewState(result.buildingCount)
+    } catch (caught) {
+      if (caught instanceof FactoryError && caught.code === 'GEN_E_CANCELED') return
+      if (!disposed && generationObserver === observer && signature === generationSignature.value && plan.value?.planId === source) report(caught, 'generation')
+    } finally {
+      observer.abort()
+      if (generationObserver === observer) {
+        generationObserver = undefined
+        generating.value = false
+        generationProgress.value = ''
+      }
     }
   }
   const loadCode = async (text: string, title: string, version = ++importVersion): Promise<void> => {
@@ -214,7 +241,7 @@ export const useQuantWorkspace = () => {
       replay.value = true
       sourceName.value = title
       customName.value = title
-      previewState.value = value.summary.buildingCount ? 'loading' : 'empty'
+      resetPreviewState(value.summary.buildingCount)
       selectedBuilding.value = null
       selectedProductions.value = []
       importVisible.value = false
@@ -257,13 +284,10 @@ export const useQuantWorkspace = () => {
     previewNotice.value = text
     if (failureCode !== 'PREVIEW_E_LIMIT') previewState.value = 'error'
   }
+  // 导出前只确认旧结果并校验快照一致性，避免确认期间结果更新后导出错版。
   const allowExport = async (): Promise<ExportSnapshot | null> => {
     if (!code.value) return null
     const snapshot: ExportSnapshot = {code: code.value, name: name.value || sourceName.value, revision: previewRevision.value, generated: generated.value}
-    if (isPlacementExportBlocked(snapshot.generated)) {
-      message.warning('当前结果尚未通过完整放置校验，暂不允许导出或写入蓝图库。')
-      return null
-    }
     if (!previewStale.value) return snapshot
     const confirmed = await new Promise<boolean>(resolve => {
       dialog.warning({title: '导出上次结果', content: '参数已经改变，当前蓝图属于上一次生成结果。确认仍导出上次结果？', positiveText: '导出上次结果', negativeText: '取消', onPositiveClick: () => resolve(true), onNegativeClick: () => resolve(false), onClose: () => resolve(false), onMaskClick: () => resolve(false)})
@@ -271,10 +295,6 @@ export const useQuantWorkspace = () => {
     if (!confirmed) return null
     if (snapshot.revision !== previewRevision.value || snapshot.code !== code.value || snapshot.generated !== generated.value) {
       message.warning('确认期间蓝图结果已变化，已取消导出；请对当前结果重新确认。')
-      return null
-    }
-    if (isPlacementExportBlocked(generated.value)) {
-      message.warning('当前结果尚未通过完整放置校验，暂不允许导出或写入蓝图库。')
       return null
     }
     return snapshot
@@ -291,11 +311,42 @@ export const useQuantWorkspace = () => {
     catch (caught) { report(caught) }
   }
   const save = async (): Promise<void> => {
+    if (saving.value) return
     const snapshot = await allowExport()
-    if (!snapshot) return
+    if (!snapshot || saving.value || disposed) return
     saving.value = true
-    try { const result = await saveGeneratedEnvironmentBlueprint('', snapshot.name, snapshot.code); message.success(result.message) }
-    catch (caught) { report(caught) } finally { saving.value = false }
+    try {
+      const result = await saveGeneratedEnvironmentBlueprint('', snapshot.name, snapshot.code)
+      if (disposed || !active.value) return
+      const savedBlueprint = result.blueprint
+      if (!savedBlueprint?.id) {
+        message.success(result.message)
+        message.warning('未取得已保存蓝图的标识，请在蓝图库中启用。')
+        return
+      }
+      const confirmed = await new Promise<boolean>(resolve => {
+        const prompt = dialog.success({
+          title: '已存入蓝图库',
+          content: `是否立即启用蓝图「${savedBlueprint.name}」？启用后会同步到游戏蓝图目录。`,
+          positiveText: '立即启用',
+          negativeText: '暂不启用',
+          onPositiveClick: () => resolve(true),
+          onNegativeClick: () => resolve(false),
+          onClose: () => resolve(false),
+          onAfterLeave: () => resolve(false),
+        })
+        activationPrompt = {cancel: () => resolve(false), destroy: () => prompt.destroy()}
+      })
+      activationPrompt = undefined
+      if (!confirmed || disposed || !active.value) return
+      try {
+        const enabled = await enableEnvironmentBlueprint(savedBlueprint.id)
+        if (!disposed) message.success(enabled.message)
+      } catch (caught) {
+        if (!disposed) message.error(`蓝图已保存，但启用失败：${caught instanceof Error ? caught.message : String(caught)}`)
+      }
+    }
+    catch (caught) { if (!disposed) report(caught) } finally { saving.value = false }
   }
   // =============== 多目标分区 ===============
   // 说明：生成结果按目标划分分区；颜色按分区顺序固定，节点图、预览栏共用同一套，未生成时按量化归属推断。
@@ -351,7 +402,7 @@ export const useQuantWorkspace = () => {
   watch(querySignature, scheduleSolve)
   watch(() => [plan.value?.planId, generationSignature.value], () => scheduleGenerate())
   watch(autoRun, value => { if (value) { scheduleSolve(); scheduleGenerate(0) } else { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer) } })
-  watch(generationSignature, () => { if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
+  watch(generationSignature, () => { if (generating.value) generationProgress.value = '参数已变化，等待重新生成'; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
   watch(datasetKey, () => { if (initialized) void loadDataset() })
   watch(() => route.query.itemId, value => { if (initialized && typeof value === 'string' && value) void loadLibraryItem(value) })
   onMounted(async () => {
@@ -359,16 +410,11 @@ export const useQuantWorkspace = () => {
     try { datasets.value = await listFactoryDatasets(); await loadDataset(); initialized = true; if (typeof route.query.itemId === 'string') await loadLibraryItem(route.query.itemId); else scheduleSolve() } catch (caught) { report(caught) }
   })
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
-  onDeactivated(() => { active.value = false })
-  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  const placementExportBlocked = computed(() => Boolean(generated.value && (!generated.value.surfacePlan || generated.value.surfacePlan.placementStatus !== 'verified')))
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, placementExportBlocked, plan, generated, inspection, code, replay, loadingDataset, solving, generating, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  onDeactivated(() => { active.value = false; closeActivationPrompt() })
+  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
+  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 
-// isPlacementExportBlocked 职责：仅放行具备明确 verified 状态的本地生成蓝图；使用：导出确认与页面按钮；边界：导入回放不经本地生成器，缺少状态一律视为未验证。
-function isPlacementExportBlocked(result: build.Result | null): boolean {
-  return Boolean(result && (!result.surfacePlan || result.surfacePlan.placementStatus !== 'verified'))
-}
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。
 function planZoneFallback(plan: quant.Result): {key: string; targetItemId: number; productionIndices: number[]}[] {
   const targets = [...new Set((plan.targets ?? []).map(target => target.itemId))]

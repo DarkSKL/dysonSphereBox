@@ -196,6 +196,14 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 	centerY := math.Floor((endY-startY)/2) + startY
 	centers := make([]vector, len(groups))
 	extra := lines[0].info.MachineType == 3 || lines[0].info.MachineType == 4 || lines[0].info.MachineType == 6
+	var existing []*placed
+	for _, l := range lines {
+		existing = append(existing, l.all...)
+	}
+	buildingObstacles, err := stationBuildingObstacles(ctx, existing)
+	if err != nil {
+		return err
+	}
 	failure := ""
 	ready := false
 	for attempt := 0; attempt < 20; attempt++ {
@@ -206,6 +214,12 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			centers[i] = vector{-5 - float64(attempt) - float64(i)*14, centerY + float64(i)*10, 0}
 		}
 		blocked := map[vector]bool{}
+		for point := range buildingObstacles {
+			if point.z == 0 {
+				blocked[point] = true
+			}
+		}
+		occupiedBelts := map[vector]bool{}
 		// 外部物流路线不能穿过已经装配的产线带；混料 B 入口旁已有收集带，仅保留入口本身作为可出发点。
 		for _, l := range lines {
 			for _, p := range l.all {
@@ -214,6 +228,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 				}
 				if p.record.ItemID > 2000 && p.record.ItemID < 2010 {
 					blocked[p.a] = true
+					occupiedBelts[beltCell(p.a)] = true
 				}
 				if p.record.RecipeID > 0 {
 					lo, hi := footprint(p.record.ItemID)
@@ -231,17 +246,16 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 				v := route.head.a
 				v.x--
 				blocked[v] = true
+				occupiedBelts[beltCell(v)] = true
 			}
 		}
 		for _, center := range centers {
-			for dx := -2.; dx <= 2; dx++ {
-				for dy := -2.; dy <= 2; dy++ {
+			// 物流塔路线必须绕过完整的静态建造盒，不能只屏蔽中心五格后从塔角擦行。
+			for dx := -3.; dx <= 3; dx++ {
+				for dy := -3.; dy <= 3; dy++ {
 					blocked[vector{center.x + dx, center.y + dy, 0}] = true
 				}
 			}
-			blocked[vector{center.x + 3, center.y + 2, 0}] = true
-			blocked[vector{center.x + 2, center.y + 3, 0}] = true
-			blocked[vector{center.x + 3, center.y + 3, 0}] = true
 			for _, slot := range priority {
 				for _, point := range stationInner(center, slot) {
 					blocked[point] = true
@@ -278,6 +292,14 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 				target := slotOffset(slot)[0]
 				target.x += center.x
 				target.y += center.y
+				// 寻路器允许进入被屏蔽的终点，因此必须另核对端口及追加的塔内带，不能侵占其他产线入口。
+				occupied := occupiedBelts[beltCell(target)]
+				for _, point := range stationInner(center, slot) {
+					occupied = occupied || occupiedBelts[beltCell(point)]
+				}
+				if occupied {
+					continue
+				}
 				candidate := findPath(ctx, begin, target, math.Abs(begin.x-target.x) >= math.Abs(begin.y-target.y), blocked)
 				if len(candidate) >= 2 {
 					path = candidate
@@ -293,6 +315,10 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			}
 			for _, v := range path {
 				blocked[v] = true
+				occupiedBelts[beltCell(v)] = true
+			}
+			for _, v := range stationInner(center, route.slot) {
+				occupiedBelts[beltCell(v)] = true
 			}
 			if !extra {
 				path = path[1:]
@@ -315,7 +341,8 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			r.slot = priority[usedSlots[r.tower]]
 			usedSlots[r.tower]++
 		}
-		if err := b.bridgeStationRoutes(ctx, routes, centers); err != nil {
+		// 本组仍在局部坐标中；已排好的其他组不在同一坐标系，不能当作障碍或叠加其高架层数。
+		if err := b.bridgeStationRoutes(ctx, routes, centers, existing); err != nil {
 			return err
 		}
 		b.warnings = append(b.warnings, "复杂混料入口使用跨层物流桥接，建议在游戏中检查高度与贴合："+failure)
@@ -353,8 +380,27 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 	}
 	if *b.setting.NeedPower {
 		for _, center := range centers {
-			b.make(2201, center.x+3, center.y+3, 0)
+			// 塔旁补电只服务物流塔；近邻产线杆已经覆盖塔心时复用它，避免追加一个游戏限距内的节点。
+			if !stationPowerCovered(center, existing) {
+				b.make(2201, center.x+3, center.y+3, 0)
+			}
 		}
 	}
 	return nil
+}
+
+// stationPowerCovered 职责：冲突时复用同一产线块内覆盖塔心的感应塔；使用：物流塔补电；边界：仅合并追加点三格内且覆盖塔心六格内的杆，不改变其他补电点或跨块网络。
+func stationPowerCovered(center vector, existing []*placed) bool {
+	for _, p := range existing {
+		if p.record.ItemID != 2201 || p.a.z != center.z {
+			continue
+		}
+		dx, dy := p.a.x-center.x, p.a.y-center.y
+		px, py := dx-3, dy-3
+		// 六格约 7.55 米，保守小于感应塔原型 10.5 米覆盖；不以贴着覆盖边界为复用依据。
+		if dx*dx+dy*dy <= 36 && px*px+py*py < 9 {
+			return true
+		}
+	}
+	return false
 }

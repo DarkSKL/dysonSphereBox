@@ -94,7 +94,7 @@ func encodeBinary(d Document) ([]byte, error) {
 	if len(d.Areas) == 0 || len(d.Buildings) == 0 {
 		return nil, fail("BP_E_EMPTY", "蓝图必须包含区域与建筑")
 	}
-	if len(d.Areas) > 255 || len(d.Buildings) > 200000 {
+	if len(d.Areas) > 255 || len(d.Buildings) > MaxBuildingCount {
 		return nil, fail("BP_E_TOO_LARGE", "区域或建筑数量超限")
 	}
 	if d.BinaryVersion < 0 || d.BinaryVersion > 2 {

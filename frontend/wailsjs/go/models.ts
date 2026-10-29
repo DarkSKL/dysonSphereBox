@@ -489,6 +489,7 @@ export namespace build {
 	    }
 	}
 	export class Request {
+	    requestId?: string;
 	    plan: quant.Result;
 	    mode: number;
 	    setting: Setting;
@@ -501,6 +502,7 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requestId = source["requestId"];
 	        this.plan = this.convertValues(source["plan"], quant.Result);
 	        this.mode = source["mode"];
 	        this.setting = this.convertValues(source["setting"], Setting);
@@ -2404,6 +2406,7 @@ export namespace environment {
 	    operationId: number;
 	    mod?: EnvironmentModItem;
 	    mods?: EnvironmentModItem[];
+	    blueprint?: EnvironmentBlueprintItem;
 	    blueprintPage?: EnvironmentBlueprintPage;
 	    saves?: EnvironmentSaveItem[];
 	
@@ -2417,6 +2420,7 @@ export namespace environment {
 	        this.operationId = source["operationId"];
 	        this.mod = this.convertValues(source["mod"], EnvironmentModItem);
 	        this.mods = this.convertValues(source["mods"], EnvironmentModItem);
+	        this.blueprint = this.convertValues(source["blueprint"], EnvironmentBlueprintItem);
 	        this.blueprintPage = this.convertValues(source["blueprintPage"], EnvironmentBlueprintPage);
 	        this.saves = this.convertValues(source["saves"], EnvironmentSaveItem);
 	    }

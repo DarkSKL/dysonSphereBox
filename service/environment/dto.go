@@ -105,6 +105,8 @@ type EnvironmentOperationResult struct {
 	Mod *EnvironmentModItem `json:"mod,omitempty"`
 	// Mods 职责：保存 Mod 导入或删除后的列表数据；使用：ImportMod/DeleteMod 返回；边界：非批量 Mod 操作为空。
 	Mods []EnvironmentModItem `json:"mods,omitempty"`
+	// Blueprint 职责：标识本次入库的蓝图；使用：保存后确认启用准确的资源；边界：非单蓝图入库操作为空，不从提示文案推断资源身份。
+	Blueprint *EnvironmentBlueprintItem `json:"blueprint,omitempty"`
 	// BlueprintPage 职责：保存蓝图操作后的当前目录数据；使用：蓝图启用、禁用、创建文件夹、重命名后刷新；边界：非蓝图操作为空。
 	BlueprintPage *EnvironmentBlueprintPage `json:"blueprintPage,omitempty"`
 	// Saves 职责：保存存档操作后的扫描列表；使用：RenameSave 返回；边界：非存档操作为空。

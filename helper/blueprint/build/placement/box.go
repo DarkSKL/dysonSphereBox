@@ -4,7 +4,10 @@ package placement
 // 使用：球面布局把游戏数值碰撞盒转换为世界坐标后执行窄相位。
 // 边界：不认识建筑类别或合法接线豁免；调用方先验证盒及规则来源。
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 // Vector 职责：保存世界或原型局部三维向量；使用：盒几何；边界：下标依次为 x、y、z，不包含格网单位。
 type Vector [3]float64
@@ -63,6 +66,51 @@ func (box Box) Bounds() (Vector, Vector) {
 		}
 	}
 	return box.Center.Sub(radius), box.Center.Add(radius)
+}
+
+// SegmentDistanceSquared 职责：求闭线段到定向盒的精确最近距离；使用：带节点球和动态胶囊窄相位；边界：盒须有效，距离为零也包括边界接触。
+func (box Box) SegmentDistanceSquared(first, second Vector) float64 {
+	var origin, direction Vector
+	breaks := []float64{0, 1}
+	for axis := range origin {
+		origin[axis] = first.Sub(box.Center).Dot(box.Axes[axis])
+		direction[axis] = second.Sub(first).Dot(box.Axes[axis])
+		if math.Abs(direction[axis]) > 1e-12 {
+			for _, edge := range []float64{-box.HalfSize[axis], box.HalfSize[axis]} {
+				if t := (edge - origin[axis]) / direction[axis]; t > 0 && t < 1 {
+					breaks = append(breaks, t)
+				}
+			}
+		}
+	}
+	sort.Float64s(breaks)
+	distance := func(t float64) float64 {
+		total := 0.
+		for axis := range origin {
+			gap := max(0, math.Abs(origin[axis]+direction[axis]*t)-box.HalfSize[axis])
+			total += gap * gap
+		}
+		return total
+	}
+	minimum := math.Inf(1)
+	for i := 1; i < len(breaks); i++ {
+		low, high := breaks[i-1], breaks[i]
+		middle, slope, constant := (low+high)*.5, 0., 0.
+		for axis := range origin {
+			value := origin[axis] + direction[axis]*middle
+			if math.Abs(value) > box.HalfSize[axis] {
+				edge := math.Copysign(box.HalfSize[axis], value)
+				slope += direction[axis] * direction[axis]
+				constant += direction[axis] * (origin[axis] - edge)
+			}
+		}
+		candidate := low
+		if slope > 1e-20 {
+			candidate = max(low, min(high, -constant/slope))
+		}
+		minimum = min(minimum, distance(candidate), distance(low), distance(high))
+	}
+	return minimum
 }
 
 // Overlaps 职责：用十五个分离轴检查两个有效定向盒；使用：宽相位命中后；边界：相切不算正体积交叠，碰撞引擎的接触容差须另行核对。

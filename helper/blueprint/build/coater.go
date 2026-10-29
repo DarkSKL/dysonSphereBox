@@ -9,6 +9,27 @@ import (
 	"sort"
 )
 
+// coaterBlockNetwork 职责：只为当前可移动产线块生成独立供剂网；使用：球面块封装前；边界：外部仍需供剂，不把公共带跨 Area 平移。
+func (b *builder) coaterBlockNetwork(ctx context.Context, begin int) error {
+	all, links := b.all, b.coaterLinks
+	members := make(map[*placed]bool, len(all)-begin)
+	for _, p := range all[begin:] {
+		members[p] = true
+	}
+	b.coaterLinks = map[int][]*placed{}
+	for id, list := range links {
+		for _, p := range list {
+			if members[p] {
+				b.coaterLinks[id] = append(b.coaterLinks[id], p)
+			}
+		}
+	}
+	b.all = all[begin:]
+	err := b.coaterNetwork(ctx)
+	b.all, b.coaterLinks = append(all[:begin], b.all...), links
+	return err
+}
+
 // coaterNetwork 职责：按同一 y 合并支路并以分拣器分配供剂；使用：块布局完成后；边界：不同剂种采用独立高度，不把多条支路写在同一格。
 func (b *builder) coaterNetwork(ctx context.Context) error {
 	if len(b.coaterLinks) == 0 {
@@ -32,8 +53,8 @@ func (b *builder) coaterNetwork(ctx context.Context) error {
 			estimate += int(math.Ceil(end-minimum.x)) + 4
 		}
 	}
-	if estimate > 100000 {
-		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "喷涂供给网络会使建筑超过 10 万，请拆分生成"}
+	if estimate > blueprint.MaxBuildingCount {
+		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "喷涂供给网络会使建筑超过 20 万，请拆分生成"}
 	}
 	owner := b.owner
 	b.owner = -1

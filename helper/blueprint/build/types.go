@@ -58,6 +58,8 @@ type Setting struct {
 
 // Request 职责：承载生成边界数据；使用：服务与预览联动；边界：不承诺游戏实际验收。
 type Request struct {
+	// RequestID 职责：关联本次生成进度；使用：前端生成唯一标识并过滤事件；边界：可省略，不参与方案可信性判断。
+	RequestID string `json:"requestId,omitempty"`
 	// Plan 职责：保存求解后的产线；使用：桥接传递；边界：保持生成时序。
 	Plan quant.Result `json:"plan"`
 	// Mode 职责：保存策略编号 1 到 6；使用：桥接传递；边界：保持生成时序。
@@ -66,22 +68,22 @@ type Request struct {
 	Setting Setting `json:"setting"`
 	// Name 职责：保存蓝图标题；使用：桥接传递；边界：保持生成时序。
 	Name string `json:"name"`
-	// SurfaceLayout 职责：保存行星网格布局偏好；使用：生成器选择建议纬圈与检查单区容量；边界：缺省时保持旧平面兼容，不等价于真实碰撞验收。
+	// SurfaceLayout 职责：保存行星网格布局偏好；使用：生成器选择建议纬圈并检查各 Area 容量；边界：缺省时保持旧平面兼容，不等价于真实碰撞验收。
 	SurfaceLayout *SurfaceLayout `json:"surfaceLayout,omitempty"`
 }
 
 // SurfaceLayout 描述目标行星网格与纬圈选择偏好。
-// 职责：为保持旧平面排版的整块蓝图选择可容纳完整 footprint 的粘贴纬圈。
+// 职责：为完整矩形或闭合产线块选择容量与数值预检通过的建议纬带。
 // 使用：量化蓝图工作台传入 Generate；缺省模式由旧调用保留平面行为。
-// 边界：纬圈只作为粘贴锚点建议，不把建筑拆到多个 Area，也不替代游戏 Physics 碰撞检查。
+// 边界：允许扩展时可生成多个原生 Area，但不截断单个设施或隐式断开连接；纬圈仍只是粘贴锚点建议，不替代游戏 Physics 碰撞检查。
 type SurfaceLayout struct {
 	// Mode 职责：选择 planar、autoTropic 或 explicitTropic；使用：生成流程决定是否运行纬圈网格预检；边界：未知值拒绝。
 	Mode string `json:"mode"`
 	// GridSegment 职责：保存目标行星纬向分段数；使用：复刻当前 PlanetGrid 的离散经纬网格；边界：必须位于支持范围。
 	GridSegment int `json:"gridSegment"`
-	// LatitudeGridIndex 职责：保存目标纬圈中心索引；使用：explicitTropic 模式定位首选圈；边界：单位为纬度细分格，不是度数。
+	// LatitudeGridIndex 职责：保存首选粘贴锚点索引；使用：explicitTropic 模式定位；边界：单位为纬度细分格，不是度数。
 	LatitudeGridIndex int `json:"latitudeGridIndex"`
-	// ExpandAdjacent 职责：允许完整平面 footprint 在首选圈容量不足时搜索相邻纬圈；使用：单 Area 锚点选择；边界：不会把建筑分散到多个 Area。
+	// ExpandAdjacent 职责：允许指定模式换锚点、按安全切面拆分矩形或把闭合产线块扩展到邻纬带；使用：球面容量回退；边界：自动模式始终允许扩展，不切断跨块连接。
 	ExpandAdjacent bool `json:"expandAdjacent"`
 }
 
@@ -105,9 +107,9 @@ type SurfaceBandPlan struct {
 type SurfacePlan struct {
 	// AnchorLatitudeGrid 职责：记录根区域原点的建议纬度；使用：按当前游戏光标锚点验证；边界：不是绝对位置锁定。
 	AnchorLatitudeGrid int `json:"anchorLatitudeGrid"`
-	// PrimaryAreaIndex 职责：记录承载整块平面蓝图的主区域；使用：粘贴与坐标核对；边界：当前球面策略固定为 0。
+	// PrimaryAreaIndex 职责：记录主粘贴区域；使用：父链和坐标核对；边界：多纬带时不一定为 0。
 	PrimaryAreaIndex int `json:"primaryAreaIndex"`
-	// Bands 职责：保存单一平面 Area 对应的建议纬向范围；使用：展示 footprint 与容量；边界：不表示建筑被拆分到多个纬带。
+	// Bands 职责：保存各原生 Area 的建议纬向范围与建筑数；使用：展示占地及容量；边界：空过渡纬带仍可能有 Area。
 	Bands []SurfaceBandPlan `json:"bands"`
 	// Mode 职责：保存实际使用的选择模式；使用：显示自动或手动选择状态；边界：planar 时为空。
 	Mode string `json:"mode"`
@@ -115,7 +117,7 @@ type SurfacePlan struct {
 	GridSegment int `json:"gridSegment"`
 	// PreferredLatitudeGrid 职责：保存用户首选纬圈中心索引；使用：解释自动回退距离；边界：auto 模式为零。
 	PreferredLatitudeGrid int `json:"preferredLatitudeGrid"`
-	// SelectedLatitudeGrid 职责：保存最终推荐圈中心索引；使用：前端展示；边界：游戏粘贴时仍由玩家选择锚点。
+	// SelectedLatitudeGrid 职责：保存最终推荐根区域原点索引；使用：前端展示；边界：不是布局中心，游戏粘贴时仍由玩家选择锚点。
 	SelectedLatitudeGrid int `json:"selectedLatitudeGrid"`
 	// LatitudeDegrees 职责：保存纬度索引换算的近似角度；使用：辅助显示；边界：实际游戏位置以离散索引为准。
 	LatitudeDegrees float64 `json:"latitudeDegrees"`
@@ -125,7 +127,7 @@ type SurfacePlan struct {
 	RingGridCells int `json:"ringGridCells"`
 	// LayoutWidth 职责：保存蓝图横向占用格数；使用：结果诊断；边界：来源为生成布局包围范围。
 	LayoutWidth int `json:"layoutWidth"`
-	// LayoutHeight 职责：保存蓝图纵向占用格数；使用：结果诊断；边界：当前要求完整 footprint 不跨纬圈分段。
+	// LayoutHeight 职责：保存各 Area 覆盖的总纬向范围；使用：结果诊断；边界：单个 Area 不能跨经度段变化边界。
 	LayoutHeight int `json:"layoutHeight"`
 	// ShiftedGridRows 职责：保存最终纬圈相对首选圈的偏移；使用：提示用户；边界：零表示未移动。
 	ShiftedGridRows int `json:"shiftedGridRows"`
@@ -137,7 +139,7 @@ type SurfacePlan struct {
 	StaticCollidersChecked bool `json:"staticCollidersChecked"`
 	// ColliderGameVersion 职责：记录碰撞目录覆盖版本；使用：来源追踪；边界：不是运行中游戏的自动检测结果。
 	ColliderGameVersion string `json:"colliderGameVersion"`
-	// CollisionCoverage 职责：说明本次静态碰撞检查覆盖范围；使用：前端显示未覆盖对象；边界：machineFootprintsOnly 不是游戏碰撞通过证明。
+	// CollisionCoverage 职责：说明已执行的静态及动态数值检查；使用：诊断覆盖；边界：不是 Unity Physics 或游戏内放置证明。
 	CollisionCoverage string `json:"collisionCoverage"`
 	// PlacementStatus 职责：标记本地预检范围内的状态；使用：前端解释结果；边界：partial 不能作为游戏内可放置保证。
 	PlacementStatus string `json:"placementStatus"`

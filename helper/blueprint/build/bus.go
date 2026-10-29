@@ -172,12 +172,16 @@ func (b *builder) ring(layer, height int) busRing {
 
 // rawSupplement 职责：按受控补料和优先回收拼接 T 形带；使用：原料总线入口；边界：输入为明确标记的外部供料口。
 func (b *builder) rawSupplement(item int, need float64, layer int, ring busRing, yStart int) (int, error) {
-	plan, remaining := transferPlan(math.Ceil(need*2)/2, layer+1, b.setting.InserterLv)
+	supply := planBusSupply(need, layer, b.setting)
+	plan, remaining := supply.feed, supply.remaining
 	if len(plan) == 0 {
 		return yStart, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "原料补料运力无法表示"}
 	}
 	if remaining > 1e-6 {
 		b.warnings = append(b.warnings, fmt.Sprintf("物品 %d 补料有 %.3f/s 缺口", item, remaining))
+	}
+	if supply.requested > supply.effective+1e-6 {
+		b.warnings = append(b.warnings, fmt.Sprintf("物品 %d 需求 %.2f/s，单带补料上限 %.2f/s；已避免生成无吞吐收益的额外门控，当前混带总线不能达到目标产率", item, supply.requested, supply.effective))
 	}
 	maxY := yStart + len(plan) + 4
 	inputY := maxY
@@ -204,11 +208,8 @@ func (b *builder) rawSupplement(item int, need float64, layer int, ring busRing,
 		}
 	}
 	// 返回支路的实际跨度固定为层下标+1，按真实运力配足，避免只按长度一估计。
-	reach := layer + 1
-	table := [][]float64{{}, {1.5, .75, .5}, {3, 1.5, 1}, {6, 3, 2}}
 	lv := min(3, b.setting.InserterLv)
-	power := table[lv][reach-1]
-	backCount := int(math.Floor(need/power)) + 1
+	backCount := supply.returnCount
 	var previousReturn *placed
 	for i := 0; i < backCount; i++ {
 		y := inputY + i + 1
@@ -239,6 +240,7 @@ func (b *builder) rawSupplement(item int, need float64, layer int, ring busRing,
 // generateBus 职责：装配三圈调度、过滤取料和受限回流；使用：mode 6；边界：总带宽不足时返回非空 warnings，不宣称模拟通过。
 func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
 	result := Result{}
+	reportProgress(ctx, "bus-plan", "正在规划混带总线与物料调度", 0, 0)
 	targets := map[int]float64{}
 	for _, target := range req.Plan.Targets {
 		targets[target.ItemID] += target.RatePerMinute
@@ -355,6 +357,7 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 	backs := map[*line][]*placed{}
 	nextY := 3.
 	for owner, p := range req.Plan.Productions {
+		reportProgress(ctx, "production", "正在铺设"+dataset.ByID[p.MainItemID].Name+"产线", owner+1, len(req.Plan.Productions))
 		if ctx.Err() != nil {
 			return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成总线超时"}
 		}
@@ -399,8 +402,8 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 			shift(l.all, 6-l.inputs[0][0].a.x, nextY-minimum.y, 0)
 			nextY += math.Ceil(maximum.y-minimum.y) + 2
 			allLines = append(allLines, l)
-			if len(b.all) > 100000 {
-				return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线建筑超过 10 万，请拆分目标"}
+			if len(b.all) > blueprint.MaxBuildingCount {
+				return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线建筑超过 20 万，请拆分目标"}
 			}
 		}
 	}
@@ -408,22 +411,24 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 	rawHeight := 3.
 	for _, raw := range req.Plan.RawInputs {
 		layer := schedule[raw.ItemID]
-		plan, _ := transferPlan(math.Ceil(raw.RatePerMinute/30)/2, layer+1, b.setting.InserterLv)
-		rawHeight += float64(len(plan))*3 + math.Ceil(raw.RatePerMinute/60/.5) + 20
+		supply := planBusSupply(raw.RatePerMinute/60, layer, b.setting)
+		rawHeight += float64(len(supply.feed) + supply.returnCount + 7)
 	}
 	height := int(math.Max(nextY+5, rawHeight))
 	if height > 20000 {
 		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线高度超限，请拆分目标"}
 	}
-	if len(b.all)+layers*(2*height+12) > 100000 {
-		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线建筑超过 10 万，请拆分目标"}
+	if len(b.all)+layers*(2*height+12) > blueprint.MaxBuildingCount {
+		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线建筑超过 20 万，请拆分目标"}
 	}
 	b.owner = -1
 	rings := make([]busRing, layers)
 	for j := range rings {
+		reportProgress(ctx, "bus-rings", "正在铺设总线环路", j+1, layers)
 		rings[j] = b.ring(j, height)
 	}
-	for _, l := range allLines {
+	for index, l := range allLines {
+		reportProgress(ctx, "bus-connect", "正在连接总线取料与回流", index+1, len(allLines))
 		b.owner = -1
 		for i, row := range l.inputs {
 			item := l.recipe.Items[i]
@@ -466,6 +471,7 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 	}
 	b.owner = -1
 	rawY := 3
+	reportProgress(ctx, "bus-supply", "正在补充原料入口与喷涂供给", 0, 0)
 	for _, raw := range req.Plan.RawInputs {
 		var err error
 		layer := schedule[raw.ItemID]
@@ -478,8 +484,8 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 
 	minimum, _ := bounds(b.all)
 	shift(b.all, -minimum.x, -minimum.y, 0)
-	if len(b.all) > 100000 {
-		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线建筑超过 10 万，请拆分目标"}
+	if len(b.all) > blueprint.MaxBuildingCount {
+		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线建筑超过 20 万，请拆分目标"}
 	}
 	return b.finish(ctx, req, dataset)
 }

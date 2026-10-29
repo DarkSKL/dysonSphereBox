@@ -59,16 +59,34 @@ func (q *pathQueue) Pop() interface{} {
 	return n
 }
 
-// findPath 职责：在禁行格中找带路；使用：站点装配；边界：上下文截止后立即退出。
+// pathKey 职责：将固定高度平面的坐标编码为整数哈希键；使用：搜索去重；边界：不量化小数，并将正负零统一为原有浮点相等语义。
+func pathKey(point vector) [2]uint64 {
+	x, y := point.x, point.y
+	if x == 0 {
+		x = 0
+	}
+	if y == 0 {
+		y = 0
+	}
+	return [2]uint64{math.Float64bits(x), math.Float64bits(y)}
+}
+
+// findPath 职责：在禁行格中找带路；使用：站点装配；边界：上下文截止后立即退出，拒绝非有限坐标。
 func findPath(ctx context.Context, start, end vector, firstX bool, forbidden map[vector]bool) []vector {
 	if start.z != end.z {
 		return nil
 	}
+	for _, value := range []float64{start.x, start.y, start.z, end.x, end.y} {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return nil
+		}
+	}
 	first := &pathNode{point: start, score: math.Abs(start.x-end.x) + math.Abs(start.y-end.y)}
 	queue := pathQueue{first}
 	serial := 0
-	open := map[vector]*pathNode{start: first}
-	closed := map[vector]bool{}
+	// 固定高度不参与去重；整数位键避免每个邻点反复哈希三个 float64，保持小数端点语义。
+	// 已出队节点仍登记于 seen，nil 值缓存禁行格，保持原有展开和同分优先级。
+	seen := map[[2]uint64]*pathNode{pathKey(start): first}
 	for steps := 0; len(queue) > 0 && steps < 5000; steps++ {
 		if ctx.Err() != nil {
 			return nil
@@ -84,19 +102,23 @@ func findPath(ctx context.Context, start, end vector, firstX bool, forbidden map
 			}
 			return out
 		}
-		delete(open, current.point)
-		closed[current.point] = true
 		delta := []vector{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}}
 		if !firstX {
 			delta = []vector{{0, 1, 0}, {0, -1, 0}, {1, 0, 0}, {-1, 0, 0}}
 		}
 		for _, step := range delta {
 			v := vector{current.point.x + step.x, current.point.y + step.y, current.point.z}
-			if closed[v] || forbidden[v] && v != end {
+			cell := pathKey(v)
+			old, known := seen[cell]
+			if known && (old == nil || old.position < 0) {
+				continue
+			}
+			if !known && forbidden[v] && v != end {
+				seen[cell] = nil
 				continue
 			}
 			dist := current.distance + 1
-			if old, ok := open[v]; ok {
+			if known {
 				if dist < old.distance {
 					old.distance = dist
 					old.score = dist + math.Abs(v.x-end.x) + math.Abs(v.y-end.y)
@@ -106,7 +128,7 @@ func findPath(ctx context.Context, start, end vector, firstX bool, forbidden map
 			} else {
 				serial++
 				n := &pathNode{point: v, parent: current, distance: dist, score: dist + math.Abs(v.x-end.x) + math.Abs(v.y-end.y), order: serial}
-				open[v] = n
+				seen[cell] = n
 				heap.Push(&queue, n)
 			}
 		}

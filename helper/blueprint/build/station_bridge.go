@@ -12,11 +12,31 @@ import (
 // beltCell 职责：把微移带点归一到占用格；使用：同高度避碰；边界：保留层高，不利用 0.002 微移绕过真正重叠。
 func beltCell(v vector) vector { return vector{math.Round(v.x), math.Round(v.y), math.Round(v.z)} }
 
-// bridgeStationRoutes 职责：先验证升降列，再在高架平面执行有界 A*；使用：塔策略的显式后备；边界：失败整体拒绝，不写出半条接驳。
-func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute, centers []vector) error {
+// stationApproach 职责：给出端口外侧的接入方向；使用：入口预留与高架落点共用；边界：3/4 号端口避开西侧相邻内部带。
+func stationApproach(slot int) vector {
+	switch {
+	case slot <= 2:
+		return vector{0, 1, 0}
+	case slot == 3 || slot == 4:
+		return vector{1, 0, 0}
+	case slot == 5:
+		return vector{-1, 0, 0}
+	case slot <= 8:
+		return vector{0, -1, 0}
+	default:
+		return vector{1, 0, 0}
+	}
+}
+
+// bridgeStationRoutes 职责：先验证升降列，再在高架平面执行有界 A*；使用：塔策略的显式后备；边界：existing 仅含尚未整体平移的本组产线，失败整体拒绝，不写出半条接驳。
+func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute, centers []vector, existing []*placed) error {
+	buildings, err := stationBuildingObstacles(ctx, existing)
+	if err != nil {
+		return err
+	}
 	occupied := map[vector]bool{}
 	maxZ := 0.
-	for _, p := range b.all {
+	for _, p := range existing {
 		if p.record.ItemID > 2000 && p.record.ItemID < 2010 {
 			occupied[beltCell(p.a)] = true
 			maxZ = math.Max(maxZ, p.a.z)
@@ -28,6 +48,9 @@ func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute
 		end.x += centers[route.tower].x
 		end.y += centers[route.tower].y
 		reserved[beltCell(end)] = i
+		// 为尚未布线的端口保留外侧一格，避免先完成的路线封死其唯一入口。
+		direction := stationApproach(route.slot)
+		reserved[beltCell(vector{end.x + direction.x, end.y + direction.y, 0})] = i
 		for _, p := range stationInner(centers[route.tower], route.slot) {
 			reserved[beltCell(p)] = i
 		}
@@ -37,18 +60,12 @@ func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute
 		end := slotOffset(route.slot)[0]
 		end.x += centers[route.tower].x
 		end.y += centers[route.tower].y
-		direction := vector{1, 0, 0}
-		switch {
-		case route.slot <= 2:
-			direction = vector{0, 1, 0}
-		case route.slot <= 5:
-			direction = vector{-1, 0, 0}
-		case route.slot <= 8:
-			direction = vector{0, -1, 0}
-		}
+		direction := stationApproach(route.slot)
+		tail := stationInner(centers[route.tower], route.slot)
 		found := false
 		reason := ""
-		for attempt := 0; attempt < 192; attempt++ {
+		// 优先复用低层空闲通路；只有该层全部落点失败才升层，避免按路线序号无条件堆高升降列。
+		for attempt := 0; attempt < 192*(i+2); attempt++ {
 			if ctx.Err() != nil {
 				return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "物流塔高架寻路超过截止时间"}
 			}
@@ -58,7 +75,7 @@ func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute
 			perpendicular := offsets[(attempt/4)%len(offsets)]
 			distance := float64(1 + (attempt/32)%6)
 			drop := vector{end.x + direction.x*distance - direction.y*perpendicular, end.y + direction.y*distance + direction.x*perpendicular, 0}
-			level := int(math.Ceil(maxZ)) + 2 + i + attempt/96
+			level := int(math.Ceil(maxZ)) + 2 + attempt/192
 			points := append([]vector{}, manhattan(route.head.a, begin, true)[1:]...)
 			for z := 1; z <= level; z++ {
 				points = append(points, vector{begin.x + .002*float64(z), begin.y, float64(z)})
@@ -67,11 +84,34 @@ func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute
 			for z := level - 1; z >= 0; z-- {
 				down = append(down, vector{drop.x + .002*float64(z), drop.y, float64(z)})
 			}
+			// 先排除不可升降的候选，再执行 A*；实体盒使部分近机器落点天然不可用。
+			valid := true
+			for _, p := range append(append(append([]vector{}, points...), down...), tail...) {
+				cell := beltCell(p)
+				reservedOwner, isReserved := reserved[vector{cell.x, cell.y, 0}]
+				if occupied[cell] || buildings[cell] || isReserved && reservedOwner != i {
+					reason = fmt.Sprintf("入口或落地点被占用 %+v", cell)
+					valid = false
+					break
+				}
+			}
+			if !valid {
+				continue
+			}
 			groundBlocked := map[vector]bool{}
+			for p := range buildings {
+				if p.z == 0 {
+					groundBlocked[p] = true
+				}
+			}
 			for p, owner := range reserved {
 				if owner != i {
 					groundBlocked[p] = true
 				}
+			}
+			// 自己的塔内带也不能作为落地绕路，否则到达端口后再次追加会形成回折重叠。
+			for _, p := range tail {
+				groundBlocked[beltCell(p)] = true
 			}
 			for p := range occupied {
 				if p.z == 0 {
@@ -91,12 +131,11 @@ func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute
 				continue
 			}
 			down = append(down, ground[1:]...)
-			tail := stationInner(centers[route.tower], route.slot)
-			valid := true
+			valid = true
 			for _, p := range append(append(append([]vector{}, points...), down...), tail...) {
 				cell := beltCell(p)
-				reservedOwner, isReserved := reserved[cell]
-				if occupied[cell] || isReserved && reservedOwner != i {
+				reservedOwner, isReserved := reserved[vector{cell.x, cell.y, 0}]
+				if occupied[cell] || buildings[cell] || isReserved && reservedOwner != i {
 					reason = fmt.Sprintf("入口或落地点被占用 %+v", beltCell(p))
 					valid = false
 					break
@@ -106,6 +145,17 @@ func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute
 				continue
 			}
 			blocked := map[vector]bool{}
+			for p := range buildings {
+				if int(p.z) == level {
+					blocked[p] = true
+				}
+			}
+			// 端口预留格向上延伸为升降净空，低层复用不能从未来落地点上方横穿并封死下降列。
+			for p, owner := range reserved {
+				if owner != i {
+					blocked[vector{p.x, p.y, float64(level)}] = true
+				}
+			}
 			for p := range occupied {
 				if int(p.z) == level {
 					blocked[p] = true

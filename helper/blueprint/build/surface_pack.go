@@ -1,8 +1,8 @@
 package build
 
-// 文件职责：把独立产线块按有限容量装入游戏恒定经度段纬带。
-// 使用：球面编码收尾传入各块整数占地，得到实际使用的纬带与块在纬带内的局部整数位置。
-// 边界：只依据纬圈分段表与保守余量做几何装箱；不检查建筑 collider、地形或跨块路由，不构成游戏放置保证。
+// 文件职责：把不可拆分产线块按有限容量装入游戏恒定经度段纬带。
+// 使用：球面生产编码器和装箱测试按块尺寸调用，允许邻圈扩展时分散到多 Area。
+// 边界：只依据纬圈分段表与保守余量做几何装箱；实际坐标、碰撞与跨块连接仍由编码出口校验。
 // 逻辑流：1. 校验布局与块 => 2. 按经度段合并纬带 => 3. 选择目标纬带并按距离排列扩展顺序 => 4. 逐块确定性 shelf 装箱 => 5. 按南到北重映射输出。
 
 import (
@@ -31,7 +31,7 @@ type surfacePackedBand struct{ low, high, segments int }
 // surfacePackedBlock 职责：记录产线块的落点；使用：整块平移到所属 Area；边界：band 为 surfacePacking.bands 下标，x/y 为相对纬带 low 行与环向起点的局部整数，指块占地左下格。
 type surfacePackedBlock struct{ band, x, y int }
 
-// surfacePacking 职责：汇总有限容量纬带装箱结果；使用：prepareSurfaceEncoding 构建 Area 与 SurfacePlan；边界：只证明几何容量与余量，不证明游戏碰撞。
+// surfacePacking 职责：汇总有限容量纬带装箱结果；使用：生产编码器映射块到 Area；边界：几何容量通过不代表游戏碰撞通过。
 type surfacePacking struct {
 	// segment 职责：保存实际使用的主网格分段数；使用：复现纬圈容量；边界：缺省请求补为 200。
 	segment int
@@ -46,7 +46,11 @@ type surfacePacking struct {
 }
 
 // surfacePackRules 职责：保存一次装箱的间距与余量；使用：shelf 装箱与容量判断；边界：由 gap 推导，调用期间不变。
-type surfacePackRules struct{ gap, edgeMargin, ringMargin int }
+type surfacePackRules struct {
+	gap, edgeMargin, ringMargin int
+	// accept 职责：按块检查候选南缘的实际几何；使用：生产装箱；边界：nil 时仅验证矩形容量。
+	accept func(int, surfacePackedBand, int) bool
+}
 
 // newSurfacePackRules 由块间距推导纬带边缘与环向首尾余量。
 // 职责：保证跨纬带相邻块、环向回绕相邻块至少保持块间距。
@@ -58,7 +62,7 @@ func newSurfacePackRules(gap int) surfacePackRules {
 
 // usableWidth 职责：返回纬带扣除环向首尾余量后的可用格数；使用：容量判断；边界：可能为非正数，表示不可用。
 func (rules surfacePackRules) usableWidth(band surfacePackedBand) int {
-	return band.segments*5 - rules.ringMargin
+	return band.segments*5 - 2*rules.ringMargin
 }
 
 // usableHeight 职责：返回纬带扣除南北余量后的可用行数；使用：容量判断；边界：可能为非正数，表示不可用。
@@ -82,22 +86,22 @@ type surfaceShelfState struct {
 // 使用：packSurfaceBands。
 // 边界：失败时不修改状态；坐标相对纬带 low 行，已扣除余量。
 func (state *surfaceShelfState) place(band surfacePackedBand, size surfaceBlockSize, rules surfacePackRules) (int, int, bool) {
-	width, top := rules.usableWidth(band), rules.edgeMargin+rules.usableHeight(band)
+	width, top := rules.usableWidth(band), rules.usableHeight(band)
 	if !rules.fitsEmpty(band, size) {
 		return 0, 0, false
 	}
 	if !state.used {
-		*state = surfaceShelfState{used: true, shelfY: rules.edgeMargin, shelfHeight: size.height, cursorX: size.width}
-		return 0, rules.edgeMargin, true
+		*state = surfaceShelfState{used: true, shelfHeight: size.height, cursorX: size.width}
+		return rules.ringMargin, rules.edgeMargin, true
 	}
 	if x := state.cursorX + rules.gap; x+size.width <= width && state.shelfY+size.height <= top {
 		state.cursorX = x + size.width
 		state.shelfHeight = max(state.shelfHeight, size.height)
-		return x, state.shelfY, true
+		return x + rules.ringMargin, state.shelfY + rules.edgeMargin, true
 	}
 	if y := state.shelfY + state.shelfHeight + rules.gap; y+size.height <= top {
 		state.shelfY, state.shelfHeight, state.cursorX = y, size.height, size.width
-		return 0, y, true
+		return rules.ringMargin, y + rules.edgeMargin, true
 	}
 	return 0, 0, false
 }
@@ -124,7 +128,25 @@ func packSurfaceBands(bands []surfacePackedBand, order []int, sizes []surfaceBlo
 				continue
 			}
 			wasUsed := state.used
-			if x, y, ok := state.place(bands[index], size, rules); ok {
+			trial := *state
+			x, y, ok := trial.place(bands[index], size, rules)
+			if ok && rules.accept != nil && !rules.accept(i, bands[index], y) {
+				// 当前 shelf 的曲率可能压缩机器间距；仅在几何通过的另一行开启新 shelf。
+				ok = false
+				start := 0
+				if state.used {
+					start = state.shelfY + state.shelfHeight + rules.gap
+				}
+				for row := start; row+size.height <= rules.usableHeight(bands[index]); row++ {
+					if rules.accept(i, bands[index], row+rules.edgeMargin) {
+						trial = surfaceShelfState{used: true, shelfY: row, shelfHeight: size.height, cursorX: size.width}
+						x, y, ok = rules.ringMargin, row+rules.edgeMargin, true
+						break
+					}
+				}
+			}
+			if ok {
+				*state = trial
 				if !wasUsed {
 					attempt.opened++
 				}
@@ -201,9 +223,14 @@ func surfaceBandOrder(bands []surfacePackedBand, target, reference int, expand b
 
 // planSurfaceBlocks 把产线块按有限容量装入恒定经度段纬带。
 // 职责：校验布局、选择目标纬带，在禁止扩展时严格单纬带装箱，允许扩展时逐块向邻近纬带分散。
-// 使用：prepareSurfaceEncoding 在整块平移前调用；gap 由调用方按物流塔半径等给出。
+// 使用：生产编码器及独立算法测试；gap 由调用方按物流塔半径等给出。
 // 边界：nil/planar 不应进入本函数并返回错误；单块超容量明确失败；不声明未知游戏碰撞规则已满足。
 func planSurfaceBlocks(layout *SurfaceLayout, blocks []surfaceBlockSize, gap int) (*surfacePacking, error) {
+	return planSurfaceBlocksAccepted(layout, blocks, gap, nil)
+}
+
+// planSurfaceBlocksAccepted 职责：在相同装箱硬容量上加入候选块几何筛选；使用：生产多 Area 编码；边界：回调不修改块与纬带状态。
+func planSurfaceBlocksAccepted(layout *SurfaceLayout, blocks []surfaceBlockSize, gap int, accept func(int, surfacePackedBand, int) bool) (*surfacePacking, error) {
 	if layout == nil || layout.Mode == "" || layout.Mode == "planar" {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "平面布局不能进入纬带装箱"}
 	}
@@ -231,6 +258,7 @@ func planSurfaceBlocks(layout *SurfaceLayout, blocks []surfaceBlockSize, gap int
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "纬带装箱至少需要一个产线块"}
 	}
 	rules := newSurfacePackRules(gap)
+	rules.accept = accept
 	bands := surfaceLatitudeBands(segment)
 	for i, size := range blocks {
 		if size.width <= 0 || size.height <= 0 {

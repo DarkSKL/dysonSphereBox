@@ -1,5 +1,7 @@
 import {Decode, DescribeDataset, Encode, ExportBlueprint, ExportWorkspace, Generate, Inspect, ListDatasets, ReadBlueprintChunk, Solve} from '../../../wailsjs/go/factory/Service'
 import {blueprint, build, factorycontract, quant} from '../../../wailsjs/go/models'
+import type {FactoryGenerationProgress} from '../../types/factory-progress'
+import {observeFactoryGeneration} from './factory-progress'
 
 // 职责：统一稳定错误码和大对象分片；使用：量化工作区；边界：不在浏览器重算配方或拼装蓝图。
 export class FactoryError extends Error {
@@ -30,11 +32,17 @@ const readGenerated = async (value: {blueprint: string; blueprintRef?: string; b
 export const listFactoryDatasets = async (): Promise<quant.DatasetInfo[]> => { ready(); return unwrap(await ListDatasets()) }
 export const describeFactoryDataset = async (key: string): Promise<factorycontract.DatasetDetail> => { ready(); return unwrap(await DescribeDataset(key)) }
 export const solveFactory = async (request: quant.Request): Promise<quant.Result> => { ready(); return unwrap(await Solve(request)) }
-export const generateFactory = async (request: build.Request): Promise<build.Result> => {
+export const generateFactory = async (request: build.Request, onProgress?: (progress: FactoryGenerationProgress) => void, signal?: AbortSignal): Promise<build.Result> => {
   ready()
-  const result = unwrap(await Generate(request))
-  result.blueprint = await readGenerated(result)
-  return result
+  const requestId = crypto.randomUUID()
+  const stop = observeFactoryGeneration(requestId, onProgress, signal)
+  try {
+    const result = unwrap(await Generate(new build.Request({...request, requestId})))
+    stop()
+    if (result.blueprintRef && !signal?.aborted) onProgress?.({stage: 'read', message: '正在读取生成的蓝图', current: 0, total: 0})
+    result.blueprint = await readGenerated(result)
+    return result
+  } finally { stop() }
 }
 export const inspectFactoryBlueprint = async (code: string, dataset: string): Promise<factorycontract.Inspection> => {
   ready(); return unwrap(await Inspect(new factorycontract.InspectRequest({blueprint: code, dataset})))

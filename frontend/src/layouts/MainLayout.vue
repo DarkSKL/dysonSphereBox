@@ -1049,6 +1049,7 @@ const closeWindow = (): void => {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .app-version-pill,

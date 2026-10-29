@@ -252,14 +252,14 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		}
 	}
 	if *b.setting.NeedPower {
-		b.linePower(l, conf, p.MachineType, lineIndex, last)
+		b.linePower(l, conf, p.MachineType, mode, lineIndex, last)
 	}
 	l.all = b.all[start:]
 	return l, nil
 }
 
 // linePower 职责：按机器参考规则补供电；使用：基础行装配；边界：不生成发电设施。
-func (b *builder) linePower(l *line, conf geometry, typ, lineIndex int, last bool) {
+func (b *builder) linePower(l *line, conf geometry, typ, mode, lineIndex int, last bool) {
 	add := func(x, y float64) { b.make(2201, x, y, 0) }
 	switch typ {
 	case 2:
@@ -288,6 +288,10 @@ func (b *builder) linePower(l *line, conf geometry, typ, lineIndex int, last boo
 				step = 5
 			}
 			y := l.output[0].a.y + 1
+			if mode == 6 {
+				// 总线回流轨位于出货带外侧一格，电线杆必须再向外让开一格。
+				y++
+			}
 			if lineIndex > 0 && last {
 				y = l.inputs[0][0].a.y - 1
 			}

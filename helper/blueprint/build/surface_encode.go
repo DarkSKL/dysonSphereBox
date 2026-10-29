@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：为保持旧平面排版的完整蓝图选择单 Area 粘贴锚点。
+// 文件职责：优先选择完整平面蓝图锚点，容量不足时按完整产线块生成多 Area。
 // 使用：finish 在统一编号之前计算占地，在最终预检时尝试候选锚点。
 // 边界：只编码原生格网，不写入地心坐标；尚未完成的游戏碰撞验证由 SurfacePlan 单独披露。
 
@@ -16,28 +16,41 @@ import (
 
 // surfaceEncoding 职责：保存整块平面蓝图的区域和候选锚点；使用：finish 的共同出口；边界：建筑仍按原顺序编号。
 type surfaceEncoding struct {
+	// packed 职责：标记已重排完整产线块；使用：防止几何失败后重复装箱；边界：单 Area 的重排也为 true。
+	packed bool
 	// areas 职责：保存按南到北排列的原生区域；使用：文档写出；边界：父区域朝主区域连接。
 	areas []blueprint.Area
 	// byBuilding 职责：保存建筑所属区域；使用：最终 float32 记录转换；边界：每个建筑只归属一区。
 	byBuilding map[*placed]int
-	// latitudeOffsets 职责：保存区域相对主区域的纬向原点；使用：从装配视图转为 Area 局部 Y；边界：单位为细格。
+	// latitudeOffsets 职责：保存各区域在装配视图中的纬向原点；使用：从装配视图转为 Area 局部 Y；边界：单位为细格，矩形切分不修改原装配坐标。
 	latitudeOffsets []int
+	// longitudeScales 职责：在矩形跨纬带时保持两端的绝对经度；使用：把同一源经度换算到不同 Area 段数；边界：nil 表示原有块装箱或单区布局，不缩放。
+	longitudeScales []float64
 	// plan 职责：保存建议锚点和已用纬带；使用：前端及独立游戏校验；边界：不宣称 Physics 已通过。
 	plan *SurfacePlan
 	// anchorCandidates 职责：保存按优先级排列的完整平面锚点候选；使用：最终碰撞预检失败时回退；边界：候选只改变粘贴纬圈，不改变建筑坐标。
 	anchorCandidates []int
 }
 
-// prepareSurfaceEncoding 职责：保持旧平面坐标并生成单一原生 Area 的粘贴锚点建议；使用：球面模式收尾；边界：不拆分产线块、不伪造绝对纬度。
-// 逻辑流：1. 计算完整平面 footprint => 2. 选择可容纳的粘贴纬圈 => 3. 仅平移到旧平面原点 => 4. 生成单 Area 与局部坐标映射。
+// prepareSurfaceEncoding 职责：优先锚定完整矩形，容量不足时重排闭合产线块；使用：内部兼容入口；边界：不伪造根 Area 的绝对纬度。
 func (b *builder) prepareSurfaceEncoding(layout *SurfaceLayout) (*surfaceEncoding, error) {
-	// 球面策略只选择整块蓝图的粘贴锚点；建筑仍沿用旧的全局平面 X/Y 排版。
-	// 只做与旧流程相同的整体归零；具体建筑冲突仍须按最终姿态检查，不能由编号推断原因。
+	return b.prepareSurfaceEncodingContext(context.Background(), layout)
+}
+
+// prepareSurfaceEncodingContext 职责：为完整矩形或多块布局选择原生区域；使用：生产收尾；边界：装箱及几何探测服从同一个生成取消信号。
+func (b *builder) prepareSurfaceEncodingContext(ctx context.Context, layout *SurfaceLayout) (*surfaceEncoding, error) {
+	if b.surfaceBusEncoding != nil {
+		return b.surfaceBusEncoding, nil
+	}
+	// 优先保留原排版，完整矩形超容量时才整体移动闭合块；具体碰撞仍须按最终姿态检查。
 	minimum, maximum := bounds(b.all)
 	shift(b.all, -minimum.x, -minimum.y, 0)
 	width := int(math.Ceil(maximum.x-minimum.x)) + 1
 	height := int(math.Ceil(maximum.y-minimum.y)) + 1
 	if width <= 0 || height <= 0 || width > 32767 || height > 32767 {
+		if len(b.surfaceBlocks) > 0 {
+			return b.preparePackedSurfaceEncoding(ctx, layout)
+		}
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "平面蓝图占地必须为正数"}
 	}
 	segment := layout.GridSegment
@@ -47,6 +60,19 @@ func (b *builder) prepareSurfaceEncoding(layout *SurfaceLayout) (*surfaceEncodin
 	}
 	candidates := surfaceAnchorCandidates(layout.Mode, segment, preferred, layout.ExpandAdjacent, width, height)
 	if len(candidates) == 0 {
+		// 自动模式不再把整块矩形锁死在一个纬圈；先尝试按设施安全切面跨相邻 Area，失败后再使用闭合产线块装箱。
+		if layout.Mode == "autoTropic" || layout.ExpandAdjacent {
+			if multi, multiErr := b.prepareMultiBandRectangleEncoding(ctx, layout, width, height, segment); multiErr == nil {
+				return multi, nil
+			} else if failure, ok := multiErr.(*blueprint.Error); !ok || failure.Code != "GEN_E_SURFACE_CAPACITY" && !surfaceAnchorRetryable(multiErr) {
+				return nil, multiErr
+			} else if len(b.surfaceBlocks) == 0 {
+				return nil, multiErr
+			}
+		}
+		if len(b.surfaceBlocks) > 0 {
+			return b.preparePackedSurfaceEncoding(ctx, layout)
+		}
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("平面蓝图占地 %dx%d 无法放入目标纬圈；请启用邻圈扩展或缩小蓝图", width, height)}
 	}
 	selected := candidates[0]
@@ -143,11 +169,16 @@ func (encoding *surfaceEncoding) validateAnchorCandidates(ctx context.Context, r
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "锚点预检已取消或超时"}
 		}
-		encoding.reanchorSurfaceEncoding(latitude)
+		if len(encoding.areas) == 1 {
+			encoding.reanchorSurfaceEncoding(latitude)
+		}
 		lastError = encoding.validateBeltDistancesContext(ctx, records)
 		if lastError == nil {
 			encoding.plan.BeltConnectionsChecked = true
 			lastError = encoding.validateStaticColliders(ctx, records)
+		}
+		if lastError == nil {
+			lastError = encoding.validateDynamicFacilities(ctx, records)
 		}
 		if lastError == nil || !surfaceAnchorRetryable(lastError) {
 			return lastError
@@ -167,6 +198,10 @@ func (encoding *surfaceEncoding) applyRecords(all []*placed, records []blueprint
 		r.AreaIndex = int8(band)
 		r.LocalOffset.Y = float32(p.a.y - float64(encoding.latitudeOffsets[band]))
 		r.LocalOffset2.Y = float32(p.b.y - float64(encoding.latitudeOffsets[band]))
+		if len(encoding.longitudeScales) > 0 {
+			r.LocalOffset.X = float32(p.a.x * encoding.longitudeScales[band])
+			r.LocalOffset2.X = float32(p.b.x * encoding.longitudeScales[band])
+		}
 		area := encoding.areas[band]
 		for _, point := range []blueprint.Point{r.LocalOffset, r.LocalOffset2} {
 			if point.X < 0 || point.Y < 0 || point.X > float32(area.Width-1) || point.Y > float32(area.Height-1) {

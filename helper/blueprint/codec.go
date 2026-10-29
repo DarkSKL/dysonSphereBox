@@ -21,6 +21,9 @@ import (
 // MaxTextBytes 职责：限制单次串大小；使用：桥接输入检查；边界：不是解压上限。
 const MaxTextBytes = 8 << 20
 
+// MaxBuildingCount 职责：统一生成和编解码的建筑安全上限；使用：大规模产线预算与负载检查；边界：不保证游戏放置、预览性能，文本及解压限制仍独立生效。
+const MaxBuildingCount = 200000
+
 // maxPayloadBytes 职责：限制解压内存；使用：拒绝压缩炸弹；边界：不执行文件导入。
 const maxPayloadBytes = 64 << 20
 
@@ -192,7 +195,7 @@ func decodeBinary(data []byte) (Document, error) {
 	if r.err != nil {
 		return d, r.err
 	}
-	if count > 200000 || uint64(count)*49 > uint64(len(data)-r.pos) {
+	if count > MaxBuildingCount || uint64(count)*49 > uint64(len(data)-r.pos) {
 		return d, fail("BP_E_TRUNCATED", "建筑数量超出负载或安全上限")
 	}
 	d.Buildings = make([]Building, 0, int(count))

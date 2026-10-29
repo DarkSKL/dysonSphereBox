@@ -1,8 +1,8 @@
 import {Icon, type IconifyIcon} from '@iconify/vue'
+import blueprint from '@iconify-icons/game-icons/armor-blueprint'
 import cargoCrate from '@iconify-icons/game-icons/cargo-crate'
-import bookAura from '@iconify-icons/game-icons/book-aura'
+import openBook from '@iconify-icons/game-icons/open-book'
 import cog from '@iconify-icons/game-icons/cog'
-import factory from '@iconify-icons/game-icons/factory'
 import habitatDome from '@iconify-icons/game-icons/habitat-dome'
 import processor from '@iconify-icons/game-icons/processor'
 import radarDish from '@iconify-icons/game-icons/radar-dish'
@@ -32,7 +32,7 @@ export const gameNavigationIcons = {
   headless: createNavigationIcon('GameHeadlessIcon', radarDish),
   mods: createNavigationIcon('GameModsIcon', processor),
   resources: createNavigationIcon('GameResourcesIcon', cargoCrate),
-  factory: createNavigationIcon('GameFactoryIcon', factory),
-  encyclopedia: createNavigationIcon('GameEncyclopediaIcon', bookAura),
+  factory: createNavigationIcon('GameFactoryIcon', blueprint),
+  encyclopedia: createNavigationIcon('GameEncyclopediaIcon', openBook),
   settings: createNavigationIcon('GameSettingsIcon', cog),
 } as const

@@ -879,7 +879,14 @@ func (service *EnvironmentManagerService) quickImportBlueprintWithoutOperation(p
 	if overwrite {
 		message = fmt.Sprintf("蓝图「%s」已存入蓝图库", safeName)
 	}
-	return EnvironmentOperationResult{Message: message, BlueprintPage: &page}, nil
+	relativePath := filepath.ToSlash(filepath.Join(parentPath, safeName+".txt"))
+	for index := range page.Items {
+		item := &page.Items[index]
+		if item.Type == "blueprint" && strings.EqualFold(item.RelativePath, relativePath) {
+			return EnvironmentOperationResult{Message: message, Blueprint: item, BlueprintPage: &page}, nil
+		}
+	}
+	return EnvironmentOperationResult{}, fmt.Errorf("蓝图已写入，但未在资源库中找到保存的文件，请刷新蓝图库")
 }
 
 // EnableBlueprint 启用客户端资源库中的单个蓝图。

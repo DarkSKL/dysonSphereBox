@@ -130,8 +130,8 @@ const importedRows = computed(() => {
           <label class="field" v-if="w.surfaceLayout.mode === 'explicitTropic'">纬向格索引<n-input-number v-model:value="w.surfaceLayout.latitudeGridIndex" size="small" :min="-w.surfaceLayout.gridSegment * 5 / 4" :max="w.surfaceLayout.gridSegment * 5 / 4" :precision="0" /></label>
         </div>
         <n-checkbox v-if="w.surfaceLayout.mode !== 'planar'" v-model:checked="w.surfaceLayout.expandAdjacent" size="small">容量不足时将后续产线扩展到邻圈</n-checkbox>
-        <p v-if="w.surfaceLayout.mode !== 'planar'" class="surface-hint">适用于原版星球，按纬圈容量安排完整产线。当前预检未覆盖动态物流碰撞及游戏内 Physics，完成放置验收前可预览，暂不支持导出。</p>
-        <p v-else class="surface-hint">旧平面布局仅保留兼容预览，缺少球面坐标与放置校验；生成结果可预览，暂不支持复制、导出或写入蓝图库。</p>
+        <p v-if="w.surfaceLayout.mode !== 'planar'" class="surface-hint">适用于原版星球，按纬圈容量安排完整产线。</p>
+        <p v-else class="surface-hint">按平面网格排列产线，不进行纬圈适配。</p>
         <div class="field-row">
           <label class="field">单列机器<n-input-number v-model:value="w.layout.maxMachineInALine" size="small" :min="1" :max="200" /></label>
           <label class="field">研究站层数<n-input-number v-model:value="w.layout.maxLays" size="small" :min="1" :max="15" /></label>
