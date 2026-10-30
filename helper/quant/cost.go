@@ -113,12 +113,13 @@ func (g *graph) prices() (map[string]*price, error) {
 func (g *graph) balanceNatural(needs *rates) error {
 	for _, line := range g.settings.NaturalProductionLine {
 		choices := g.dataset.Choices[line.TargetItem]
-		if line.RecipeChoice < 1 || line.RecipeChoice > len(choices) || line.MachineCount < 0 {
+		if line.RecipeChoice < 1 || line.RecipeChoice > len(choices) || line.MachineCount < 0 || math.IsNaN(line.MachineCount) || math.IsInf(line.MachineCount, 0) {
 			return qerror("Q_E_BAD_REQUEST", "已有产线的配方或数量无效")
 		}
 		r := g.dataset.Recipes[choices[line.RecipeChoice-1]]
-		if line.Building < 0 || line.Building >= len(r.Factories) || line.IncreasePoints < 0 || line.IncreasePoints > 10 || line.ProductionMode < 0 || line.ProductionMode > 4 {
-			return qerror("Q_E_BAD_REQUEST", "已有产线配置无效")
+		rs, err := normalizeRecipeScheme(g.dataset, r, RecipeScheme{Building: line.Building, IncreasePoints: line.IncreasePoints, ProductionMode: line.ProductionMode})
+		if err != nil {
+			return qerror("Q_E_BAD_REQUEST", "已有产线配置无效: "+err.Error())
 		}
 		factory := g.dataset.ByID[r.Factories[line.Building]]
 		speed := factory.Speed
@@ -126,10 +127,16 @@ func (g *graph) balanceNatural(needs *rates) error {
 			speed = 1
 		}
 		times := 60 * line.MachineCount * speed / (r.TimeSpend / 60)
+		// 固定产线与普通产线共享采集/特殊设施倍率，避免同一配方出现两套语义。
+		lineItem := line.TargetItem
+		if lineItem == "" && len(r.Results) > 0 {
+			lineItem = g.dataset.ByID[r.Results[0]].Name
+		}
+		times = multiplier(times, factory, lineItem, g.settings)
 		inScale, outScale := 1., 1.
-		if line.ProductionMode > 0 && line.IncreasePoints > 0 {
-			inc, acc, _ := effects(line.IncreasePoints)
-			switch line.ProductionMode {
+		if rs.ProductionMode > 0 && rs.IncreasePoints > 0 {
+			inc, acc, _ := effects(rs.IncreasePoints)
+			switch rs.ProductionMode {
 			case 1:
 				inScale, outScale = acc, acc
 			case 2:
@@ -137,13 +144,13 @@ func (g *graph) balanceNatural(needs *rates) error {
 			case 3:
 				outScale = acc
 			case 4:
-				outScale = float64(line.IncreasePoints) / 10
+				outScale = float64(rs.IncreasePoints) / 10
 			}
 			total := 0.
 			for _, v := range r.ItemCounts {
 				total += v
 			}
-			spray, cost, err := sprayCost(g.dataset, line.IncreasePoints, *g.settings.ProliferateItself)
+			spray, cost, err := sprayCost(g.dataset, rs.IncreasePoints, *g.settings.ProliferateItself)
 			if err != nil {
 				return err
 			}

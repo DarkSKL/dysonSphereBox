@@ -140,6 +140,30 @@ func effects(points int) (increase, speed, power float64) {
 	return 1.15 + .025*float64(points), 1 + .25*float64(points), .9 + .4*float64(points)
 }
 
+// normalizeRecipeScheme 职责：统一普通产线与固定产线的配方配置校验和默认值；使用：两类产线进入计算前调用；边界：只校验请求，不修改数据集或外部请求。
+func normalizeRecipeScheme(d *Dataset, r Recipe, rs RecipeScheme) (RecipeScheme, error) {
+	if r.Proliferator == 8 && rs.ProductionMode == 0 {
+		rs.ProductionMode = 4
+	}
+	if rs.ProductionMode > 0 && rs.IncreasePoints == 0 {
+		rs.IncreasePoints = 4
+		if strings.Contains(d.Info.Key, "FractionateEverything") {
+			rs.IncreasePoints = 10
+		}
+	}
+	if rs.ProductionMode == 0 {
+		// 禁用喷涂时丢弃请求残留点数，避免污染成本、物料和功耗。
+		rs.IncreasePoints = 0
+	}
+	if rs.Building < 0 || rs.Building >= len(r.Factories) || rs.ProductionMode < 0 || rs.ProductionMode > 4 || rs.IncreasePoints < 0 || rs.IncreasePoints > 10 {
+		return rs, qerror("Q_E_BAD_REQUEST", fmt.Sprintf("配方 %d 的设施或喷涂配置无效", r.ID))
+	}
+	if rs.ProductionMode > 0 && r.Proliferator&(1<<uint(rs.ProductionMode-1)) == 0 {
+		return rs, qerror("Q_E_BAD_REQUEST", fmt.Sprintf("配方 %d 不支持所选增产模式", r.ID))
+	}
+	return rs, nil
+}
+
 // sprayCost 职责：选择可用增产剂；使用：单位喷涂原料；边界：1/2/4 点采用原版喷涂次数，其他点需数据支持。
 func sprayCost(d *Dataset, points int, self bool) (string, float64, error) {
 	id, times := 1141, 12.
@@ -257,20 +281,9 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 		if index < len(scheme.SchemeForRecipe) {
 			rs = scheme.SchemeForRecipe[index]
 		}
-		if r.Proliferator == 8 && rs.ProductionMode == 0 {
-			rs.ProductionMode = 4
-		}
-		if rs.ProductionMode > 0 && rs.IncreasePoints == 0 {
-			rs.IncreasePoints = 4
-			if strings.Contains(d.Info.Key, "FractionateEverything") {
-				rs.IncreasePoints = 10
-			}
-		}
-		if rs.Building < 0 || rs.Building >= len(r.Factories) || rs.ProductionMode < 0 || rs.ProductionMode > 4 || rs.IncreasePoints < 0 || rs.IncreasePoints > 10 {
-			return nil, qerror("Q_E_BAD_REQUEST", fmt.Sprintf("配方 %d 的设施或喷涂配置无效", r.ID))
-		}
-		if rs.ProductionMode > 0 && r.Proliferator&(1<<uint(rs.ProductionMode-1)) == 0 {
-			return nil, qerror("Q_E_BAD_REQUEST", fmt.Sprintf("配方 %d 不支持所选增产模式", r.ID))
+		rs, err = normalizeRecipeScheme(d, r, rs)
+		if err != nil {
+			return nil, err
 		}
 		n.recipe = index
 		n.factory = d.ByID[r.Factories[rs.Building]]

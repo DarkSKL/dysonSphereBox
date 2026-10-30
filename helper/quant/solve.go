@@ -111,7 +111,12 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		if exact > 1000000 {
 			return Result{}, qerror("Q_E_BAD_REQUEST", "单条产线机器数超过 100 万，请拆分目标")
 		}
-		count := int(math.Ceil(math.Round(exact*100) / 100))
+		// 设备数量必须覆盖精确需求；仅吸附极小浮点误差，不能按展示小数位预舍入。
+		ceilExact := exact
+		if math.Abs(exact-math.Round(exact)) <= 1e-9 {
+			ceilExact = math.Round(exact)
+		}
+		count := int(math.Ceil(ceilExact))
 		if count < 1 {
 			count = 1
 		}
