@@ -29,10 +29,33 @@ export const useQuantWorkspace = () => {
   const itemRecipeChoices = reactive<Record<string, number>>({})
   const recipeOverrides = reactive<Record<number, RecipeOverride>>({})
   const mineralized = ref<string[]>([])
+  // =============== 量化设置 ===============
+  // 说明：保留 Go Settings DTO 的全部可配置字段，默认值与 normalizeSettings 对齐；单位为倍率或设施面板值。
+  // 边界：请求始终携带完整字段，避免新增入口时静默丢弃旧工作区设置。
+  const miningSpeedOil = ref<number | null>(3)
+  const miningSpeedHydrogen = ref<number | null>(1)
+  const miningSpeedDeuterium = ref<number | null>(.05)
+  const miningSpeedGasHydrate = ref<number | null>(.8)
+  const miningSpeedHelium = ref<number | null>(.02)
+  const miningSpeedAmmonia = ref<number | null>(.3)
+  const miningSpeedNitrogen = ref<number | null>(1.2)
+  const miningSpeedOxygen = ref<number | null>(.6)
+  const miningSpeedCarbonDioxide = ref<number | null>(.4)
+  const miningSpeedSulfurDioxide = ref<number | null>(.6)
+  const coveredVeinsSmall = ref<number | null>(8)
+  const coveredVeinsLarge = ref<number | null>(16)
+  const miningEfficiencyLarge = ref<number | null>(3)
   const miningSpeed = ref<number | null>(1)
+  const enemyDropMultiple = ref<number | null>(1)
+  const icarusManufacturingSpeed = ref<number | null>(1)
+  const fractionatingSpeed = ref<number | null>(30)
   const fixedNum = ref<number | null>(2)
   const researchStack = ref<number | null>(15)
   const sprayItself = ref(true)
+  const accRate = ref<number | null>(1)
+  const incRate = ref<number | null>(1)
+  const blueBuff = ref(false)
+  const naturalProductionLine = ref<quant.NaturalProduction[]>([])
   const spaceCost = ref<number | null>(1)
   const powerCost = ref<number | null>(0)
   const mode = ref(3)
@@ -75,7 +98,33 @@ export const useQuantWorkspace = () => {
   const generatedSignature = ref('')
   const itemMap = computed(() => new Map((detail.value?.items ?? []).map(item => [item.id, item])))
   const itemOptions = computed(() => (detail.value?.items ?? []).filter(item => item.id > 0).map(item => ({label: item.name, value: item.id})))
-  const requestSettings = computed(() => ({miningSpeedMultiple: miningSpeed.value ?? 1, fixedNum: fixedNum.value ?? 2, stackResearchLab: researchStack.value ?? 15, proliferateItself: sprayItself.value, mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true]))}))
+  const requestSettings = computed(() => ({
+    miningSpeedOil: miningSpeedOil.value ?? 3,
+    miningSpeedHydrogen: miningSpeedHydrogen.value ?? 1,
+    miningSpeedDeuterium: miningSpeedDeuterium.value ?? .05,
+    miningSpeedGasHydrate: miningSpeedGasHydrate.value ?? .8,
+    miningSpeedHelium: miningSpeedHelium.value ?? .02,
+    miningSpeedAmmonia: miningSpeedAmmonia.value ?? .3,
+    miningSpeedNitrogen: miningSpeedNitrogen.value ?? 1.2,
+    miningSpeedOxygen: miningSpeedOxygen.value ?? .6,
+    miningSpeedCarbonDioxide: miningSpeedCarbonDioxide.value ?? .4,
+    miningSpeedSulfurDioxide: miningSpeedSulfurDioxide.value ?? .6,
+    coveredVeinsSmall: coveredVeinsSmall.value ?? 8,
+    coveredVeinsLarge: coveredVeinsLarge.value ?? 16,
+    miningEfficiencyLarge: miningEfficiencyLarge.value ?? 3,
+    miningSpeedMultiple: miningSpeed.value ?? 1,
+    enemyDropMultiple: enemyDropMultiple.value ?? 1,
+    icarusManufacturingSpeed: icarusManufacturingSpeed.value ?? 1,
+    fractionatingSpeed: fractionatingSpeed.value ?? 30,
+    fixedNum: fixedNum.value ?? 2,
+    stackResearchLab: researchStack.value ?? 15,
+    proliferateItself: sprayItself.value,
+    accRate: accRate.value ?? 1,
+    incRate: incRate.value ?? 1,
+    blueBuff: blueBuff.value,
+    mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true])),
+    naturalProductionLine: naturalProductionLine.value.map(line => ({...line})),
+  }))
   const requestScheme = computed(() => ({itemRecipeChoices: {...itemRecipeChoices}, schemeForRecipe: (detail.value?.recipes ?? []).map((_recipe, index) => recipeOverrides[index] ?? {building: 0, productionMode: 0, increasePoints: 0}), costWeight: {space: spaceCost.value ?? 1, power: powerCost.value ?? 0}}))
   const querySignature = computed(() => JSON.stringify([datasetKey.value, targets.value.map(({itemId, ratePerMinute}) => ({itemId, ratePerMinute})), requestSettings.value, requestScheme.value]))
   const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, {...layout}, {...surfaceLayout}, name.value]))
@@ -412,7 +461,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeedOil, miningSpeedHydrogen, miningSpeedDeuterium, miningSpeedGasHydrate, miningSpeedHelium, miningSpeedAmmonia, miningSpeedNitrogen, miningSpeedOxygen, miningSpeedCarbonDioxide, miningSpeedSulfurDioxide, coveredVeinsSmall, coveredVeinsLarge, miningEfficiencyLarge, miningSpeed, enemyDropMultiple, icarusManufacturingSpeed, fractionatingSpeed, fixedNum, researchStack, sprayItself, accRate, incRate, blueBuff, naturalProductionLine, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

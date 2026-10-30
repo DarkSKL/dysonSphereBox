@@ -108,7 +108,7 @@ const importedRows = computed(() => {
 
         <h3>计算</h3>
         <div class="field-row">
-          <label class="field">采矿倍率<n-input-number v-model:value="w.miningSpeed" size="small" :min="0.01" :step="0.1" /></label>
+          <label class="field">采矿倍率<n-input-number v-model:value="w.miningSpeed" size="small" :min="0.01" :max="1000000" :step="0.1" /></label>
           <label class="field">小数位<n-input-number v-model:value="w.fixedNum" size="small" :min="0" :max="8" :precision="0" /></label>
         </div>
         <div class="field-row">
@@ -117,6 +117,27 @@ const importedRows = computed(() => {
         </div>
         <label class="field">研究站堆叠<n-input-number v-model:value="w.researchStack" size="small" :min="1" :max="15" /></label>
         <n-checkbox v-model:checked="w.sprayItself" size="small">增产剂自喷涂</n-checkbox>
+        <!-- ~ 高级量化设置 -->
+        <!-- * 说明：编辑现有量化内核的采集基础值和倍率，不包含蓝图布局参数 -->
+        <!-- * 交互：清空数值恢复默认，修改后沿用工作区计算流程 -->
+        <!-- * 依赖：useQuantWorkspace 的 Settings 请求映射与 Go 边界校验 -->
+        <!-- * 边界：气体和蓝 Buff 只对相应数据集生效，不代表采集器最终净产量 -->
+        <details class="advanced-settings">
+          <summary>高级采集与增产设置</summary>
+          <div class="advanced-fields">
+            <p class="surface-hint">速率为基础面板值（物品/秒），不是采集器净产量。清空恢复默认；气体与蓝 Buff 仅对相应数据集生效。</p>
+            <div class="field-row"><label class="field">油井面板 /s<n-input-number v-model:value="w.miningSpeedOil" size="small" :min="0.000001" :max="1000000" /></label><label class="field">巨星氢基础 /s<n-input-number v-model:value="w.miningSpeedHydrogen" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <div class="field-row"><label class="field">重氢基础 /s<n-input-number v-model:value="w.miningSpeedDeuterium" size="small" :min="0.000001" :max="1000000" /></label><label class="field">可燃冰基础 /s<n-input-number v-model:value="w.miningSpeedGasHydrate" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <div class="field-row"><label class="field">氦基础 /s<n-input-number v-model:value="w.miningSpeedHelium" size="small" :min="0.000001" :max="1000000" /></label><label class="field">氨基础 /s<n-input-number v-model:value="w.miningSpeedAmmonia" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <div class="field-row"><label class="field">氮基础 /s<n-input-number v-model:value="w.miningSpeedNitrogen" size="small" :min="0.000001" :max="1000000" /></label><label class="field">氧基础 /s<n-input-number v-model:value="w.miningSpeedOxygen" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <div class="field-row"><label class="field">二氧化碳基础 /s<n-input-number v-model:value="w.miningSpeedCarbonDioxide" size="small" :min="0.000001" :max="1000000" /></label><label class="field">二氧化硫基础 /s<n-input-number v-model:value="w.miningSpeedSulfurDioxide" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <div class="field-row"><label class="field">小矿覆盖（条）<n-input-number v-model:value="w.coveredVeinsSmall" size="small" :min="0.000001" :max="1000000" /></label><label class="field">大矿覆盖（条）<n-input-number v-model:value="w.coveredVeinsLarge" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <div class="field-row"><label class="field">大矿机效率倍率<n-input-number v-model:value="w.miningEfficiencyLarge" size="small" :min="0.000001" :max="1000000" /></label><label class="field">敌人掉落倍率<n-input-number v-model:value="w.enemyDropMultiple" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <div class="field-row"><label class="field">机甲制造倍率<n-input-number v-model:value="w.icarusManufacturingSpeed" size="small" :min="0.000001" :max="1000000" /></label><label class="field">分馏过带 /s<n-input-number v-model:value="w.fractionatingSpeed" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <div class="field-row"><label class="field">加速修正倍率<n-input-number v-model:value="w.accRate" size="small" :min="0.000001" :max="1000000" /></label><label class="field">增产修正倍率<n-input-number v-model:value="w.incRate" size="small" :min="0.000001" :max="1000000" /></label></div>
+            <n-checkbox v-model:checked="w.blueBuff" size="small">深空来敌蓝 Buff</n-checkbox>
+          </div>
+        </details>
         <template v-if="w.mineralized.length">
           <h3><PackageOpen :size="13" />外部供应<span class="count">{{ w.mineralized.length }}</span></h3>
           <div class="chip-list">
@@ -161,6 +182,8 @@ const importedRows = computed(() => {
 h3 { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(--ds-text-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
 .field { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; color: var(--ds-text-secondary); font-size: 11px; }
 .field-row { display: flex; gap: 8px; }
+.advanced-settings summary { color: var(--ds-text-secondary); font-size: 11px; cursor: pointer; }
+.advanced-fields { display: grid; gap: 8px; padding-top: 8px; }
 .surface-hint { margin: 0; color: var(--ds-text-muted); font-size: 10px; line-height: 1.45; }
 .flags { display: grid; gap: 4px; }
 .count { margin-left: auto; color: var(--ds-text-muted); font-family: var(--ds-font-display); font-weight: 400; letter-spacing: 0; }

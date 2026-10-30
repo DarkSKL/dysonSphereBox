@@ -110,8 +110,8 @@ func normalizeSettings(s Settings) (Settings, error) {
 			n := value.Field(i).Float()
 			if n == 0 {
 				value.Field(i).SetFloat(def.Field(i).Float())
-			} else if n < 0 || math.IsNaN(n) || math.IsInf(n, 0) {
-				return s, qerror("Q_E_BAD_REQUEST", "量化倍率必须为有限正数")
+			} else if n < 0 || n > 1e6 || math.IsNaN(n) || math.IsInf(n, 0) {
+				return s, qerror("Q_E_BAD_REQUEST", "量化倍率必须为有限正数且不超过 1000000")
 			}
 		}
 	}
