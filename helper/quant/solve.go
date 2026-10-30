@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 )
 
@@ -38,7 +39,7 @@ func Solve(parent context.Context, req Request) (Result, error) {
 	if err != nil {
 		return out, err
 	}
-	needs := newRates()
+	targetRates := map[string][]float64{}
 	for _, target := range req.Targets {
 		if target.RatePerMinute <= 0 || target.RatePerMinute > 1e9 || math.IsNaN(target.RatePerMinute) || math.IsInf(target.RatePerMinute, 0) {
 			return out, qerror("Q_E_BAD_REQUEST", "目标每分钟产量必须为有限正数，且不超过 10 亿")
@@ -50,7 +51,7 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		if len(d.Choices[item.Name]) == 0 && !req.Settings.MineralizeList[item.Name] {
 			return out, qerror("Q_E_NO_RECIPE", fmt.Sprintf("物品 %d %s 没有配方", item.ID, item.Name))
 		}
-		needs.add(item.Name, target.RatePerMinute)
+		targetRates[item.Name] = append(targetRates[item.Name], target.RatePerMinute)
 	}
 	g, err := makeGraph(d, req.Scheme, req.Settings)
 	if err != nil {
@@ -59,9 +60,38 @@ func Solve(parent context.Context, req Request) (Result, error) {
 	if ctx.Err() != nil {
 		return out, qerror("Q_E_TIMEOUT", "量化超过 5 秒")
 	}
+	// 目标输入按数据集顺序归一，避免同一物理请求因目标排列改变 LP 变量顺序。
+	needs := newRates()
+	targetTotals := make(map[string]float64, len(targetRates))
+	for name, values := range targetRates {
+		sort.Float64s(values)
+		for _, value := range values {
+			targetTotals[name] += value
+		}
+	}
+	seen := map[string]bool{}
+	for _, name := range d.Order {
+		if amount, ok := targetTotals[name]; ok {
+			needs.add(name, amount)
+			seen[name] = true
+		}
+	}
+	remaining := make([]string, 0, len(targetTotals))
+	for name := range targetTotals {
+		if !seen[name] {
+			remaining = append(remaining, name)
+		}
+	}
+	sort.Strings(remaining)
+	for _, name := range remaining {
+		needs.add(name, targetTotals[name])
+	}
 	amounts, surplus, cost, err := g.calculate(ctx, needs)
 	if err != nil {
 		return out, err
+	}
+	if !finiteRates(amounts) || !finiteRates(surplus) || !finite(cost) {
+		return Result{}, qerror("Q_E_BAD_REQUEST", "量化结果包含非有限数值")
 	}
 	out.Targets = append([]Target{}, req.Targets...)
 	out.Dataset = d.Info.Key
@@ -76,7 +106,7 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		Version string
 	}{req, d.Info.DataVersion})
 	if err != nil {
-		return out, qerror("Q_E_BAD_REQUEST", "配置包含非有限值")
+		return Result{}, qerror("Q_E_BAD_REQUEST", "配置包含非有限值")
 	}
 	sum := sha256.Sum256(canonical)
 	out.PlanID = hex.EncodeToString(sum[:16])
@@ -151,7 +181,58 @@ func Solve(parent context.Context, req Request) (Result, error) {
 	if ctx.Err() != nil {
 		return Result{}, qerror("Q_E_TIMEOUT", "量化超过 5 秒")
 	}
+	if !finiteResult(out) {
+		return Result{}, qerror("Q_E_BAD_REQUEST", "量化结果包含非有限数值")
+	}
 	return out, nil
+}
+
+// finite 职责：判断浮点值可安全进入响应；使用：结果和成本边界校验；边界：不负责业务范围验证。
+func finite(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
+
+// finiteRates 职责：校验有序流量集合；使用：LP 回填前阻断溢出；边界：不判断负值语义。
+func finiteRates(values *rates) bool {
+	if values == nil {
+		return false
+	}
+	for _, name := range values.keys() {
+		if !finite(values.values[name]) {
+			return false
+		}
+	}
+	return true
+}
+
+// finiteResult 职责：校验量化响应中的所有数值；使用：Solve 返回前；边界：不改变既有错误码或投影边界。
+func finiteResult(result Result) bool {
+	if !finite(result.PowerMW) || !finite(result.LPCost) {
+		return false
+	}
+	for _, value := range result.Amounts {
+		if !finite(value) {
+			return false
+		}
+	}
+	for _, list := range [][]ItemRate{result.RawInputs, result.Leftovers} {
+		for _, rate := range list {
+			if !finite(rate.RatePerMinute) {
+				return false
+			}
+		}
+	}
+	for _, production := range result.Productions {
+		if !finite(production.ExactMachineCount) || !finite(production.RoundingMargin) || !finite(production.OutputCount) || !finite(production.PowerMW) {
+			return false
+		}
+		for _, list := range [][]ItemRate{production.Inputs, production.Outputs} {
+			for _, rate := range list {
+				if !finite(rate.RatePerMinute) {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // attributeTargets 职责：沿物料流反向追溯每个目标依赖的产线；使用：Solve 末尾；边界：只读产线 Inputs/Outputs，循环由 visited 截断。

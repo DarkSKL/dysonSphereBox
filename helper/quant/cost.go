@@ -133,16 +133,19 @@ func (g *graph) balanceNatural(needs *rates) error {
 			lineItem = g.dataset.ByID[r.Results[0]].Name
 		}
 		times = multiplier(times, factory, lineItem, g.settings)
+		if !finite(times) {
+			return qerror("Q_E_BAD_REQUEST", "已有产线产量包含非有限值")
+		}
 		inScale, outScale := 1., 1.
 		if rs.ProductionMode > 0 && rs.IncreasePoints > 0 {
 			inc, acc, _ := effects(rs.IncreasePoints)
 			switch rs.ProductionMode {
 			case 1:
-				inScale, outScale = acc, acc
+				inScale, outScale = acc*g.settings.AccRate, acc*g.settings.AccRate
 			case 2:
-				outScale = inc
+				outScale = inc * g.settings.IncRate
 			case 3:
-				outScale = acc
+				outScale = acc * g.settings.AccRate
 			case 4:
 				outScale = float64(rs.IncreasePoints) / 10
 			}
@@ -162,6 +165,9 @@ func (g *graph) balanceNatural(needs *rates) error {
 		for i, id := range r.Results {
 			needs.add(g.dataset.ByID[id].Name, -r.ResultCounts[i]*times*outScale)
 		}
+	}
+	if !finiteRates(needs) {
+		return qerror("Q_E_BAD_REQUEST", "已有产线物料包含非有限值")
 	}
 	return nil
 }
