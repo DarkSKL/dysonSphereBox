@@ -38,6 +38,10 @@ export function SetSelfSetting(arg1) {
   return window['go']['system']['AccountService']['SetSelfSetting'](arg1);
 }
 
+export function SyncSession(arg1) {
+  return window['go']['system']['AccountService']['SyncSession'](arg1);
+}
+
 export function UploadAvatar(arg1, arg2) {
   return window['go']['system']['AccountService']['UploadAvatar'](arg1, arg2);
 }

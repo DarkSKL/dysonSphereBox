@@ -4,14 +4,19 @@ import {computed, nextTick, onBeforeUnmount, reactive, ref, watch} from 'vue'
 import {useMessage} from 'naive-ui'
 import {
   accountIsAuthenticated,
+  accountLastError,
   accountNeedsPasswordChange,
+  accountSessionReady,
+  accountSessionStatus,
   accountUser,
   accountAvatarUploading,
+  bootstrapAccountSession,
   changeAccountPassword,
+  defaultAvatarUrl,
   fetchCaptcha,
-  fetchCurrentUser,
   loginAccount,
   logoutAccount,
+  refreshAccountSession,
   registerAccount,
   resolveAvatarUrl,
   updateSelfInfo,
@@ -178,6 +183,8 @@ watch(
   async (open) => {
     document.body.classList.toggle('account-modal-open', open)
     if (open) {
+      // 启动引导可能因后端尚未初始化而超时；打开账号入口时重新启动一次，随后由会话状态决定展示登录或资料。
+      if (!accountSessionReady.value) void bootstrapAccountSession()
       void loadServerAddress().catch(() => { avatarFailed.value = true })
       artMotion.value = null
       circuitTraces.value = seedCircuitTraces()
@@ -189,7 +196,8 @@ watch(
       if (!isAuthenticated.value && mode.value !== 'changePassword') {
         void refreshCaptcha()
       }
-      if (isAuthenticated.value && (!user.value || needsUserRefresh.value)) {
+      // 已持有 token 但尚未验证、资料缺失或上次同步离线时，打开账号入口即走统一刷新，不再要求用户额外点击。
+      if (isAuthenticated.value && (accountSessionStatus.value !== 'authenticated' || !user.value || needsUserRefresh.value)) {
         void reloadUser()
       }
       await nextTick()
@@ -337,8 +345,7 @@ const submit = async (): Promise<void> => {
       message.warning('此账号需要先修改密码。')
       return
     }
-    await fetchCurrentUser()
-    window.dispatchEvent(new Event('account:verified'))
+    // 登录响应已包含服务器确认的用户与主体；写操作完成后的本地快照同步会更新全局会话，不需要再手动拉取一次资料。
     message.success('登录成功。')
     emit('close')
   } catch (error) {
@@ -370,7 +377,12 @@ async function reloadUser(): Promise<void> {
   if (isLoadingUser.value) return
   isLoadingUser.value = true
   try {
-    await fetchCurrentUser()
+    const result = await refreshAccountSession({force: true, reason: 'account-modal'})
+    if (result.status === 'passwordRequired') {
+      needsUserRefresh.value = false
+      return
+    }
+    if (!result.ok || !user.value) throw new Error(result.message || '账号信息读取失败')
     needsUserRefresh.value = false
   } catch (error) {
     message.error(`账号信息读取失败：${error instanceof Error ? error.message : String(error)}`)
@@ -458,15 +470,10 @@ const saveProfile = async (): Promise<void> => {
 
   isSubmitting.value = true
   try {
-    await updateSelfInfo(changes)
-    needsUserRefresh.value = true
-    try {
-      await fetchCurrentUser()
-      needsUserRefresh.value = false
-    } catch {
-      // 资料已保存；读取失败时保留重试标记，避免展示旧资料却永久不再同步。
-    }
-    if (needsUserRefresh.value) message.warning('资料已保存，最新信息读取失败，请重新打开账号窗口重试。')
+    // updateSelfInfo 内部完成统一刷新；返回空表示资料已保存但最新用户读取失败。
+    const updated = await updateSelfInfo(changes)
+    needsUserRefresh.value = !updated
+    if (!updated) message.warning('资料已保存，最新信息读取失败，请重新打开账号窗口重试。')
     else message.success('资料已更新。')
     mode.value = isAuthenticated.value && accountNeedsPasswordChange.value ? 'changePassword' : 'login'
   } catch (error) {
@@ -546,6 +553,10 @@ const signOut = async (): Promise<void> => {
                 <p v-else-if="mode === 'register'">建立你的工程师档案，保存每一次跃迁。</p>
                 <p v-else-if="mode === 'changePassword'">设置新密码后需要重新登录。</p>
                 <p v-else>昵称会在联机大厅与房间中显示。</p>
+                <!-- ~ 会话过期提示：服务器明确拒绝原 token 后展示，仅用于登录视图 -->
+                <p v-if="!isShowingProfile && mode === 'login' && accountSessionStatus === 'expired'" class="account-session-expired" role="status">
+                  {{ accountLastError || '登录状态已失效，请重新登录。' }}
+                </p>
               </div>
 
               <!-- ~ 账号概览：仅保留头像、昵称与账号操作，联系方式在编辑资料中管理 -->
@@ -553,7 +564,7 @@ const signOut = async (): Promise<void> => {
                 <div class="account-profile-card">
                   <span class="account-avatar" aria-hidden="true">
                     <img v-if="avatarSource && !avatarFailed" :src="avatarSource" alt="" @error="avatarFailed = true" />
-                    <UserRound v-else :size="22" :stroke-width="1.8" />
+                    <img v-else :src="defaultAvatarUrl" alt="" referrerpolicy="no-referrer" />
                   </span>
                   <div class="account-profile-identity">
                     <strong :title="displayName">{{ displayName || (isLoadingUser ? '正在读取…' : '账号信息暂不可用') }}</strong>
@@ -582,7 +593,7 @@ const signOut = async (): Promise<void> => {
                   <input ref="avatarFileField" type="file" accept="image/jpeg,image/png,image/webp" hidden :disabled="isSubmitting || isUploadingAvatar" @change="uploadSelectedAvatar" />
                   <button type="button" class="account-avatar account-avatar-edit" aria-label="选择图片上传头像" title="点击更换头像" :aria-busy="isUploadingAvatar" :disabled="isSubmitting || isUploadingAvatar" @click="changeAvatar">
                     <img v-if="avatarSource && !avatarFailed" :src="avatarSource" alt="" referrerpolicy="no-referrer" @error="avatarFailed = true" />
-                    <UserRound v-else :size="28" :stroke-width="1.6" />
+                    <img v-else :src="defaultAvatarUrl" alt="" referrerpolicy="no-referrer" />
                     <span class="account-avatar-edit-hint"><Camera :size="13" /></span>
                   </button>
                   <div class="account-avatar-editor-copy">
@@ -1005,6 +1016,12 @@ const signOut = async (): Promise<void> => {
   color: var(--ds-text-secondary);
   font-size: 12.5px;
   line-height: 1.5;
+}
+
+// 会话过期提示沿用警告色，无独立背景与圆角，避免在登录表单顶部增加卡片层级。
+.account-form-heading .account-session-expired {
+  margin-top: 6px;
+  color: var(--ds-warning);
 }
 
 .account-form {

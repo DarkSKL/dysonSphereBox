@@ -35,6 +35,79 @@ var sessionMutationState struct {
 	cancel context.CancelFunc
 }
 
+// sessionUserState 职责：缓存当前已验证账号的用户资料，供统一会话快照直接返回。
+// 使用：登录、获取当前用户和头像上传成功后写入；SessionState 读取；清除会话、切服或 401 时清空。
+// 边界：只在本进程内有效，不持久化，不包含 token 或密码等凭据。
+var sessionUserState struct {
+	sync.Mutex
+	value *systemAPI.AccountUser
+}
+
+// SetSessionUser 保存服务端确认过的当前用户资料。
+// 职责：让后续本地会话读取无需再次请求服务器即可得到用户信息。
+// 使用：Login、CurrentUser、UploadAvatar 与资料更新成功后调用。
+// 边界：传入 nil 等同于清空；保存副本，调用方后续修改不会影响缓存。
+func SetSessionUser(user *systemAPI.AccountUser) {
+	sessionUserState.Lock()
+	defer sessionUserState.Unlock()
+	if user == nil {
+		sessionUserState.value = nil
+		return
+	}
+	copy := *user
+	sessionUserState.value = &copy
+}
+
+// CurrentSessionUser 返回缓存的当前用户副本。
+// 职责：读取最近一次服务端确认的用户资料。
+// 使用：会话快照组装与需要判断身份的诊断路径。
+// 边界：未登录或未验证时返回 nil；不发起网络请求。
+func CurrentSessionUser() *systemAPI.AccountUser {
+	sessionUserState.Lock()
+	defer sessionUserState.Unlock()
+	if sessionUserState.value == nil {
+		return nil
+	}
+	copy := *sessionUserState.value
+	return &copy
+}
+
+// clearSessionUser 清空当前用户缓存。
+// 职责：注销、401、切服或切换登录身份时移除旧账号资料。
+// 使用：invalidateLocked 与退出流程内部调用。
+// 边界：只清内存，不修改数据库或 token 配置。
+func clearSessionUser() {
+	sessionUserState.Lock()
+	sessionUserState.value = nil
+	sessionUserState.Unlock()
+}
+
+// applySessionUserInfo 职责：把已成功的资料更新合并进缓存用户；使用：SetSelfInfo 成功后；边界：只改非 nil 白名单字段，不改变身份或验证状态。
+func applySessionUserInfo(payload systemAPI.AccountSelfInfoRequest) {
+	sessionUserState.Lock()
+	defer sessionUserState.Unlock()
+	if sessionUserState.value == nil {
+		return
+	}
+	if payload.NickName != nil {
+		sessionUserState.value.NickName = *payload.NickName
+	}
+	if payload.HeaderImg != nil {
+		sessionUserState.value.HeaderImg = *payload.HeaderImg
+	}
+	if payload.Phone != nil {
+		sessionUserState.value.Phone = *payload.Phone
+	}
+	if payload.Email != nil {
+		sessionUserState.value.Email = *payload.Email
+	}
+}
+
+// sessionReady 职责：判断数据库派生配置与服务器客户端是否已初始化；使用：会话快照区分初始化和未登录；边界：只读全局引用，不触发初始化。
+func sessionReady() bool {
+	return core.GLOBAL.Configure != nil && core.GLOBAL.Configure.AccountToken != nil && core.GLOBAL.ServerClient != nil
+}
+
 // Token 返回当前保存的账号 token。
 // 职责：读取 Account/Token 配置。
 // 使用：Request 附加鉴权头、Logout 判断是否需要请求服务端时调用。
@@ -147,32 +220,62 @@ func OnSessionCleared(hook func()) {
 	sessionClearedHooks.Unlock()
 }
 
-// SessionState 返回前端可见的会话状态。
-// 职责：汇总是否持有 token 与是否需要先修改密码。
-// 使用：AccountService.GetSessionState 返回给前端。
-// 边界：Authenticated 不保证 token 仍被服务端接受。
+// SessionState 返回前端可见的本地会话状态。
+// 职责：汇总基础设施就绪、token、验证结果、强制改密、会话身份和缓存用户，作为前端全局账号 store 的数据源。
+// 使用：AccountService.GetSessionState 返回本地快照；SyncSession 在发起远端验证前后读取。
+// 边界：Authenticated 不保证 token 仍被服务端接受；Verified 只表示本进程已完成一次验证；不返回 token。
 func SessionState() systemAPI.AccountSessionState {
 	sessionMutationState.Lock()
 	defer sessionMutationState.Unlock()
 	needChangePasswordState.Lock()
 	defer needChangePasswordState.Unlock()
 
+	ready := sessionReady()
+	authenticated := Token() != ""
+	subjectID := sessionMutationState.subject
+	serverKey := ""
+	if core.GLOBAL.ServerClient != nil {
+		serverKey = core.GLOBAL.ServerClient.BaseURL()
+	}
+	verified := authenticated && !needChangePasswordState.value && subjectID != ""
+	status := systemAPI.AccountSessionStatusAnonymous
+	switch {
+	case !ready:
+		status = systemAPI.AccountSessionStatusInitializing
+	case !authenticated:
+		status = systemAPI.AccountSessionStatusAnonymous
+	case needChangePasswordState.value:
+		status = systemAPI.AccountSessionStatusPasswordRequired
+	case subjectID != "":
+		status = systemAPI.AccountSessionStatusAuthenticated
+	default:
+		status = systemAPI.AccountSessionStatusPending
+	}
+	var user *systemAPI.AccountUser
+	if authenticated {
+		user = CurrentSessionUser()
+	}
 	return systemAPI.AccountSessionState{
-		Authenticated:      Token() != "",
+		Ready:              ready,
+		Authenticated:      authenticated,
+		Verified:           verified,
 		NeedChangePassword: needChangePasswordState.value,
-		SubjectID:          sessionMutationState.subject,
+		Status:             status,
+		SubjectID:          subjectID,
 		Generation:         strconv.FormatUint(sessionMutationState.generation, 10),
-		ServerKey:          core.GLOBAL.ServerClient.BaseURL(),
+		ServerKey:          serverKey,
+		User:               user,
 	}
 }
 
-// invalidateLocked 职责：作废可信身份并取消旧请求；使用：持锁的代次切换；边界：不写配置。
+// invalidateLocked 职责：作废可信身份、缓存用户并取消旧请求；使用：持锁的代次切换；边界：不写配置。
 func invalidateLocked() {
 	if sessionMutationState.cancel != nil {
 		sessionMutationState.cancel()
 	}
 	sessionMutationState.subject = ""
 	sessionMutationState.ctx, sessionMutationState.cancel = context.WithCancel(context.Background())
+	clearSessionUser()
 }
 
 // SwapServer 职责：原子切换HTTP目标及会话；使用：配置写入成功后；边界：同基址不清会话、不换客户端。

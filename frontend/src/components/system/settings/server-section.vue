@@ -21,6 +21,8 @@ const draftAddress = ref('')
 const isSaving = ref(false)
 const isProbing = ref(false)
 const probeResult = ref<ServerProbeResult | null>(null)
+// 记录最近一次已知生效地址；账号会话晚到校准地址时，用它判断草稿是否仍未被用户改动。
+let lastEffectiveAddress = ''
 
 // =============== 地址草稿状态 ===============
 // 说明：输入框展示当前生效地址，编辑内容只存在草稿中；点击保存后才写入 System/ServerAddress。
@@ -57,7 +59,14 @@ const hint = computed<{text: string, tone: SettingsHintTone}>(() => {
 
 onMounted(async () => {
   await loadServerAddress()
-  draftAddress.value = serverEffectiveAddress.value
+  lastEffectiveAddress = serverEffectiveAddress.value
+  draftAddress.value = lastEffectiveAddress
+})
+
+// 账号会话可能在后端启动完成后校准服务器地址；草稿未被用户改动时跟随更新，避免把默认地址误当成待保存修改。
+watch(serverEffectiveAddress, (address) => {
+  if (draftAddress.value === lastEffectiveAddress) draftAddress.value = address
+  lastEffectiveAddress = address
 })
 
 // 地址变化后旧的测试结果不再代表当前草稿，直接清除

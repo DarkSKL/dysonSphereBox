@@ -7,7 +7,6 @@ import {
   PanelLeftOpen,
   Square,
   Sun,
-  UserRound,
   X,
 } from '@lucide/vue'
 import {useMessage} from 'naive-ui'
@@ -23,9 +22,18 @@ import AccountModal from '../components/layout/account-modal.vue'
 import AnnouncementModal from '../components/layout/announcement-modal.vue'
 import AnnouncementHistoryPopover from '../components/layout/announcement-history-popover.vue'
 import {workspaceNavigationRegistry, globalNavigationEntries} from '../navigation/registry'
-import {accountIsAuthenticated, accountUser, verifiedAccountSession, resolveAvatarUrl, restoreAccountSession} from '../services/account'
+import {
+  accountIsAuthenticated,
+  accountSessionKey,
+  accountSessionStatus,
+  accountUser,
+  defaultAvatarUrl,
+  refreshAccountSession,
+  resolveAvatarUrl,
+  verifiedAccountSession,
+} from '../services/account'
 import {useAnnouncements} from '../composables/useAnnouncements'
-import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../services/server'
+import {serverAddressReady, serverEffectiveAddress} from '../services/server'
 
 const route = useRoute()
 const message = useMessage()
@@ -49,8 +57,13 @@ const hasAppUpdate = computed(() => Boolean(appUpdateInfo.value?.hasUpdate && ap
 const {isDarkMode, isSavingThemeMode, loadThemeMode, toggleThemeMode} = useThemeMode()
 const {isTutorialRunning, tryAutoStartTutorial: tryAutoStartGlobalTutorial} = usePageTutorial('global')
 const announcements = useAnnouncements()
-// 同步撤销旧账号展示，避免登录验证事件发起的查询被下一轮watch误清除。
-watch([() => accountUser.value?.ID, () => verifiedAccountSession.value?.generation, serverEffectiveAddress], () => announcements.resetSession(), {flush: 'sync'})
+// 账号身份或服务器变化时撤销旧公告展示；同一作用域只自动检查一次，失败后由聚焦或手动入口重试。
+// 账号快照在同一轮状态应用里已校准服务器地址，因此只要出现已验证作用域即可检查，不依赖启动引导是否收尾。
+watch(accountSessionKey, (key, previousKey) => {
+  if (key === previousKey) return
+  announcements.resetSession()
+  if (key) void announcements.check()
+}, {immediate: true, flush: 'sync'})
 
 // =============== 当前工作区上下文 ===============
 // 说明：根据当前路由解析游戏或社区工作区，第二层菜单读取对应注册数据；全局页面不挂载子菜单。
@@ -138,22 +151,36 @@ const guardLockedEntry = (event: MouseEvent, entry: {readonly requiresAuth?: boo
 const title = computed(() => route.meta.title || '戴森球盒子')
 const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模式' : '切换到夜间模式'))
 
+// 说明：公告自动检查失败后，用户回到窗口或网络恢复时允许在同一作用域重试；成功检查过的作用域由 composable 去重。
+const retryAnnouncementCheck = (): void => {
+  if (accountSessionKey.value) void announcements.check()
+}
+// 说明：启动时服务器暂时不可达会保留 token 但无法取得已验证身份；回到窗口或网络恢复时重新走统一刷新。
+// 边界：离线状态即使保留了缓存用户也强制重新验证，避免只读本地快照而永远停在离线阶段。
+const retryAccountSync = (): void => {
+  const status = accountSessionStatus.value
+  if (accountIsAuthenticated.value && (status === 'offline' || status === 'pending' || !verifiedAccountSession.value)) {
+    void refreshAccountSession({force: status === 'offline', reason: 'focus-retry'})
+  }
+}
+const retryAccountAndAnnouncements = (): void => {
+  retryAccountSync()
+  retryAnnouncementCheck()
+}
+
 onMounted(() => {
   void loadAppVersion()
   // 启动时检查一次；设置页复用本次结果，网络失败时可在设置页重新检查。
   void checkAppUpdate().catch(() => undefined)
-  void loadServerAddress()
-  void restoreAccountSession().then(() => {
-    if (accountIsAuthenticated.value && accountUser.value?.ID) void announcements.check()
-  })
-  window.addEventListener('account:verified', handleVerifiedAccount)
-  window.addEventListener('account:cleared', handleClearedAccount)
+  window.addEventListener('focus', retryAccountAndAnnouncements)
+  window.addEventListener('online', retryAccountAndAnnouncements)
   void loadThemeMode()
   void tryAutoStartGlobalTutorial()
 })
-onBeforeUnmount(() => { window.removeEventListener('account:verified', handleVerifiedAccount); window.removeEventListener('account:cleared', handleClearedAccount) })
-function handleVerifiedAccount(): void { announcements.resetAutoAttempt(); void announcements.check() }
-function handleClearedAccount(): void { announcements.resetSession() }
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', retryAccountAndAnnouncements)
+  window.removeEventListener('online', retryAccountAndAnnouncements)
+})
 
 // =============== 主题切换交互 ===============
 // 说明：从主题按钮中心触发圆形扩散切换，主题值由 useThemeMode 负责持久化。
@@ -228,7 +255,7 @@ const closeWindow = (): void => {
           referrerpolicy="no-referrer"
           @error="accountAvatarFailed = true"
         />
-        <UserRound v-else :size="20" :stroke-width="1.7" aria-hidden="true" />
+        <img v-else :src="defaultAvatarUrl" alt="" referrerpolicy="no-referrer" />
       </button>
 
       <div class="app-rail-divider" />

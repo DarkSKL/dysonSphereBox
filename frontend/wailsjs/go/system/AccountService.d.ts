@@ -20,4 +20,6 @@ export function SetSelfInfo(arg1:system.AccountSelfInfoRequest):Promise<void>;
 
 export function SetSelfSetting(arg1:Record<string, any>):Promise<void>;
 
+export function SyncSession(arg1:boolean):Promise<system.AccountSessionSnapshot>;
+
 export function UploadAvatar(arg1:string,arg2:string):Promise<system.AccountUser>;

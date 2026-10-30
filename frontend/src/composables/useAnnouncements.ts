@@ -12,7 +12,7 @@ import {
 } from '../services/announcement'
 import {renderAnnouncement} from '../utils/announcement-content'
 import {serverEffectiveAddress} from '../services/server'
-import {getAccountSessionRevision, accountUser, verifiedAccountSession} from '../services/account'
+import {accountSessionKey, getAccountSessionRevision} from '../services/account'
 
 // =============== 共享公告状态 ===============
 // 说明：启动弹窗与历史入口共用账号作用域；查看和关闭只更新展示，用户按钮才提交已读。
@@ -39,7 +39,8 @@ const historyDetailHtml = ref('')
 const historyDetailReady = ref(false)
 const historyDetailPending = ref(false)
 const historyDetailError = ref('')
-let autoAttempted = false
+// 自动检查按账号作用域去重：只有成功取得最新公告结果后才记为该作用域已完成，失败允许聚焦或手动重试。
+let automaticScope = ''
 let requestSequence = 0
 let historySequence = 0
 let historyDetailSequence = 0
@@ -47,18 +48,30 @@ let historyServerTime = 0
 let historyRequestStartedAt = 0
 let historyExpiresAtMono = 0
 let expiresAtMono = 0
-const currentScope = (): string => `${getAccountSessionRevision()}/${verifiedAccountSession.value?.generation ?? ''}/${accountUser.value?.ID ?? ''}/${serverEffectiveAddress.value}`
+// 说明：作用域同时包含后端已验证身份和前端当前服务器地址；身份切换、切服或 token 代次变化都会使旧结果失效。
+// 边界：尚未完成账号验证时返回空串，自动检查不得据此发起公告请求。
+const currentScope = (): string => {
+  const sessionKey = accountSessionKey.value
+  return sessionKey ? `${getAccountSessionRevision()}/${sessionKey}/${serverEffectiveAddress.value}` : ''
+}
 
 // =============== 公告查询与用户操作 ===============
 // 说明：所有异步结果同时核对请求次序和账号代次；旧响应不得修改当前展示或查阅状态。
 export function useAnnouncements() {
   const title = computed(() => item.value?.title ?? '')
   const hasUnread = computed(() => Boolean(item.value) || history.value.some((entry) => !entry.read))
-  // 启动仅尝试一次最新未读，普通历史浏览不会重新触发启动弹窗。
+  // 同一账号作用域只自动检查一次，普通历史浏览不会重新触发启动弹窗。
   const check = async (manual = false): Promise<void> => {
-    if (!manual && autoAttempted) return
+    const scope = currentScope()
+    if (!scope) {
+      if (manual) {
+        error.value = '请先登录账号并完成账号信息同步。'
+        open.value = true
+      }
+      return
+    }
+    if (!manual && automaticScope === scope) return
     if (checking.value || pending.value || historyLoading.value || historyDetailPending.value) return
-    if (!manual) autoAttempted = true
     checking.value = true
     item.value = null
     html.value = ''
@@ -67,7 +80,6 @@ export function useAnnouncements() {
     visibleReady.value = false
     error.value = ''
     const sequence = ++requestSequence
-    const scope = currentScope()
     try {
       const session = sessionID.value || await captureAnnouncementSession()
       if (sequence !== requestSequence || scope !== currentScope()) return
@@ -75,6 +87,8 @@ export function useAnnouncements() {
       const requestStartedAt = performance.now()
       const latest = await fetchLatestAnnouncement(session)
       if (sequence !== requestSequence || scope !== currentScope()) return
+      // 服务器已给出确定性结果（含“暂无公告”），同一作用域不再自动重复查询；失败分支不写入，允许重试。
+      automaticScope = scope
       if (!latest.item) { item.value = null; open.value = false; return }
       const serverNow = Date.parse(latest.serverTime)
       if (!Number.isFinite(serverNow)) throw new Error('公告服务器时间无效')
@@ -96,7 +110,7 @@ export function useAnnouncements() {
       if (sequence === requestSequence) checking.value = false
     }
   }
-  const resetAutoAttempt = (): void => { autoAttempted = false }
+  const resetAutoAttempt = (): void => { automaticScope = '' }
   const closeHistoryDetail = (): void => {
     historyDetailSequence++
     historyDetailOpen.value = false
@@ -111,7 +125,7 @@ export function useAnnouncements() {
   const resetSession = (): void => {
     requestSequence++
     historySequence++
-    autoAttempted = false
+    automaticScope = ''
     item.value = null
     html.value = ''
     open.value = false

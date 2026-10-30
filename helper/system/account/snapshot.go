@@ -118,6 +118,10 @@ func acceptAccountResponse(s requestSnapshot, refreshed string, unauthorized, ne
 			return err
 		}
 		setNeedChangePassword(*loginPassword)
+		// 登录响应携带的 ID 就是本次 token 的主体；记录后公告、翻译等已验证能力无需再等额外请求。
+		if verifiedID != 0 {
+			sessionMutationState.subject = strconv.FormatUint(uint64(verifiedID), 10)
+		}
 	} else {
 		if currentCredential && refreshed != "" {
 			if err := saveTokenValue(refreshed); err != nil {

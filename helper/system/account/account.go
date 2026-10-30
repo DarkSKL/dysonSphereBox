@@ -45,11 +45,15 @@ func Login(ctx context.Context, payload systemAPI.AccountLoginRequest) (*systemA
 	if err != nil {
 		return nil, err
 	}
+	// 登录响应已经包含服务器确认的用户，写入会话缓存后前端无需再额外点击或请求一次资料。
+	SetSessionUser(&data.User)
 
 	return &systemAPI.AccountLoginResult{
 		User:               data.User,
 		ExpiresAt:          data.ExpiresAt,
 		NeedChangePassword: data.NeedChangePassword,
+		// 登录已建立 token 主体和用户缓存，直接附带本地快照，前端无需再点一次头像或额外请求资料。
+		Session: SessionState(),
 	}, nil
 }
 
@@ -62,6 +66,8 @@ func CurrentUser(ctx context.Context) (*systemAPI.AccountUser, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 服务器已确认 token 与用户身份的对应关系，缓存资料供统一会话快照直接复用。
+	SetSessionUser(&data.UserInfo)
 	return &data.UserInfo, nil
 }
 
@@ -70,8 +76,12 @@ func CurrentUser(ctx context.Context) (*systemAPI.AccountUser, error) {
 // 使用：账号资料编辑时调用。
 // 边界：nil 字段不更新，非 nil 空字符串清除头像和联系方式；需要最新资料时由调用方重新获取。
 func SetSelfInfo(ctx context.Context, payload systemAPI.AccountSelfInfoRequest) error {
-	_, err := request[struct{}](ctx, http.MethodPut, systemAPI.APIURLSetSelfInfo, payload, true)
-	return err
+	if _, err := request[struct{}](ctx, http.MethodPut, systemAPI.APIURLSetSelfInfo, payload, true); err != nil {
+		return err
+	}
+	// 资料更新接口不返回完整用户，把已确认字段合并进缓存，下一次本地会话读取不会立刻回退旧值。
+	applySessionUserInfo(payload)
+	return nil
 }
 
 // SetSelfSetting 覆盖保存个人界面配置。

@@ -3,7 +3,7 @@ import {Copy, Link2, LogOut, Monitor, RotateCcw, Server, UserPlus, UserX} from '
 import {useMessage} from 'naive-ui'
 import {computed, onMounted, ref, watch} from 'vue'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
-import {accountUser, resolveAvatarUrl} from '../../services/account'
+import {accountUser, defaultAvatarUrl, resolveAvatarUrl} from '../../services/account'
 import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../../services/server'
 import {linkErrorText, linkPathTexts, linkStateTexts, relayAdmissionTexts, type LinkView, type MultiplayerState, type RoomMember} from '../../types/multiplayer'
 import {portText, protoLabel} from '../../utils/multiplayer'
@@ -88,11 +88,9 @@ const seats = computed<Seat[]>(() => {
   for (let i = list.length; i < s.maxMembers; i++) list.push({key: `empty${i}`})
   return list
 })
-const initial = (name = ''): string => Array.from(name.trim())[0]?.toUpperCase() ?? '?'
-
 // =============== 座位头像 ===============
 // 说明：只有自己的座位能渲染真实头像；房间快照只下发昵称，其他成员的头像需要服务端补充字段后才能展示。
-// 边界：头像地址解析失败或图片加载失败时回退首字母，不额外请求账号服务器。
+// 边界：头像地址解析失败或图片加载失败时统一回退默认头像，不额外请求账号服务器。
 const selfAvatarFailed = ref(false)
 const selfAvatar = computed(() => (
   resolveAvatarUrl(accountUser.value?.headerImg, serverEffectiveAddress.value, serverAddressReady.value)
@@ -211,7 +209,7 @@ const flowRtt = computed(() => {
           <template v-if="seat.name">
             <div class="seat-avatar" aria-hidden="true">
               <img v-if="seat.self && selfAvatar && !selfAvatarFailed" :src="selfAvatar" alt="" referrerpolicy="no-referrer" @error="selfAvatarFailed = true" />
-              <template v-else>{{ initial(seat.name) }}</template>
+              <img v-else :src="defaultAvatarUrl" alt="" referrerpolicy="no-referrer" />
             </div>
             <div class="seat-info">
               <strong :title="seat.name">{{ seat.name }}<span v-if="seat.self" class="self-tag">我</span></strong>

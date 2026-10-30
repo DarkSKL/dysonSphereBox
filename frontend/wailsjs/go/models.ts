@@ -4667,6 +4667,52 @@ export namespace system {
 	        this.captchaId = source["captchaId"];
 	    }
 	}
+	export class AccountSessionState {
+	    ready: boolean;
+	    authenticated: boolean;
+	    verified: boolean;
+	    needChangePassword: boolean;
+	    status: string;
+	    subjectId: string;
+	    generation: string;
+	    serverKey: string;
+	    user?: AccountUser;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountSessionState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ready = source["ready"];
+	        this.authenticated = source["authenticated"];
+	        this.verified = source["verified"];
+	        this.needChangePassword = source["needChangePassword"];
+	        this.status = source["status"];
+	        this.subjectId = source["subjectId"];
+	        this.generation = source["generation"];
+	        this.serverKey = source["serverKey"];
+	        this.user = this.convertValues(source["user"], AccountUser);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class AccountUser {
 	    ID: number;
 	    uuid: string;
@@ -4703,6 +4749,7 @@ export namespace system {
 	    user: AccountUser;
 	    expiresAt: number;
 	    needChangePassword: boolean;
+	    session: AccountSessionState;
 	
 	    static createFrom(source: any = {}) {
 	        return new AccountLoginResult(source);
@@ -4713,6 +4760,7 @@ export namespace system {
 	        this.user = this.convertValues(source["user"], AccountUser);
 	        this.expiresAt = source["expiresAt"];
 	        this.needChangePassword = source["needChangePassword"];
+	        this.session = this.convertValues(source["session"], AccountSessionState);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -4771,26 +4819,39 @@ export namespace system {
 	        this.email = source["email"];
 	    }
 	}
-	export class AccountSessionState {
-	    authenticated: boolean;
-	    needChangePassword: boolean;
-	    subjectId: string;
-	    generation: string;
-	    serverKey: string;
+	export class AccountSessionSnapshot {
+	    session: AccountSessionState;
+	    message?: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new AccountSessionState(source);
+	        return new AccountSessionSnapshot(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.authenticated = source["authenticated"];
-	        this.needChangePassword = source["needChangePassword"];
-	        this.subjectId = source["subjectId"];
-	        this.generation = source["generation"];
-	        this.serverKey = source["serverKey"];
+	        this.session = this.convertValues(source["session"], AccountSessionState);
+	        this.message = source["message"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
+	
 	
 	export class ClientNoticeHistoryEntry {
 	    id: string;

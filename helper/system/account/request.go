@@ -117,6 +117,8 @@ func requestBodyCaptured[T any](ctx context.Context, snapshot requestSnapshot, m
 			}
 			loginToken = data.Token
 			loginPassword = &data.NeedChangePassword
+			// 登录响应已经包含当前用户身份，直接建立可信主体，避免登录后还要额外等待一次用户信息请求。
+			verifiedID = data.User.ID
 		}
 	}
 	if authenticated || path == systemAPI.APIURLLogin {

@@ -32,7 +32,8 @@ interface ServerBridgeWindow extends Window {
 const customServerAddress = ref('')
 const isServerAddressReady = ref(false)
 const effectiveServerAddress = computed(() => customServerAddress.value || DEFAULT_SERVER_ADDRESS)
-let loadServerAddressPromise: Promise<void> | null = null
+let loadServerAddressPromise: Promise<boolean> | null = null
+let serverAddressLoadSequence = 0
 
 // =============== 地址归一 ===============
 // 说明：与后端 utils.NormalizeHTTPBaseURL 保持同一规则，保存前先在前端给出即时错误提示。
@@ -67,22 +68,40 @@ export function normalizeServerAddress(raw: string): string {
 }
 
 // =============== 配置读写 ===============
-// 说明：首次调用时从数据库加载地址，后续复用同一 Promise；读取失败时回退默认地址，不阻塞账号请求。
-export async function loadServerAddress(): Promise<void> {
-  if (!loadServerAddressPromise) {
-    loadServerAddressPromise = GetConfig(SERVER_CONFIG_GROUP, SERVER_CONFIG_KEY)
-      .then((stored) => {
-        customServerAddress.value = stored.trim()
-      })
-      .catch(() => {
-        customServerAddress.value = ''
-      })
-      .finally(() => {
+// 说明：首次调用时从数据库加载地址，后续复用同一 Promise；强制刷新用于后端启动完成后重新读取。
+// 边界：读取失败时回退默认地址并保留可重试状态，不把失败结果永久缓存；返回值表示本次是否成功读取配置。
+export async function loadServerAddress(force = false): Promise<boolean> {
+  if (!force && loadServerAddressPromise) return loadServerAddressPromise
+  const sequence = ++serverAddressLoadSequence
+  const request = GetConfig(SERVER_CONFIG_GROUP, SERVER_CONFIG_KEY)
+    .then((stored) => {
+      if (sequence === serverAddressLoadSequence) {
+        // 后端会话快照已给出当前生效地址时以快照为准；配置读取晚到不能把公告作用域切回默认地址。
+        if (!isServerAddressReady.value) customServerAddress.value = stored.trim()
         isServerAddressReady.value = true
-      })
-  }
+      }
+      return true
+    })
+    .catch(() => {
+      if (sequence === serverAddressLoadSequence) {
+        isServerAddressReady.value = false
+        loadServerAddressPromise = null
+      }
+      return false
+    })
+  loadServerAddressPromise = request
+  return request
+}
 
-  await loadServerAddressPromise
+// applyServerAddressFromSession 使用后端会话中的有效服务器地址校准前端地址。
+// 职责：后端已完成会话验证时，保证头像相对路径、公告作用域和设置页展示使用同一服务器。
+// 使用：账号统一同步应用会话快照后调用；设置页保存地址后仍以配置写入结果为准。
+// 边界：空地址不覆盖当前状态；默认地址归一为空自定义值，避免把默认地址误存为自定义配置。
+export function applyServerAddressFromSession(serverKey: string): void {
+  const normalized = serverKey.trim().replace(/\/+$/, '')
+  if (!normalized) return
+  customServerAddress.value = normalized === DEFAULT_SERVER_ADDRESS ? '' : normalized
+  isServerAddressReady.value = true
 }
 
 // saveServerAddress 保存自定义地址；传入空字符串或默认地址时恢复为默认。
@@ -95,6 +114,7 @@ export async function saveServerAddress(raw: string): Promise<boolean> {
 
   await SetConfig(SERVER_CONFIG_GROUP, SERVER_CONFIG_KEY, nextCustom)
   customServerAddress.value = nextCustom
+  isServerAddressReady.value = true
   return effectiveServerAddress.value !== previousEffective
 }
 

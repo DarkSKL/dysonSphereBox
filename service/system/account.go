@@ -23,6 +23,8 @@ type AccountService struct{}
 func (service *AccountService) UploadAvatar(fileName, contentBase64 string) (*systemAPI.AccountUser, error) {
 	user, err := accountHelper.UploadAvatar(context.Background(), fileName, contentBase64)
 	if err == nil {
+		// 上传响应就是服务器保存后的完整用户，写入会话缓存后全局账号状态无需再请求一次资料。
+		accountHelper.SetSessionUser(user)
 		accountHelper.RecordStateChange("avatarUpdated", "账号头像上传并保存完成")
 	}
 	return user, err
@@ -112,10 +114,18 @@ func (service *AccountService) Logout() error {
 	return err
 }
 
+// SyncSession 同步当前账号会话与用户资料。
+// 职责：验证已保存 token、获取并缓存用户资料，返回包含会话阶段与用户的统一快照。
+// 使用：前端启动引导、账号弹窗打开、登录完成和资料更新后统一调用；force 为 true 时强制刷新服务器资料。
+// 边界：网络异常保留 token 并返回 offline；服务器拒绝 token 时返回 expired；不向前端返回 token。
+func (service *AccountService) SyncSession(force bool) (*systemAPI.AccountSessionSnapshot, error) {
+	return accountHelper.SyncSession(context.Background(), force)
+}
+
 // GetSessionState 返回本地会话状态。
-// 职责：告知前端是否持有 token 与是否需要先修改密码。
-// 使用：前端每次账号调用后同步登录态。
-// 边界：不访问网络。
+// 职责：告知前端基础设施、token、验证、改密状态与缓存用户。
+// 使用：前端在轻量同步时调用；需要远程验证时改用 SyncSession。
+// 边界：不访问网络，不保证 token 仍被服务器接受。
 func (service *AccountService) GetSessionState() systemAPI.AccountSessionState {
 	return accountHelper.SessionState()
 }

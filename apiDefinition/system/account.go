@@ -70,6 +70,27 @@ const (
 	AccountNewTokenHeader = "new-token"
 )
 
+// 账号会话状态常量组。
+// 职责：描述客户端会话快照的阶段，供前端全局账号状态和界面分支使用。
+// 使用：AccountSessionState.Status 与 AccountSessionSnapshot 返回时读取。
+// 边界：只描述客户端会话阶段，不替代服务端业务码；前端不得仅凭状态字符串推断用户权限。
+const (
+	// AccountSessionStatusInitializing 职责：客户端基础设施尚未就绪；使用：启动早期快照；边界：此时不能读取 token 或请求服务器。
+	AccountSessionStatusInitializing = "initializing"
+	// AccountSessionStatusAnonymous 职责：没有已保存 token；使用：未登录界面；边界：不代表服务器不可达。
+	AccountSessionStatusAnonymous = "anonymous"
+	// AccountSessionStatusPending 职责：已保存 token 但尚未完成用户验证；使用：等待统一同步；边界：公告、翻译等已验证能力不可用。
+	AccountSessionStatusPending = "pending"
+	// AccountSessionStatusAuthenticated 职责：token 已被服务器接受且用户资料可用；使用：已登录界面与已验证能力；边界：不保证 token 永久有效。
+	AccountSessionStatusAuthenticated = "authenticated"
+	// AccountSessionStatusPasswordRequired 职责：token 有效但服务端要求先修改密码；使用：强制改密界面；边界：此时保留 token，不按退出登录处理。
+	AccountSessionStatusPasswordRequired = "passwordRequired"
+	// AccountSessionStatusExpired 职责：服务器拒绝了原 token 且后端已清除本地会话；使用：提示重新登录；边界：必须与网络失败区分。
+	AccountSessionStatusExpired = "expired"
+	// AccountSessionStatusOffline 职责：token 仍保留但本次验证因网络或服务器失败未完成；使用：保留登录态并允许重试；边界：不得据此清除 token。
+	AccountSessionStatusOffline = "offline"
+)
+
 // AccountResponse 是账号服务统一响应外壳 `{code,data,msg}`。
 // 职责：承载业务状态码、原始数据与提示消息。
 // 使用：helper/system/account 解码响应后按 code 判断成功，再把 Data 解码到具体 DTO。
@@ -200,6 +221,8 @@ type AccountLoginResult struct {
 	ExpiresAt int64 `json:"expiresAt"`
 	// NeedChangePassword 职责：是否需要先修改密码；使用：前端切换到改密模式；边界：无。
 	NeedChangePassword bool `json:"needChangePassword"`
+	// Session 职责：登录完成后的本地会话快照；使用：前端据此一次性更新已验证主体、用户和改密状态；边界：不包含 token。
+	Session AccountSessionState `json:"session"`
 }
 
 // AccountCurrentUserData 是获取当前用户接口返回的数据。
@@ -238,16 +261,35 @@ type AccountChangePasswordRequest struct {
 }
 
 // AccountSessionState 是返回给前端的本地会话状态。
-// 职责：告知前端是否持有 token 以及是否处于强制改密状态。
-// 使用：AccountService.GetSessionState 返回，前端在每次账号调用后同步。
-// 边界：Authenticated 只表示后端保存了 token，不保证 token 仍被服务端接受。
+// 职责：汇总基础设施就绪、token、用户验证、强制改密、账号身份和缓存用户资料，作为前端全局账号 store 的唯一数据源。
+// 使用：AccountService.GetSessionState 返回本地快照，AccountService.SyncSession 返回远端验证后的完整快照。
+// 边界：不包含 token；Authenticated 只表示后端保存了 token，Verified 才表示 token 已被服务器接受且用户资料可用。
 type AccountSessionState struct {
-	// Authenticated 职责：是否持有 token；使用：前端展示登录态；边界：401 后会被清除。
+	// Ready 职责：数据库配置与服务器客户端是否已初始化；使用：前端启动引导判断是否可发起验证；边界：false 时其余字段可能都是默认值。
+	Ready bool `json:"ready"`
+	// Authenticated 职责：是否持有 token；使用：前端展示登录态；边界：401 或退出后会被清除。
 	Authenticated bool `json:"authenticated"`
-	// NeedChangePassword 职责：是否需要先修改密码；使用：前端切换到改密模式；边界：只在本进程内有效。
+	// Verified 职责：token 是否已被服务器接受且已取得用户身份；使用：公告、翻译和联机等已验证能力判断可用性；边界：网络失败时可能为 false，但 token 仍保留。
+	Verified bool `json:"verified"`
+	// NeedChangePassword 职责：是否需要先修改密码；使用：前端切换到改密模式；边界：只在本进程内有效，重启后由服务端 409 再次告知。
 	NeedChangePassword bool `json:"needChangePassword"`
-	// SubjectID、Generation、ServerKey 职责：标识已验证会话；使用：本机公告请求绑定；边界：不包含token。
+	// Status 职责：会话阶段，取值为 AccountSessionStatus* 常量；使用：前端统一分支展示；边界：只描述本地快照阶段，不替代服务端业务码。
+	Status string `json:"status"`
+	// SubjectID、Generation、ServerKey 职责：标识已验证会话；使用：本机公告请求绑定与前端作用域判断；边界：不包含 token。
 	SubjectID  string `json:"subjectId"`
 	Generation string `json:"generation"`
 	ServerKey  string `json:"serverKey"`
+	// User 职责：后端缓存的当前已验证用户资料；使用：前端同步后立即渲染头像与昵称；边界：只在本进程内有效，重启后需由 SyncSession 重新获取，不包含凭据。
+	User *AccountUser `json:"user,omitempty"`
+}
+
+// AccountSessionSnapshot 是统一会话同步结果。
+// 职责：一次返回会话状态、缓存用户资料和可读失败原因，替代前端把恢复拆成两次独立调用。
+// 使用：AccountService.SyncSession 返回给前端全局账号 store；启动引导、弹窗打开、登录和资料刷新统一读取。
+// 边界：不包含 token；Message 只用于前端提示，鉴权结论以 Session.Status、Authenticated 和 Verified 为准。
+type AccountSessionSnapshot struct {
+	// Session 职责：同步后的会话快照；使用：前端原子替换全局账号状态；边界：网络失败时可能保留 authenticated=true 且 verified=false。
+	Session AccountSessionState `json:"session"`
+	// Message 职责：本次同步的失败或提示文本；使用：前端展示离线、改密或过期原因；边界：成功且无需提示时为空字符串。
+	Message string `json:"message,omitempty"`
 }
