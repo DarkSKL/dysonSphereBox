@@ -5,6 +5,7 @@ import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWork
 import type {FlowNodeData} from '../../../services/dysonSphere/factory-graph'
 import IconSelect from './icon-select.vue'
 import ItemIcon from './item-icon.vue'
+import QuantInputs from './quant-inputs.vue'
 
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
 const emit = defineEmits<{(event: 'clear'): void}>()
@@ -138,6 +139,7 @@ const importedRows = computed(() => {
             <n-checkbox v-model:checked="w.blueBuff" size="small">深空来敌蓝 Buff</n-checkbox>
           </div>
         </details>
+        <QuantInputs :w="w" />
         <template v-if="w.mineralized.length">
           <h3><PackageOpen :size="13" />外部供应<span class="count">{{ w.mineralized.length }}</span></h3>
           <div class="chip-list">

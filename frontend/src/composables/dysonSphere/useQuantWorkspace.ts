@@ -4,6 +4,7 @@ import {useRoute, useRouter} from 'vue-router'
 import {build, factorycontract, quant} from '../../../wailsjs/go/models'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
 import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, solveFactory} from '../../services/dysonSphere/factory'
+import {decodeQuantConfig, encodeQuantConfig, parseQuantConfig, QuantConfigError, validateNaturalLine, type QuantDataset, type QuantSettingKey} from '../../services/dysonSphere/quant-config'
 import {enableEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../services/dysonSphere/environment'
 import {requestBlueprintLibrary} from '../../services/dysonSphere/blueprint-navigation'
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../services/dysonSphere/blueprint-preview-host'
@@ -58,6 +59,8 @@ export const useQuantWorkspace = () => {
   const naturalProductionLine = ref<quant.NaturalProduction[]>([])
   const spaceCost = ref<number | null>(1)
   const powerCost = ref<number | null>(0)
+  const buildingCosts = ref<Record<string, number>>({})
+  const itemExtraCosts = ref<Record<string, {cost: number; enabled: boolean; cumulative: boolean; overflowCost: number}>>({})
   const mode = ref(3)
   // 蓝图名称：默认按目标自动生成（如「电磁矩阵 60 + 能量矩阵 60」）；用户手动修改后保持手动值，清空即恢复自动。
   const customName = ref('')
@@ -73,6 +76,7 @@ export const useQuantWorkspace = () => {
   const generating = ref(false)
   const generationProgress = ref('')
   const importing = ref(false)
+  const quantImporting = ref(false)
   const saving = ref(false)
   const error = ref<{code: string; message: string; source?: 'generation'} | null>(null)
   const previewState = ref<PreviewState>('idle')
@@ -125,7 +129,7 @@ export const useQuantWorkspace = () => {
     mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true])),
     naturalProductionLine: naturalProductionLine.value.map(line => ({...line})),
   }))
-  const requestScheme = computed(() => ({itemRecipeChoices: {...itemRecipeChoices}, schemeForRecipe: (detail.value?.recipes ?? []).map((_recipe, index) => recipeOverrides[index] ?? {building: 0, productionMode: 0, increasePoints: 0}), costWeight: {space: spaceCost.value ?? 1, power: powerCost.value ?? 0}}))
+  const requestScheme = computed(() => ({itemRecipeChoices: {...itemRecipeChoices}, schemeForRecipe: (detail.value?.recipes ?? []).map((_recipe, index) => recipeOverrides[index] ?? {building: 0, productionMode: 0, increasePoints: 0}), costWeight: {space: spaceCost.value ?? 1, power: powerCost.value ?? 0, buildingCost: {...buildingCosts.value}, itemExtraCost: {...itemExtraCosts.value}}}))
   const querySignature = computed(() => JSON.stringify([datasetKey.value, targets.value.map(({itemId, ratePerMinute}) => ({itemId, ratePerMinute})), requestSettings.value, requestScheme.value]))
   const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, {...layout}, {...surfaceLayout}, name.value]))
   const quantStale = computed(() => Boolean(plan.value && solvedSignature.value !== querySignature.value))
@@ -133,6 +137,8 @@ export const useQuantWorkspace = () => {
   const expectedBuildings = computed(() => replay.value ? inspection.value?.summary.buildingCount ?? 0 : generated.value?.buildingCount ?? 0)
   const warnings = computed(() => replay.value ? inspection.value?.warnings ?? [] : [...(plan.value?.warnings ?? []), ...(generated.value?.warnings ?? [])])
   let datasetVersion = 0
+  let quantConfigVersion = 0
+  let applyingQuantDataset = false
   let initialized = false
   let importVersion = 0
   let solveVersion = 0
@@ -188,13 +194,95 @@ export const useQuantWorkspace = () => {
   const sprayModes = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => [{label: '不喷涂', value: 0, icon: ''}, ...[{label: '加速', value: 1, icon: '增产剂 Mk.III'}, {label: '额外产出', value: 2, icon: '增产剂 Mk.III'}, {label: '透镜', value: 3, icon: '引力透镜'}, {label: '分馏', value: 4, icon: '分馏塔'}].filter(value => Boolean((recipe?.proliferator ?? 0) & (1 << (value.value - 1))))]
   const pointOptions = computed(() => [{label: '默认', value: 0, icon: ''}, {label: '1 点', value: 1, icon: '增产剂 Mk.I'}, {label: '2 点', value: 2, icon: '增产剂 Mk.II'}, {label: '4 点', value: 4, icon: '增产剂 Mk.III'}, ...(datasetKey.value.includes('FractionateEverything') ? [{label: '10 点', value: 10, icon: '增产剂 Mk.III'}] : [])])
 
+  const quantDataset = (value = detail.value): QuantDataset => ({info: {key: value?.info.key ?? datasetKey.value, dataVersion: value?.info.dataVersion ?? ''}, items: value?.items ?? [], recipes: value?.recipes ?? []})
+  const quantRequest = (): quant.Request => new quant.Request({dataset: datasetKey.value, targets: targets.value.map(target => ({itemId: target.itemId, ratePerMinute: target.ratePerMinute})), scheme: requestScheme.value, settings: requestSettings.value})
+  const naturalLineMessage = (line: quant.NaturalProduction): string => {
+    try { validateNaturalLine(line, quantDataset()); return '' }
+    catch (caught) { return caught instanceof Error ? caught.message : String(caught) }
+  }
+  const naturalLineError = computed(() => naturalProductionLine.value.map(naturalLineMessage).find(Boolean) ?? '')
+  const addNaturalLine = (): void => { const targetItem = detail.value?.items.find(item => item.id > 0 && detail.value?.recipes.some(recipe => recipe.results.includes(item.id)))?.name ?? ''; naturalProductionLine.value.push({targetItem, recipeChoice: 1, building: 0, machineCount: 1, productionMode: 0, increasePoints: 0}) }
+  const removeNaturalLine = (index: number): void => { naturalProductionLine.value.splice(index, 1) }
+  const setNaturalTarget = (index: number, targetItem: string): void => { const line = naturalProductionLine.value[index]; if (!line) return; Object.assign(line, {targetItem, recipeChoice: 1, building: 0, productionMode: 0, increasePoints: 0}) }
+  const setNaturalRecipe = (index: number, recipeChoice: number): void => { const line = naturalProductionLine.value[index]; if (!line) return; Object.assign(line, {recipeChoice, building: 0, productionMode: 0, increasePoints: 0}) }
+
+  const exportQuantConfig = (): void => {
+    if (loadingDataset.value || quantImporting.value || disposed || !active.value) return
+    error.value = null
+    try {
+      const text = encodeQuantConfig(quantRequest(), quantDataset(), name.value)
+      const url = URL.createObjectURL(new Blob([text], {type: 'application/json;charset=utf-8'}))
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${name.value || '量化配置'}.quant.json`; anchor.click(); URL.revokeObjectURL(url)
+      message.success('量化输入已保存为 JSON')
+    } catch (caught) { error.value = caught instanceof QuantConfigError ? {code: caught.code, message: caught.message} : {code: 'QCFG_E_INVALID', message: caught instanceof Error ? caught.message : String(caught)} }
+  }
+  const importQuantConfig = async (file: File | null): Promise<void> => {
+    if (!file || disposed || !active.value) return
+    error.value = null
+    const operation = ++quantConfigVersion
+    const workspaceImport = importVersion
+    const current = (): boolean => operation === quantConfigVersion && workspaceImport === importVersion && !disposed && active.value
+    quantImporting.value = true
+    try {
+      if (file.size > 1024 * 1024) throw new QuantConfigError('QCFG_E_TOO_LARGE', '量化配置超过 1 MiB')
+      const text = await file.text()
+      if (!current()) return
+      const preliminary = parseQuantConfig(text)
+      const targetDataset = preliminary.dataset
+      const datasetInfo = datasets.value.find(value => value.key === targetDataset)
+      if (!datasetInfo) throw new QuantConfigError('QCFG_E_DATASET', '未知数据集')
+      const targetDetail = targetDataset === detail.value?.info.key ? detail.value : await describeFactoryDataset(targetDataset)
+      if (!current()) return
+      const result = decodeQuantConfig(text, quantDataset(targetDetail))
+      const input = result.request
+      // 所有异步读取与验证已完成；此后同步替换量化输入，失败路径不会触碰工作区状态。
+      datasetVersion++; importVersion++; solveVersion++; generationObserver?.abort()
+      applyingQuantDataset = true
+      loadingDataset.value = false
+      solving.value = false
+      datasetKey.value = targetDataset
+      detail.value = targetDetail
+      targets.value = input.targets.map(target => ({key: ++targetCounter, itemId: target.itemId, ratePerMinute: target.ratePerMinute}))
+      Object.keys(itemRecipeChoices).forEach(key => delete itemRecipeChoices[key])
+      Object.assign(itemRecipeChoices, input.scheme.itemRecipeChoices ?? {})
+      Object.keys(recipeOverrides).forEach(key => delete recipeOverrides[Number(key)])
+      input.scheme.schemeForRecipe?.forEach((value, index) => { recipeOverrides[index] = {building: value.building, productionMode: value.productionMode, increasePoints: value.increasePoints} })
+      const settings = input.settings
+      const assignNumber = (key: QuantSettingKey | 'fixedNum', target: {value: number | null}): void => { target.value = settings[key] }
+      assignNumber('miningSpeedOil', miningSpeedOil); assignNumber('miningSpeedHydrogen', miningSpeedHydrogen); assignNumber('miningSpeedDeuterium', miningSpeedDeuterium); assignNumber('miningSpeedGasHydrate', miningSpeedGasHydrate); assignNumber('miningSpeedHelium', miningSpeedHelium); assignNumber('miningSpeedAmmonia', miningSpeedAmmonia); assignNumber('miningSpeedNitrogen', miningSpeedNitrogen); assignNumber('miningSpeedOxygen', miningSpeedOxygen); assignNumber('miningSpeedCarbonDioxide', miningSpeedCarbonDioxide); assignNumber('miningSpeedSulfurDioxide', miningSpeedSulfurDioxide)
+      assignNumber('coveredVeinsSmall', coveredVeinsSmall); assignNumber('coveredVeinsLarge', coveredVeinsLarge); assignNumber('miningEfficiencyLarge', miningEfficiencyLarge); assignNumber('miningSpeedMultiple', miningSpeed); assignNumber('enemyDropMultiple', enemyDropMultiple); assignNumber('icarusManufacturingSpeed', icarusManufacturingSpeed); assignNumber('fractionatingSpeed', fractionatingSpeed); assignNumber('fixedNum', fixedNum); assignNumber('stackResearchLab', researchStack); assignNumber('accRate', accRate); assignNumber('incRate', incRate)
+      sprayItself.value = settings.proliferateItself
+      blueBuff.value = settings.blueBuff
+      mineralized.value = Object.keys(settings.mineralizeList).filter(key => settings.mineralizeList[key])
+      naturalProductionLine.value = settings.naturalProductionLine.map(line => ({...line}))
+      spaceCost.value = input.scheme.costWeight.space ?? 1; powerCost.value = input.scheme.costWeight.power ?? 0
+      buildingCosts.value = {...(input.scheme.costWeight.buildingCost ?? {})}
+      itemExtraCosts.value = {...(input.scheme.costWeight.itemExtraCost ?? {})}
+      customName.value = result.name ?? ''
+      plan.value = null; generated.value = null; inspection.value = null; code.value = ''; solvedSignature.value = ''; generatedSignature.value = ''; replay.value = false
+      selectedBuilding.value = null; selectedProductions.value = []; applyingQuantDataset = false
+      if (result.notice) message.info(result.notice)
+      message.success(autoRun.value ? '量化输入已恢复，将重新计算' : '量化输入已恢复，请重新运行量化')
+      scheduleSolve()
+    } catch (caught) { if (current()) error.value = caught instanceof QuantConfigError ? {code: caught.code, message: caught.message} : {code: 'QCFG_E_INVALID', message: caught instanceof Error ? caught.message : String(caught)} }
+    finally { applyingQuantDataset = false; if (operation === quantConfigVersion) quantImporting.value = false }
+  }
+
   const loadDataset = async (): Promise<void> => {
     const version = ++datasetVersion
+    quantConfigVersion++
+    quantImporting.value = false
     importVersion++
     solveVersion++
     importing.value = false
     solving.value = false
     loadingDataset.value = true
+    naturalProductionLine.value = []
+    buildingCosts.value = {}
+    itemExtraCosts.value = {}
+    Object.keys(itemRecipeChoices).forEach(key => delete itemRecipeChoices[key])
+    Object.keys(recipeOverrides).forEach(key => delete recipeOverrides[Number(key)])
+    plan.value = null
     try {
       const value = await describeFactoryDataset(datasetKey.value)
       if (version !== datasetVersion || disposed) return
@@ -209,8 +297,10 @@ export const useQuantWorkspace = () => {
   }
   const targetsReady = computed(() => targets.value.length > 0 && targets.value.every(target => target.itemId && target.ratePerMinute && target.ratePerMinute > 0))
   const calculate = async (): Promise<void> => {
+    if (loadingDataset.value || quantImporting.value) return
     error.value = null
     if (!targetsReady.value) { error.value = {code: 'Q_E_BAD_REQUEST', message: '每个目标都需要选择物品并输入正产量'}; return }
+    if (naturalLineError.value) { error.value = {code: 'QCFG_E_INVALID', message: naturalLineError.value}; return }
     const signature = querySignature.value
     const version = ++solveVersion
     importVersion++
@@ -448,20 +538,24 @@ export const useQuantWorkspace = () => {
     if (code.value && !previewStale.value) return
     generateTimer = window.setTimeout(() => { if (!quantStale.value && (!code.value || previewStale.value)) void generate() }, delay)
   }
+  // 同步废弃待恢复文件，防止用户的新输入被迟到读取覆盖；原子应用自身不触发废弃。
+  watch([querySignature, customName], () => {
+    if (!applyingQuantDataset && quantImporting.value) { quantConfigVersion++; quantImporting.value = false }
+  }, {flush: 'sync'})
   watch(querySignature, scheduleSolve)
   watch(() => [plan.value?.planId, generationSignature.value], () => scheduleGenerate())
   watch(autoRun, value => { if (value) { scheduleSolve(); scheduleGenerate(0) } else { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer) } })
   watch(generationSignature, () => { if (generating.value) generationProgress.value = '参数已变化，等待重新生成'; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
-  watch(datasetKey, () => { if (initialized) void loadDataset() })
+  watch(datasetKey, () => { if (initialized && !applyingQuantDataset) void loadDataset() }, {flush: 'sync'})
   watch(() => route.query.itemId, value => { if (initialized && typeof value === 'string' && value) void loadLibraryItem(value) })
   onMounted(async () => {
     media = window.matchMedia('(max-width: 1099px)'); updateWidth(); media.addEventListener('change', updateWidth)
     try { datasets.value = await listFactoryDatasets(); await loadDataset(); initialized = true; if (typeof route.query.itemId === 'string') await loadLibraryItem(route.query.itemId); else scheduleSolve() } catch (caught) { report(caught) }
   })
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
-  onDeactivated(() => { active.value = false; closeActivationPrompt() })
-  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeedOil, miningSpeedHydrogen, miningSpeedDeuterium, miningSpeedGasHydrate, miningSpeedHelium, miningSpeedAmmonia, miningSpeedNitrogen, miningSpeedOxygen, miningSpeedCarbonDioxide, miningSpeedSulfurDioxide, coveredVeinsSmall, coveredVeinsLarge, miningEfficiencyLarge, miningSpeed, enemyDropMultiple, icarusManufacturingSpeed, fractionatingSpeed, fixedNum, researchStack, sprayItself, accRate, incRate, blueBuff, naturalProductionLine, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  onDeactivated(() => { active.value = false; quantConfigVersion++; quantImporting.value = false; closeActivationPrompt() })
+  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; quantConfigVersion++; quantImporting.value = false; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
+  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, exportQuantConfig, importQuantConfig, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeedOil, miningSpeedHydrogen, miningSpeedDeuterium, miningSpeedGasHydrate, miningSpeedHelium, miningSpeedAmmonia, miningSpeedNitrogen, miningSpeedOxygen, miningSpeedCarbonDioxide, miningSpeedSulfurDioxide, coveredVeinsSmall, coveredVeinsLarge, miningEfficiencyLarge, miningSpeed, enemyDropMultiple, icarusManufacturingSpeed, fractionatingSpeed, fixedNum, researchStack, sprayItself, accRate, incRate, blueBuff, naturalProductionLine, naturalLineError, addNaturalLine, removeNaturalLine, setNaturalTarget, setNaturalRecipe, spaceCost, powerCost, buildingCosts, itemExtraCosts, mode, name, layout, surfaceLayout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, generationProgress, importing, quantImporting, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。
