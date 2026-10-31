@@ -74,7 +74,7 @@ func (encoding *surfaceEncoding) validateBeltCrossings(ctx context.Context, reco
 		span := surfaceBeltSpan{indices: [2]int32{record.Index, records[j].Index}}
 		for end, index := range [2]int{i, j} {
 			p := placement.Vector{positions[index].x, positions[index].y, positions[index].z}
-			span.ends[end] = p.Add(surfaceUnit(p).Scale(.2))
+			span.ends[end] = p.Add(encoding.localUp(p).Scale(.2))
 		}
 		low, high := [3]int{}, [3]int{}
 		for dimension := range low {
@@ -96,7 +96,7 @@ func (encoding *surfaceEncoding) validateBeltCrossings(ctx context.Context, reco
 							continue
 						}
 						if surfaceSpanDistanceSquared(span, other) < 4*radius*radius-1e-6 {
-							return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("无连接的传送带路线交叉：建筑 %d→%d 与 %d→%d", other.indices[0], other.indices[1], span.indices[0], span.indices[1])}
+							return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("无连接的传送带路线交叉：建筑 %d→%d 与 %d→%d，(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f)/(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f)", other.indices[0], other.indices[1], span.indices[0], span.indices[1], other.ends[0][0], other.ends[0][1], other.ends[0][2], other.ends[1][0], other.ends[1][1], other.ends[1][2], span.ends[0][0], span.ends[0][1], span.ends[0][2], span.ends[1][0], span.ends[1][1], span.ends[1][2])}
 						}
 					}
 					occupied[key] = append(occupied[key], len(spans))

@@ -197,4 +197,8 @@ type Result struct {
 	Zones []Zone `json:"zones"`
 	// SurfacePlan 职责：保存游戏纬圈网格预检结果；使用：前端说明推荐放置位置；边界：不是完整游戏碰撞证明。
 	SurfacePlan *SurfacePlan `json:"surfacePlan,omitempty"`
+	// LogisticsSummary 职责：解释守恒流图、实际路线与自动入口；使用：生成结果诊断；边界：不等于游戏内放置和运行验收。
+	LogisticsSummary *LogisticsSummary `json:"logisticsSummary,omitempty"`
+	// RuleAudit 职责：保存最终记录的版本化数值规则覆盖；使用：诊断与验收；边界：不等于真实游戏实测。
+	RuleAudit *RuleAudit `json:"ruleAudit,omitempty"`
 }

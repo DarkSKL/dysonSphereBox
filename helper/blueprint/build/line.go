@@ -141,6 +141,11 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			l.output = row
 		}
 	}
+	// 底侧端口的几何槽序反向，逻辑 inputs 切片则始终遵循配方原料顺序。
+	// 机器插臂仍引用下方 belts 物理槽，不改变端点坐标或蓝图几何。
+	for i, j := 0, bottom-1; i < j; i, j = i+1, j-1 {
+		l.inputs[i], l.inputs[j] = l.inputs[j], l.inputs[i]
+	}
 	groundMachines := []*placed{}
 	for i := 0; i < ground; i++ {
 		m := b.make(p.MachineID, machineX+float64(i)*spacing, machineY, 0)

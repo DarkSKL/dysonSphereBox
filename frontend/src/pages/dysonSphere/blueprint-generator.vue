@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import {computed, reactive, ref} from 'vue'
-import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw, Save, Sparkles} from '@lucide/vue'
+import {computed, reactive, ref, watch} from 'vue'
+import {Copy, Download, FileInput, FileJson, FolderOpen, Network, Pause, Play, RotateCcw, Save, Sparkles, X} from '@lucide/vue'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
+import LogisticsSummary from '../../components/dysonSphere/factory/logistics-summary.vue'
 import {useQuantWorkspace, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
 import {buildFlowGraph} from '../../services/dysonSphere/factory-graph'
 
@@ -15,12 +16,16 @@ const previewLabels: Record<PreviewState, string> = {idle: '等待生成', loadi
 const previewStatus = computed(() => {
   if (w.generating) return {state: 'loading', text: w.generationProgress || '正在准备生成'}
   if (w.error?.source === 'generation') return {state: 'error', text: '蓝图生成失败'}
+  if (w.previewStale) return {state: 'stale', text: w.generationFailed ? '显示上次成功结果' : '等待刷新'}
   if (w.code && !w.showPreview) return {state: 'idle', text: '预览已折叠'}
   return {state: w.previewState, text: previewLabels[w.previewState]}
 })
-// 缓存页可能保留旧生成结果：仅隐藏旧版通用验收提醒，供料、运力等具体告警继续展示。
-const warningList = computed(() => [...new Set(w.warnings)].filter(warning => !(warning.startsWith('已检查静态') && warning.includes('仍需游戏内验证'))))
-const hasOverflow = computed(() => w.mode === 6 && warningList.value.some(value => /超过|溢出|缺口|带宽|超出/.test(value)))
+// =============== 结果诊断 ===============
+// 说明：保留后端所有覆盖边界与告警；窄窗口用可展开的侧栏查看，不能因收起预览而丢失诊断。
+const warningList = computed(() => [...new Set(w.warnings)])
+const hasPreviewNotes = computed(() => Boolean(w.generated?.logisticsSummary || warningList.value.length || w.previewNotice || w.error?.source === 'generation'))
+const diagnosticsOpen = ref(false)
+watch(() => w.error, failure => { if (failure?.source === 'generation') diagnosticsOpen.value = true })
 const onFile = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -91,13 +96,14 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <span class="preview-state" :class="`is-${previewStatus.state}`" :title="previewStatus.text" role="status" aria-live="polite" aria-atomic="true"><i aria-hidden="true" /><span class="preview-state-text">{{ previewStatus.text }}</span></span>
         <span v-if="w.code" class="preview-meta type-display">{{ w.number(w.expectedBuildings) }} 建筑</span>
         <span v-if="w.generated?.surfacePlan" class="preview-meta surface-plan" :title="`首选纬圈格 ${w.generated.surfacePlan.selectedLatitudeGrid} · 平面占地 ${w.generated.surfacePlan.layoutWidth}×${w.generated.surfacePlan.layoutHeight} · 环向容量 ${w.generated.surfacePlan.ringGridCells} 格`">整块平面蓝图 · 粘贴锚点 {{ w.number(w.generated.surfacePlan.anchorLatitudeGrid * 360 / (w.generated.surfacePlan.gridSegment * 5)) }}°</span>
-        <!-- 多目标分区：蓝图中各目标的节点流横向分开排布，色块与网格图一致，点击定位该分区首台机器 -->
+        <!-- 多目标归属只用于查看与聚焦，真实上下游路线由统一流图决定，不要求用户手工跨区分送。 -->
         <div v-if="w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
-          <n-tooltip v-for="(zone, index) in w.zones" :key="zone.key"><template #trigger><button type="button" class="preview-zone" :class="{'is-active': w.activeZone === zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key)"><i />{{ zone.label }}</button></template>分区 {{ index + 1 }} · {{ zone.productionIndices.length }} 条产线{{ zone.key === 'shared' ? '，产物需分送到各目标分区' : '' }}</n-tooltip>
+          <n-tooltip v-for="(zone, index) in w.zones" :key="zone.key"><template #trigger><button type="button" class="preview-zone" :class="{'is-active': w.activeZone === zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key)"><i />{{ zone.label }}</button></template>目标归属 {{ index + 1 }} · {{ zone.productionIndices.length }} 条产线{{ zone.key === 'shared' ? '，多个目标共享同一份上游产线' : '' }}</n-tooltip>
         </div>
         <!-- 蓝图名称：留空即按目标自动命名，输入后改为手动名称 -->
         <n-input v-model:value="w.customName" size="tiny" class="name-input" :placeholder="w.autoName" maxlength="60" clearable aria-label="蓝图名称（留空自动命名）" :title="w.nameIsAuto ? `自动命名：${w.autoName}` : '手动名称，清空恢复自动命名'" />
         <div class="preview-actions">
+          <n-button v-if="w.narrow && hasPreviewNotes" size="tiny" quaternary :aria-expanded="diagnosticsOpen" aria-controls="blueprint-diagnostics" @click="diagnosticsOpen = !diagnosticsOpen"><template #icon><Network :size="14" /></template>物流</n-button>
           <n-button v-if="!w.autoRun" size="tiny" type="primary" :loading="w.generating" :disabled="!w.plan || w.quantStale || w.solving || w.importing" @click="w.generate"><template #icon><Sparkles :size="13" /></template>生成</n-button>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="复制蓝图" @click="w.copy"><template #icon><Copy :size="14" /></template></n-button></template>复制蓝图编码</n-tooltip>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="导出文本" @click="w.download"><template #icon><Download :size="14" /></template></n-button></template>导出文本</n-tooltip>
@@ -115,12 +121,19 @@ const resizeByKey = (event: KeyboardEvent): void => {
             <p v-else>产线计算完成后会自动生成蓝图，并在这里实时预览。</p>
             <n-button v-if="w.code && !w.showPreview" size="tiny" @click="w.showPreview = true">仍然打开预览</n-button>
           </div>
-          <div v-if="w.previewStale && w.code" class="preview-overlay">参数已改变，{{ w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览' }}</div>
+          <div v-if="w.previewStale && w.code" class="preview-overlay">{{ w.generationFailed ? '最近一次生成未成功，当前显示上次成功结果' : w.generating ? '正在生成，当前显示上次成功结果' : `参数已改变，${w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览'}` }}</div>
         </div>
-        <aside v-if="warningList.length || w.previewNotice || w.error?.source === 'generation'" class="preview-notes">
+        <!-- ~ 物流与预检诊断 -->
+        <!-- * 说明：展示自动入口、每路运力、边界接口、搜索指标和数值检查，不提供入口数量编辑 -->
+        <!-- * 交互：窄窗口从「物流」按钮展开；生成失败时自动展开，旧结果明确标记 -->
+        <!-- * 依赖：同一生成结果的 LogisticsSummary 和生成时 FlowGraph 快照 -->
+        <!-- * 边界：诊断不是 Unity Physics 或实际游戏产出证明，未知覆盖不得默认为通过 -->
+        <aside v-if="hasPreviewNotes" v-show="!w.narrow || diagnosticsOpen" id="blueprint-diagnostics" class="preview-notes" aria-label="物流与预检诊断">
+          <div v-if="w.narrow" class="diagnostic-close"><span>物流与预检</span><button type="button" class="close-notes" aria-label="收起物流诊断" @click="diagnosticsOpen = false"><X :size="14" /></button></div>
           <n-alert v-if="w.error?.source === 'generation'" title="蓝图生成失败" type="error" closable @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
+          <LogisticsSummary v-if="w.generated?.logisticsSummary && !w.replay" :summary="w.generated.logisticsSummary" :audit="w.generated.ruleAudit" :graph="w.generatedFlowGraph" :stale="w.previewStale" :item-name="w.itemName" :format="w.number" @select="index => w.onBuildingSelect({index})" />
           <p v-if="w.previewNotice && w.showPreview" class="note">{{ w.previewNotice }}</p>
-          <div v-if="warningList.length" class="warning-list ds-bracket" :class="{'is-error': hasOverflow}"><div v-for="warning in warningList" :key="warning">{{ warning }}</div></div>
+          <div v-if="warningList.length" class="warning-list ds-bracket"><div v-for="warning in warningList" :key="warning">{{ warning }}</div></div>
         </aside>
       </div>
     </section>
@@ -172,19 +185,22 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-zone.is-active::after { transform: scaleX(1); }
 .name-input { width: 180px; flex: 0 1 180px; min-width: 96px; margin-left: auto; --n-border-radius: 2px !important; --n-color: var(--ds-hover-bg) !important; }
 .preview-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
-.preview-body { display: flex; min-height: 0; flex: 1; }
+.preview-body { position: relative; display: flex; min-height: 0; flex: 1; }
 .preview-stage { position: relative; min-width: 0; flex: 1; }
 .preview-empty { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); font-size: 13px; }
 .preview-empty p { margin: 0; }
 .preview-overlay { position: absolute; top: 10px; left: 50%; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 3px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; transform: translateX(-50%); pointer-events: none; }
-.preview-notes { display: flex; width: 280px; flex: 0 0 auto; flex-direction: column; gap: 8px; overflow-y: auto; border-left: 1px solid var(--ds-border-subtle); padding: 10px 12px; }
+.preview-notes { display: flex; width: 300px; flex: 0 0 auto; flex-direction: column; gap: 8px; overflow-y: auto; border-left: 1px solid var(--ds-border-subtle); padding: 10px 12px; }
+.diagnostic-close { display: flex; align-items: center; justify-content: space-between; color: var(--ds-text-primary); font-size: 12px; }
+.close-notes { display: inline-flex; border: 0; border-radius: 2px; padding: 4px; background: transparent; color: var(--ds-text-secondary); cursor: pointer; }
+.close-notes:hover { background: var(--ds-hover-bg); }
 .note { margin: 0; color: var(--ds-text-secondary); font-size: 11px; line-height: 1.6; }
 .warning-list { --bracket-color: var(--ds-warning-border); display: grid; gap: 4px; padding: 8px 10px 8px 12px; background: var(--ds-warning-bg); color: var(--ds-warning); font-size: 11px; line-height: 1.6; }
 .warning-list.is-error { --bracket-color: var(--ds-error-border); background: var(--ds-error-bg); color: var(--ds-error); }
 .muted { color: var(--ds-text-muted); font-size: 12px; line-height: 1.6; }
 .import-actions { display: flex; justify-content: space-between; margin: 16px 0; }
 @keyframes pulse { 50% { opacity: .35; } }
-// 窄窗口：说明栏收起、按钮只留图标，分区标签保留色块并横向滚动。
-@media (max-width: 1099px) { .preview-notes { display: none; } .bench-actions :deep(.n-button__content) { display: none; } .bench-actions :deep(.n-button__icon) { margin: 0; } .preview-meta { display: none; } }
+// 窄窗口：诊断可从工具栏展开为覆盖侧栏；保留错误、自动入口与每路流量的查看入口。
+@media (max-width: 1099px) { .preview-notes { position: absolute; top: 0; right: 0; bottom: 0; z-index: 2; width: min(300px, calc(100% - 24px)); background: var(--ds-bg-panel); } .bench-actions :deep(.n-button__content) { display: none; } .bench-actions :deep(.n-button__icon) { margin: 0; } .preview-meta { display: none; } }
 @media (prefers-reduced-motion: reduce) { .preview-state i { animation: none !important; } .bench-splitter span { transition: none; } }
 </style>

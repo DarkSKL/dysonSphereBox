@@ -49,6 +49,11 @@ func surfaceRecordPose(position vector, yaw, pitch, tilt float32) (surfacePose, 
 	if err != nil {
 		return surfacePose{}, err
 	}
+	return surfacePoseFromBox(box, pitch, tilt), nil
+}
+
+// surfacePoseFromBox 职责：在已选坐标基上附加俯仰和倾斜；使用：平面与球面姿态适配；边界：不改变原型盒或 yaw。
+func surfacePoseFromBox(box placement.Box, pitch, tilt float32) surfacePose {
 	pose := surfacePose{position: box.Center, axes: box.Axes}
 	x, z := float64(pitch)*math.Pi/180, float64(tilt)*math.Pi/180
 	sx, cx, sz, cz := math.Sin(x), math.Cos(x), math.Sin(z), math.Cos(z)
@@ -57,7 +62,7 @@ func surfaceRecordPose(position vector, yaw, pitch, tilt float32) (surfacePose, 
 		pose.transform(placement.Vector{-sz, cz * cx, cz * sx}),
 		pose.transform(placement.Vector{0, -sx, cx}),
 	}
-	return pose, nil
+	return pose
 }
 
 // surfaceUnit 职责：安全归一化世界向量；使用：动态方向计算；边界：零向量返回零，不产生 NaN。
@@ -113,11 +118,11 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 			continue
 		}
 		poses := [2]surfacePose{}
-		poses[0], err = surfaceRecordPose(first[i], record.Yaw, record.Pitch, record.Tilt)
+		poses[0], err = encoding.recordPose(first[i], record.Yaw, record.Pitch, record.Tilt)
 		if err != nil {
 			return nil, err
 		}
-		poses[1], err = surfaceRecordPose(second[i], record.Yaw2, record.Pitch2, record.Tilt2)
+		poses[1], err = encoding.recordPose(second[i], record.Yaw2, record.Pitch2, record.Tilt2)
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +148,7 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 			if err != nil || int(slots[end]) < 0 || int(slots[end]) >= len(geometry.SlotPoses) {
 				return nil, &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: fmt.Sprintf("分拣器 %d 连接建筑 %d 的端口 %d 无已核对几何", record.Index, index, slots[end])}
 			}
-			base, err := surfaceRecordPose(first[j], records[j].Yaw, 0, 0)
+			base, err := encoding.recordPose(first[j], records[j].Yaw, 0, 0)
 			if err != nil {
 				return nil, err
 			}
@@ -155,7 +160,7 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 			if belt[other] {
 				// 带端沿原分拣器 forward 投影，保持带方向垂直的端点校正分量。
 				beltRecord := records[byIndex[connections[other]]]
-				beltPose, err := surfaceRecordPose(first[byIndex[connections[other]]], beltRecord.Yaw, 0, 0)
+				beltPose, err := encoding.recordPose(first[byIndex[connections[other]]], beltRecord.Yaw, 0, 0)
 				if err != nil {
 					return nil, err
 				}
@@ -164,7 +169,7 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 					poses[other].position = poses[other].position.Add(delta.Sub(forward.Scale(delta.Dot(forward))))
 				}
 			}
-			grid := surfaceLocalGridSize(base.position, port.axes[2])
+			grid := encoding.localGridSize(base.position, port.axes[2])
 			correction := math.Sqrt(delta.Dot(delta)) / grid
 			lateral := math.Abs(port.axes[0].Dot(delta))
 			invalid := correction > .8001 && (lateral > .5001 || lateral < .1 && correction > 1.6001 || lateral >= .1 && correction > .8001)
@@ -207,8 +212,8 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 		} else {
 			acrossLimit, minimumGrid = 3.799, 1.451
 		}
-		across := surfaceSegmentsAcross(reference, poses[0].position, poses[1].position)
-		height := math.Abs(math.Sqrt(poses[0].position.Dot(poses[0].position))-math.Sqrt(poses[1].position.Dot(poses[1].position))) / .2
+		across := encoding.segmentsAcross(reference, poses[0].position, poses[1].position)
+		height := encoding.endpointHeightGap(poses[0].position, poses[1].position)
 		if across > acrossLimit+1e-4 || math.Hypot(across, height) < minimumGrid-1e-4 {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("分拣器 %d 修正后的跨格距离 %.3f 超出游戏范围", record.Index, across)}
 		}
@@ -221,7 +226,7 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 		if backwards || (trace-1)*.5 < math.Cos(30*math.Pi/180)-1e-4 || math.Abs(forward.Dot(poses[0].axes[2])) < math.Cos(24*math.Pi/180)-1e-4 || math.Abs(forward.Dot(poses[1].axes[2])) < math.Cos(24*math.Pi/180)-1e-4 {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("分拣器 %d 修正后的端点偏斜超过游戏限制", record.Index)}
 		}
-		if surfaceInserterBuried(poses) {
+		if encoding.inserterBuried(poses) {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("分拣器 %d 修正后的两端埋入行星基准球面", record.Index)}
 		}
 		right := surfaceUnit(poses[0].axes[1].Add(poses[1].axes[1]).Cross(forward))

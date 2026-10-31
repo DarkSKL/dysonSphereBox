@@ -38,7 +38,7 @@ func (encoding *surfaceEncoding) validateStaticColliders(ctx context.Context, re
 			return &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 		}
 		for _, shape := range shapes {
-			box, err := surfaceColliderBox(positions[i], record.Yaw, shape)
+			box, err := encoding.colliderBox(positions[i], record.Yaw, shape)
 			if err != nil {
 				return &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: fmt.Sprintf("建筑 %d：%v", record.Index, err)}
 			}

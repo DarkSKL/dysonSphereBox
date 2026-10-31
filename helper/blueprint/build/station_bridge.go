@@ -37,9 +37,10 @@ func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute
 	occupied := map[vector]bool{}
 	maxZ := 0.
 	for _, p := range existing {
+		// 堆叠生产机的最高层决定桥接净空；只看现有传送带会把高架平面放进机器层。
+		maxZ = math.Max(maxZ, p.a.z)
 		if p.record.ItemID > 2000 && p.record.ItemID < 2010 {
 			occupied[beltCell(p.a)] = true
-			maxZ = math.Max(maxZ, p.a.z)
 		}
 	}
 	reserved := map[vector]int{}
@@ -70,13 +71,19 @@ func (b *builder) bridgeStationRoutes(ctx context.Context, routes []stationRoute
 				return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "物流塔高架寻路超过截止时间"}
 			}
 			begin := route.head.a
-			begin.x -= float64(1 + attempt%4)
-			offsets := []float64{0, 1, -1, 2, -2, 3, -3, 4}
+			// 先在产线外侧寻找升降列，再扩展到反侧和上下偏移；仅试四格会把堆叠机的建造盒当成可用净空。
+			xOffsets := []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, -1, -2, -3, -4, -5, -6, -8, -10}
+			yOffsets := []float64{0, 1, -1, 2, -2, 3, -3, 4, -4, 6, -6, 8, -8, 10, -10, 12, -12, 16, -16, 20, -20}
+			begin.x -= xOffsets[attempt%len(xOffsets)]
+			begin.y += yOffsets[(attempt/len(xOffsets))%len(yOffsets)]
+			offsets := []float64{0, 1, -1, 2, -2, 3, -3, 4, -4, 6, -6, 8, -8, 10, -10, 12, -12}
 			perpendicular := offsets[(attempt/4)%len(offsets)]
-			distance := float64(1 + (attempt/32)%6)
+			distance := float64(1 + (attempt/32)%16)
 			drop := vector{end.x + direction.x*distance - direction.y*perpendicular, end.y + direction.y*distance + direction.x*perpendicular, 0}
 			level := int(math.Ceil(maxZ)) + 2 + attempt/192
-			points := append([]vector{}, manhattan(route.head.a, begin, true)[1:]...)
+			// 先沿纵向离开产线带，再横向到升降列；反向时横穿机器输出带会在第一格立即碰撞。
+			firstX := math.Abs(begin.y-route.head.a.y) < 1e-9
+			points := append([]vector{}, manhattan(route.head.a, begin, firstX)[1:]...)
 			for z := 1; z <= level; z++ {
 				points = append(points, vector{begin.x + .002*float64(z), begin.y, float64(z)})
 			}

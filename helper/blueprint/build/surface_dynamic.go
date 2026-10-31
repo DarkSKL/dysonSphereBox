@@ -16,6 +16,9 @@ func (encoding *surfaceEncoding) validateDynamicFacilities(ctx context.Context, 
 	if err := encoding.validateSurfacePowerNodeSpacing(ctx, records); err != nil {
 		return err
 	}
+	if err := encoding.validateSurfaceStationSpacing(ctx, records); err != nil {
+		return err
+	}
 	if err := encoding.validateBeltCrossings(ctx, records); err != nil {
 		return err
 	}
@@ -36,6 +39,6 @@ func (encoding *surfaceEncoding) validateDynamicFacilities(ctx context.Context, 
 	if left >= 0 {
 		return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("分拣器动态建造盒冲突：建筑 %d 与建筑 %d", left, right)}
 	}
-	encoding.plan.CollisionCoverage = "staticBuildColliders+powerNodeSpacing+beltCrossings+beltBuildingOccupancy+spraycoaterChannels+inserterSlotPoses+inserterBuildColliders"
+	encoding.plan.CollisionCoverage = "staticBuildColliders+powerNodeSpacing+stationSpacing+beltCrossings+beltBuildingOccupancy+spraycoaterChannels+inserterSlotPoses+inserterBuildColliders"
 	return nil
 }

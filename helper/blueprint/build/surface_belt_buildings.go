@@ -41,11 +41,11 @@ func surfaceBeltBuildingLink(belt, building int, records []blueprint.Building, b
 }
 
 // surfaceAddonBeltPass 职责：按原型附加通道中心线和末端朝向核对喷涂带；使用：带与喷涂机盒相交后的豁免；边界：当前只核对已提取的原版喷涂机，不把任意端口当通道。
-func surfaceAddonBeltPass(belt, addon int, records []blueprint.Building, positions []vector, byIndex map[int32]int, geometry placement.PrefabGeometry) bool {
+func (encoding *surfaceEncoding) surfaceAddonBeltPass(belt, addon int, records []blueprint.Building, positions []vector, byIndex map[int32]int, geometry placement.PrefabGeometry) bool {
 	if records[addon].ItemID != 2313 || len(geometry.AddonAreaColPoses) == 0 || len(geometry.AddonAreaColPoses) != len(geometry.AddonAreaSize) || len(geometry.AddonAreaPoses) != len(geometry.AddonAreaSize) {
 		return false
 	}
-	pose, err := surfaceRecordPose(positions[addon], records[addon].Yaw, 0, 0)
+	pose, err := encoding.recordPose(positions[addon], records[addon].Yaw, 0, 0)
 	if err != nil {
 		return false
 	}
@@ -119,7 +119,7 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 			geometries[i] = geometry
 		}
 		for _, shape := range shapes {
-			box, err := surfaceColliderBox(positions[i], record.Yaw, shape)
+			box, err := encoding.colliderBox(positions[i], record.Yaw, shape)
 			if err != nil {
 				return &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 			}
@@ -144,7 +144,7 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 			continue
 		}
 		point := placement.Vector{positions[i].x, positions[i].y, positions[i].z}
-		radial := surfaceUnit(point).Scale(.2)
+		radial := encoding.localUp(point).Scale(.2)
 		center, first, second := point.Add(radial), point, point
 		input, hasInput := byIndex[record.InputObjIdx]
 		output, hasOutput := byIndex[record.OutputObjIdx]
@@ -152,8 +152,12 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 			first = point.Add(placement.Vector{positions[input].x, positions[input].y, positions[input].z}.Sub(point).Scale(.65))
 			second = point.Add(placement.Vector{positions[output].x, positions[output].y, positions[output].z}.Sub(point).Scale(.65))
 			delta := second.Sub(first).Scale(.45)
-			length := math.Sqrt(point.Dot(point))
-			first, second = surfaceUnit(first.Add(delta)).Scale(length), surfaceUnit(second.Sub(delta)).Scale(length)
+			if encoding.planar {
+				first, second = first.Add(delta), second.Sub(delta)
+			} else {
+				length := math.Sqrt(point.Dot(point))
+				first, second = surfaceUnit(first.Add(delta)).Scale(length), surfaceUnit(second.Sub(delta)).Scale(length)
+			}
 		}
 		first, second = first.Add(radial), second.Add(radial)
 		seen := map[int]bool{}
@@ -169,7 +173,7 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 						if box.Geometry.SegmentDistanceSquared(center, center) >= radius*radius-1e-6 || box.Geometry.SegmentDistanceSquared(first, second) >= radius*radius-1e-6 || surfaceBeltBuildingLink(i, box.Owner, records, byIndex) {
 							continue
 						}
-						if geometry, exists := geometries[box.Owner]; exists && surfaceAddonBeltPass(i, box.Owner, records, positions, byIndex, geometry) {
+						if geometry, exists := geometries[box.Owner]; exists && encoding.surfaceAddonBeltPass(i, box.Owner, records, positions, byIndex, geometry) {
 							continue
 						}
 						return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("传送带 %d（局部 %v）侵占建筑 %d（物品 %d，局部 %v）的建造盒且不满足连接/附加通道规则", record.Index, record.LocalOffset, records[box.Owner].Index, records[box.Owner].ItemID, records[box.Owner].LocalOffset)}

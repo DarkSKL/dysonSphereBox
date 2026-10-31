@@ -28,7 +28,7 @@ func MachineKind(id int) (int, int) {
 // Solve 职责：执行有界量化；使用：工作区目标请求；边界：最多 5 秒，失败不返回部分结果。
 // 逻辑流：1. 校验目标和版本 => 2. 构图/剥离 => 3. 前向成本及循环 LP => 4. 取整、电力与稳定指纹。
 func Solve(parent context.Context, req Request) (Result, error) {
-	out := Result{Productions: []Production{}, RawInputs: []ItemRate{}, Leftovers: []ItemRate{}, KeyItems: []int{}, Warnings: []string{}}
+	out := Result{Productions: []Production{}, RawInputs: []ItemRate{}, ExternalInputItemIDs: []int{}, Leftovers: []ItemRate{}, KeyItems: []int{}, Warnings: []string{}}
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	if len(req.Targets) == 0 || len(req.Targets) > 100 {
@@ -98,6 +98,9 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		typ, lv := MachineKind(n.factory.ID)
 		if n.raw || typ < 0 {
 			out.RawInputs = append(out.RawInputs, ItemRate{ItemID: d.ByName[name].ID, Name: name, RatePerMinute: amount})
+			if n.raw {
+				out.ExternalInputItemIDs = append(out.ExternalInputItemIDs, d.ByName[name].ID)
+			}
 			if !n.raw && len(d.Recipes[n.recipe].Items) > 0 {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("%s 的设施 %s 不在六类可生成制造设备中，需外部供应；其功耗未计入制造功耗", name, n.factory.Name))
 			}
@@ -146,6 +149,11 @@ func Solve(parent context.Context, req Request) (Result, error) {
 	if ctx.Err() != nil {
 		return Result{}, qerror("Q_E_TIMEOUT", "量化超过 5 秒")
 	}
+	flowGraph, err := BuildFlowGraphContext(ctx, out)
+	if err != nil {
+		return Result{}, err
+	}
+	out.FlowGraph = &flowGraph
 	return out, nil
 }
 

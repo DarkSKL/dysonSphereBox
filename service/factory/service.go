@@ -13,7 +13,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"reflect"
 	"strings"
 	"sync"
 )
@@ -54,6 +53,10 @@ func (s *Service) Solve(req quant.Request) contract.QuantResponse {
 		systemHelper.RecordFailure("factory", "quant", "solve", "量化求解失败", err, map[string]interface{}{"targets": len(req.Targets), "dataset": req.Dataset})
 		return contract.QuantResponse{Status: factoryHelper.Status(err)}
 	}
+	snapshot, err := factoryHelper.CloneQuantPlan(data)
+	if err != nil {
+		return contract.QuantResponse{Status: factoryHelper.Status(err)}
+	}
 	s.mu.Lock()
 	if s.plans == nil {
 		s.plans = map[string]quant.Result{}
@@ -61,7 +64,7 @@ func (s *Service) Solve(req quant.Request) contract.QuantResponse {
 	if _, ok := s.plans[data.PlanID]; !ok {
 		s.order = append(s.order, data.PlanID)
 	}
-	s.plans[data.PlanID] = data
+	s.plans[data.PlanID] = snapshot
 	for len(s.order) > 16 {
 		delete(s.plans, s.order[0])
 		s.order = s.order[1:]
@@ -110,10 +113,14 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 	s.mu.Lock()
 	plan, ok := s.plans[req.Plan.PlanID]
 	s.mu.Unlock()
-	if !ok || !reflect.DeepEqual(plan, req.Plan) {
+	if !ok || !factoryHelper.MatchQuantSnapshot(plan, req.Plan) {
 		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_PLAN_STALE", Message: "方案已过期或内容改变，请重新量化"}}
 	}
-	req.Plan = plan
+	var err error
+	req.Plan, err = factoryHelper.CloneQuantPlan(plan)
+	if err != nil {
+		return contract.GenerateResponse{Status: factoryHelper.Status(err)}
+	}
 	ctx, finish := s.generation.Begin(context.Background())
 	defer finish()
 	if ctx.Err() != nil {
@@ -138,6 +145,7 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 	if ctx.Err() != nil {
 		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_CANCELED", Message: "已中止旧任务，改为执行新的生成请求"}}
 	}
+	factoryHelper.RecordGeneration(req, data)
 	return contract.GenerateResponse{Status: factoryHelper.Status(nil), Data: &data}
 }
 

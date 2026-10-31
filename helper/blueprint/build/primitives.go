@@ -35,6 +35,83 @@ type placed struct {
 	owner int
 }
 
+// stationTransportLink 职责：保存物流塔路线与规范物料的实体绑定；使用：mode3/4收尾诊断；边界：仅描述生成器已装配的塔端口，不宣称机队吞吐。
+type stationTransportLink struct {
+	item   int
+	output bool
+	tower  *placed
+	belt   *placed
+	slot   int
+	head   *placed
+	path   []*placed
+	owner  int
+	rate   float64
+}
+
+// busTransportLink 职责：保存混带总线实体端点、共享环路和过滤分拣器；使用：mode6 流边收尾核验；边界：不模拟总线逐帧物料位置。
+type busTransportLink struct {
+	// kind 职责：区分生产输入、生产回流和外部边界；使用：按 FlowGraph 边配对；边界：未知类型拒绝核验。
+	kind string
+	// owner 职责：保存生产节点原始索引；使用：绑定 FlowGraph production 节点；边界：外部端点为 -1。
+	owner int
+	// item 职责：保存该实体路线的物品；使用：过滤和供需匹配；边界：零值不代表任意物品。
+	item int
+	// layer 职责：保存所属共享环路编号；使用：合计每圈带负载；边界：未分配为 -1。
+	layer int
+	// rate 职责：保存该生产行计划速率或边界流量；使用：路线覆盖核对；边界：不扩张为机器额定能力。
+	rate float64
+	// endpoint 职责：保存生产带或外部边界带；使用：结果 BuildingIndices/BoundaryPort；边界：必须属于 builder.all。
+	endpoint *placed
+	// ring 职责：保存共享总线上的实际带；使用：确认环路接入；边界：仅代表一个实体带节点。
+	ring *placed
+	// ringPath 职责：保存共享总线闭环的有向带序；使用：lane 建筑索引和闭环验证；边界：不宣称游戏内物品时序。
+	ringPath []*placed
+	// parts 职责：保存该路线创建的分拣器及附加带；使用：实体索引和端点核对；边界：不代表未创建的隐含路线。
+	parts []*placed
+	// limiterParts 职责：保存产物返回线上的实际门控分拣器；使用：累计外输容量；边界：输出带未设置专用 item filter。
+	limiterParts []*placed
+	// gateFeed 职责：保存输出带到回流门控臂的实际带链；使用：验证限速拓扑；边界：只包含本产线支路。
+	gateFeed []*placed
+	// gateReturn 职责：保存回流门控臂之后的实际带链；使用：验证方向和实体索引；边界：不含共享环路。
+	gateReturn []*placed
+	// gateEndpoint 职责：保存回流限速线接回产线后端的带端点；使用：验证门控带链方向；边界：与进入总线的另一端分开记录。
+	gateEndpoint *placed
+	// itemRates 职责：保存回流支路按物品拆分的计划流量；使用：多产物混带逐边匹配；边界：不改变量化结果。
+	itemRates []quant.ItemRate
+	// rateLimit 职责：保存总线装配器设定的回流上限；使用：限制通过门控线的核验流量；边界：不是机器额定产出。
+	rateLimit float64
+	// row 职责：保存产线物品带上的真实方向链；使用：确认被过滤带接入生产行；边界：不包含共享环路全体节点。
+	row []*placed
+}
+
+// flyTransportEndpoint 职责：登记配送器/分流器模式的一组真实设施端点；使用：把规范 FlowGraph 边映射到箱体、配送器和接驳带；边界：机队或远程分流的运行时吞吐仍由游戏负责。
+type flyTransportEndpoint struct {
+	// owner 职责：保存所属量化产线索引；使用：映射 production 节点；边界：沿用 builder.owner，不从坐标猜测。
+	owner int
+	// item 职责：保存端点过滤物品；使用：匹配规范边；边界：一个端点只承载一个物品。
+	item int
+	// input 职责：区分原料配送入口和产物配送出口；使用：供需方向验证；边界：true 表示物料进入机器行。
+	input bool
+	// rate 职责：保存该机器行端点按计划应承载的每分钟流量；使用：逐边容量分配；边界：不是配送器额定吞吐承诺。
+	rate float64
+	// link 职责：保存机器行一侧的真实带端点；使用：诊断接驳；边界：不代表远程网络已连通。
+	link *placed
+	// belts 职责：保存端点与机器行之间的实体带链；使用：最终索引和带宽核验；边界：方向由 placed.output/input 关系决定。
+	belts []*placed
+	// box 职责：保存 2101 箱体；使用：确认配送器实际挂接；边界：箱容量不等于持续供给。
+	box *placed
+	// delivery 职责：保存 2107 配送器；使用：规范边的实体端口；边界：FilterID 必须与 item 一致。
+	delivery *placed
+	// arm 职责：保存 mode2 箱体与接驳带之间的分拣器；使用：验证端口跨度和过滤；边界：mode5 由分流器带链替代。
+	arm *placed
+	// arms 职责：保存同一箱体并联的全部真实分拣器；使用：容量拆分与最终索引；边界：arm 仅保留首个兼容引用。
+	arms []*placed
+	// filters 职责：保存配送端点前的物品过滤分拣器；使用：多产物逐物品路径；边界：每个对象必须有对应 FilterID。
+	filters []*placed
+	// splitter 职责：保存 mode5 四向分流器；使用：确认分流模式端点；边界：mode2 必须为空。
+	splitter *placed
+}
+
 // builder 职责：收集单次装配；使用：六种模式；边界：不做文件写入。
 type builder struct {
 	// all 职责：最终建筑顺序；使用：编码；边界：每个指针只出现一次。
@@ -57,6 +134,22 @@ type builder struct {
 	surfaceBlocks []surfaceBlockRange
 	// surfaceBusEncoding 职责：保存共享总线跨纬带重接后的区域坐标系；使用：统一编码出口；边界：仅成功完成全部物理迁移与接驳后设置，不能再按平面原点归一化。
 	surfaceBusEncoding *surfaceEncoding
+	// flowGraph 职责：保留可信字段重建的守恒流图；使用：全部模式的顺序、容量和诊断；边界：不信任请求自带的边。
+	flowGraph *quant.FlowGraph
+	// transportRoutes 职责：保存 lane 与真实建筑指针的关联；使用：重排后的最终连通检查；边界：索引只在统一编号后生成。
+	transportRoutes []*transportRoute
+	// logistics 职责：积累本次生成的物流与空间证据；使用：finish；边界：硬错误不随结果返回部分蓝图。
+	logistics *LogisticsSummary
+	// stationLinks 职责：保存每条塔路线；使用：模式3/4按FlowGraph核验；边界：不跨请求复用。
+	stationLinks []stationTransportLink
+	// flyEndpoints 职责：保存 mode2/5 每条产线端点；使用：按 FlowGraph 逐边绑定；边界：没有端点的规范边必须硬失败。
+	flyEndpoints []*flyTransportEndpoint
+	// busLinks 职责：保存混带输入、回流及边界的实体引用；使用：mode6 逐边绑定与容量校验；边界：不跨请求复用。
+	busLinks []busTransportLink
+	// busLayers 职责：保存物品到共享环路的确定映射；使用：检查每圈累计带负载；边界：未调度物品不得默认归入第一圈。
+	busLayers map[int]int
+	// busLayerBelts 职责：保存各共享环路的实体带；使用：确认环路方向与lane端点；边界：只包括本次生成的建筑。
+	busLayerBelts map[int][]*placed
 }
 
 // zoneRange 职责：记录分区建筑区间；使用：分区边界；边界：半开区间 [begin, end)。

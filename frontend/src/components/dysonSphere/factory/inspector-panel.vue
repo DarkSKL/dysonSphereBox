@@ -52,7 +52,7 @@ const importedRows = computed(() => {
 
     <!-- 选中节点 -->
     <template v-else-if="node">
-      <header class="inspector-head"><ItemIcon :name="node.title" :size="22" /><span class="head-title"><small>{{ kindLabel[node.kind] }}</small>{{ node.title }}</span><button type="button" class="icon-button" aria-label="返回全局参数" @click="emit('clear')"><X :size="14" /></button></header>
+      <header class="inspector-head"><ItemIcon :name="node.title" :size="22" /><span class="head-title"><small>{{ node.kind === 'source' ? node.externalSource ? '指定外部供应' : '外部原料' : kindLabel[node.kind] }}</small>{{ node.title }}</span><button type="button" class="icon-button" aria-label="返回全局参数" @click="emit('clear')"><X :size="14" /></button></header>
       <div class="inspector-body">
         <template v-if="node.kind === 'production' && production">
           <div class="metric-grid ds-bracket">

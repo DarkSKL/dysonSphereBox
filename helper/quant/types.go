@@ -264,6 +264,10 @@ type Result struct {
 	Productions []Production `json:"productions"`
 	// RawInputs 职责：保存原矿或外部输入；使用：引擎传递；边界：不隐式改变单位。
 	RawInputs []ItemRate `json:"rawInputs"`
+	// ExternalInputItemIDs 职责：标识显式外供而非原矿的 RawInputs；使用：流图与边界诊断；边界：只记录来源语义，不重复累计流量，旧快照缺省按原矿处理。
+	ExternalInputItemIDs []int `json:"externalInputItemIds"`
+	// FlowGraph 职责：保存后端生成的规范供需边和 SCC 顺序；使用：画板展示与蓝图规划共用；边界：生成时必须由可信物料字段重建，不信任请求中任意修改的边。
+	FlowGraph *FlowGraph `json:"flowGraph,omitempty"`
 	// Leftovers 职责：保存净溢出副产物；使用：引擎传递；边界：不隐式改变单位。
 	Leftovers []ItemRate `json:"leftovers"`
 	// PowerMW 职责：保存制造工作能耗 MW；使用：引擎传递；边界：不隐式改变单位。

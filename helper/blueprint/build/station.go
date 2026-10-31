@@ -5,6 +5,7 @@ package build
 
 import (
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/transport"
 	"context"
 	"fmt"
 	"math"
@@ -33,6 +34,7 @@ type stationRoute struct {
 	slot int
 	// path 职责：外部路由；使用：装配；边界：只有成功路径可写出。
 	path []vector
+	rate float64
 }
 
 // slotOffset 职责：取得参考端口路径；使用：物流塔的整数过渡点与内部微调；边界：原样保留经验小数。
@@ -89,10 +91,11 @@ func stationInner(center vector, slot int) []vector {
 
 // createStation 职责：写 2048 字参数和物品角色；使用：已完成寻路后；边界：调用者保证不超过物品槽。
 func (b *builder) createStation(center vector, items []stationItem, mode int) *placed {
-	id, capacity := 2103, 10000
+	id := 2103
 	if mode == 4 {
-		id, capacity = 2104, 20000
+		id = 2104
 	}
+	capacity, _ := transport.StationItemCapacity(id)
 	p := b.make(id, center.x, center.y, 0)
 	p.record.Yaw = 0
 	p.record.Yaw2 = 0
@@ -172,11 +175,22 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		}
 	}
 	routes := []stationRoute{}
+	resultIDs := uniqueStationItems(recipe.Results)
 	for _, l := range lines {
-		for i, row := range l.inputs {
-			routes = append(routes, stationRoute{head: row[0], item: recipe.Items[i], tower: itemTower[recipe.Items[i]]})
+		share := 0.
+		if l.info.MachineCount > 0 {
+			share = float64(len(l.machines)) / float64(l.info.MachineCount)
 		}
-		routes = append(routes, stationRoute{head: l.output[0], item: recipe.Results[0], output: true, tower: 0})
+		for i, row := range l.inputs {
+			routes = append(routes, stationRoute{head: row[0], item: recipe.Items[i], tower: itemTower[recipe.Items[i]], rate: productionItemRate(l.info.Inputs, recipe.Items[i]) * share})
+		}
+		for resultIndex, item := range resultIDs {
+			head, err := b.stationOutputHead(l, item, resultIndex, len(resultIDs))
+			if err != nil {
+				return err
+			}
+			routes = append(routes, stationRoute{head: head, item: item, output: true, tower: itemTower[item], rate: productionItemRate(l.info.Outputs, item) * share})
+		}
 	}
 	used := make([]int, len(groups))
 	priority := []int{6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5}
@@ -195,7 +209,6 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 	endY := lines[len(lines)-1].output[0].a.y
 	centerY := math.Floor((endY-startY)/2) + startY
 	centers := make([]vector, len(groups))
-	extra := lines[0].info.MachineType == 3 || lines[0].info.MachineType == 4 || lines[0].info.MachineType == 6
 	var existing []*placed
 	for _, l := range lines {
 		existing = append(existing, l.all...)
@@ -211,7 +224,10 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过截止时间"}
 		}
 		for i := range centers {
-			centers[i] = vector{-5 - float64(attempt) - float64(i)*14, centerY + float64(i)*10, 0}
+			// 30 格是本地端口走廊的候选间隔，不冒充游戏距离常量；
+			// 行星/星际塔分别按 15/29 米在最终规则中核验。
+			// 塔先放到产线外侧，让普通地面寻路优先绕过机器。
+			centers[i] = vector{-30 - float64(attempt)*2 - float64(i)*30, centerY, 0}
 		}
 		blocked := map[vector]bool{}
 		for point := range buildingObstacles {
@@ -242,12 +258,6 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		}
 		for _, route := range routes {
 			blocked[route.head.a] = true
-			if extra {
-				v := route.head.a
-				v.x--
-				blocked[v] = true
-				occupiedBelts[beltCell(v)] = true
-			}
 		}
 		for _, center := range centers {
 			// 物流塔路线必须绕过完整的静态建造盒，不能只屏蔽中心五格后从塔角擦行。
@@ -275,9 +285,6 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		for i := range routes {
 			route := &routes[i]
 			begin := route.head.a
-			if extra {
-				begin.x--
-			}
 			candidates := []int{9, 10, 11, 8, 0, 7, 1, 6, 2, 5, 3, 4}
 			center := centers[route.tower]
 			sort.SliceStable(candidates, func(i, j int) bool {
@@ -313,6 +320,11 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 				ready = false
 				break
 			}
+			if stationPathCrosses(path, routes[:i]) {
+				failure = fmt.Sprintf("配方 %d 的物品 %d 路线与已分配塔端路线交叉", recipe.ID, route.item)
+				ready = false
+				break
+			}
 			for _, v := range path {
 				blocked[v] = true
 				occupiedBelts[beltCell(v)] = true
@@ -320,9 +332,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			for _, v := range stationInner(center, route.slot) {
 				occupiedBelts[beltCell(v)] = true
 			}
-			if !extra {
-				path = path[1:]
-			}
+			path = path[1:]
 			route.path = path
 		}
 		if ready {
@@ -333,7 +343,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		// 拥挤的混带入口允许显式跨层桥接，垂直爬升沿用参考 A/B 带的微移规则，避免平面路线互相封死。
 		usedSlots := make([]int, len(groups))
 		for i := range centers {
-			centers[i] = vector{-26 - float64(i)*14, centerY + float64(i)*10, 0}
+			centers[i] = vector{-45 - float64(i)*30, centerY, 0}
 		}
 		priority := []int{9, 10, 11, 8, 0, 7, 1, 6, 2, 5, 3, 4}
 		for i := range routes {
@@ -353,6 +363,13 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 	}
 	for _, route := range routes {
 		points := append(append([]vector{}, route.path...), stationInner(centers[route.tower], route.slot)...)
+		// 堆叠/精炼机的高架候选可能包含机器端点；byPath 不能在同一坐标重复创建一节带，否则最终交叉检查会看到未连接的重叠路线。
+		if len(points) > 0 && points[0] == route.head.a {
+			points = points[1:]
+		}
+		if len(points) < 2 {
+			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: fmt.Sprintf("物流塔物品 %d 的路线去重后没有可用带段", route.item)}
+		}
 		belts := b.byPath(points)
 		tower := towers[route.tower]
 		last := belts[len(belts)-1]
@@ -361,8 +378,10 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			connect(route.head, belts[0])
 			last.output = tower
 			last.record.OutputToSlot = int8(route.slot)
+			last.record.Parameters = []int32{int32(route.item), 0}
 			tower.record.Parameters[base] = 2
 			tower.record.Parameters[base+1] = 0
+			b.stationLinks = append(b.stationLinks, stationTransportLink{item: route.item, output: true, tower: tower, belt: last, slot: route.slot, head: route.head, path: append([]*placed{}, belts...), owner: route.head.owner, rate: route.rate})
 		} else {
 			reverse(belts)
 			connect(belts[0], route.head)
@@ -376,6 +395,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 					break
 				}
 			}
+			b.stationLinks = append(b.stationLinks, stationTransportLink{item: route.item, tower: tower, belt: last, slot: route.slot, head: route.head, path: append([]*placed{}, belts...), owner: route.head.owner, rate: route.rate})
 		}
 	}
 	if *b.setting.NeedPower {
@@ -387,6 +407,127 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		}
 	}
 	return nil
+}
+
+// uniqueStationItems 职责：按配方结果顺序去重多产物；使用：塔槽位和过滤出口规划；边界：不排序、不丢副产物。
+func uniqueStationItems(items []int) []int {
+	seen := map[int]bool{}
+	result := make([]int, 0, len(items))
+	for _, item := range items {
+		if item <= 0 || seen[item] {
+			continue
+		}
+		seen[item] = true
+		result = append(result, item)
+	}
+	return result
+}
+
+// stationPathCrosses 职责：在平面塔路线候选阶段拒绝未连接的轴向带段相交；使用：attachStations 逐路线寻路；边界：只检查同一高度的几何交叉，不替代最终球面/PhysX 校验。
+func stationPathCrosses(path []vector, previous []stationRoute) bool {
+	const epsilon = 1e-6
+	pointOn := func(p, a, c vector) bool {
+		if math.Abs(p.z-a.z) > epsilon || math.Abs(a.z-c.z) > epsilon {
+			return false
+		}
+		return p.x >= math.Min(a.x, c.x)-epsilon && p.x <= math.Max(a.x, c.x)+epsilon &&
+			p.y >= math.Min(a.y, c.y)-epsilon && p.y <= math.Max(a.y, c.y)+epsilon
+	}
+	for i := 1; i < len(path); i++ {
+		a, c := path[i-1], path[i]
+		for _, route := range previous {
+			prior := route.path
+			if route.head != nil {
+				prior = append([]vector{route.head.a}, prior...)
+			}
+			for j := 1; j < len(prior); j++ {
+				x, y := prior[j-1], prior[j]
+				if math.Abs(a.z-c.z) > epsilon || math.Abs(x.z-y.z) > epsilon || math.Abs(a.z-x.z) > epsilon {
+					continue
+				}
+				// 候选路径仅允许轴向段；若发生共线重叠或正交相交，都需要重新寻路。
+				if math.Abs(a.x-c.x) < epsilon && math.Abs(x.x-y.x) < epsilon {
+					if math.Abs(a.x-x.x) < epsilon && math.Max(math.Min(a.y, c.y), math.Min(x.y, y.y)) <= math.Min(math.Max(a.y, c.y), math.Max(x.y, y.y))+epsilon {
+						return true
+					}
+				} else if math.Abs(a.y-c.y) < epsilon && math.Abs(x.y-y.y) < epsilon {
+					if math.Abs(a.y-x.y) < epsilon && math.Max(math.Min(a.x, c.x), math.Min(x.x, y.x)) <= math.Min(math.Max(a.x, c.x), math.Max(x.x, y.x))+epsilon {
+						return true
+					}
+				} else if math.Abs(a.x-c.x) < epsilon && math.Abs(x.y-y.y) < epsilon {
+					if pointOn(vector{a.x, x.y, a.z}, a, c) && pointOn(vector{a.x, x.y, a.z}, x, y) {
+						return true
+					}
+				} else if math.Abs(a.y-c.y) < epsilon && math.Abs(x.x-y.x) < epsilon {
+					if pointOn(vector{x.x, a.y, a.z}, a, c) && pointOn(vector{x.x, a.y, a.z}, x, y) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// stationOutputHead 职责：为多产物共享出货带创建带物品过滤的实体支路；使用：mode3/4塔供货端；边界：只支持带间距不超过三格的分拣器，不把匿名混带当作已分离。
+func (b *builder) stationOutputHead(l *line, item, resultIndex, resultCount int) (*placed, error) {
+	if len(l.output) == 0 {
+		return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: "物流塔多产物出口没有共享输出带"}
+	}
+	if resultCount <= 1 {
+		l.output[0].record.Parameters = []int32{int32(item), 0}
+		return l.output[0], nil
+	}
+	// 以不同输出带段作为抓取源，避免多个过滤分支叠在同一格；侧支路仅占用相邻一格，后续塔路线再从此端点展开。
+	source := l.output[resultIndex%len(l.output)]
+	// 输出带方向随机器原型变化，不能固定向某一侧偏移；逐候选检查机器 footprint 与分拣器扫掠段，避免把过滤带放进机器建造盒。
+	offsets := []float64{1, -1, 2, -2, 3, -3}
+	offset := 0.0
+	for _, candidate := range offsets {
+		if stationOutputOffsetFree(source, l.machines, candidate) {
+			offset = candidate
+			break
+		}
+	}
+	if offset == 0 {
+		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 物品 %d 没有避开机器建造盒的过滤支路位置", l.machines[0].owner, item)}
+	}
+	previousOwner := b.owner
+	owner := previousOwner
+	if len(l.machines) > 0 {
+		owner = l.machines[0].owner
+	}
+	b.owner = owner
+	branch := b.make(2000+b.setting.BeltLv, source.a.x, source.a.y+offset, source.a.z)
+	branch.record.Parameters = []int32{int32(item), 0}
+	arm, err := b.beltTransfer(source, branch, b.setting.InserterLv, item)
+	b.owner = previousOwner
+	if err != nil {
+		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 物品 %d 多产物过滤出口不可达：%v", owner, item, err)}
+	}
+	// 分拣器自身记录 source -> branch，主输出带的 output 链保持不变；branch/arm 已由 b.make 登记到 builder.all。
+	branch.input = arm
+	// 局部块切片可能仍共享 builder.all 的底层数组，直接 append 会
+	// 覆盖已经装配的后续机器行；复制后登记，使寻路也能看见过滤端口。
+	l.all = append(append([]*placed{}, l.all...), branch, arm)
+	return branch, nil
+}
+
+// stationOutputOffsetFree 职责：判断共享输出带到过滤支路的候选分拣器是否侵占机器占地；使用：多产物塔供货出口；边界：只做保守平面检查，最终动态碰撞仍由收尾规则核验。
+func stationOutputOffsetFree(source *placed, machines []*placed, offset float64) bool {
+	for _, machine := range machines {
+		lo, hi := footprint(machine.record.ItemID)
+		inside := func(v vector) bool {
+			return v.x >= machine.a.x+lo.x-1e-6 && v.x <= machine.a.x+hi.x+1e-6 && v.y >= machine.a.y+lo.y-1e-6 && v.y <= machine.a.y+hi.y+1e-6
+		}
+		for step := 0; step <= int(math.Ceil(math.Abs(offset))); step++ {
+			v := vector{source.a.x, source.a.y + math.Copysign(float64(step), offset), source.a.z}
+			if inside(v) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // stationPowerCovered 职责：冲突时复用同一产线块内覆盖塔心的感应塔；使用：物流塔补电；边界：仅合并追加点三格内且覆盖塔心六格内的杆，不改变其他补电点或跨块网络。
@@ -403,4 +544,43 @@ func stationPowerCovered(center vector, existing []*placed) bool {
 		}
 	}
 	return false
+}
+
+// stationBlockClearance 职责：求沿正 Y 平移候选塔区块的最小安全位移；使用：普通装箱按真实塔型与米制距离补齐净空；边界：使用赤道切平面格长，球面映射后的距离仍由最终规则检查。
+func stationBlockClearance(existing, block []*placed, dx, dy float64) float64 {
+	type interval struct{ low, high float64 }
+	forbidden := []interval{}
+	for _, left := range existing {
+		if !surfaceIsStation(left.record.ItemID) {
+			continue
+		}
+		for _, right := range block {
+			if !surfaceIsStation(right.record.ItemID) {
+				continue
+			}
+			x := right.a.x + dx - left.a.x
+			y := right.a.y + dy - left.a.y
+			z := (right.a.z - left.a.z) * 1.3333333
+			radiusSquared := (float64(surfaceStationDistanceLimit(left.record.ItemID, right.record.ItemID)) - z*z) / (planarGridLength * planarGridLength)
+			if x*x >= radiusSquared {
+				continue
+			}
+			reach := math.Sqrt(radiusSquared - x*x)
+			forbidden = append(forbidden, interval{low: -y - reach, high: -y + reach})
+		}
+	}
+	sort.SliceStable(forbidden, func(i, j int) bool {
+		if forbidden[i].low != forbidden[j].low {
+			return forbidden[i].low < forbidden[j].low
+		}
+		return forbidden[i].high < forbidden[j].high
+	})
+	shift := 0.
+	for _, span := range forbidden {
+		if shift > span.low+1e-9 && shift < span.high-1e-9 {
+			// 最终坐标转 float32，保留千分之一格避免边界舍入回禁区。
+			shift = math.Ceil((span.high+1e-3)*1000) / 1000
+		}
+	}
+	return shift
 }

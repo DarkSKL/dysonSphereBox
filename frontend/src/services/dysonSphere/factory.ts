@@ -15,15 +15,25 @@ const unwrap = <T>(response: {code: string; message: string; data?: T | null}): 
   if (response.code !== 'OK' || response.data == null) throw new FactoryError(response.code, response.message)
   return response.data
 }
-const readGenerated = async (value: {blueprint: string; blueprintRef?: string; blueprintLength?: number}): Promise<string> => {
+// =============== 大对象与取消边界 ===============
+// 说明：取消既阻止旧结果进入工作区，也立即停止后续分片 RPC；不把缺失内容作为空成功结果返回。
+const ensureNotAborted = (signal?: AbortSignal): void => { if (signal?.aborted) throw new FactoryError('GEN_E_CANCELED', '本次蓝图请求已取消') }
+const readGenerated = async (value: {blueprint: string; blueprintRef?: string; blueprintLength?: number}, signal?: AbortSignal): Promise<string> => {
+  ensureNotAborted(signal)
   if (value.blueprint) return value.blueprint
-  if (!value.blueprintRef) return ''
+  if (!value.blueprintRef) throw new FactoryError('BP_E_FORMAT', '生成结果没有蓝图内容，请重新生成')
   const parts: string[] = []
   let offset = 0
   for (let part = 0; part < 64; part++) {
+    ensureNotAborted(signal)
     const result = unwrap(await ReadBlueprintChunk(new factorycontract.ChunkRequest({token: value.blueprintRef, offset})))
+    ensureNotAborted(signal)
     parts.push(result.text)
-    if (result.done) return parts.join('')
+    if (result.done) {
+      const text = parts.join('')
+      if (!text.trim()) throw new FactoryError('BP_E_FORMAT', '生成内容为空，请重新生成')
+      return text
+    }
     if (result.nextOffset <= offset) throw new FactoryError('BP_E_FORMAT', '生成内容读取没有前进，请重新生成')
     offset = result.nextOffset
   }
@@ -34,13 +44,14 @@ export const describeFactoryDataset = async (key: string): Promise<factorycontra
 export const solveFactory = async (request: quant.Request): Promise<quant.Result> => { ready(); return unwrap(await Solve(request)) }
 export const generateFactory = async (request: build.Request, onProgress?: (progress: FactoryGenerationProgress) => void, signal?: AbortSignal): Promise<build.Result> => {
   ready()
+  ensureNotAborted(signal)
   const requestId = crypto.randomUUID()
   const stop = observeFactoryGeneration(requestId, onProgress, signal)
   try {
     const result = unwrap(await Generate(new build.Request({...request, requestId})))
     stop()
     if (result.blueprintRef && !signal?.aborted) onProgress?.({stage: 'read', message: '正在读取生成的蓝图', current: 0, total: 0})
-    result.blueprint = await readGenerated(result)
+    result.blueprint = await readGenerated(result, signal)
     return result
   } finally { stop() }
 }

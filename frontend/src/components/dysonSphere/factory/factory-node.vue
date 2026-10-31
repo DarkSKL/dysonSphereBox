@@ -47,7 +47,7 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
   <div class="factory-node" :class="[`is-${data.kind}`, {'is-selected': selected, 'is-dimmed': dimmed}]" :style="zone ? {'--accent': zone.color} : undefined" :data-production="data.productionIndex" :data-zone="zone?.key">
     <header class="node-head">
       <ItemIcon :name="data.title" :size="data.kind === 'production' ? 30 : 24" />
-      <div class="node-title"><span class="node-kind">{{ kindLabel[data.kind] }}<template v-if="zone"> · {{ zone.label }}</template></span><strong>{{ data.title }}</strong></div>
+      <div class="node-title"><span class="node-kind">{{ data.kind === 'source' ? data.externalSource ? '指定外供' : '外部原料' : kindLabel[data.kind] }}<template v-if="zone"> · {{ zone.label }}</template></span><strong>{{ data.title }}</strong></div>
       <span class="node-rate type-display">{{ context.format(data.rate) }}<small>/min</small></span>
       <n-tooltip v-if="data.kind === 'production'"><template #trigger><button type="button" class="node-action nodrag" :disabled="context.locked" :aria-label="`${data.title} 改为外部供应`" @click.stop="context.setExternal(data.itemId, true)"><PackageOpen :size="13" /></button></template>改为外部供应</n-tooltip>
     </header>

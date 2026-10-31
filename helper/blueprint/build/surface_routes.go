@@ -17,6 +17,16 @@ type surfaceAreaOrigin struct{ longitude, latitude float32 }
 
 // surfaceWorldPositions 职责：复现建议锚点下的建筑中心坐标；使用：带距离与后续碰撞窄相位；边界：未知主网格拒绝，不将格网单位直接当作米。
 func (encoding *surfaceEncoding) surfaceWorldPositions(records []blueprint.Building) ([]vector, error) {
+	if encoding.planar {
+		positions := make([]vector, len(records))
+		for i, record := range records {
+			if record.AreaIndex != 0 {
+				return nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "切平面规则适配不支持未经球面映射的多 Area"}
+			}
+			positions[i] = vector{float64(record.LocalOffset.X) * planarGridLength, float64(record.LocalOffset.Z)*1.3333333 + .2, float64(record.LocalOffset.Y) * planarGridLength}
+		}
+		return positions, nil
+	}
 	if encoding.plan.GridSegment != 200 {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "当前游戏坐标验证仅覆盖原版 200 分段行星"}
 	}
@@ -113,6 +123,8 @@ func (encoding *surfaceEncoding) validateBeltDistancesContext(ctx context.Contex
 			if otherBelt && !connection.output {
 				continue
 			}
+			// 游戏构建 25955035 的 CheckBuildConditions 直接用 sqrMagnitude
+			// 与 5.3/16/28 比较；这些已经是平方阈值，不可再次平方放宽。
 			limit := float32(16)
 			if otherBelt {
 				limit = 5.3
@@ -123,7 +135,7 @@ func (encoding *surfaceEncoding) validateBeltDistancesContext(ctx context.Contex
 			y := float32(positions[i].y) - float32(positions[j].y)
 			z := float32(positions[i].z) - float32(positions[j].z)
 			if x*x+y*y+z*z > limit {
-				return &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("传送带 %d 与建筑 %d 在纬带 %d 的球面距离超出游戏接线限制", record.Index, records[j].Index, record.AreaIndex)}
+				return &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("传送带 %d(物品%d,局部%.2f,%.2f,%.2f) 与建筑 %d(物品%d,局部%.2f,%.2f,%.2f) 在纬带 %d 的距离 %.3f 超出 %.3f 接线限制", record.Index, record.ItemID, record.LocalOffset.X, record.LocalOffset.Y, record.LocalOffset.Z, records[j].Index, records[j].ItemID, records[j].LocalOffset.X, records[j].LocalOffset.Y, records[j].LocalOffset.Z, record.AreaIndex, math.Sqrt(float64(x*x+y*y+z*z)), math.Sqrt(float64(limit)))}
 			}
 		}
 	}

@@ -8,7 +8,6 @@ import (
 	"DysonSphereBox/helper/quant"
 	"context"
 	"encoding/json"
-	"reflect"
 )
 
 // MarshalWorkspace 职责：重新求解后保存版本化 JSON；使用：导出前检查；边界：输入改变或结果篡改立即拒绝，最多 1 MiB 配置记录。
@@ -20,9 +19,11 @@ func MarshalWorkspace(req contract.WorkspaceRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !reflect.DeepEqual(plan, req.Plan) {
+	if !MatchQuantSnapshot(plan, req.Plan) {
 		return "", &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "方案与当前输入不一致，请重新计算后导出"}
 	}
+	// 旧工作区和客户端编辑的派生图都由本次可信求解覆盖，不把任意边写入可复用方案。
+	req.Plan = plan
 	data, err := json.MarshalIndent(struct {
 		// FormatVersion 职责：固定离线记录版本；使用：后续兼容识别；边界：不改变游戏蓝图格式。
 		FormatVersion int `json:"formatVersion"`

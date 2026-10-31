@@ -5,10 +5,12 @@ package build
 import (
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/quant"
+	"DysonSphereBox/helper/transport"
 	"context"
 	"fmt"
 	"math"
 	"reflect"
+	"sort"
 	"time"
 )
 
@@ -17,7 +19,7 @@ const generationTimeout = 4 * time.Minute
 
 // normalizeSetting 职责：补齐参考默认值并限制生成规模；使用：布局前；边界：不截断请求机器总数。
 func normalizeSetting(s Setting) (Setting, error) {
-	defaults := Setting{MaxMachineInALine: 15, BeltLv: 1, InserterLv: 1, MaxLays: 3, BeltSpeed: 7200, SmelterMaxCount: 15, WorkbenchMaxCount: 15, RefineryMaxCount: 15, ChemicalMaxCount: 15, ColliderMaxCount: 15, MatrixMaxCount: 999, MergeType: 2, BlockWidthLimit: 50, LocalStationHitRadius: 7}
+	defaults := Setting{MaxMachineInALine: 15, BeltLv: 1, InserterLv: 1, MaxLays: 3, SmelterMaxCount: 15, WorkbenchMaxCount: 15, RefineryMaxCount: 15, ChemicalMaxCount: 15, ColliderMaxCount: 15, MatrixMaxCount: 999, MergeType: 2, BlockWidthLimit: 50, LocalStationHitRadius: 7}
 	v, d := reflect.ValueOf(&s).Elem(), reflect.ValueOf(defaults)
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
@@ -50,11 +52,24 @@ func normalizeSetting(s Setting) (Setting, error) {
 	if s.BeltLv > 3 || s.InserterLv > 4 || s.MaxLays > 15 || s.MergeType > 2 || s.BlockWidthLimit < 10 {
 		return s, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "带/分拣器等级、堆叠或布局方式无效"}
 	}
+	// 旧工作区的 BeltSpeed 只作读取兼容，不能覆盖所选等级的单带能力。
+	capacity, err := transport.BeltCapacityPerMinute(s.BeltLv)
+	if err != nil {
+		return s, err
+	}
+	s.BeltSpeed = capacity
 	return s, nil
 }
 
 // lineCounts 职责：按参考运力和列上限均匀拆列；使用：每条量化产线；边界：运力不足时减列，不丢机器。
 func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([]int, error) {
+	capacity, err := transport.BeltCapacityPerMinute(s.BeltLv)
+	if err != nil {
+		return nil, err
+	}
+	if p.MachineCount <= 0 || p.MachineCount > 10000 || r.TimeSpend <= 0 || !finitePositive(speed) {
+		return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "机器数、配方周期或设备速度无效"}
+	}
 	maxUse := 0.
 	for _, n := range r.ItemCounts {
 		maxUse = math.Max(maxUse, n)
@@ -69,12 +84,29 @@ func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([
 		rates := []float64{0, .25, .5, 1}
 		acc += rates[p.IncreaseLv]
 	}
-	theory := int(math.Floor(math.Round(s.BeltSpeed/(60/(r.TimeSpend/60)*speed*maxUse*acc)*100) / 100))
+	perMachine := 60 / (r.TimeSpend / 60) * speed * maxUse * acc
+	if !finitePositive(perMachine) {
+		return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: fmt.Sprintf("配方 %d 没有有效的单机物料流量", r.ID)}
+	}
+	theory := int(math.Floor((capacity + 1e-6) / perMachine))
 	limit := s.maxCount(p.MachineType)
 	if s.MaxMachineInALine > 0 && p.MachineType != 6 {
 		limit = min(limit, s.MaxMachineInALine)
 	}
 	limit = min(limit, theory)
+	// 配方额定值之外还核对可信计划的实际净流量；共享输出带必须承载全部产物。
+	rowRate := 0.
+	for _, rate := range p.Inputs {
+		rowRate = math.Max(rowRate, rate.RatePerMinute)
+	}
+	outputRate := 0.
+	for _, rate := range p.Outputs {
+		outputRate += rate.RatePerMinute
+	}
+	rowRate = math.Max(rowRate, outputRate)
+	if rowRate > 0 {
+		limit = min(limit, int(math.Floor((capacity+1e-6)*float64(p.MachineCount)/rowRate)))
+	}
 	if limit <= 0 {
 		return nil, &blueprint.Error{Code: "GEN_E_OVERFLOW", Message: "带速不足以支持一台机器，请升级传送带"}
 	}
@@ -136,6 +168,7 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	if err != nil {
 		return result, err
 	}
+	req.Setting = setting
 	dataset, err := quant.LoadDataset(req.Plan.Dataset)
 	if err != nil {
 		return result, err
@@ -150,14 +183,36 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	if err != nil {
 		return result, err
 	}
+	// 所有模式共享同一份守恒物料图和容量诊断；不能让普通生成路径
+	// 继续在没有 flowGraph 的情况下按匿名产线返回“成功”蓝图。
+	graph, err := quant.BuildFlowGraphContext(ctx, req.Plan)
+	if err != nil {
+		return result, err
+	}
+	b.flowGraph = &graph
+	b.logistics = newLogisticsSummary(graph, setting)
+	if req.Mode == 1 {
+		return b.generateConnected(ctx, req, dataset)
+	}
 	if req.Mode == 6 {
 		return b.generateBus(ctx, req, dataset)
 	}
-	// 多目标分区：每个目标的专属产线自成一区，被多个目标共用的产线归入「共用」区；
-	// 区内沿用原有换列规则，区与区之间横向排开并留出间隔，避免不同目标的产线堆叠在一起。
+	// 设施模式保留目标分组，但组内顺序必须来自同一规范依赖图。
 	reportProgress(ctx, "zones", "正在规划产线分区", 0, 0)
 	zones := planZones(req.Plan)
-	zoneGap := setting.LocalStationHitRadius * 2
+	order := make(map[int]int, len(graph.ProductionOrder))
+	for rank, index := range graph.ProductionOrder {
+		order[index] = rank
+	}
+	for i := range zones {
+		sort.SliceStable(zones[i].ProductionIndices, func(left, right int) bool {
+			return order[zones[i].ProductionIndices[left]] < order[zones[i].ProductionIndices[right]]
+		})
+	}
+	// bounds 已包含本地带、分拣器和电力设施；不再为所有块预留物流塔半径。
+	// 塔型的真实安全距离在放置时单独补齐，并由最终规则再次核验。
+	const blockGap = 2.
+	const zoneGap = blockGap
 	zoneX := 0.
 	productionNumber := 0
 	for zi := range zones {
@@ -200,12 +255,20 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				perGroup = 1
 			}
 			if req.Mode == 3 || req.Mode == 4 {
-				perGroup = max(1, 12/(len(recipe.Items)+1))
+				inputItems, resultItems := map[int]bool{}, map[int]bool{}
+				for _, item := range recipe.Items {
+					inputItems[item] = true
+				}
+				for _, item := range recipe.Results {
+					resultItems[item] = true
+				}
+				routeCount := len(inputItems) + len(resultItems)
+				perGroup = max(1, 12/max(1, routeCount))
 				slots := 4
 				if req.Mode == 4 {
 					slots = 5
 				}
-				if len(recipe.Items)+len(recipe.Results) > slots {
+				if routeCount > slots*2 {
 					perGroup = 1
 				}
 			}
@@ -246,12 +309,15 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				minimum, maximum := bounds(block)
 				width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
 				if setting.MergeType == 2 && nextY > 0 && nextY+height > setting.BlockWidthLimit {
-					nextX += columnWidth + setting.LocalStationHitRadius
+					nextX += columnWidth + blockGap
 					nextY = 0
 					columnWidth = 0
 				}
+				if req.Mode == 3 || req.Mode == 4 {
+					nextY += stationBlockClearance(b.all[:begin], block, nextX-minimum.x, nextY-minimum.y)
+				}
 				shift(block, nextX-minimum.x, nextY-minimum.y, 0)
-				nextY += height + setting.LocalStationHitRadius
+				nextY += height + blockGap
 				columnWidth = math.Max(columnWidth, width)
 				if req.SurfaceLayout != nil {
 					b.surfaceBlocks = append(b.surfaceBlocks, surfaceBlockRange{begin: begin, end: len(b.all)})
@@ -259,10 +325,6 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				if len(b.all) > blueprint.MaxBuildingCount {
 					return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "建筑超过 20 万，请拆分生成"}
 				}
-			}
-			actualCapacity := []float64{0, 360, 720, 1800}[setting.BeltLv] * 4
-			if p.OutputCount > actualCapacity {
-				b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 目标 %.2f/min 超过单带四层运力 %.2f/min，需多线供货并确认集装", p.RecipeID, p.OutputCount, actualCapacity))
 			}
 			if len(recipe.Results) > 1 {
 				b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 的多个产物共用输出带，请保证所有副产物有消耗出口", p.RecipeID))
@@ -407,6 +469,26 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		primaryArea = int32(surfacePlan.PrimaryAreaIndex)
 		width, height = float64(surfacePlan.LayoutWidth), float64(surfacePlan.LayoutHeight)
 	}
+	reportProgress(ctx, "rules", "正在核验最终建筑、路线、槽位和供电规则", 0, 0)
+	ruleAudit, err := validateFinalPlanetRules(ctx, req, surface, records)
+	if err != nil {
+		return result, err
+	}
+	// 所有模式在编码前统一把规范流边绑定到实际建筑链，并生成最终
+	// 物流诊断；否则 flowGraph 只停留在计划层，结果会丢失 lane/入口证据。
+	if req.Mode == 3 || req.Mode == 4 {
+		if err := b.validateStationTransport(ctx, req.Mode, records); err != nil {
+			return result, err
+		}
+	} else if req.Mode == 2 || req.Mode == 5 {
+		if err := b.recordFacilityTransport(req.Mode); err != nil {
+			return result, err
+		}
+	}
+	logistics, err := b.finalizeLogistics(req.Mode, records, areas)
+	if err != nil {
+		return result, err
+	}
 	name := req.Name
 	if name == "" {
 		name = "量化产线"
@@ -427,7 +509,7 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if len(records) > 6000 {
 		b.warnings = append(b.warnings, "建筑超过 6000，预览可能较慢，可折叠预览后复制导出")
 	}
-	return Result{Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: len(areas), Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones, SurfacePlan: surfacePlan}, nil
+	return Result{Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: len(areas), Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones, SurfacePlan: surfacePlan, LogisticsSummary: logistics, RuleAudit: ruleAudit}, nil
 }
 
 // surfaceAnchorRetryable 职责：判断球面锚点预检失败是否可以换到邻圈重试；使用：Generate 候选循环；边界：未知原型、超时和未验证错误不被软化。

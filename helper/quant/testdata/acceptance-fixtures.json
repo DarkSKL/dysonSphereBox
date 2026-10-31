@@ -1,0 +1,6354 @@
+{
+  "metadata": {
+    "schemaVersion": 1,
+    "dataset": "Vanilla",
+    "dataVersion": "273784d504d8cebb",
+    "datasetSHA256": "273784d504d8cebb9ab5c32c44755bbe47f370eba0aeddd1e5b29b6fdbb66bbc",
+    "gameVersion": "0.10.34.28524",
+    "baselineCommit": "868a905c",
+    "reason": "Blueprint global flow, capacity and routing acceptance initial baseline",
+    "recipeIds": [
+      92,
+      64,
+      27,
+      149
+    ],
+    "mode": 1,
+    "beltLv": 3,
+    "inserterLv": 3,
+    "power": true,
+    "maxLays": 1,
+    "surfaceLayout": "flat",
+    "resolvedQuantSettings": {
+      "miningSpeedOil": 3,
+      "miningSpeedHydrogen": 1,
+      "miningSpeedDeuterium": 0.05,
+      "miningSpeedGasHydrate": 0.8,
+      "miningSpeedHelium": 0.02,
+      "miningSpeedAmmonia": 0.3,
+      "miningSpeedNitrogen": 1.2,
+      "miningSpeedOxygen": 0.6,
+      "miningSpeedCarbonDioxide": 0.4,
+      "miningSpeedSulfurDioxide": 0.6,
+      "coveredVeinsSmall": 8,
+      "coveredVeinsLarge": 16,
+      "miningEfficiencyLarge": 3,
+      "miningSpeedMultiple": 1,
+      "enemyDropMultiple": 1,
+      "icarusManufacturingSpeed": 1,
+      "fractionatingSpeed": 30,
+      "fixedNum": 2,
+      "stackResearchLab": 1,
+      "proliferateItself": false,
+      "accRate": 1,
+      "incRate": 1,
+      "blueBuff": false,
+      "mineralizeList": {},
+      "naturalProductionLine": []
+    }
+  },
+  "cases": [
+    {
+      "name": "vanilla-120-0",
+      "request": {
+        "targets": [
+          {
+            "itemId": 2003,
+            "ratePerMinute": 120
+          }
+        ],
+        "dataset": "Vanilla",
+        "scheme": {
+          "itemRecipeChoices": {
+            "攻击无人机": 1,
+            "极速传送带": 1,
+            "火力发电厂": 1,
+            "结构矩阵": 1
+          },
+          "schemeForRecipe": [
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            }
+          ],
+          "costWeight": {
+            "space": 1
+          }
+        },
+        "settings": {
+          "miningSpeedMultiple": 1,
+          "fractionatingSpeed": 30,
+          "fixedNum": 2,
+          "stackResearchLab": 1,
+          "proliferateItself": false
+        }
+      },
+      "setting": {
+        "maxMachineInALine": 15,
+        "beltLv": 3,
+        "inserterLv": 3,
+        "maxLays": 1,
+        "needPower": true,
+        "beltSpeed": 7200,
+        "smelterMaxCount": 15,
+        "workbenchMaxCount": 15,
+        "refineryMaxCount": 15,
+        "chemicalMaxCount": 15,
+        "colliderMaxCount": 15,
+        "matrixMaxCount": 15,
+        "mergeType": 2,
+        "blockWidthLimit": 50,
+        "localStationHitRadius": 7,
+        "useMixed": false,
+        "mix2": false,
+        "smelterOtherSpace": 0,
+        "workbenchOtherSpace": 0,
+        "refineryOtherSpace": 0,
+        "chemicalOtherSpace": 0,
+        "colliderOtherSpace": 0,
+        "matrixOtherSpace": 0,
+        "needCoaterNet": false
+      },
+      "baseline": {
+        "buildingCount": 1107,
+        "envelopeArea": 6862,
+        "machineCount": 76
+      }
+    },
+    {
+      "name": "vanilla-120-1",
+      "request": {
+        "targets": [
+          {
+            "itemId": 2204,
+            "ratePerMinute": 120
+          }
+        ],
+        "dataset": "Vanilla",
+        "scheme": {
+          "itemRecipeChoices": {
+            "攻击无人机": 1,
+            "极速传送带": 1,
+            "火力发电厂": 1,
+            "结构矩阵": 1
+          },
+          "schemeForRecipe": [
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            }
+          ],
+          "costWeight": {
+            "space": 1
+          }
+        },
+        "settings": {
+          "miningSpeedMultiple": 1,
+          "fractionatingSpeed": 30,
+          "fixedNum": 2,
+          "stackResearchLab": 1,
+          "proliferateItself": false
+        }
+      },
+      "setting": {
+        "maxMachineInALine": 15,
+        "beltLv": 3,
+        "inserterLv": 3,
+        "maxLays": 1,
+        "needPower": true,
+        "beltSpeed": 7200,
+        "smelterMaxCount": 15,
+        "workbenchMaxCount": 15,
+        "refineryMaxCount": 15,
+        "chemicalMaxCount": 15,
+        "colliderMaxCount": 15,
+        "matrixMaxCount": 15,
+        "mergeType": 2,
+        "blockWidthLimit": 50,
+        "localStationHitRadius": 7,
+        "useMixed": false,
+        "mix2": false,
+        "smelterOtherSpace": 0,
+        "workbenchOtherSpace": 0,
+        "refineryOtherSpace": 0,
+        "chemicalOtherSpace": 0,
+        "colliderOtherSpace": 0,
+        "matrixOtherSpace": 0,
+        "needCoaterNet": false
+      },
+      "baseline": {
+        "buildingCount": 1095,
+        "envelopeArea": 5350,
+        "machineCount": 83
+      }
+    },
+    {
+      "name": "vanilla-120-2",
+      "request": {
+        "targets": [
+          {
+            "itemId": 6003,
+            "ratePerMinute": 120
+          }
+        ],
+        "dataset": "Vanilla",
+        "scheme": {
+          "itemRecipeChoices": {
+            "攻击无人机": 1,
+            "极速传送带": 1,
+            "火力发电厂": 1,
+            "结构矩阵": 1
+          },
+          "schemeForRecipe": [
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            }
+          ],
+          "costWeight": {
+            "space": 1
+          }
+        },
+        "settings": {
+          "miningSpeedMultiple": 1,
+          "fractionatingSpeed": 30,
+          "fixedNum": 2,
+          "stackResearchLab": 1,
+          "proliferateItself": false
+        }
+      },
+      "setting": {
+        "maxMachineInALine": 15,
+        "beltLv": 3,
+        "inserterLv": 3,
+        "maxLays": 1,
+        "needPower": true,
+        "beltSpeed": 7200,
+        "smelterMaxCount": 15,
+        "workbenchMaxCount": 15,
+        "refineryMaxCount": 15,
+        "chemicalMaxCount": 15,
+        "colliderMaxCount": 15,
+        "matrixMaxCount": 15,
+        "mergeType": 2,
+        "blockWidthLimit": 50,
+        "localStationHitRadius": 7,
+        "useMixed": false,
+        "mix2": false,
+        "smelterOtherSpace": 0,
+        "workbenchOtherSpace": 0,
+        "refineryOtherSpace": 0,
+        "chemicalOtherSpace": 0,
+        "colliderOtherSpace": 0,
+        "matrixOtherSpace": 0,
+        "needCoaterNet": false
+      },
+      "baseline": {
+        "buildingCount": 1806,
+        "envelopeArea": 10035,
+        "machineCount": 99
+      }
+    },
+    {
+      "name": "vanilla-120-3",
+      "request": {
+        "targets": [
+          {
+            "itemId": 5103,
+            "ratePerMinute": 120
+          }
+        ],
+        "dataset": "Vanilla",
+        "scheme": {
+          "itemRecipeChoices": {
+            "攻击无人机": 1,
+            "极速传送带": 1,
+            "火力发电厂": 1,
+            "结构矩阵": 1
+          },
+          "schemeForRecipe": [
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            }
+          ],
+          "costWeight": {
+            "space": 1
+          }
+        },
+        "settings": {
+          "miningSpeedMultiple": 1,
+          "fractionatingSpeed": 30,
+          "fixedNum": 2,
+          "stackResearchLab": 1,
+          "proliferateItself": false
+        }
+      },
+      "setting": {
+        "maxMachineInALine": 15,
+        "beltLv": 3,
+        "inserterLv": 3,
+        "maxLays": 1,
+        "needPower": true,
+        "beltSpeed": 7200,
+        "smelterMaxCount": 15,
+        "workbenchMaxCount": 15,
+        "refineryMaxCount": 15,
+        "chemicalMaxCount": 15,
+        "colliderMaxCount": 15,
+        "matrixMaxCount": 15,
+        "mergeType": 2,
+        "blockWidthLimit": 50,
+        "localStationHitRadius": 7,
+        "useMixed": false,
+        "mix2": false,
+        "smelterOtherSpace": 0,
+        "workbenchOtherSpace": 0,
+        "refineryOtherSpace": 0,
+        "chemicalOtherSpace": 0,
+        "colliderOtherSpace": 0,
+        "matrixOtherSpace": 0,
+        "needCoaterNet": false
+      },
+      "baseline": {
+        "buildingCount": 6440,
+        "envelopeArea": 30500,
+        "machineCount": 509
+      }
+    },
+    {
+      "name": "vanilla-120-4",
+      "request": {
+        "targets": [
+          {
+            "itemId": 2003,
+            "ratePerMinute": 120
+          },
+          {
+            "itemId": 2204,
+            "ratePerMinute": 120
+          },
+          {
+            "itemId": 6003,
+            "ratePerMinute": 120
+          },
+          {
+            "itemId": 5103,
+            "ratePerMinute": 120
+          }
+        ],
+        "dataset": "Vanilla",
+        "scheme": {
+          "itemRecipeChoices": {
+            "攻击无人机": 1,
+            "极速传送带": 1,
+            "火力发电厂": 1,
+            "结构矩阵": 1
+          },
+          "schemeForRecipe": [
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            },
+            {
+              "building": 0,
+              "increasePoints": 0,
+              "productionMode": 0
+            }
+          ],
+          "costWeight": {
+            "space": 1
+          }
+        },
+        "settings": {
+          "miningSpeedMultiple": 1,
+          "fractionatingSpeed": 30,
+          "fixedNum": 2,
+          "stackResearchLab": 1,
+          "proliferateItself": false
+        }
+      },
+      "setting": {
+        "maxMachineInALine": 15,
+        "beltLv": 3,
+        "inserterLv": 3,
+        "maxLays": 1,
+        "needPower": true,
+        "beltSpeed": 7200,
+        "smelterMaxCount": 15,
+        "workbenchMaxCount": 15,
+        "refineryMaxCount": 15,
+        "chemicalMaxCount": 15,
+        "colliderMaxCount": 15,
+        "matrixMaxCount": 15,
+        "mergeType": 2,
+        "blockWidthLimit": 50,
+        "localStationHitRadius": 7,
+        "useMixed": false,
+        "mix2": false,
+        "smelterOtherSpace": 0,
+        "workbenchOtherSpace": 0,
+        "refineryOtherSpace": 0,
+        "chemicalOtherSpace": 0,
+        "colliderOtherSpace": 0,
+        "matrixOtherSpace": 0,
+        "needCoaterNet": false
+      },
+      "baseline": {
+        "buildingCount": 10360,
+        "envelopeArea": 52155,
+        "machineCount": 765
+      }
+    }
+  ]
+}

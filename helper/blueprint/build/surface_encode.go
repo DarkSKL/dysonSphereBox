@@ -16,6 +16,8 @@ import (
 
 // surfaceEncoding 职责：保存整块平面蓝图的区域和候选锚点；使用：finish 的共同出口；边界：建筑仍按原顺序编号。
 type surfaceEncoding struct {
+	// planar 职责：选择等赤道格长的切平面规则；使用：旧平面请求的数值预检；边界：不冒充球面映射或实际粘贴验证。
+	planar bool
 	// packed 职责：标记已重排完整产线块；使用：防止几何失败后重复装箱；边界：单 Area 的重排也为 true。
 	packed bool
 	// areas 职责：保存按南到北排列的原生区域；使用：文档写出；边界：父区域朝主区域连接。

@@ -1,0 +1,85 @@
+{
+  "schema": "dsp-infrastructure-facts/v1",
+  "source": {
+    "steamBuildId": "25955035",
+    "gameVersion": "0.10.35.29151",
+    "unityVersion": "2022.3.62f3c1",
+    "assemblySha256": "ef314425dade51f529f184f07be136cd3c2660a6a81515603c7226fbe7ab1d8c",
+    "resourcesSha256": "8343173562b15b06a400d70cb1510a106d7654f96342857e5925ded5fd1900d1",
+    "methodsReviewed": [
+      "PrefabDesc.ReadPrefab"
+    ],
+    "stationPortSource": "SlotConfig.slotPoses 实际数组长度，由 PrefabDesc 转为物流塔端口"
+  },
+  "powerNodes": [
+    {
+      "node": true,
+      "connectDistance": 22.5,
+      "coverRadius": 10.5,
+      "itemId": 2201,
+      "modelId": 44,
+      "prefabPath": "Entities/Prefabs/tesla-tower-1",
+      "component": "PowerDesc",
+      "assetPathId": "159506",
+      "hierarchy": "tesla-tower-1"
+    }
+  ],
+  "stations": [
+    {
+      "isStellar": false,
+      "maxItemCount": 5000,
+      "maxItemKinds": 4,
+      "maxDroneCount": 50,
+      "maxShipCount": 0,
+      "maxEnergyAcc": 180000000,
+      "dronePoint": [
+        0.0,
+        26.0,
+        0.0
+      ],
+      "shipPoint": [
+        0.0,
+        26.0,
+        0.0
+      ],
+      "isCollector": false,
+      "collectSpeed": 0,
+      "isVeinCollector": false,
+      "portCount": 12,
+      "itemId": 2103,
+      "modelId": 49,
+      "prefabPath": "Entities/Prefabs/logistic-station",
+      "component": "StationDesc",
+      "assetPathId": "144310",
+      "hierarchy": "logistic-station"
+    },
+    {
+      "isStellar": true,
+      "maxItemCount": 10000,
+      "maxItemKinds": 5,
+      "maxDroneCount": 100,
+      "maxShipCount": 10,
+      "maxEnergyAcc": 12000000000,
+      "dronePoint": [
+        0.0,
+        26.0,
+        0.0
+      ],
+      "shipPoint": [
+        0.0,
+        30.35,
+        0.0
+      ],
+      "isCollector": false,
+      "collectSpeed": 0,
+      "isVeinCollector": false,
+      "portCount": 12,
+      "itemId": 2104,
+      "modelId": 50,
+      "prefabPath": "Entities/Prefabs/interstellar-logistic-station",
+      "component": "StationDesc",
+      "assetPathId": "139367",
+      "hierarchy": "interstellar-logistic-station"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ package build
 import (
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/quant"
+	"DysonSphereBox/helper/transport"
 	"context"
 	"fmt"
 	"math"
@@ -24,14 +25,23 @@ type transfer struct {
 
 // transferPlan 职责：按短跨度及高等级优先分解运力；使用：回流限速；边界：剩余无法表示时返回真实缺口供 UI 警告。
 func transferPlan(need float64, minLength, maxLevel int) ([]transfer, float64) {
-	table := [][]float64{{}, {1.5, .75, .5}, {3, 1.5, 1}, {6, 3, 2}}
 	out := []transfer{}
 	remaining := need
-	maxLevel = min(3, maxLevel)
+	maxLevel = min(4, maxLevel)
+	if minLength < 1 {
+		minLength = 1
+	}
+	if minLength > 3 || maxLevel < 1 {
+		return out, remaining
+	}
 	for length := minLength; length <= 3; length++ {
 		for lv := maxLevel; lv >= 1; lv-- {
-			power := table[lv][length-1]
-			if power == .75 {
+			capacity, err := transport.InserterCapacityPerMinute(lv, length)
+			if err != nil {
+				continue
+			}
+			power := capacity / 60
+			if power <= 0 || math.IsNaN(power) || math.IsInf(power, 0) {
 				continue
 			}
 			for remaining >= power-.0001 {
@@ -70,10 +80,10 @@ func (b *builder) beltTransfer(from, to *placed, level, filter int) (*placed, er
 }
 
 // limiter 职责：将生产输出限速送到返回带；使用：中间产品回流；边界：组合残余以告警返回，不丢失建筑或需求。
-func (b *builder) limiter(output, back *placed, need float64) error {
+func (b *builder) limiter(output, back *placed, need float64) ([]*placed, []*placed, []*placed, error) {
 	plan, remaining := transferPlan(math.Ceil(need*2)/2, 1, b.setting.InserterLv)
 	if len(plan) == 0 {
-		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "回流限速无法表示需求"}
+		return nil, nil, nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "回流限速无法表示需求"}
 	}
 	if remaining > 1e-6 {
 		b.warnings = append(b.warnings, fmt.Sprintf("回流门控尚有 %.3f/s 运力缺口", remaining))
@@ -112,6 +122,7 @@ func (b *builder) limiter(output, back *placed, need float64) error {
 	reverse(returnRail)
 	connect(output, feed[0])
 	connect(returnRail[0], back)
+	gateArms := make([]*placed, 0, len(plan))
 	for i, tr := range plan {
 		v := targets[i]
 		v.x += offset.x
@@ -124,11 +135,13 @@ func (b *builder) limiter(output, back *placed, need float64) error {
 			}
 		}
 		target := returnRail[int(math.Round(v.x-offset.x))]
-		if _, err := b.beltTransfer(source, target, tr.level, 0); err != nil {
-			return err
+		arm, err := b.beltTransfer(source, target, tr.level, 0)
+		if err != nil {
+			return nil, nil, nil, err
 		}
+		gateArms = append(gateArms, arm)
 	}
-	return nil
+	return feed, returnRail, gateArms, nil
 }
 
 // busRing 职责：保存闭合总线两侧可连接带；使用：物品调度；边界：所有物品在分拣器侧过滤。
@@ -137,6 +150,8 @@ type busRing struct {
 	left map[int]*placed
 	// right 职责：产线侧；使用：取料/回流；边界：按整数 y 查询。
 	right map[int]*placed
+	// belts 职责：保存闭合环路有向带序；使用：验证环路闭合与生成lane索引；边界：不含环外分支。
+	belts []*placed
 }
 
 // ring 职责：创建反向闭合矩形带；使用：最多三条嵌套总线；边界：不生成开环或零长度边。
@@ -158,7 +173,7 @@ func (b *builder) ring(layer, height int) busRing {
 	}
 	belts := b.byPath(points)
 	connect(belts[len(belts)-1], belts[0])
-	r := busRing{left: map[int]*placed{}, right: map[int]*placed{}}
+	r := busRing{left: map[int]*placed{}, right: map[int]*placed{}, belts: belts}
 	for _, p := range belts {
 		if int(p.a.x) == left {
 			r.left[int(p.a.y)] = p
@@ -181,7 +196,7 @@ func (b *builder) rawSupplement(item int, need float64, layer int, ring busRing,
 		b.warnings = append(b.warnings, fmt.Sprintf("物品 %d 补料有 %.3f/s 缺口", item, remaining))
 	}
 	if supply.requested > supply.effective+1e-6 {
-		b.warnings = append(b.warnings, fmt.Sprintf("物品 %d 需求 %.2f/s，单带补料上限 %.2f/s；已避免生成无吞吐收益的额外门控，当前混带总线不能达到目标产率", item, supply.requested, supply.effective))
+		return yStart, &blueprint.Error{Code: "GEN_E_BELT_CAPACITY", Message: fmt.Sprintf("物品 %d 需求 %.2f/min 超过当前总线单入口 %.2f/min，不能返回欠供蓝图", item, supply.requested*60, supply.effective*60)}
 	}
 	maxY := yStart + len(plan) + 4
 	inputY := maxY
@@ -191,26 +206,32 @@ func (b *builder) rawSupplement(item int, need float64, layer int, ring busRing,
 	connect(external, center)
 	previous := center
 	lowest := inputY
+	feedArms := []*placed{}
+	feedPath := []*placed{external, center}
 	for i, tr := range plan {
 		y := inputY - i - 1
 		x := layer - tr.length
 		points := manhattan(previous.a, vector{float64(x), float64(y), 0}, false)
 		segment := b.byPath(points[1:])
 		connect(previous, segment[0])
+		feedPath = append(feedPath, segment...)
 		previous = segment[len(segment)-1]
 		lowest = y
 		target := ring.left[y]
 		if target == nil {
 			return yStart, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线高度不足以连接补料"}
 		}
-		if _, err := b.beltTransfer(previous, target, tr.level, 0); err != nil {
+		arm, err := b.beltTransfer(previous, target, tr.level, 0)
+		if err != nil {
 			return yStart, err
 		}
+		feedArms = append(feedArms, arm)
 	}
 	// 返回支路的实际跨度固定为层下标+1，按真实运力配足，避免只按长度一估计。
-	lv := min(3, b.setting.InserterLv)
+	lv := min(4, b.setting.InserterLv)
 	backCount := supply.returnCount
 	var previousReturn *placed
+	returnArms := []*placed{}
 	for i := 0; i < backCount; i++ {
 		y := inputY + i + 1
 		source := ring.left[y]
@@ -223,9 +244,11 @@ func (b *builder) rawSupplement(item int, need float64, layer int, ring busRing,
 			connect(p, previousReturn)
 		}
 		previousReturn = p
-		if _, err := b.beltTransfer(source, p, lv, item); err != nil {
+		arm, err := b.beltTransfer(source, p, lv, item)
+		if err != nil {
 			return yStart, err
 		}
+		returnArms = append(returnArms, arm)
 		if y > maxY {
 			maxY = y
 		}
@@ -233,13 +256,116 @@ func (b *builder) rawSupplement(item int, need float64, layer int, ring busRing,
 	if *b.setting.NeedPower {
 		b.make(2201, -4, float64(inputY), 0)
 	}
+	if layerIndex, ok := b.busLayers[item]; ok {
+		// 仅登记入口实际创建的带与分拣器，避免把其它原料路线误并入本路线。
+		b.busLinks = append(b.busLinks, busTransportLink{kind: "raw-input", owner: -1, item: item, layer: layerIndex, rate: need * 60, endpoint: external, ring: ring.left[lowest], ringPath: ring.belts, parts: append(feedArms, returnArms...), row: feedPath})
+	}
 	_ = lowest
 	return maxY + 3, nil
+}
+
+// flowEdgesForOwner 职责：汇总指定产线流出某类规范边的计划份额；使用：回流门控不得采用机器额定能力；边界：仅按当前行机器数比例拆分既有计划边。
+func flowEdgesForOwner(graph *quant.FlowGraph, owner int, kind string, share float64) []quant.ItemRate {
+	if graph == nil || share <= 0 {
+		return nil
+	}
+	ownerNode := ""
+	for _, node := range graph.Nodes {
+		if node.Kind == "production" && node.ProductionIndex == owner {
+			ownerNode = node.ID
+			break
+		}
+	}
+	if ownerNode == "" {
+		return nil
+	}
+	rates := map[int]float64{}
+	for _, edge := range graph.Edges {
+		if edge.SourceNodeID == ownerNode && edge.FlowKind == kind {
+			rates[edge.ItemID] += edge.RatePerMinute * share
+		}
+	}
+	items := make([]int, 0, len(rates))
+	for item, rate := range rates {
+		if rate > 0 {
+			items = append(items, item)
+		}
+	}
+	sort.Ints(items)
+	out := make([]quant.ItemRate, 0, len(items))
+	for _, item := range items {
+		out = append(out, quant.ItemRate{ItemID: item, RatePerMinute: rates[item]})
+	}
+	return out
+}
+
+// addBusBoundaryLinks 职责：为目标和剩余流建立逐物品过滤出口；使用：mode6 流边核验；边界：不再复用同一条未过滤末端冒充多个物品出口。
+func (b *builder) addBusBoundaryLinks(l *line, share float64, gateFeed []*placed) error {
+	if l == nil || len(l.output) == 0 || b.flowGraph == nil {
+		return nil
+	}
+	// mode6 的输出带允许混带，但边界端口必须逐物品分开。这里从输出干线上的不同
+	// belt cell 分别取料，避免把同一端点的 Parameters 反复改写成最后一个物品。
+	flows := []struct {
+		kind string
+		item int
+		rate float64
+	}{}
+	for _, kind := range []string{"target-output", "leftover"} {
+		for _, flow := range flowEdgesForOwner(b.flowGraph, l.output[0].owner, kind, share) {
+			if flow.RatePerMinute <= 0 {
+				continue
+			}
+			flows = append(flows, struct {
+				kind string
+				item int
+				rate float64
+			}{kind: kind, item: flow.ItemID, rate: flow.RatePerMinute})
+		}
+	}
+	if len(flows) == 0 {
+		return nil
+	}
+	// 输出带可能短于副产物/目标出口数量；先把干线延伸到足够的独立取料格，
+	// 每个过滤臂保持 1 格跨度，避免把多个臂重叠到同一格而无法通过碰撞预检。
+	if len(l.output) < len(flows) {
+		last := l.output[len(l.output)-1]
+		extra := b.straight(last.a.x+1, last.a.y, len(flows)-len(l.output), 2)
+		connect(last, extra[0])
+		l.output = append(l.output, extra...)
+	}
+	for i, flow := range flows {
+		source := l.output[len(l.output)-1-i]
+		branch := b.make(2000+b.setting.BeltLv, source.a.x, source.a.y+1, source.a.z)
+		arm, err := b.beltTransfer(source, branch, b.setting.InserterLv, flow.item)
+		if err != nil {
+			return err
+		}
+		// 分支带本身就是开放端点：各 source 位于不同干线格，因此 branch
+		// 也天然不重叠；再额外横向延伸会与相邻物品分支争用格子。
+		branch.record.Parameters = []int32{int32(flow.item), int32(math.Ceil(flow.rate))}
+		b.busLinks = append(b.busLinks, busTransportLink{
+			kind: flow.kind, owner: l.output[0].owner, item: flow.item, layer: -1,
+			rate: flow.rate, endpoint: branch, parts: []*placed{arm},
+			row: []*placed{branch},
+		})
+	}
+	// 保留一个未被边界过滤臂占用的独立尾端；若该产线还有内部回流，
+	// limiter 将从此尾端取料，避免与目标/剩余出口共用同一 belt cell。
+	last := l.output[len(l.output)-1]
+	handoff := b.straight(last.a.x+1, last.a.y, 1, 2)
+	connect(last, handoff[0])
+	l.output = append(l.output, handoff...)
+	_ = gateFeed
+	return nil
 }
 
 // generateBus 职责：装配三圈调度、过滤取料和受限回流；使用：mode 6；边界：总带宽不足时返回非空 warnings，不宣称模拟通过。
 func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
 	result := Result{}
+	b.busLinks = nil
+	b.busLayers = map[int]int{}
+	b.busLayerBelts = map[int][]*placed{}
 	reportProgress(ctx, "bus-plan", "正在规划混带总线与物料调度", 0, 0)
 	targets := map[int]float64{}
 	for _, target := range req.Plan.Targets {
@@ -304,7 +430,8 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 		}
 		return items[i].id < items[j].id
 	})
-	capacity := []float64{0, 6, 12, 30}[b.setting.BeltLv]
+	capacityPerMinute, _ := transport.BeltCapacityPerMinute(b.setting.BeltLv)
+	capacity := capacityPerMinute / 60
 	layers := max(1, min(3, int(math.Ceil(total/capacity))))
 	loads := make([]float64, layers)
 	schedule := map[int]int{}
@@ -348,15 +475,20 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 			}
 		}
 	}
+	b.busLayers = make(map[int]int, len(schedule))
+	for item, layer := range schedule {
+		b.busLayers[item] = layer
+	}
 	for j, load := range loads {
 		if load > capacity+1e-8 {
-			b.warnings = append(b.warnings, fmt.Sprintf("混带总线第 %d 圈需求 %.2f/s 超过 %.2f/s 带宽，需拆分目标或升级带速", j+1, load, capacity))
+			return result, &blueprint.Error{Code: "GEN_E_BELT_CAPACITY", Message: fmt.Sprintf("混带总线第 %d 圈需求 %.2f/min 超过所选等级容量 %.2f/min，请拆分目标或选择更高带等级", j+1, load*60, capacity*60)}
 		}
 	}
 	allLines := []*line{}
 	backs := map[*line][]*placed{}
 	nextY := 3.
-	for owner, p := range req.Plan.Productions {
+	for _, owner := range b.flowGraph.ProductionOrder {
+		p := req.Plan.Productions[owner]
 		reportProgress(ctx, "production", "正在铺设"+dataset.ByID[p.MainItemID].Name+"产线", owner+1, len(req.Plan.Productions))
 		if ctx.Err() != nil {
 			return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成总线超时"}
@@ -382,12 +514,13 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 			if err != nil {
 				return result, err
 			}
-			needReturn := false
-			for _, id := range recipe.Results {
-				if needed[id] > 0 {
-					needReturn = true
-				}
+			// 只有规范图确实存在 production->production 的输出边时才建立回流线。
+			// 不能用 needed（它还包含原料/边界需求）推测某条产线需要回流。
+			lineShare := 0.0
+			if len(l.machines) > 0 && p.MachineCount > 0 {
+				lineShare = float64(len(l.machines)) / float64(p.MachineCount)
 			}
+			needReturn := len(flowEdgesForOwner(b.flowGraph, owner, "internal", lineShare)) > 0
 			if needReturn {
 				backY := l.output[0].a.y + 1
 				if b.setting.UseMixed || len(recipe.Items) > 5 {
@@ -426,10 +559,15 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 	for j := range rings {
 		reportProgress(ctx, "bus-rings", "正在铺设总线环路", j+1, layers)
 		rings[j] = b.ring(j, height)
+		b.busLayerBelts[j] = append([]*placed{}, rings[j].belts...)
 	}
 	for index, l := range allLines {
 		reportProgress(ctx, "bus-connect", "正在连接总线取料与回流", index+1, len(allLines))
 		b.owner = -1
+		lineShare := 0.
+		if l.info.MachineCount > 0 {
+			lineShare = float64(len(l.machines)) / float64(l.info.MachineCount)
+		}
 		for i, row := range l.inputs {
 			item := l.recipe.Items[i]
 			layer, ok := schedule[item]
@@ -440,30 +578,50 @@ func (b *builder) generateBus(ctx context.Context, req Request, dataset *quant.D
 			if source == nil {
 				return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线取料坐标无对应带"}
 			}
-			if _, err := b.beltTransfer(source, row[0], b.setting.InserterLv, item); err != nil {
+			arm, err := b.beltTransfer(source, row[0], b.setting.InserterLv, item)
+			if err != nil {
 				return result, err
 			}
+			b.busLinks = append(b.busLinks, busTransportLink{kind: "production-input", owner: row[0].owner, item: item, layer: layer, rate: productionItemRate(l.info.Inputs, item) * lineShare, endpoint: row[0], ring: source, ringPath: rings[layer].belts, parts: []*placed{arm}, row: append([]*placed{}, row...)})
 		}
 		if back := backs[l]; len(back) > 0 {
 			layer := schedule[l.info.MainItemID]
 			target := rings[layer].right[int(math.Round(back[0].a.y))]
-			if _, err := b.beltTransfer(back[0], target, b.setting.InserterLv, 0); err != nil {
+			arm, err := b.beltTransfer(back[0], target, b.setting.InserterLv, 0)
+			if err != nil {
 				return result, err
 			}
-			share := float64(len(l.machines)) / float64(l.info.MachineCount)
+			// 回流门控只按规范 internal 边计量，不能用全局 needed 或机器额定能力代替。
+			itemRates := flowEdgesForOwner(b.flowGraph, l.output[0].owner, "internal", lineShare)
 			flow := 0.
-			for _, id := range l.recipe.Results {
-				flow += needed[id]
+			for _, itemRate := range itemRates {
+				flow += itemRate.RatePerMinute
 			}
-			rate := flow * share
-			if err := b.limiter(l.output[len(l.output)-1], back[len(back)-1], rate); err != nil {
+			rate := flow / 60
+			if flow <= 1e-8 {
+				if err := b.addBusBoundaryLinks(l, lineShare, nil); err != nil {
+					return result, err
+				}
+				continue
+			}
+			// 先为目标/剩余副产物建立独立过滤支路，再从延伸后的干线末端
+			// 接回流门控；这样边界端口不会复用回流闭合尾端。
+			if err := b.addBusBoundaryLinks(l, lineShare, nil); err != nil {
 				return result, err
 			}
+			gateFeed, gateReturn, gateArms, err := b.limiter(l.output[len(l.output)-1], back[len(back)-1], rate)
+			if err != nil {
+				return result, err
+			}
+			// 物料总线允许混带，但回流实体仍只登记 FlowGraph 的内部净需求。
+			b.busLinks = append(b.busLinks, busTransportLink{kind: "production-return", owner: l.output[0].owner, item: -1, layer: layer, rate: flow, rateLimit: flow, endpoint: back[0], gateEndpoint: back[len(back)-1], ring: target, ringPath: rings[layer].belts, parts: []*placed{arm}, limiterParts: gateArms, gateFeed: gateFeed, gateReturn: gateReturn, row: append([]*placed{}, l.output...), itemRates: itemRates})
 			if targets[l.info.MainItemID] > 0 {
 				b.warnings = append(b.warnings, fmt.Sprintf("物品 %d 同时外供与内部消耗：导出时需保留总线回流运力", l.info.MainItemID))
 			}
 		} else {
-			l.output[len(l.output)-1].record.Parameters = []int32{int32(l.info.MainItemID), 0}
+			if err := b.addBusBoundaryLinks(l, lineShare, nil); err != nil {
+				return result, err
+			}
 		}
 		if len(l.recipe.Results) > 1 {
 			b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 存在副产物，请从输出带分流，避免总线积压", l.recipe.ID))

@@ -1,0 +1,89 @@
+{
+  "schema": "dsp-inserter-capacity/v1",
+  "source": {
+    "steamBuildId": "25955035",
+    "gameVersion": "0.10.35.29151",
+    "unityVersion": "2022.3.62f3c1",
+    "assemblySha256": "ef314425dade51f529f184f07be136cd3c2660a6a81515603c7226fbe7ab1d8c",
+    "resourcesSha256": "8343173562b15b06a400d70cb1510a106d7654f96342857e5925ded5fd1900d1",
+    "methodsReviewed": [
+      "PrefabDesc.ReadPrefab",
+      "PlanetFactory.CreateEntityLogicComponents",
+      "FactorySystem.NewInserterComponent",
+      "GameHistoryData.SetForNewGame",
+      "InserterComponent.InternalUpdate",
+      "InserterComponent.InternalUpdateNoAnim"
+    ]
+  },
+  "profile": {
+    "id": "vanilla-no-tech-unstacked-full-power/v1",
+    "ticksPerSecond": 60,
+    "timeUnitsPerTick": 10000,
+    "obsoleteStackInput": 1,
+    "pileStackInput": 2,
+    "stackOutput": 1,
+    "bidirectional": false,
+    "inputCargoStack": 1,
+    "power": 1,
+    "distances": [
+      1,
+      2,
+      3
+    ],
+    "scope": "连续供料且接收端无阻塞时的零科技额定上限；不承诺带上货物相位、缺电或端口等待后的实际吞吐"
+  },
+  "inserters": [
+    {
+      "grade": 1,
+      "sttf": 0.33333334,
+      "delayf": 0.0,
+      "canStack": false,
+      "stackSize": 1,
+      "stt": 200000,
+      "itemId": 2011,
+      "modelId": 41,
+      "prefabPath": "Entities/Prefabs/inserter-1",
+      "assetPathId": "137549",
+      "hierarchy": "inserter-1"
+    },
+    {
+      "grade": 2,
+      "sttf": 0.16666666,
+      "delayf": 0.0,
+      "canStack": false,
+      "stackSize": 1,
+      "stt": 100000,
+      "itemId": 2012,
+      "modelId": 42,
+      "prefabPath": "Entities/Prefabs/inserter-2",
+      "assetPathId": "137555",
+      "hierarchy": "inserter-2"
+    },
+    {
+      "grade": 3,
+      "sttf": 0.083333336,
+      "delayf": 0.0,
+      "canStack": true,
+      "stackSize": 1,
+      "stt": 50000,
+      "itemId": 2013,
+      "modelId": 43,
+      "prefabPath": "Entities/Prefabs/inserter-3",
+      "assetPathId": "138311",
+      "hierarchy": "inserter-3"
+    },
+    {
+      "grade": 4,
+      "sttf": 0.05,
+      "delayf": 0.0,
+      "canStack": true,
+      "stackSize": 2,
+      "stt": 30000,
+      "itemId": 2014,
+      "modelId": 483,
+      "prefabPath": "Entities/Prefabs/inserter-4",
+      "assetPathId": "159856",
+      "hierarchy": "inserter-4"
+    }
+  ]
+}

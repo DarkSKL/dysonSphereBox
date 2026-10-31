@@ -22,7 +22,7 @@ ensureFactoryIcons()
 // 说明：节点位置来自确定性分层；用户拖动过的节点在同一方案的后续求解中保留位置，「整理」恢复自动布局。
 // 首次渲染按估算高度布局，节点完成测量后用实际高度重排一次，避免同列节点重叠。
 const measured = shallowRef(new Map<string, number>())
-const graph = computed(() => props.w.plan && !props.w.replay ? buildFlowGraph(props.w.plan, props.w.itemName, id => measured.value.get(id)) : {nodes: [], edges: []})
+const graph = computed(() => props.w.plan && !props.w.replay ? buildFlowGraph(props.w.plan, props.w.itemName, id => measured.value.get(id)) : {nodes: [], edges: [], notice: ''})
 const pinned = shallowRef(new Map<string, {x: number; y: number}>())
 const nodes = computed(() => graph.value.nodes.map((node: FlowLayoutNode) => ({id: node.id, type: 'factory', position: pinned.value.get(node.id) ?? node.position, data: node.data, selected: selectedNode.value === node.id})))
 const maxRate = computed(() => Math.max(1, ...graph.value.edges.map(edge => edge.rate)))
@@ -30,9 +30,14 @@ const related = computed(() => {
   if (!selectedNode.value) return null
   return new Set(graph.value.edges.filter(edge => edge.source === selectedNode.value || edge.target === selectedNode.value).map(edge => edge.id))
 })
+const laneCounts = computed(() => {
+  const counts = new Map<string, number>()
+  if (!props.w.previewStale && props.w.generated?.logisticsSummary?.flowGraphDigest === props.w.plan?.flowGraph?.digest) for (const lane of props.w.generated?.logisticsSummary?.lanes ?? []) counts.set(lane.edgeId, (counts.get(lane.edgeId) ?? 0) + 1)
+  return counts
+})
 const edges = computed(() => graph.value.edges.map(edge => ({
   id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle, type: 'flow',
-  data: {name: edge.name, rate: edge.rate, cycle: edge.cycle, label: `${edge.name} ${props.w.number(edge.rate)}`, width: 1 + 3 * Math.log1p(edge.rate) / Math.log1p(maxRate.value), highlighted: related.value?.has(edge.id) ?? false, dimmed: related.value ? !related.value.has(edge.id) : false},
+  data: {name: edge.name, rate: edge.rate, cycle: edge.cycle, label: `${edge.name} ${props.w.number(edge.rate)}/min${laneCounts.value.has(edge.id) ? ` · ${laneCounts.value.get(edge.id)} 路` : ''}`, width: 1 + 3 * Math.log1p(edge.rate) / Math.log1p(maxRate.value), highlighted: related.value?.has(edge.id) ?? false, dimmed: related.value ? !related.value.has(edge.id) : false},
 })))
 
 // 选中节点在重算后消失（如改为外供）时清空，避免面板停留在过期节点。
@@ -45,7 +50,7 @@ let fitPending = true
 watch(planShape, shape => {
   const before = new Set(lastShape.split('|').filter(Boolean))
   const after = shape.split('|').filter(Boolean)
-  const targetsChanged = after.filter(id => id.startsWith('target-')).join('|') !== [...before].filter(id => id.startsWith('target-')).join('|')
+  const targetsChanged = after.filter(id => id.startsWith('target:')).join('|') !== [...before].filter(id => id.startsWith('target:')).join('|')
   lastShape = shape
   if (!shape) return
   // 目标变化视为新方案并清除手动位置；配方/喷涂引入或移除节点时只重新适配视图。
@@ -206,6 +211,7 @@ const targetIds = computed(() => new Set(props.w.targets.map(target => target.it
         <LayoutGrid :size="26" />
         <p v-if="w.replay">导入的蓝图为只读回放，转为量化目标后可在网格中编辑。</p>
         <p v-else-if="w.solving">正在计算产线…</p>
+        <p v-else-if="graph.notice" role="alert">{{ graph.notice }}</p>
         <p v-else>从左侧物品库选择目标产物，产线会自动计算并展开为网格图。</p>
       </div>
     </div>

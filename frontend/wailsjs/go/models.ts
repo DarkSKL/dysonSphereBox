@@ -396,6 +396,152 @@ export namespace blueprint {
 
 export namespace build {
 	
+	export class BoundaryPort {
+	    edgeId: string;
+	    itemId: number;
+	    kind: string;
+	    ratePerMinute: number;
+	    buildingIndex: number;
+	    x: number;
+	    y: number;
+	    z: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoundaryPort(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.edgeId = source["edgeId"];
+	        this.itemId = source["itemId"];
+	        this.kind = source["kind"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	        this.buildingIndex = source["buildingIndex"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	    }
+	}
+	export class LayoutMetrics {
+	    envelopeArea: number;
+	    footprintArea: number;
+	    blankRatio: number;
+	    internalBeltLength: number;
+	    routeCrossings: number;
+	    crossAreaConnections: number;
+	    laneCount: number;
+	    externalInputCount: number;
+	    candidateBudget: number;
+	    evaluatedCandidates: number;
+	    rejectedCandidates: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LayoutMetrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.envelopeArea = source["envelopeArea"];
+	        this.footprintArea = source["footprintArea"];
+	        this.blankRatio = source["blankRatio"];
+	        this.internalBeltLength = source["internalBeltLength"];
+	        this.routeCrossings = source["routeCrossings"];
+	        this.crossAreaConnections = source["crossAreaConnections"];
+	        this.laneCount = source["laneCount"];
+	        this.externalInputCount = source["externalInputCount"];
+	        this.candidateBudget = source["candidateBudget"];
+	        this.evaluatedCandidates = source["evaluatedCandidates"];
+	        this.rejectedCandidates = source["rejectedCandidates"];
+	    }
+	}
+	export class LogisticsCheck {
+	    ruleId: string;
+	    status: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogisticsCheck(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ruleId = source["ruleId"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	    }
+	}
+	export class TransportLane {
+	    edgeId: string;
+	    itemId: number;
+	    sourceNodeId: string;
+	    targetNodeId: string;
+	    flowKind: string;
+	    ratePerMinute: number;
+	    capacityPerMinute: number;
+	    utilization: number;
+	    buildingIndices: number[];
+	    internalConnected: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TransportLane(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.edgeId = source["edgeId"];
+	        this.itemId = source["itemId"];
+	        this.sourceNodeId = source["sourceNodeId"];
+	        this.targetNodeId = source["targetNodeId"];
+	        this.flowKind = source["flowKind"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	        this.capacityPerMinute = source["capacityPerMinute"];
+	        this.utilization = source["utilization"];
+	        this.buildingIndices = source["buildingIndices"];
+	        this.internalConnected = source["internalConnected"];
+	    }
+	}
+	export class LogisticsSummary {
+	    flowGraphDigest: string;
+	    beltLevel: number;
+	    beltCapacityPerMinute: number;
+	    lanes: TransportLane[];
+	    externalPorts: BoundaryPort[];
+	    checks: LogisticsCheck[];
+	    metrics: LayoutMetrics;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogisticsSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.flowGraphDigest = source["flowGraphDigest"];
+	        this.beltLevel = source["beltLevel"];
+	        this.beltCapacityPerMinute = source["beltCapacityPerMinute"];
+	        this.lanes = this.convertValues(source["lanes"], TransportLane);
+	        this.externalPorts = this.convertValues(source["externalPorts"], BoundaryPort);
+	        this.checks = this.convertValues(source["checks"], LogisticsCheck);
+	        this.metrics = this.convertValues(source["metrics"], LayoutMetrics);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ProductionBinding {
 	    machineIndices?: number[];
 	    productionIndex: number;
@@ -508,6 +654,68 @@ export namespace build {
 	        this.setting = this.convertValues(source["setting"], Setting);
 	        this.name = source["name"];
 	        this.surfaceLayout = this.convertValues(source["surfaceLayout"], SurfaceLayout);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RuleProfile {
+	    version: string;
+	    gameVersion: string;
+	    steamBuildId: string;
+	    assemblySha256: string;
+	    resourcesSha256: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RuleProfile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.gameVersion = source["gameVersion"];
+	        this.steamBuildId = source["steamBuildId"];
+	        this.assemblySha256 = source["assemblySha256"];
+	        this.resourcesSha256 = source["resourcesSha256"];
+	    }
+	}
+	export class RuleAudit {
+	    profile: RuleProfile;
+	    quantDataVersion: string;
+	    coordinateSpace: string;
+	    coverage: string;
+	    checks: LogisticsCheck[];
+	    powerNetworkCount: number;
+	    unverified: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RuleAudit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.profile = this.convertValues(source["profile"], RuleProfile);
+	        this.quantDataVersion = source["quantDataVersion"];
+	        this.coordinateSpace = source["coordinateSpace"];
+	        this.coverage = source["coverage"];
+	        this.checks = this.convertValues(source["checks"], LogisticsCheck);
+	        this.powerNetworkCount = source["powerNetworkCount"];
+	        this.unverified = source["unverified"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -650,6 +858,8 @@ export namespace build {
 	    sharedBuildingIndices: number[];
 	    zones: Zone[];
 	    surfacePlan?: SurfacePlan;
+	    logisticsSummary?: LogisticsSummary;
+	    ruleAudit?: RuleAudit;
 	
 	    static createFrom(source: any = {}) {
 	        return new Result(source);
@@ -668,6 +878,8 @@ export namespace build {
 	        this.sharedBuildingIndices = source["sharedBuildingIndices"];
 	        this.zones = this.convertValues(source["zones"], Zone);
 	        this.surfacePlan = this.convertValues(source["surfacePlan"], SurfacePlan);
+	        this.logisticsSummary = this.convertValues(source["logisticsSummary"], LogisticsSummary);
+	        this.ruleAudit = this.convertValues(source["ruleAudit"], RuleAudit);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -688,6 +900,9 @@ export namespace build {
 		    return a;
 		}
 	}
+	
+	
+	
 	
 	
 	
@@ -4194,6 +4409,127 @@ export namespace quant {
 	        this.recipeCount = source["recipeCount"];
 	    }
 	}
+	export class FlowBalance {
+	    itemId: number;
+	    supplyPerMinute: number;
+	    demandPerMinute: number;
+	    differencePerMinute: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FlowBalance(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.supplyPerMinute = source["supplyPerMinute"];
+	        this.demandPerMinute = source["demandPerMinute"];
+	        this.differencePerMinute = source["differencePerMinute"];
+	    }
+	}
+	export class FlowComponent {
+	    id: string;
+	    nodeIds: string[];
+	    level: number;
+	    cyclic: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FlowComponent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.nodeIds = source["nodeIds"];
+	        this.level = source["level"];
+	        this.cyclic = source["cyclic"];
+	    }
+	}
+	export class FlowEdge {
+	    edgeId: string;
+	    itemId: number;
+	    sourceNodeId: string;
+	    targetNodeId: string;
+	    ratePerMinute: number;
+	    flowKind: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FlowEdge(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.edgeId = source["edgeId"];
+	        this.itemId = source["itemId"];
+	        this.sourceNodeId = source["sourceNodeId"];
+	        this.targetNodeId = source["targetNodeId"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	        this.flowKind = source["flowKind"];
+	    }
+	}
+	export class FlowNode {
+	    id: string;
+	    kind: string;
+	    itemId: number;
+	    productionIndex: number;
+	    level: number;
+	    componentId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FlowNode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.itemId = source["itemId"];
+	        this.productionIndex = source["productionIndex"];
+	        this.level = source["level"];
+	        this.componentId = source["componentId"];
+	    }
+	}
+	export class FlowGraph {
+	    nodes: FlowNode[];
+	    edges: FlowEdge[];
+	    components: FlowComponent[];
+	    productionOrder: number[];
+	    balances: FlowBalance[];
+	    digest: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FlowGraph(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nodes = this.convertValues(source["nodes"], FlowNode);
+	        this.edges = this.convertValues(source["edges"], FlowEdge);
+	        this.components = this.convertValues(source["components"], FlowComponent);
+	        this.productionOrder = source["productionOrder"];
+	        this.balances = this.convertValues(source["balances"], FlowBalance);
+	        this.digest = source["digest"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class Item {
 	    id: number;
 	    name: string;
@@ -4541,6 +4877,8 @@ export namespace quant {
 	    planId: string;
 	    productions: Production[];
 	    rawInputs: ItemRate[];
+	    externalInputItemIds: number[];
+	    flowGraph?: FlowGraph;
 	    leftovers: ItemRate[];
 	    powerMw: number;
 	    machineCount: number;
@@ -4562,6 +4900,8 @@ export namespace quant {
 	        this.planId = source["planId"];
 	        this.productions = this.convertValues(source["productions"], Production);
 	        this.rawInputs = this.convertValues(source["rawInputs"], ItemRate);
+	        this.externalInputItemIds = source["externalInputItemIds"];
+	        this.flowGraph = this.convertValues(source["flowGraph"], FlowGraph);
 	        this.leftovers = this.convertValues(source["leftovers"], ItemRate);
 	        this.powerMw = source["powerMw"];
 	        this.machineCount = source["machineCount"];

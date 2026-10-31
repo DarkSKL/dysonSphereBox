@@ -4,6 +4,7 @@ package factory
 
 import (
 	"DysonSphereBox/constant/logging"
+	"DysonSphereBox/helper/blueprint/build"
 	systemHelper "DysonSphereBox/helper/system"
 )
 
@@ -15,4 +16,14 @@ func RecordExport(length int) {
 // RecordWorkspaceExport 职责：记录方案 JSON 已落盘；使用：服务写入成功后；边界：不记录具体方案内容和路径。
 func RecordWorkspaceExport(targets int) {
 	systemHelper.RecordLogSilently(systemHelper.LogEntry{Namespace: "factory.workspace.export", Source: "backend.factory", Handler: "User", Level: logging.Info, Action: "计算方案已导出", Reason: "重新求解与前端快照一致，用户已选择 JSON 文件", Data: map[string]interface{}{"targets": targets, "result": "success"}})
+}
+
+// RecordGeneration 职责：为已经通过物流及蓝图自检的生成记录有限审计元数据。
+// 使用：服务确认任务仍为最新且全部校验成功后调用；边界：不记录蓝图串、完整方案、用户路径或真实游戏放置保证。
+func RecordGeneration(req build.Request, result build.Result) {
+	data := map[string]interface{}{"planId": req.Plan.PlanID, "mode": req.Mode, "beltLevel": req.Setting.BeltLv, "machines": req.Plan.MachineCount, "buildings": result.BuildingCount, "areas": result.Areas, "result": "success"}
+	if req.Plan.FlowGraph != nil {
+		data["flowGraphDigest"] = req.Plan.FlowGraph.Digest
+	}
+	systemHelper.RecordLogSilently(systemHelper.LogEntry{Namespace: "factory.blueprint.generate", Source: "backend.factory", Handler: "User", Level: logging.Info, Action: "蓝图生成完成", Reason: "已完成当前抽象规则覆盖内的物流和编码检查；不代表游戏内放置验收", Data: data})
 }

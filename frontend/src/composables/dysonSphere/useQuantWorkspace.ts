@@ -42,12 +42,16 @@ export const useQuantWorkspace = () => {
   const surfaceLayout = reactive({mode: 'autoTropic', gridSegment: 200, latitudeGridIndex: 0, expandAdjacent: true})
   const plan = ref<quant.Result | null>(null)
   const generated = ref<build.Result | null>(null)
+  // 保留生成时的规范图供旧结果诊断使用，避免新量化计划把旧端点误标为其它产线。
+  const generatedFlowGraph = ref<quant.FlowGraph | null>(null)
   const inspection = ref<factorycontract.Inspection | null>(null)
   const code = ref('')
   const replay = ref(false)
   const loadingDataset = ref(false)
   const solving = ref(false)
   const generating = ref(false)
+  // 失败后即使用户关闭错误提示，旧串仍属于上一次成功结果，导出必须再次确认。
+  const generationFailed = ref(false)
   const generationProgress = ref('')
   const importing = ref(false)
   const saving = ref(false)
@@ -80,7 +84,7 @@ export const useQuantWorkspace = () => {
   const querySignature = computed(() => JSON.stringify([datasetKey.value, targets.value.map(({itemId, ratePerMinute}) => ({itemId, ratePerMinute})), requestSettings.value, requestScheme.value]))
   const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, {...layout}, {...surfaceLayout}, name.value]))
   const quantStale = computed(() => Boolean(plan.value && solvedSignature.value !== querySignature.value))
-  const previewStale = computed(() => Boolean(code.value && !replay.value && generatedSignature.value !== generationSignature.value))
+  const previewStale = computed(() => Boolean(code.value && !replay.value && (generatedSignature.value !== generationSignature.value || generating.value || generationFailed.value)))
   const expectedBuildings = computed(() => replay.value ? inspection.value?.summary.buildingCount ?? 0 : generated.value?.buildingCount ?? 0)
   const warnings = computed(() => replay.value ? inspection.value?.warnings ?? [] : [...(plan.value?.warnings ?? []), ...(generated.value?.warnings ?? [])])
   let datasetVersion = 0
@@ -192,19 +196,23 @@ export const useQuantWorkspace = () => {
     generationObserver?.abort()
     error.value = null
     const signature = generationSignature.value
+    const sourcePlan = plan.value
     const source = plan.value.planId
     generating.value = true
     generationProgress.value = '正在校验生成参数'
     const observer = new AbortController()
     generationObserver = observer
     try {
-      const result = await generateFactory(new build.Request({plan: plan.value, mode: mode.value, setting: {...layout}, surfaceLayout: {...surfaceLayout}, name: name.value}), progress => {
+      const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, setting: {...layout}, surfaceLayout: {...surfaceLayout}, name: name.value}), progress => {
         if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
         generationProgress.value = progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
       }, observer.signal)
       if (disposed || generationObserver !== observer) return
       if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) { if (active.value && !autoRun.value) message.warning('参数已变化，本次结果未替换预览，请重新量化或生成'); return }
+      if (result.logisticsSummary && sourcePlan.flowGraph && result.logisticsSummary.flowGraphDigest !== sourcePlan.flowGraph.digest) throw new FactoryError('GEN_E_FLOW_MISMATCH', '生成物流摘要与量化物料图不一致，本次结果未替换预览。')
       generated.value = result
+      generatedFlowGraph.value = sourcePlan.flowGraph ?? null
+      generationFailed.value = false
       generatedSignature.value = signature
       code.value = result.blueprint
       previewRevision.value++
@@ -213,8 +221,11 @@ export const useQuantWorkspace = () => {
       selectedProductions.value = []
       resetPreviewState(result.buildingCount)
     } catch (caught) {
-      if (caught instanceof FactoryError && caught.code === 'GEN_E_CANCELED') return
-      if (!disposed && generationObserver === observer && signature === generationSignature.value && plan.value?.planId === source) report(caught, 'generation')
+      if (caught instanceof FactoryError && caught.code === 'GEN_E_CANCELED') {
+        if (generationObserver === observer && signature === generationSignature.value && !observer.signal.aborted) generationFailed.value = true
+        return
+      }
+      if (!disposed && generationObserver === observer && signature === generationSignature.value && plan.value?.planId === source) { generationFailed.value = true; report(caught, 'generation') }
     } finally {
       observer.abort()
       if (generationObserver === observer) {
@@ -236,6 +247,8 @@ export const useQuantWorkspace = () => {
       inspection.value = value
       plan.value = null
       generated.value = null
+      generatedFlowGraph.value = null
+      generationFailed.value = false
       code.value = text.trim().replace(/^\uFEFF/, '')
       previewRevision.value++
       replay.value = true
@@ -290,7 +303,8 @@ export const useQuantWorkspace = () => {
     const snapshot: ExportSnapshot = {code: code.value, name: name.value || sourceName.value, revision: previewRevision.value, generated: generated.value}
     if (!previewStale.value) return snapshot
     const confirmed = await new Promise<boolean>(resolve => {
-      dialog.warning({title: '导出上次结果', content: '参数已经改变，当前蓝图属于上一次生成结果。确认仍导出上次结果？', positiveText: '导出上次结果', negativeText: '取消', onPositiveClick: () => resolve(true), onNegativeClick: () => resolve(false), onClose: () => resolve(false), onMaskClick: () => resolve(false)})
+      const reason = generationFailed.value ? '最近一次生成未成功' : generating.value ? '新结果仍在生成中' : '参数已经改变'
+      dialog.warning({title: '导出上次结果', content: `${reason}，当前蓝图属于上一次成功生成结果。确认仍导出上次结果？`, positiveText: '导出上次结果', negativeText: '取消', onPositiveClick: () => resolve(true), onNegativeClick: () => resolve(false), onClose: () => resolve(false), onMaskClick: () => resolve(false)})
     })
     if (!confirmed) return null
     if (snapshot.revision !== previewRevision.value || snapshot.code !== code.value || snapshot.generated !== generated.value) {
@@ -412,7 +426,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, inspection, code, replay, loadingDataset, solving, generating, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。
