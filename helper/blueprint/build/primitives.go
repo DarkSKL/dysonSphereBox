@@ -6,6 +6,7 @@ package build
 import (
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/quant"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"math"
@@ -114,6 +115,8 @@ type flyTransportEndpoint struct {
 
 // builder 职责：收集单次装配；使用：六种模式；边界：不做文件写入。
 type builder struct {
+	// generationCtx 职责：保存本次生成的取消和总截止时间；使用：局部装配、占位和补电的长循环；边界：纯几何测试未设置时不附加截止时间，不跨请求复用。
+	generationCtx context.Context
 	// all 职责：最终建筑顺序；使用：编码；边界：每个指针只出现一次。
 	all []*placed
 	// models 职责：原型模型表；使用：创建；边界：未知 ID 拒绝。
@@ -150,6 +153,16 @@ type builder struct {
 	busLayers map[int]int
 	// busLayerBelts 职责：保存各共享环路的实体带；使用：确认环路方向与lane端点；边界：只包括本次生成的建筑。
 	busLayerBelts map[int][]*placed
+	// busFabric 职责：保存按实际 lane 拆圈的混带物流证据；使用：新版 mode6 收尾；边界：旧三圈装配器没有该数据，仍走原有严格验证。
+	busFabric []*busFabricRoute
+}
+
+// checkGeneration 职责：统一把本次生成取消转换为可识别超时错误；使用：局部有界循环按固定间隔调用；边界：nil 上下文仅供独立几何调用，不改变服务层任务串行语义。
+func (b *builder) checkGeneration(stage string) error {
+	if b.generationCtx != nil && b.generationCtx.Err() != nil {
+		return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "蓝图生成已取消或超过总截止时间：" + stage}
+	}
+	return nil
 }
 
 // zoneRange 职责：记录分区建筑区间；使用：分区边界；边界：半开区间 [begin, end)。

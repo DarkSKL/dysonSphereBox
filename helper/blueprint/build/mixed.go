@@ -195,6 +195,12 @@ func (b *builder) mixedInlets(plans []mixPlan) ([]mixInlet, float64) {
 
 // buildMixedLine 职责：以循环混带给两侧机器供货；使用：多原料及 useMixed；边界：需要白爪，未满足时明确提示而非丢掉输入。
 func (b *builder) buildMixedLine(p quant.Production, r quant.Recipe, count, mode int) (*line, error) {
+	if err := b.checkGeneration("循环混带机器行"); err != nil {
+		return nil, err
+	}
+	if count <= 0 || count > 10000 {
+		return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "循环混带机器行必须包含1到10000台真实机器"}
+	}
 	start := len(b.all)
 	if len(r.Items) == 0 {
 		return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "混带配方没有原料"}

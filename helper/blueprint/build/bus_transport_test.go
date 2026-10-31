@@ -5,9 +5,6 @@ package build
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"os"
 	"testing"
 
 	"DysonSphereBox/helper/blueprint"
@@ -126,36 +123,20 @@ func TestBusBoundaryCreatesFilteredEndpoints(t *testing.T) {
 	}
 }
 
-// TestVanillaMode6RejectsUnsupportedSingleArmLoad 职责：锁定真实 Vanilla 量化夹具在当前单臂总线下的硬拒绝；使用：端到端容量回归；边界：此测试不是游戏内运行或物流验收。
-func TestVanillaMode6RejectsUnsupportedSingleArmLoad(t *testing.T) {
-	var fixture struct {
-		Cases []struct {
-			Name    string        `json:"name"`
-			Request quant.Request `json:"request"`
-			Setting Setting       `json:"setting"`
-		} `json:"cases"`
-	}
-	data, err := os.ReadFile("../../quant/testdata/acceptance-fixtures.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &fixture); err != nil {
-		t.Fatal(err)
-	}
-	if len(fixture.Cases) == 0 {
-		t.Fatal("Vanilla acceptance fixture is empty")
-	}
-	plan, err := quant.Solve(context.Background(), fixture.Cases[0].Request)
+// TestVanillaMode6ExpandsSingleArmBottleneck 职责：真实目标通过拆圈和并联过滤臂解除旧单臂瓶颈；使用：能力升级回归；边界：保留其它低层容量拒绝测试，不将生成成功当游戏运行证明。
+func TestVanillaMode6ExpandsSingleArmBottleneck(t *testing.T) {
+	fixture := loadMatrixFixtures(t)[0]
+	plan, err := quant.Solve(context.Background(), fixture.Request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	power := false
-	fixture.Cases[0].Setting.NeedPower = &power
-	_, err = Generate(context.Background(), Request{Plan: plan, Mode: 6, Setting: fixture.Cases[0].Setting})
-	var generated *blueprint.Error
-	if !errors.As(err, &generated) || generated.Code != "GEN_E_PORT_CAPACITY" {
-		t.Fatalf("want explicit entity capacity refusal, got %v", err)
+	fixture.Setting.NeedPower = &power
+	out, err := Generate(context.Background(), Request{Plan: plan, Mode: 6, Setting: fixture.Setting})
+	if err != nil {
+		t.Fatalf("真实拆圈和并联端口应解除旧单臂限制: %v", err)
 	}
+	assertGeneratedTransport(t, plan, 6, 3, out)
 }
 
 // testBusExternalInputBuilder 职责：构造最小真实外部输入到生产行拓扑；使用：mode6 验证器测试；边界：不构建蓝图编码或依赖量化数据库。

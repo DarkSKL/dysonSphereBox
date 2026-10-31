@@ -21,6 +21,9 @@ type busLinkUse struct {
 
 // validateBusTransport 职责：逐规范边核对 mode6 总线端点、混带层、带容量和外部边界；使用：recordFacilityTransport；边界：共享环路通过数值与指针证据核验，不宣称游戏运行时供料。
 func (b *builder) validateBusTransport() error {
+	if b.busFabric != nil {
+		return b.validateBusFabric()
+	}
 	if b.flowGraph == nil || b.logistics == nil {
 		return &blueprint.Error{Code: "GEN_E_FLOW", Message: "混带总线诊断缺少规范流图"}
 	}

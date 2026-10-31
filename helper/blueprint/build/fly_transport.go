@@ -289,6 +289,19 @@ func (b *builder) validateFlyEndpointTopology(mode int) error {
 			if endpoint.splitter == nil || endpoint.box.input != endpoint.splitter {
 				return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 四向分流器未连接箱体", endpoint.owner, endpoint.item)}
 			}
+			// 端口事实来自固定目录的 Model39：Yaw90 的地面东西口是0/2，
+			// 箱体位于其上方；不能把沿北/南方向的视觉近邻当成真实接线。
+			end := endpoint.belts[len(endpoint.belts)-1]
+			want := int8(0)
+			if end.a.x < endpoint.splitter.a.x {
+				want = 2
+			}
+			if endpoint.splitter.record.ModelIndex != 39 || endpoint.splitter.record.Yaw != 90 || math.Abs(end.a.y-endpoint.splitter.a.y) > 1e-6 || math.Abs(math.Abs(end.a.x-endpoint.splitter.a.x)-1) > 1e-6 || math.Abs(end.a.z) > 1e-6 {
+				return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 物品 %d 分流器接驳不在已核对地面东西口", endpoint.owner, endpoint.item)}
+			}
+			if endpoint.input && (end.input != endpoint.splitter || end.record.InputFromSlot != want) || !endpoint.input && (end.output != endpoint.splitter || end.record.OutputToSlot != want) {
+				return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 分流器接驳端口或方向错误", endpoint.owner, endpoint.item)}
+			}
 		} else if endpoint.arm == nil {
 			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 配送器缺少箱体分拣器", endpoint.owner, endpoint.item)}
 		}

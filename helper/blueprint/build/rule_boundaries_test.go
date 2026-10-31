@@ -119,3 +119,59 @@ func TestFinalReferenceFailureClosed(t *testing.T) {
 		}
 	}
 }
+
+// TestBeltDistanceFloat32Boundary 职责：锁定实际蓝图精度下最后一个可接格距及下一浮点坐标；使用：连接距离硬边界回归；边界：阈值5.3是游戏距离平方，不得再次平方或按两格直接放行。
+func TestBeltDistanceFloat32Boundary(t *testing.T) {
+	limit := float32(5.3)
+	coordinate := float32(math.Sqrt(float64(limit)) / planarGridLength)
+	distanceSquared := func(x float32) float32 {
+		meters := float32(float64(x) * planarGridLength)
+		return meters * meters
+	}
+	for distanceSquared(coordinate) > limit {
+		coordinate = math.Nextafter32(coordinate, 0)
+	}
+	for next := math.Nextafter32(coordinate, float32(math.Inf(1))); distanceSquared(next) <= limit; next = math.Nextafter32(coordinate, float32(math.Inf(1))) {
+		coordinate = next
+	}
+	for _, sample := range []struct {
+		name       string
+		coordinate float32
+		failed     bool
+	}{{"safe", coordinate - .01, false}, {"last-representable", coordinate, false}, {"next-representable", math.Nextafter32(coordinate, float32(math.Inf(1))), true}, {"two-grid-gap", 2, true}} {
+		t.Run(sample.name, func(t *testing.T) {
+			records := []blueprint.Building{
+				{Index: 0, ItemID: 2003, InputObjIdx: -1, OutputObjIdx: 1},
+				{Index: 1, ItemID: 2003, InputObjIdx: -1, OutputObjIdx: -1, LocalOffset: blueprint.Point{X: sample.coordinate}},
+			}
+			err := newPlanarRuleEncoding().validateBeltDistancesContext(context.Background(), records)
+			if (err != nil) != sample.failed {
+				t.Fatalf("带连接浮点边界 %.9f，期望拒绝=%t，实际 %v", sample.coordinate, sample.failed, err)
+			}
+		})
+	}
+}
+
+// TestBeltCrossingAndBridgeClearanceBoundary 职责：区分未连接平面交叉与真实高度净空；使用：桥接路线的三维规则回归；边界：共享投影不代表可交叉，只有三维带体间距满足阈值才放行。
+func TestBeltCrossingAndBridgeClearanceBoundary(t *testing.T) {
+	threshold := math.Sqrt(4*.23*.23 - 1e-6)
+	for _, sample := range []struct {
+		name   string
+		meters float64
+		failed bool
+	}{{"planar-crossing", 0, true}, {"below-clearance", threshold - .0001, true}, {"above-clearance", threshold + .0001, false}, {"one-height-layer", 1.3333333, false}} {
+		t.Run(sample.name, func(t *testing.T) {
+			height := float32(sample.meters / 1.3333333)
+			records := []blueprint.Building{
+				{Index: 0, ItemID: 2003, InputObjIdx: -1, OutputObjIdx: 1, LocalOffset: blueprint.Point{X: -1}},
+				{Index: 1, ItemID: 2003, InputObjIdx: -1, OutputObjIdx: -1, LocalOffset: blueprint.Point{X: 1}},
+				{Index: 2, ItemID: 2003, InputObjIdx: -1, OutputObjIdx: 3, LocalOffset: blueprint.Point{Y: -1, Z: height}},
+				{Index: 3, ItemID: 2003, InputObjIdx: -1, OutputObjIdx: -1, LocalOffset: blueprint.Point{Y: 1, Z: height}},
+			}
+			err := newPlanarRuleEncoding().validateBeltCrossings(context.Background(), records)
+			if (err != nil) != sample.failed {
+				t.Fatalf("桥接高度 %.6f 米，期望拒绝=%t，实际 %v", sample.meters, sample.failed, err)
+			}
+		})
+	}
+}

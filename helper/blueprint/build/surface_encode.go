@@ -68,6 +68,9 @@ func (b *builder) prepareSurfaceEncodingContext(ctx context.Context, layout *Sur
 				return multi, nil
 			} else if failure, ok := multiErr.(*blueprint.Error); !ok || failure.Code != "GEN_E_SURFACE_CAPACITY" && !surfaceAnchorRetryable(multiErr) {
 				return nil, multiErr
+			} else if len(b.transportRoutes) > 0 && len(b.surfaceBlocks) == 0 {
+				// 直连图不能按独立机器块移动；在安全切面补空行，并逐条原始带边创建真实接驳。
+				return b.prepareConnectedSurfaceEncoding(ctx, layout)
 			} else if len(b.surfaceBlocks) == 0 {
 				return nil, multiErr
 			}

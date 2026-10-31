@@ -42,6 +42,32 @@ func TestStationOutputRegistersIndependentBlockSlice(t *testing.T) {
 	}
 }
 
+// TestStationOutputAvoidsAdjacentRowBelt 职责：回归低等级拆短行后过滤出口与下一行入口抢占同格；使用：真实矩阵发现问题的局部边界样本；边界：换侧出口仍保留物品过滤和原共享干线。
+func TestStationOutputAvoidsAdjacentRowBelt(t *testing.T) {
+	setting, err := normalizeSetting(Setting{BeltLv: 1, InserterLv: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := newBuilder(setting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := b.make(2001, 0, 8, 0)
+	machine := b.make(2308, 10, 20, 0)
+	l := &line{all: []*placed{source, machine}, output: []*placed{source}, machines: []*placed{machine}}
+	nextInput := b.make(2001, 0, 9, 0)
+	branch, err := b.stationOutputHead(l, 1114, 0, 2, []*placed{source, machine, nextInput})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beltCell(branch.a) == beltCell(nextInput.a) || branch.a.y >= source.a.y {
+		t.Fatalf("过滤出口必须选择未占用侧，实际 %+v", branch.a)
+	}
+	if branch.input == nil || branch.input.input != source || branch.input.output != branch || branch.input.record.FilterID != 1114 || source.output != nil {
+		t.Fatal("换侧不能改变物品过滤或截断共享干线")
+	}
+}
+
 // TestStationPathCrossesAxesAndHead 职责：核对正交、共线和头部第一段的未连接交叉；使用：平面候选预检；边界：不同高度的路线允许经过同一平面投影。
 func TestStationPathCrossesAxesAndHead(t *testing.T) {
 	previous := []stationRoute{{head: &placed{a: vector{0, 0, 0}}, path: []vector{{2, 0, 0}, {3, 0, 0}}}}

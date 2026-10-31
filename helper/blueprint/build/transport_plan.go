@@ -5,7 +5,6 @@ package build
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 
@@ -102,16 +101,7 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 			return nil, err
 		}
 		if err := validateMachineInserterCapacity(p, r, b.setting); err != nil {
-			// 旧版生成器把“单臂额定吞吐不足”当作整张蓝图的硬失败，
-			// 导致已有工作区即使布局、带路和协议都可验证也无法导出。
-			// 当前装配仍保留真实分拣器几何，并将未经游戏运行校准的吞吐
-			// 降级为明确的 unverified 诊断；其它端口/连接结构错误继续关闭。
-			var capacityErr *blueprint.Error
-			if !errors.As(err, &capacityErr) || capacityErr.Code != "GEN_E_INSERTER_CAPACITY" {
-				return nil, err
-			}
-			b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "inserter-capacity", Status: "unverified", Message: capacityErr.Message + "；已保留蓝图并要求在游戏中按实际科技/并行分拣器校准"})
-			b.warnings = append(b.warnings, capacityErr.Message+"；蓝图已生成，实际吞吐需在游戏中验证")
+			return nil, err
 		}
 		for _, count := range counts {
 			row := &transportRow{owner: owner, count: count, info: p, recipe: r, inputs: map[int]*placed{}}
@@ -207,6 +197,10 @@ func validateProductionCapacity(p quant.Production, dataset *quant.Dataset, sett
 	inputIDs, outputIDs := map[int]bool{}, map[int]bool{}
 	for _, id := range r.Items {
 		inputIDs[id] = true
+	}
+	if spray := productionSprayItem(p); spray > 0 {
+		// 量化净输入包含喷涂剂，实体由喷涂机附加供剂带接收，不占机器配方槽。
+		inputIDs[spray] = true
 	}
 	for _, id := range r.Results {
 		outputIDs[id] = true

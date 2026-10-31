@@ -66,6 +66,10 @@ func (q *transportPathQueue) Pop() interface{} {
 type transportPathCacheKey struct {
 	start, end vector
 	version    int
+	// source/target 职责：保留本路允许使用的端口柱身份；使用：同坐标不同权限的缓存隔离；边界：仅作单个候选内指针键，不输出到诊断。
+	source, target *placed
+	// merge 职责：区分接入已有合流点的占位权限；使用：缓存匹配；边界：不把普通终点路径用于其它合流语义。
+	merge bool
 }
 
 // transportEnvironment 职责：维护静态/动态分层空间哈希和路径缓存；使用：逐 lane 增量提交；边界：失败候选不污染其它排布候选。
@@ -75,6 +79,10 @@ type transportEnvironment struct {
 	cache            map[transportPathCacheKey][]vector
 	version          int
 	minimum, maximum vector
+	// searchCalls/cacheHits 职责：累计确定性寻路次数和当前占位版本缓存命中；使用：routing-budget 诊断；边界：不包含墙钟时间。
+	searchCalls, cacheHits int
+	// totalExpanded/maxExpanded 职责：累计及记录单次最高展开数；使用：检查固定搜索预算；边界：缓存命中为零展开，不因此放宽硬约束。
+	totalExpanded, maxExpanded int
 }
 
 // routeTransport 职责：将全部规范 lane 写入 placed 指针图；使用：mode 1；边界：所有内部边都成功后才进入编码，不接受部分成功。
@@ -135,6 +143,14 @@ func (b *builder) routeTransport(ctx context.Context) error {
 					env.reserved[cell] = map[*placed]bool{}
 				}
 				env.reserved[cell][endpoint] = true
+				if b.busFabric != nil && i == 1 {
+					// 环路模式的并联汇入格位于连续干线中，落地需要正上方的独立柱，不能让较早路线封住未来消费者。
+					landing := vector{math.Round(endpoint.a.x), math.Round(endpoint.a.y), z}
+					if env.reserved[landing] == nil {
+						env.reserved[landing] = map[*placed]bool{}
+					}
+					env.reserved[landing][endpoint] = true
+				}
 			}
 		}
 	}
@@ -259,6 +275,7 @@ func (b *builder) routeTransport(ctx context.Context) error {
 		}
 	}
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "belt-lanes", Status: "passed", Message: "每条规范边已分配到具体端口与不超所选等级容量的实体 lane"}, LogisticsCheck{RuleID: "mode1-internal-connectivity", Status: "passed", Message: "全部内部物料已自动接线；仅标记的原料、目标和剩余物品端口需要玩家连接外部设施"}, LogisticsCheck{RuleID: "inserter-capacity", Status: inserterStatus, Message: inserterMessage})
+	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "routing-budget", Status: "passed", Message: fmt.Sprintf("确定性路线预算：searchCalls=%d，cacheHits=%d，totalExpanded=%d，maxExpanded=%d，perSearchLimit=%d，maxHeight=%d，occupancyVersions=%d；缓存按端口身份、合流权限和占位版本隔离，带等级和高度上限固定于本次环境", env.searchCalls, env.cacheHits, env.totalExpanded, env.maxExpanded, transportSearchLimit, transportMaxHeight, env.version)})
 	return nil
 }
 
@@ -274,8 +291,15 @@ func (env *transportEnvironment) reservedByOther(v vector, source, target *place
 
 // findTransportPath 职责：在分层空间哈希中执行固定邻居序的三维 A*；使用：每条 lane；边界：最多指定展开次数，取消后退出，占位版本不同则缓存失效。
 func (env *transportEnvironment) findTransportPath(ctx context.Context, start, end vector, source, target *placed, merge bool) ([]vector, int) {
-	key := transportPathCacheKey{start: start, end: end, version: env.version}
+	env.searchCalls++
+	steps := 0
+	defer func() { env.totalExpanded += steps; env.maxExpanded = max(env.maxExpanded, steps) }()
+	if ctx.Err() != nil {
+		return nil, 0
+	}
+	key := transportPathCacheKey{start: start, end: end, version: env.version, source: source, target: target, merge: merge}
 	if path, exists := env.cache[key]; exists {
+		env.cacheHits++
 		return append([]vector{}, path...), 0
 	}
 	allowed := func(v vector) bool {
@@ -297,7 +321,6 @@ func (env *transportEnvironment) findTransportPath(ctx context.Context, start, e
 	queue := transportPathQueue{first}
 	seen := map[vector]*transportPathNode{start: first}
 	serial := 0
-	steps := 0
 	for len(queue) > 0 && steps < transportSearchLimit {
 		if ctx.Err() != nil {
 			return nil, steps

@@ -122,13 +122,42 @@ func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([
 }
 
 // coatSupply 职责：连接同组喷涂机供剂带；使用：有喷涂的布局；边界：默认暴露供给口，不伪造已存在的增产剂。
-func (b *builder) coatSupply(lines []*line) {
+func (b *builder) coatSupply(lines []*line) error {
+	created := false
 	for _, l := range lines {
+		if err := b.checkGeneration("喷涂供剂干线"); err != nil {
+			return err
+		}
+		if l == nil {
+			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "喷涂供剂缺少已装配机器行"}
+		}
 		if len(l.coaters) == 0 {
 			continue
 		}
-		first, last := l.coaters[0], l.coaters[len(l.coaters)-1]
-		points := []vector{}
+		if l.coaterInput != nil {
+			continue
+		}
+		if len(l.machines) == 0 {
+			return &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: fmt.Sprintf("配方 %d 的喷涂机器行没有任何真实机器，拒绝输出装饰喷涂网络", l.recipe.ID)}
+		}
+		// 原料切片保持配方逻辑顺序，底侧物理槽位已反转；供剂干线
+		// 必须按喷涂机真实Y排序，不能把逻辑首尾当作递增几何区间。
+		coaters := append([]*placed(nil), l.coaters...)
+		for _, coater := range coaters {
+			if coater == nil {
+				return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "喷涂机器行存在空喷涂端点"}
+			}
+		}
+		sort.SliceStable(coaters, func(i, j int) bool { return coaters[i].a.y < coaters[j].a.y })
+		first, last := coaters[0], coaters[len(coaters)-1]
+		for _, coater := range coaters {
+			if math.Abs(coater.a.x-first.a.x) > 1e-6 {
+				return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 的喷涂口横坐标不一致，当前局部供剂干线无法连接", l.recipe.ID)}
+			}
+		}
+		// 入口降到地面，再用一个水平格加一层的真实斜坡进入供剂轨；
+		// 各模式可以统一连接地面端点，不要求箱体臂跨层斜插。
+		points := []vector{{first.a.x - 3, first.a.y - 1, 0}, {first.a.x - 2, first.a.y - 1, 0}}
 		for y := first.a.y - 1; y <= last.a.y; y++ {
 			points = append(points, vector{first.a.x - 1, y, 1})
 		}
@@ -136,18 +165,22 @@ func (b *builder) coatSupply(lines []*line) {
 		b.owner = l.machines[0].owner
 		belts := b.byPath(points)
 		b.owner = owner
-		id := 1141
-		if l.info.IncreaseLv == 2 {
-			id = 1142
-		} else if l.info.IncreaseLv >= 3 {
-			id = 1143
+		// 塔接驳从l.all读取占位；供剂入口必须同步登记到本行独立切片，
+		// 避免在共享底层数组上append覆盖随后产线或让斜坡成为隐形障碍。
+		l.all = append(append([]*placed(nil), l.all...), belts...)
+		id := productionSprayItem(l.info)
+		if id == 0 {
+			return &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: fmt.Sprintf("配方 %d 的喷涂设施没有合法增产剂等级", l.recipe.ID)}
 		}
 		belts[0].record.Parameters = []int32{int32(id), 0}
+		l.coaterInput = belts[0]
 		b.coaterLinks[id] = append(b.coaterLinks[id], belts[0])
+		created = true
 	}
-	if len(b.coaterLinks) > 0 {
-		b.warnings = append(b.warnings, "喷涂机供剂带已预留：请向带标记的入口持续提供增产剂，喷涂不足会降低产能")
+	if created {
+		b.warnings = append(b.warnings, "喷涂机供剂已按物流诊断中的物料来源接入；标记为外部供给的端口需持续提供增产剂，供剂不足会降低产能")
 	}
+	return nil
 }
 
 // Generate 职责：生成并严格自检蓝图；使用：服务对已验证方案调用；边界：超时/布局失败不返回部分串，预览不参与判定。
@@ -183,6 +216,7 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	if err != nil {
 		return result, err
 	}
+	b.generationCtx = ctx
 	// 所有模式共享同一份守恒物料图和容量诊断；不能让普通生成路径
 	// 继续在没有 flowGraph 的情况下按匿名产线返回“成功”蓝图。
 	graph, err := quant.BuildFlowGraphContext(ctx, req.Plan)
@@ -191,6 +225,19 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	}
 	b.flowGraph = &graph
 	b.logistics = newLogisticsSummary(graph, setting)
+	for _, production := range req.Plan.Productions {
+		if err := ctx.Err(); err != nil {
+			return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "设备端口能力核验已取消或超时"}
+		}
+		if err := validateProductionCapacity(production, dataset, setting); err != nil {
+			return result, err
+		}
+		recipe := dataset.Recipes[dataset.RecipeByID[production.RecipeID]]
+		if err := validateMachineInserterCapacity(production, recipe, setting); err != nil {
+			return result, err
+		}
+	}
+	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "machine-inserter-capacity", Status: "passed", Message: "全部生产节点按所选分拣器等级、真实跨度及研究站堆叠核算机器端口额定能力；不依赖未知科技补齐超载"})
 	if req.Mode == 1 {
 		return b.generateConnected(ctx, req, dataset)
 	}
@@ -262,6 +309,9 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				for _, item := range recipe.Results {
 					resultItems[item] = true
 				}
+				if spray := productionSprayItem(p); spray > 0 {
+					inputItems[spray] = true
+				}
 				routeCount := len(inputItems) + len(resultItems)
 				perGroup = max(1, 12/max(1, routeCount))
 				slots := 4
@@ -269,6 +319,10 @@ func Generate(parent context.Context, req Request) (Result, error) {
 					slots = 5
 				}
 				if routeCount > slots*2 {
+					perGroup = 1
+				}
+				if len(resultItems) > 1 {
+					// 多产物需要独立过滤支路；逐行独立塔组避免短行出口被相邻行输入封闭。
 					perGroup = 1
 				}
 			}
@@ -279,7 +333,8 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				lines := []*line{}
 				lineY := 0.
 				for i := groupStart; i < groupEnd; i++ {
-					lineIndex, last := i, i == len(counts)-1
+					// 独立塔组会整体移到不同位置，补电奇偶和末行必须以组内行序计算。
+					lineIndex, last := i-groupStart, i == groupEnd-1
 					if req.SurfaceLayout != nil && req.Mode != 3 && req.Mode != 4 {
 						lineIndex, last = 0, true
 					}
@@ -292,16 +347,12 @@ func Generate(parent context.Context, req Request) (Result, error) {
 					lineY += math.Ceil(maxPoint.y-minPoint.y) + 1
 					lines = append(lines, l)
 				}
+				if err := b.coatSupply(lines); err != nil {
+					return result, err
+				}
 				if req.Mode == 3 || req.Mode == 4 {
 					reportProgress(ctx, "stations", "正在连接物流站与传送带", productionNumber, len(req.Plan.Productions))
 					if err := b.attachStations(ctx, lines, req.Mode); err != nil {
-						return result, err
-					}
-				}
-				b.coatSupply(lines)
-				if req.SurfaceLayout != nil && setting.NeedCoaterNet {
-					reportProgress(ctx, "coaters", "正在连接增产剂供给网络", 0, 0)
-					if err := b.coaterBlockNetwork(ctx, begin); err != nil {
 						return result, err
 					}
 				}
@@ -337,7 +388,7 @@ func Generate(parent context.Context, req Request) (Result, error) {
 		b.zoneRanges = append(b.zoneRanges, zoneRange{zone: zi, begin: zoneBegin, end: len(b.all)})
 	}
 	if len(zones) > 1 {
-		b.warnings = append(b.warnings, fmt.Sprintf("多目标已按 %d 个分区排开：各目标专属产线独立成区，共用中间产物集中在「共用」区，需将共用区产物分送到各目标区", len(zones)))
+		b.warnings = append(b.warnings, fmt.Sprintf("多目标已按 %d 个分区排开：共用中间产物只生成一份，并按规范供需边配置各区物流；原料、目标及剩余副产物的外部接口见物流诊断", len(zones)))
 	}
 	b.zones = zones
 	return b.finish(ctx, req, dataset)
@@ -384,12 +435,7 @@ func planZones(plan quant.Result) []Zone {
 // finish 职责：构建文档、归属和严格编码；使用：所有模式共同出口；边界：只有 Go 自检通过才返回串。
 func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
 	result := Result{}
-	if b.setting.NeedCoaterNet && (req.SurfaceLayout == nil || len(b.surfaceBlocks) == 0) {
-		reportProgress(ctx, "coaters", "正在连接增产剂供给网络", 0, 0)
-		if err := b.coaterNetwork(ctx); err != nil {
-			return result, err
-		}
-	}
+	// 增产剂现在和其它物料一样走规范流边；旧可选网络不能再次接入同一端点造成重复带和双重供给。
 	if req.Mode == 6 && req.SurfaceLayout != nil {
 		reportProgress(ctx, "surface", "正在折叠球面总线布局", 0, 0)
 		if err := b.foldSurfaceBus(ctx, req.SurfaceLayout); err != nil {
@@ -428,7 +474,21 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		}
 		reportProgress(ctx, "collision", "正在检查球面锚点与建筑碰撞", 0, 0)
 		err = surface.validateAnchorCandidates(ctx, records)
-		if err != nil && surfaceAnchorRetryable(err) && !surface.packed && len(b.surfaceBlocks) > 0 {
+		if err != nil && req.Mode == 1 && surfaceAnchorRetryable(err) && !surface.packed && len(b.transportRoutes) > 0 && (req.SurfaceLayout.Mode == "autoTropic" || req.SurfaceLayout.ExpandAdjacent) {
+			reportProgress(ctx, "surface-retry", "正在保留物料连接并扩展相邻纬带", 0, 0)
+			// 直连图必须逐原始带边补齐接驳，不能像独立产线块一样平移后留下断线。
+			surface, err = b.prepareConnectedSurfaceEncoding(ctx, req.SurfaceLayout)
+			if err == nil {
+				records, bindings, shared, err = b.records()
+			}
+			if err == nil {
+				err = surface.applyRecords(b.all, records)
+			}
+			if err == nil {
+				err = surface.validateAnchorCandidates(ctx, records)
+			}
+		}
+		if err != nil && surface != nil && surfaceAnchorRetryable(err) && !surface.packed && len(b.surfaceBlocks) > 0 {
 			reportProgress(ctx, "surface-retry", "正在重排产线并复查球面布局", 0, 0)
 			// 矩形容量通过但所有锚点几何失败时，仍可按完整块重排，而不是把容量可行误当成唯一方案。
 			surface, err = b.preparePackedSurfaceEncoding(ctx, req.SurfaceLayout)

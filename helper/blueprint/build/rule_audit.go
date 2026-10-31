@@ -9,6 +9,7 @@ import (
 	"math"
 
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/quant"
 )
 
 // validateFinalReferences 职责：拒绝非有限端点、重复编号及外部悬空引用；使用：最终规则入口；边界：允许带和合法边界无输入或输出，不以闭合索引冒充物料连通。
@@ -48,6 +49,17 @@ func validateFinalPlanetRules(ctx context.Context, req Request, encoding *surfac
 		return nil, err
 	}
 	audit := &RuleAudit{Profile: profile, QuantDataVersion: req.Plan.DataVersion, CoordinateSpace: "planet-surface", Coverage: "partial-numeric", Checks: []LogisticsCheck{}, Unverified: []string{"既有世界实体与真实地形", "Unity Physics、运行时 Mod 与科技环境", "外部原料、增产剂、机队与电力供应", "实际游戏放置与连续十分钟产量"}}
+	if req.Plan.Dataset != "" {
+		dataset, err := quant.LoadDataset(req.Plan.Dataset)
+		if err != nil {
+			return nil, err
+		}
+		if dataset.Info.GameVersion != profile.GameVersion {
+			message := fmt.Sprintf("量化配方版本 %s 与几何规则版本 %s 不同；分别锁定来源，跨版本一致性尚未在游戏中校准", dataset.Info.GameVersion, profile.GameVersion)
+			audit.Checks = append(audit.Checks, LogisticsCheck{RuleID: "quant-rule-game-version", Status: "unverified", Message: message})
+			audit.Unverified = append(audit.Unverified, message)
+		}
+	}
 	if encoding == nil {
 		encoding = newPlanarRuleEncoding()
 		audit.CoordinateSpace = "equatorial-tangent"

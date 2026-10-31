@@ -6,19 +6,20 @@ package build
 import (
 	"fmt"
 	"math"
+	"sort"
 
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/quant"
 )
 
-// storageSlotPoint 职责：把 2101 小型储物仓的已核对槽位映射到蓝图局部平面；使用：配送端箱体分拣器端点；边界：只覆盖原版槽位 4/10，未知槽位退回中心并由最终规则拒绝。
+// storageSlotPoint 职责：把 2101 小型储物仓的已核对槽位方向映射为局部整数格锚点；使用：配送箱体分拣器候选；边界：仅覆盖槽位4/10，最终端口以版本化slotPoses修正，未知槽位拒绝。
 func storageSlotPoint(center vector, yaw float32, slot int) (vector, bool) {
 	offset, ok := map[int]vector{4: {x: 1}, 10: {x: -1}}[slot]
 	if !ok {
 		return center, false
 	}
 	angle := float64(yaw) * math.Pi / 180
-	return vector{center.x + offset.x*math.Cos(angle) - offset.y*math.Sin(angle), center.y + offset.x*math.Sin(angle) + offset.y*math.Cos(angle), center.z}, true
+	return vector{center.x + offset.x*math.Cos(angle) + offset.y*math.Sin(angle), center.y - offset.x*math.Sin(angle) + offset.y*math.Cos(angle), center.z}, true
 }
 
 // flyArmGeometry 职责：按箱体槽位建立一侧分拣器的真实端点和跨度参数；使用：mode2 箱体接驳；边界：两端距离必须落在 1..3 格，不能用箱体中心冒充槽位。
@@ -34,7 +35,11 @@ func flyArmGeometry(arm, box, belt *placed, boxSlot int, input bool) error {
 	arm.record.Parameters = []int32{int32(math.Round(distance))}
 	arm.record.InputFromSlot = -1
 	arm.record.OutputToSlot = -1
-	yaw := math.Atan2(boxPoint.y-belt.a.y, boxPoint.x-belt.a.x) * 180 / math.Pi
+	direction := vector{boxPoint.x - belt.a.x, boxPoint.y - belt.a.y, 0}
+	if input {
+		direction.x, direction.y = -direction.x, -direction.y
+	}
+	yaw := math.Atan2(direction.x, direction.y) * 180 / math.Pi
 	if yaw < 0 {
 		yaw += 360
 	}
@@ -53,35 +58,6 @@ func flyArmGeometry(arm, box, belt *placed, boxSlot int, input bool) error {
 		arm.a, arm.b = belt.a, boxPoint
 	}
 	return nil
-}
-
-// ensureFlyPower 职责：为配送箱体补充感应塔覆盖并保留原版最小节点间距；使用：NeedPower 的 mode2/5 端点；边界：只补本蓝图内节点，不保证外部电网和真实运行电力。
-func (b *builder) ensureFlyPower(center vector) {
-	if b.setting.NeedPower == nil || !*b.setting.NeedPower {
-		return
-	}
-	// 供电节点避开配送箱体四格建造盒；行内既有电力节点通常位于
-	// 箱体外侧一格，因此采用对角外移并复用近邻检查。
-	point := vector{center.x + 4, center.y + 4, 0}
-	for _, existing := range b.all {
-		if existing.record.ItemID == 2201 && math.Hypot(existing.a.x-point.x, existing.a.y-point.y) < 3.5 {
-			return
-		}
-	}
-	for attempt := 0; attempt < 8; attempt++ {
-		blocked := false
-		for _, existing := range b.all {
-			if (existing.record.ItemID == 2101 || existing.record.ItemID == 2020) && math.Abs(existing.a.x-point.x) < 4 && math.Abs(existing.a.y-point.y) < 4 {
-				blocked = true
-				break
-			}
-		}
-		if !blocked {
-			break
-		}
-		point.x += 5
-	}
-	b.make(2201, point.x, point.y, 0)
 }
 
 // manhattan 职责：生成轴优先整数路径；使用：配送器局部带；边界：不同高度不自动连接。
@@ -115,59 +91,74 @@ func manhattan(a, b vector, firstX bool) []vector {
 	return out
 }
 
-// flySplitterApproach 职责：把 mode5 带链终点放在分流器中心外一格；使用：四向分流器输入/输出接驳；边界：不让传送带段穿过分流器中心或与其建造盒重合。
+// flySplitterApproach 职责：把 mode5 带链终点放在已核对的水平分流器端口外一格；使用：Model39、Yaw90 的地面西/东端接驳；边界：该模型没有南北地面端口，不能按最近方向随意接入。
 func flySplitterApproach(from, splitter vector) vector {
 	point := splitter
-	if math.Abs(from.x-splitter.x) >= math.Abs(from.y-splitter.y) {
-		if from.x < splitter.x {
-			point.x--
-		} else {
-			point.x++
-		}
-	} else if from.y < splitter.y {
-		point.y--
+	if from.x < splitter.x {
+		point.x--
 	} else {
-		point.y++
+		point.x++
 	}
 	return point
 }
 
-// flyBlocks 职责：在行末连接逐物品配送块；使用：mode 2/5；边界：原料按下方逆序和上方顺序布置。
-func (b *builder) flyBlocks(l *line, mode int) error {
-	lineEndpoints := make([]*flyTransportEndpoint, 0, len(l.inputs)+len(l.recipe.Results))
-	bottom := len(l.inputs)
-	if bottom > 3 {
-		bottom = 3
+// flyBlocks 职责：在行末连接逐物品配送块；使用：mode 2/5；边界：输入按真实轨位从上往下展开，输出逆向阶梯排布，避免无连接交叉。
+func (b *builder) flyBlocks(l *line, mode, begin int) error {
+	// 普通原料与增产剂共用配送容量/份额登记，但增产剂不是机器配方槽位，
+	// 不修改l.inputs或recipe.Items；它通过独立的地面供剂入口接回喷涂轨。
+	type inlet struct {
+		item int
+		link *placed
+	}
+	inlets := make([]inlet, 0, len(l.inputs)+1)
+	for i, row := range l.inputs {
+		reverse(row)
+		inlets = append(inlets, inlet{l.recipe.Items[i], row[len(row)-1]})
+	}
+	if l.coaterInput != nil {
+		entry := l.coaterInput
+		right := l.output[len(l.output)-1].a.x
+		points := manhattan(entry.a, vector{entry.a.x - 1, entry.a.y, 0}, true)
+		points = append(points, manhattan(points[len(points)-1], vector{entry.a.x - 1, entry.a.y - 2, 0}, false)[1:]...)
+		points = append(points, manhattan(points[len(points)-1], vector{right, entry.a.y - 2, 0}, true)[1:]...)
+		if err := b.validateFlyPathCandidate(points, entry, nil, b.all[begin:]); err != nil {
+			return err
+		}
+		path := b.byPath(points[1:])
+		reverse(path)
+		connect(path[0], entry)
+		inlets = append(inlets, inlet{productionSprayItem(l.info), path[len(path)-1]})
 	}
 	// 输入/输出配送端点使用独立的纵向轨位，避开机器输出干线和
 	// 相邻箱体建造盒；每个端点仍由自身的分拣器接回机器带。
 	// 端点区与机器行、电力杆和输出干线保留独立净空；使用固定的
 	// 外侧余量而非按输入数量累加，避免跨行端点互相穿越。
 	beginY := l.output[0].a.y + 8
-	order := []int{}
-	for i := bottom - 1; i >= 0; i-- {
-		order = append(order, i)
+	order := make([]int, len(inlets))
+	for i := range order {
+		order[i] = i
 	}
-	for i := 3; i < len(l.inputs); i++ {
-		order = append(order, i)
-	}
-	for _, row := range l.inputs {
-		reverse(row)
-	}
+	// 向上折返的接驳必须先从最高输入带向外展开；否则较低输入的
+	// 内侧竖带会截断较高输入横带。以真实带高排序，也覆盖混带槽位顺序。
+	sort.SliceStable(order, func(i, j int) bool {
+		return inlets[order[i]].link.a.y > inlets[order[j]].link.a.y
+	})
 	for depth, i := range order {
-		row := l.inputs[i]
+		if err := b.checkGeneration("配送输入端点"); err != nil {
+			return err
+		}
+		row := inlets[i]
 		// 端点沿用各物料带自己的纬向轨位，避免所有配送器共用一条
 		// 横向通道后在同一格垂直折返；路径因此天然按物品行分离。
 		// 端点横坐标只相对本行带尾局部偏移，避免按整条产线的
 		// 全局 beginX 累加造成超宽蓝图；不同物料仍保持独立 lane。
-		linkX := row[len(row)-1].a.x
-		endpoint, err := b.fly(l.recipe.Items[i], row[len(row)-1], true, linkX+18+3*float64(depth), beginY+3*float64(depth), mode)
+		linkX := row.link.a.x
+		endpoint, err := b.fly(row.item, row.link, true, linkX+18+6*float64(depth), beginY+3*float64(depth), mode, begin)
 		if err != nil {
 			return err
 		}
 		endpoint.rate = flyLineRate(l.info, endpoint.item, true, len(l.machines))
 		b.flyEndpoints = append(b.flyEndpoints, endpoint)
-		lineEndpoints = append(lineEndpoints, endpoint)
 	}
 	// 输出带可能承载多个配方产物。每个产物都必须有独立的过滤配送端点；
 	// 不能只登记 MainItemID，否则 leftover/副产物边会在收尾阶段被误报为缺少端口。
@@ -179,6 +170,9 @@ func (b *builder) flyBlocks(l *line, mode int) error {
 	trunk := l.output[len(l.output)-1]
 	outputBaseY := beginY + 3*float64(len(order)) + 6
 	for outputIndex, item := range l.recipe.Results {
+		if err := b.checkGeneration("配送输出端点"); err != nil {
+			return err
+		}
 		trunkPoints := manhattan(trunk.a, vector{trunk.a.x + 6, trunk.a.y, trunk.a.z}, true)
 		trunkPath := b.byPath(trunkPoints[1:])
 		if len(trunkPath) == 0 {
@@ -188,7 +182,7 @@ func (b *builder) flyBlocks(l *line, mode int) error {
 		// 过滤支路从一条脱离机器输出的孤立带开始。
 		connect(trunk, trunkPath[0])
 		trunk = trunkPath[len(trunkPath)-1]
-		// 每个过滤支路只偏移一格，满足已核对的分拣器 1..3 格跨度；
+		// 每个过滤支路偏移两格，满足已核对的分拣器 1..3 格跨度；
 		// 横向干线已经为每个产物预留独立格，不再用逐项递增的纵向偏移
 		// 造成第四格以上的非法臂距。
 		branch := b.make(2000+b.setting.BeltLv, trunk.a.x, trunk.a.y+2, trunk.a.z)
@@ -198,25 +192,19 @@ func (b *builder) flyBlocks(l *line, mode int) error {
 		}
 		// 输出支路使用输入端点之后的独立 lane；若仍从 18 格起步，
 		// 会与最后一条输入配送竖轨共线并触发无连接交叉。
-		endpoint, err := b.fly(item, branch, false, branch.a.x+18+3*float64(len(order)+outputIndex), outputBaseY+3*float64(outputIndex), mode)
+		endpoint, err := b.fly(item, branch, false, branch.a.x+18+6*float64(len(order)+outputIndex), outputBaseY+3*float64(len(l.recipe.Results)-1-outputIndex), mode, begin)
 		if err != nil {
 			return err
 		}
 		endpoint.filters = append(endpoint.filters, filter)
 		endpoint.rate = flyLineRate(l.info, endpoint.item, false, len(l.machines))
 		b.flyEndpoints = append(b.flyEndpoints, endpoint)
-		lineEndpoints = append(lineEndpoints, endpoint)
-	}
-	for _, endpoint := range lineEndpoints {
-		if endpoint != nil && endpoint.box != nil {
-			b.ensureFlyPower(endpoint.box.a)
-		}
 	}
 	return nil
 }
 
 // fly 职责：创建一个物品的箱体/配送器/桥接带；使用：行末连接；边界：生成后容量和运力由上层提示。
-func (b *builder) fly(item int, link *placed, input bool, x, y float64, mode int) (*flyTransportEndpoint, error) {
+func (b *builder) fly(item int, link *placed, input bool, x, y float64, mode, begin int) (*flyTransportEndpoint, error) {
 	endpoint := &flyTransportEndpoint{owner: b.owner, item: item, input: input, link: link}
 	// 每个端点单元相对其真实 link 固定落在右侧，避免按整条产线
 	// 累加 x 把配送器推到数千格外并产生不可接线的长尾。
@@ -237,6 +225,7 @@ func (b *builder) fly(item int, link *placed, input bool, x, y float64, mode int
 		z = 2
 	}
 	box := b.make(2101, facilityX, y, z)
+	box.record.Yaw, box.record.Yaw2 = 0, 0
 	box.record.OutputToSlot = 14
 	box.record.InputFromSlot = 15
 	box.record.OutputFromSlot = 15
@@ -266,30 +255,38 @@ func (b *builder) fly(item int, link *placed, input bool, x, y float64, mode int
 	if mode == 5 {
 		box.input = splitter
 		box.record.InputFromSlot = 15
-		path := manhattan(link.a, flySplitterApproach(link.a, splitter.a), true)
+		path := manhattan(link.a, flySplitterApproach(link.a, splitter.a), input)
 		if len(path) < 2 {
 			return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "四向分流器与机器带端点重合，无法建立实体接驳带"}
 		}
+		if err := b.validateFlyPathCandidate(path, link, splitter, b.all[begin:]); err != nil {
+			return nil, err
+		}
 		belts := b.byPath(path[1:])
 		endpoint.splitter, endpoint.box, endpoint.delivery, endpoint.belts = splitter, box, delivery, belts
+		// Model39 在 Yaw90 时地面西口为2，地面东口为0；高层口1/3
+		// 不参与本地带接驳，箱体与分流器仍使用堆叠连接槽15。
+		slot := int8(0)
+		if path[len(path)-1].x < splitter.a.x {
+			slot = 2
+		}
 		if input {
 			reverse(belts)
 			// reverse 只重写有向引用，切片首尾仍是机器侧/分流器侧。
 			first, last := belts[0], belts[len(belts)-1]
 			last.input = splitter
-			last.record.InputFromSlot = 0
+			last.record.InputFromSlot = slot
 			connect(first, link)
 		} else {
 			connect(link, belts[0])
 			last := belts[len(belts)-1]
 			last.output = splitter
-			last.record.OutputToSlot = 0
+			last.record.OutputToSlot = slot
 		}
 		return endpoint, nil
 	}
-	// 2101 的槽位 10 位于箱体南侧；把带端放在槽位外两格，
-	// 由分拣器跨接。路径先纵向离开机器行、再沿箱体外侧横向，
-	// 避免把横向带段穿过箱体建造盒。
+	// 箱体统一朝北，槽位 10 位于西侧。把带端放在槽位外两格，
+	// 由分拣器跨接，避免接驳带穿入箱体建造盒。
 	boxPoint, ok := storageSlotPoint(box.a, box.record.Yaw, 10)
 	if !ok {
 		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: "配送箱体缺少槽位 10 几何"}
@@ -300,11 +297,14 @@ func (b *builder) fly(item int, link *placed, input bool, x, y float64, mode int
 		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: "配送箱体槽位方向无效"}
 	}
 	beltEnd := vector{boxPoint.x + away.x/length*2, boxPoint.y + away.y/length*2, 0}
-	// 横向先行使每个端点拥有独立的 x 轨位；纵向先行会让多条
-	// 输入/输出接驳共享 link.x，形成无连接的平行带交叉。
-	points := manhattan(link.a, beltEnd, true)
+	// 输入先横向到独立竖轨；输出先上行到所有输入设施之外再横向。
+	// 多产物输出的纬向轨位逆序，后续竖轨不会截断已生成的横向支路。
+	points := manhattan(link.a, beltEnd, input)
 	if len(points) < 2 {
 		return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: fmt.Sprintf("配送器与机器带端点没有可用接驳带：端点(%.1f,%.1f)，槽位外端(%.1f,%.1f)", link.a.x, link.a.y, beltEnd.x, beltEnd.y)}
+	}
+	if err := b.validateFlyPathCandidate(points, link, nil, b.all[begin:]); err != nil {
+		return nil, err
 	}
 	points = points[1:]
 	belts := b.byPath(points)

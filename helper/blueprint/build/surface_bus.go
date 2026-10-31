@@ -35,6 +35,10 @@ func (b *builder) foldSurfaceBus(ctx context.Context, layout *SurfaceLayout) err
 	if len(surfaceAnchorCandidates(layout.Mode, segment, layout.LatitudeGridIndex, layout.ExpandAdjacent, width, height)) > 0 {
 		return nil
 	}
+	if b.busFabric != nil {
+		// 可扩展环路持有独立供料、过滤和取料证据；旧共享总线的切面重接不能更新这些链路。
+		return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("独立混带环路工厂占地 %dx%d 超出单原生纬带容量；当前未验证该环路拓扑的跨 Area 迁移，请减小目标规模、使用平面布局或改用直连模式", width, height)}
+	}
 	bandHeight, bandWidth := 0, 0
 	for _, band := range surfaceLatitudeBands(segment) {
 		low := band.low

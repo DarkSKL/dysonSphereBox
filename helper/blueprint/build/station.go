@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：装配单/双行星或星际物流塔和路由；使用：mode 3/4；边界：超容量明确告警，不静默丢弃物品。
+// 文件职责：装配单/双行星或星际物流塔和路由；使用：mode 3/4；边界：容量、端口或寻路不足时明确失败，不静默丢弃物品。
 // 站点参数和微调数值核对 dsp-calc LocalStation/InterstellarStation，算法独立实现，见 ../NOTICE.md。
 
 import (
@@ -34,6 +34,7 @@ type stationRoute struct {
 	slot int
 	// path 职责：外部路由；使用：装配；边界：只有成功路径可写出。
 	path []vector
+	// rate 职责：记录本行分配的每分钟流量；使用：塔端口容量核验；边界：不以额定机器余量扩大可信需求。
 	rate float64
 }
 
@@ -154,7 +155,11 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			seen[id] = true
 		}
 	}
-	for _, id := range recipe.Items {
+	inputIDs := append([]int(nil), recipe.Items...)
+	if spray := productionSprayItem(lines[0].info); spray > 0 {
+		inputIDs = append(inputIDs, spray)
+	}
+	for _, id := range inputIDs {
 		if !seen[id] {
 			items = append(items, stationItem{id: id})
 			seen[id] = true
@@ -176,6 +181,11 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 	}
 	routes := []stationRoute{}
 	resultIDs := uniqueStationItems(recipe.Results)
+	// 过滤出口在机器行摆好后创建，必须看到同组全部带，避免短行拆分后侵占下一行入口。
+	groupOccupancy := []*placed{}
+	for _, l := range lines {
+		groupOccupancy = append(groupOccupancy, l.all...)
+	}
 	for _, l := range lines {
 		share := 0.
 		if l.info.MachineCount > 0 {
@@ -184,11 +194,19 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		for i, row := range l.inputs {
 			routes = append(routes, stationRoute{head: row[0], item: recipe.Items[i], tower: itemTower[recipe.Items[i]], rate: productionItemRate(l.info.Inputs, recipe.Items[i]) * share})
 		}
+		if spray := productionSprayItem(l.info); spray > 0 {
+			if l.coaterInput == nil {
+				return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 缺少增产剂 %d 的真实供剂入口", l.machines[0].owner, spray)}
+			}
+			routes = append(routes, stationRoute{head: l.coaterInput, item: spray, tower: itemTower[spray], rate: productionItemRate(l.info.Inputs, spray) * share})
+		}
 		for resultIndex, item := range resultIDs {
-			head, err := b.stationOutputHead(l, item, resultIndex, len(resultIDs))
+			previousSize := len(l.all)
+			head, err := b.stationOutputHead(l, item, resultIndex, len(resultIDs), groupOccupancy)
 			if err != nil {
 				return err
 			}
+			groupOccupancy = append(groupOccupancy, l.all[previousSize:]...)
 			routes = append(routes, stationRoute{head: head, item: item, output: true, tower: itemTower[item], rate: productionItemRate(l.info.Outputs, item) * share})
 		}
 	}
@@ -470,7 +488,7 @@ func stationPathCrosses(path []vector, previous []stationRoute) bool {
 }
 
 // stationOutputHead 职责：为多产物共享出货带创建带物品过滤的实体支路；使用：mode3/4塔供货端；边界：只支持带间距不超过三格的分拣器，不把匿名混带当作已分离。
-func (b *builder) stationOutputHead(l *line, item, resultIndex, resultCount int) (*placed, error) {
+func (b *builder) stationOutputHead(l *line, item, resultIndex, resultCount int, occupancy ...[]*placed) (*placed, error) {
 	if len(l.output) == 0 {
 		return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: "物流塔多产物出口没有共享输出带"}
 	}
@@ -483,8 +501,12 @@ func (b *builder) stationOutputHead(l *line, item, resultIndex, resultCount int)
 	// 输出带方向随机器原型变化，不能固定向某一侧偏移；逐候选检查机器 footprint 与分拣器扫掠段，避免把过滤带放进机器建造盒。
 	offsets := []float64{1, -1, 2, -2, 3, -3}
 	offset := 0.0
+	existing := l.all
+	if len(occupancy) > 0 {
+		existing = occupancy[0]
+	}
 	for _, candidate := range offsets {
-		if stationOutputOffsetFree(source, l.machines, candidate) {
+		if stationOutputOffsetFree(source, l.machines, candidate) && stationOutputEndpointFree(source, candidate, existing) {
 			offset = candidate
 			break
 		}
@@ -511,6 +533,17 @@ func (b *builder) stationOutputHead(l *line, item, resultIndex, resultCount int)
 	// 覆盖已经装配的后续机器行；复制后登记，使寻路也能看见过滤端口。
 	l.all = append(append([]*placed{}, l.all...), branch, arm)
 	return branch, nil
+}
+
+// stationOutputEndpointFree 职责：拒绝过滤出口与同组既有带端点重叠；使用：多产物过滤候选选择；边界：只检查新增带实体位置，分拣器扫掠和静态盒仍由最终规则核验。
+func stationOutputEndpointFree(source *placed, offset float64, existing []*placed) bool {
+	target := vector{source.a.x, source.a.y + offset, source.a.z}
+	for _, p := range existing {
+		if surfaceIsBelt(p.record.ItemID) && beltCell(p.a) == beltCell(target) {
+			return false
+		}
+	}
+	return true
 }
 
 // stationOutputOffsetFree 职责：判断共享输出带到过滤支路的候选分拣器是否侵占机器占地；使用：多产物塔供货出口；边界：只做保守平面检查，最终动态碰撞仍由收尾规则核验。

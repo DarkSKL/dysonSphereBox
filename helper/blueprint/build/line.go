@@ -52,6 +52,8 @@ type line struct {
 	machines []*placed
 	// coaters 职责：喷涂机；使用：供剂网络；边界：不假定已有喷涂资源。
 	coaters []*placed
+	// coaterInput 职责：保存本行供剂干线的实际入口；使用：规范增产剂边接入配送、塔或直连带；边界：仅在coatSupply成功后设置，不是机器配方原料口。
+	coaterInput *placed
 	// recipe 职责：原始配方；使用：配送槽位；边界：只读副本。
 	recipe quant.Recipe
 	// info 职责：来源产线；使用：量化对应；边界：不改机器数。
@@ -98,6 +100,12 @@ func (s Setting) maxCount(typ int) int {
 
 // buildLine 职责：装配基础机器行；使用：所有生成策略；边界：配方输入超过六种明确失败，保持槽位合法。
 func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lineIndex int, last bool) (*line, error) {
+	if err := b.checkGeneration("机器行装配"); err != nil {
+		return nil, err
+	}
+	if count <= 0 || count > 10000 {
+		return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "机器行必须包含1到10000台真实机器，拒绝空行或超限行"}
+	}
 	if b.setting.UseMixed || len(r.Items) > 5 {
 		return b.buildMixedLine(p, r, count, mode)
 	}
@@ -129,6 +137,9 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	machineY := float64(bottom) + conf.Bottom
 	belts := make([][]*placed, 0, len(r.Items)+1)
 	for i := 0; i < len(r.Items)+1; i++ {
+		if err := b.checkGeneration("机器行传送带装配"); err != nil {
+			return nil, err
+		}
 		y := float64(i)
 		if i >= bottom {
 			y += conf.LineSpacing
@@ -148,6 +159,11 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	}
 	groundMachines := []*placed{}
 	for i := 0; i < ground; i++ {
+		if i%32 == 0 {
+			if err := b.checkGeneration("机器排装配"); err != nil {
+				return nil, err
+			}
+		}
 		m := b.make(p.MachineID, machineX+float64(i)*spacing, machineY, 0)
 		m.record.RecipeID = int16(p.RecipeID)
 		m.record.Yaw = conf.Yaw
@@ -171,6 +187,9 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	if p.MachineType == 6 {
 		remaining := count
 		for _, base := range groundMachines {
+			if err := b.checkGeneration("研究站堆叠装配"); err != nil {
+				return nil, err
+			}
 			layers := b.setting.MaxLays
 			if remaining < layers {
 				layers = remaining
@@ -189,6 +208,11 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	}
 	upInput := len(r.Items) - bottom
 	for machineIndex, m := range groundMachines {
+		if machineIndex%32 == 0 {
+			if err := b.checkGeneration("机器端口装配"); err != nil {
+				return nil, err
+			}
+		}
 		for i := 0; i < len(r.Items)+1; i++ {
 			inserter := b.make(2010+b.setting.InserterLv, 0, 0, 0)
 			inserter.record.InputFromSlot = -1
@@ -252,12 +276,21 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		l.output[0].record.Parameters = []int32{int32(r.Results[0]), 0}
 	}
 	if mode == 2 || mode == 5 {
-		if err := b.flyBlocks(l, mode); err != nil {
+		if err := b.coatSupply([]*line{l}); err != nil {
+			return nil, err
+		}
+		if err := b.flyBlocks(l, mode, start); err != nil {
 			return nil, err
 		}
 	}
 	if *b.setting.NeedPower {
-		b.linePower(l, conf, p.MachineType, mode, lineIndex, last)
+		if mode == 2 || mode == 5 {
+			if err := b.completeFlyPower(start); err != nil {
+				return nil, err
+			}
+		} else {
+			b.linePower(l, conf, p.MachineType, mode, lineIndex, last)
+		}
 	}
 	l.all = b.all[start:]
 	return l, nil

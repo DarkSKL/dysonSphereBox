@@ -34,6 +34,7 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 			return Result{}, err
 		}
 		candidate.flowGraph = b.flowGraph
+		candidate.generationCtx = ctx
 		candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 		candidate.logistics.Metrics.CandidateBudget = budget
 		if err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, compact); err != nil {
@@ -89,6 +90,15 @@ func (b *builder) assembleConnected(ctx context.Context, req Request, dataset *q
 
 // assembleConnectedVariant 职责：在不改变机器、端口和规范 lane 的前提下装配一种空间候选；使用：基线与轮廓靠拢对比；边界：所有候选仍须完成寻路和 finish 的严格规则检查。
 func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dataset *quant.Dataset, heightLimit float64, compact bool) error {
+	if err := b.prepareConnectedRows(ctx, req, dataset, heightLimit, compact); err != nil {
+		return err
+	}
+	return b.routeTransport(ctx)
+}
+
+// prepareConnectedRows 职责：装配统一机器行和逐物品过滤端口但不决定全局运输拓扑；使用：直连带与可扩展混带环路共用局部几何；边界：调用方必须继续完成全图路由与最终规则，不能直接编码半成品。
+func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset *quant.Dataset, heightLimit float64, compact bool) error {
+	b.generationCtx = ctx
 	rows, err := b.planTransportRows(ctx, req, dataset)
 	if err != nil {
 		return err
@@ -109,7 +119,9 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 		for item, belts := range row.line.inputs {
 			row.inputs[row.recipe.Items[item]] = belts[0]
 		}
-		b.coatSupply([]*line{row.line})
+		if err := b.coatSupply([]*line{row.line}); err != nil {
+			return err
+		}
 		if len(row.line.coaters) > 0 {
 			item := []int{0, 1141, 1142, 1143}[row.info.IncreaseLv]
 			links := b.coaterLinks[item]
@@ -145,16 +157,32 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 		sort.Ints(items)
 		for _, item := range items {
 			endpoint := row.inputs[item]
+			stubLength := 5
+			if req.Mode == 6 {
+				// 混带环路的远端接驳为每份供给保留独立汇入格，避免后续供给借用上一条长路线的源头。
+				count := 0
+				for _, route := range b.transportRoutes {
+					if route.to == row && route.edge.ItemID == item {
+						count++
+					}
+				}
+				stubLength = max(stubLength, count*3+2)
+			}
 			points := []vector{}
-			for x := endpoint.a.x - 5; x < endpoint.a.x; x++ {
+			for x := endpoint.a.x - float64(stubLength); x < endpoint.a.x; x++ {
 				points = append(points, vector{x, endpoint.a.y, endpoint.a.z})
 			}
 			stub := b.byPath(points)
 			connect(stub[len(stub)-1], endpoint)
 			row.inputs[item] = stub[0]
+			inputIndex := 0
 			for _, route := range b.transportRoutes {
 				if route.to == row && route.edge.ItemID == item {
 					route.end = stub[0]
+					if req.Mode == 6 {
+						route.end = stub[inputIndex*3+1]
+						inputIndex++
+					}
 				}
 			}
 		}
@@ -192,13 +220,16 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 	b.zones = planZones(req.Plan)
 	for _, route := range b.transportRoutes {
 		if route.to != nil {
+			if req.Mode == 6 && route.end != nil {
+				continue
+			}
 			route.end = route.to.inputs[route.edge.ItemID]
 			if route.end == nil {
 				return transportAllocationError(route.edge, route.rate, "配方输入或增产剂没有已验证实体端口")
 			}
 		}
 	}
-	return b.routeTransport(ctx)
+	return nil
 }
 
 // attachFilteredOutputs 职责：把共享输出带按物品与流量拆为真实过滤支路；使用：机器行平移前；边界：多产物不再被当作一条可分别交付的匿名输出。
