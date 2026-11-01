@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import * as Vue from 'vue'
 import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
-import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview, shareBlueprintScriptLoad} from '../../../services/dysonSphere/blueprint-preview-host'
+import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview} from '../../../services/dysonSphere/blueprint-preview-host'
 import {enableBlueprintPreviewRotation} from '../../../services/dysonSphere/blueprint-preview-interaction'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
-import blueprintEditorScriptUrl from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.js?url'
+import type {BlueprintViewer as BlueprintViewerInstance} from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js'
 
-type BlueprintViewerTheme = ThemeMode | 'auto'
+type BlueprintEditorModule = typeof import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
 
 interface BlueprintViewerPanelProps {
   code: string
@@ -14,63 +13,6 @@ interface BlueprintViewerPanelProps {
   selectedIndex?: number | null
   maxBuildings?: number
   revision?: number
-}
-
-interface BlueprintViewerConstructorOptions {
-  container: HTMLElement
-  theme?: BlueprintViewerTheme
-  width?: number
-  height?: number
-}
-
-interface BlueprintViewerInstance {
-  loadBlueprint: (code: string) => void
-  resetCamera: () => void
-  setSize: (width: number, height: number) => void
-  setTheme?: (theme: BlueprintViewerTheme) => void
-  dispose: () => void
-  selectBuilding: (index: number | null) => void
-  getBlueprintData: () => { buildings: unknown[] } | null
-  getCanvas?: () => HTMLCanvasElement
-  toDataURL?: () => string
-}
-
-interface DspBlueprintEditorGlobal {
-  BlueprintViewer: new (options: BlueprintViewerConstructorOptions, callbacks?: {onBuildingSelect?: (index: number | null) => void}) => BlueprintViewerInstance
-}
-
-interface MinimalVueI18nGlobal {
-  t: (key: string) => string
-}
-
-interface MinimalVueI18n {
-  createI18n: () => {
-    global: MinimalVueI18nGlobal
-  }
-  useI18n: () => {
-    t: MinimalVueI18nGlobal['t']
-  }
-}
-
-interface BlueprintViewerWindow extends Window {
-  DSPBlueprintEditor?: DspBlueprintEditorGlobal
-  Vue?: typeof Vue
-  VueI18n?: MinimalVueI18n
-  exports?: {
-    DSPBlueprintEditor?: DspBlueprintEditorGlobal
-  }
-  module?: {
-    exports?: DspBlueprintEditorGlobal | {
-      DSPBlueprintEditor?: DspBlueprintEditorGlobal
-    }
-  }
-  define?: unknown
-}
-
-declare global {
-  interface Window {
-    DSPBlueprintEditor?: DspBlueprintEditorGlobal
-  }
 }
 
 interface AppThemeSnapshot {
@@ -145,159 +87,15 @@ const withAppThemeIsolation = <T>(operation: () => T): T => {
   }
 }
 
-const withAsyncAppThemeIsolation = async <T>(operation: () => Promise<T>): Promise<T> => {
-  const snapshot = captureAppThemeSnapshot()
-  try {
-    return await operation()
-  } finally {
-    restoreAppThemeSnapshot(snapshot)
-  }
-}
-
-// =============== 预览器脚本加载 ===============
-// 说明：按需加载 dsp-blueprint-editor 的 UMD 资源，复用库对外暴露的 BlueprintViewer 构造函数。
-// 边界：脚本只加载一次；兼容 Wails/WebView 注入 exports 或 module 导致 UMD 未挂到 window 的情况。
-const loadBlueprintEditor = async (): Promise<DspBlueprintEditorGlobal> => {
-  const loadedEditor = resolveBlueprintEditorGlobal()
-  if (loadedEditor) {
-    cleanupBlueprintEditorGlobalStyles()
-    document.documentElement.dataset.theme = themeMode.value
-    document.documentElement.style.colorScheme = themeMode.value
-    return loadedEditor
-  }
-
-  await withAsyncAppThemeIsolation(() => new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      `script[data-dsp-blueprint-editor="true"]`,
-    )
-    if (existingScript) {
-      existingScript.remove()
-    }
-
-    const script = document.createElement('script')
-    script.src = blueprintEditorScriptUrl
-    script.async = true
-    script.dataset.dspBlueprintEditor = 'true'
-    const existingStyleNodes = new Set<HTMLStyleElement>(
-      Array.from(document.head.querySelectorAll<HTMLStyleElement>('style')),
-    )
-    const maskedGlobals = prepareBlueprintEditorGlobals()
-    script.addEventListener('load', () => {
-      restoreBlueprintEditorGlobals(maskedGlobals)
-      cleanupBlueprintEditorInjectedStyles(existingStyleNodes)
-      document.documentElement.dataset.theme = themeMode.value
-      document.documentElement.style.colorScheme = themeMode.value
-      resolve()
-    }, {once: true})
-    script.addEventListener('error', () => {
-      restoreBlueprintEditorGlobals(maskedGlobals)
-      cleanupBlueprintEditorInjectedStyles(existingStyleNodes)
-      document.documentElement.dataset.theme = themeMode.value
-      document.documentElement.style.colorScheme = themeMode.value
-      reject(new Error('蓝图预览脚本加载失败。'))
-    }, {once: true})
-    document.head.appendChild(script)
-  }))
-
-  const editor = resolveBlueprintEditorGlobal()
-  if (!editor) {
-    throw new Error('蓝图预览器未暴露 BlueprintViewer。')
-  }
-
-  window.DSPBlueprintEditor = editor
-  return editor
-}
-
-const blueprintI18nFallback: MinimalVueI18n = {
-  createI18n: () => ({
-    global: {
-      t: (key: string) => key,
-    },
-  }),
-  useI18n: () => ({
-    t: (key: string) => key,
-  }),
-}
-
-const resolveBlueprintEditorGlobal = (): DspBlueprintEditorGlobal | null => {
-  const globalWindow = window as BlueprintViewerWindow
-  const candidates = [
-    globalWindow.DSPBlueprintEditor,
-    globalWindow.exports?.DSPBlueprintEditor,
-    globalWindow.module?.exports,
-    (globalWindow.module?.exports as {DSPBlueprintEditor?: DspBlueprintEditorGlobal} | undefined)
-      ?.DSPBlueprintEditor,
-  ]
-
-  return candidates.find((candidate): candidate is DspBlueprintEditorGlobal => (
-    Boolean(candidate && 'BlueprintViewer' in candidate && candidate.BlueprintViewer)
-  )) ?? null
-}
-
-const prepareBlueprintEditorGlobals = (): Partial<BlueprintViewerWindow> => {
-  const globalWindow = window as BlueprintViewerWindow
-  const snapshot: Partial<BlueprintViewerWindow> = {
-    Vue: globalWindow.Vue,
-    VueI18n: globalWindow.VueI18n,
-    exports: globalWindow.exports,
-    module: globalWindow.module,
-    define: globalWindow.define,
-  }
-
-  globalWindow.Vue = Vue
-  globalWindow.VueI18n = globalWindow.VueI18n ?? blueprintI18nFallback
-  globalWindow.exports = undefined
-  globalWindow.module = undefined
-  globalWindow.define = undefined
-  return snapshot
-}
-
-const restoreBlueprintEditorGlobals = (snapshot: Partial<BlueprintViewerWindow>): void => {
-  const globalWindow = window as BlueprintViewerWindow
-  globalWindow.Vue = snapshot.Vue
-  globalWindow.VueI18n = snapshot.VueI18n
-  globalWindow.exports = snapshot.exports
-  globalWindow.module = snapshot.module
-  globalWindow.define = snapshot.define
-}
-
-const cleanupBlueprintEditorInjectedStyles = (existingStyleNodes: Set<HTMLStyleElement>): void => {
-  document.head.querySelectorAll<HTMLStyleElement>('style').forEach((styleNode) => {
-    // 应用自身样式（开发期 Vite 注入的 style 带 data-vite-dev-id）永不删除，避免文本特征误伤同名类的组件样式。
-    if (existingStyleNodes.has(styleNode) || styleNode.hasAttribute('data-vite-dev-id')) {
-      return
-    }
-    if (isBlueprintEditorGlobalStyle(styleNode.textContent ?? '')) {
-      styleNode.remove()
-    }
-  })
-}
-
-const cleanupBlueprintEditorGlobalStyles = (): void => {
-  cleanupBlueprintEditorInjectedStyles(new Set<HTMLStyleElement>())
-}
-
-const isBlueprintEditorGlobalStyle = (styleText: string): boolean => {
-  const editorStyleSignatures = [
-    'body{margin:0;background:var(--bg-body)',
-    '.sidebar-wrap',
-    '.editor-root{width:100%;height:100%}',
-    '/* ── Theme Variables ── */',
-    '.icon-select',
-    '.building-params',
-    '.fleet-grid',
-    '.station-storage',
-    '.bp-icon',
-  ]
-
-  return editorStyleSignatures.some((signature) => styleText.includes(signature))
-}
+// =============== 预览器模块加载 ===============
+// 说明：按需导入本地 ESM 产物；库以 import.meta.url 定位同目录的 models/、img/，开发期无需额外配置。
+// 边界：模块只导入一次且不触碰 window 全局；不再通过 ?url 注入脚本或兼容 exports/module。
+const ensureBlueprintEditor = (): Promise<BlueprintEditorModule> =>
+  import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
 
 // =============== 预览器生命周期 ===============
 // 说明：初始化、加载蓝图和同步尺寸都集中在这里，详情切换时复用实例刷新模型。
 // 边界：容器不可用或编码为空时不创建实例；组件卸载时释放 WebGL 资源。
-const ensureBlueprintEditor = (): Promise<DspBlueprintEditorGlobal> => shareBlueprintScriptLoad(loadBlueprintEditor)
-
 const selectBuilding = (index: number | null): void => {
   if (index !== null && (!Number.isInteger(index) || index < 0 || index >= buildingCount.value)) return
   withAppThemeIsolation(() => viewer.value?.selectBuilding(index))
@@ -347,7 +145,7 @@ const loadCurrentBlueprint = async (): Promise<void> => {
 
   try {
     // 加载蓝图编辑器
-    const editor = await ensureBlueprintEditor()
+    const {BlueprintViewer} = await ensureBlueprintEditor()
     // 检查状态
     if (!active || version !== loadVersion || !containerRef.value) return
     phase = 'render'
@@ -358,10 +156,10 @@ const loadCurrentBlueprint = async (): Promise<void> => {
       // 登记释放函数
       releaseHost = claimBlueprintPreview(disposeViewer)
       // 
-      viewer.value = withAppThemeIsolation(() => new editor.BlueprintViewer({container: containerRef.value!, theme: themeMode.value}, {
+      viewer.value = withAppThemeIsolation(() => new BlueprintViewer({container: containerRef.value!, theme: themeMode.value}, {
         // 注册建筑选择事件
-        onBuildingSelect: (index) => withAppThemeIsolation(() => {
-          if (active && props.interactive) emit('select', {index})
+        onBuildingSelect: (pick) => withAppThemeIsolation(() => {
+          if (active && props.interactive) emit('select', {index: pick?.index ?? null})
         }),
       }))
       // 获取画布
@@ -454,7 +252,7 @@ watch(() => [props.code, props.revision], () => {
 })
 
 watch(themeMode, (mode) => {
-  if (!viewer.value?.setTheme) {
+  if (!viewer.value) {
     return
   }
 
@@ -563,4 +361,3 @@ onBeforeUnmount(() => { active = false; disposeViewer() })
   }
 }
 </style>
-

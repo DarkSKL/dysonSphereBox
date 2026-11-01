@@ -9,8 +9,11 @@ interface PreviewControls {
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 // 使用运行时校验隔离预览库未在 README 中公开的映射字段；升级库时不把不兼容状态静默报告为可交互。
+// 当前构建的公开类是包装层，controls 挂在内核实例（viewer.core）上；包装层与内核直挂两种形态都接受。
 const resolveControls = (viewer: unknown): PreviewControls => {
-  const controls = isRecord(viewer) ? viewer.controls : null
+  const host = isRecord(viewer) ? viewer : null
+  const core = isRecord(host?.core) ? host.core : null
+  const controls = host?.controls ?? core?.controls ?? null
   if (!isRecord(controls) || !isRecord(controls.mouseButtons) || !isRecord(controls.touches)
     || typeof controls.mouseButtons.LEFT !== 'number' || typeof controls.mouseButtons.MIDDLE !== 'number'
     || typeof controls.touches.ONE !== 'number') {
