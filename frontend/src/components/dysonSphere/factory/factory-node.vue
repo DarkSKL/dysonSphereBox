@@ -48,7 +48,7 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
     <header class="node-head">
       <ItemIcon :name="data.title" :size="data.kind === 'production' ? 30 : 24" />
       <div class="node-title"><span class="node-kind">{{ data.kind === 'source' ? data.externalSource ? '指定外供' : '外部原料' : kindLabel[data.kind] }}<template v-if="zone"> · {{ zone.label }}</template></span><strong>{{ data.title }}</strong></div>
-      <span class="node-rate type-display">{{ context.format(data.rate) }}<small>/min</small></span>
+      <span class="node-rate" :title="data.kind === 'production' ? '期望 / 配置满负荷。满负荷要求供料、供电和出货畅通，不是游戏实测；蓝图物流仍按期望净流规划。' : '规划期望流量'"><span class="rate-label">{{ data.kind === 'production' ? '期望 / 配置满负荷' : '期望' }}</span><span class="type-display">{{ context.format(data.expectedRate) }}<small>/min</small><template v-if="data.kind === 'production'"> / {{ data.capacity ? context.format(data.capacity.outputPerMinute) : '—' }}<small>/min</small></template></span></span>
       <n-tooltip v-if="data.kind === 'production'"><template #trigger><button type="button" class="node-action nodrag" :disabled="context.locked" :aria-label="`${data.title} 改为外部供应`" @click.stop="context.setExternal(data.itemId, true)"><PackageOpen :size="13" /></button></template>改为外部供应</n-tooltip>
     </header>
 
@@ -57,7 +57,7 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
       <div class="node-metrics">
         <span class="machine-count type-display">{{ production.machineCount }}<small>×</small></span>
         <span class="machine-name">{{ context.itemName(production.machineId) }}</span>
-        <span class="node-power type-display">{{ context.format(production.powerMw) }} MW</span>
+        <span class="node-power type-display" title="按期望速率折算的工作功率">{{ context.format(production.powerMw) }} MW</span>
       </div>
       <div class="node-fields">
         <IconSelect v-if="recipeOptions.length > 1" class="node-field" :icon-size="14" :value="context.recipeChoice(data.itemId)" :options="recipeOptions" :disabled="context.locked" aria-label="配方" @update:value="value => context.setRecipe(data.itemId, Number(value))" />
@@ -71,15 +71,15 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
     </div>
 
     <div v-else-if="data.kind === 'target'" class="node-body nodrag nowheel">
-      <n-input-number size="tiny" class="node-field" :value="data.rate" :min="0.000001" :max="1000000000" :show-button="false" :disabled="context.locked" aria-label="目标产量" @update:value="value => value && context.setTargetRate(data.itemId, value)"><template #suffix>/min</template></n-input-number>
+      <n-input-number size="tiny" class="node-field" :value="data.expectedRate" :min="0.000001" :max="1000000000" :show-button="false" :disabled="context.locked" aria-label="期望目标产量" @update:value="value => value && context.setTargetRate(data.itemId, value)"><template #suffix>/min</template></n-input-number>
       <button type="button" class="node-link" :disabled="context.locked" @click="context.removeTarget(data.itemId)">移除目标</button>
     </div>
     <div v-else-if="data.kind === 'source' && context.isExternal(data.itemId)" class="node-body nodrag">
       <button type="button" class="node-link" :disabled="context.locked" @click="context.setExternal(data.itemId, false)">改为本地生产</button>
     </div>
 
-    <!-- 端口：每个物品一个连接点，标签显示该端口的总速率 -->
-    <div class="node-ports">
+    <!-- 端口：每个物品一个连接点，标签只显示期望净流量，不以设备满负荷替换守恒边 -->
+    <div class="node-ports" title="端口为期望净流量 /min">
       <div class="port-column is-in">
         <div v-for="port in data.inputs" :key="port.id" class="port-row">
           <Handle :id="port.id" type="target" :position="Position.Left" class="port-handle" :connectable="false" />
@@ -114,7 +114,8 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
 .node-title { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 .node-title strong { overflow: hidden; font-size: 13px; font-weight: 600; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .node-kind { overflow: hidden; color: var(--ds-text-muted); font-size: 10px; letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
-.node-rate { flex: 0 0 auto; color: var(--accent); font-size: 13px; font-weight: 600; }
+.node-rate { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; color: var(--accent); font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.node-rate .rate-label { color: var(--ds-text-muted); font-size: 9px; font-weight: 400; }
 .node-rate small { margin-left: 1px; color: var(--ds-text-muted); font-size: 10px; font-weight: 400; }
 .node-body { display: grid; gap: 6px; border-bottom: 1px solid var(--ds-border-subtle); padding: 8px 10px; }
 .node-metrics { display: flex; align-items: baseline; gap: 6px; }

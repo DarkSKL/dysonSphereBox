@@ -26,18 +26,24 @@ type transportPathNode struct {
 	score        float64
 	order, index int
 	closed       bool
+	discarded    bool
+	// length 职责：保留真实路径节点数；使用：已有可行候选的安全上界剪枝；边界：不同于带高度代价的distance。
+	length int
 }
 
-// transportPathQueue 职责：稳定选择估价最低的候选；使用：三维寻路；边界：同分按插入顺序而非 map 顺序。
+// transportPathQueue 职责：稳定选择估价最低且同分时更接近终点的候选；使用：三维寻路；边界：最终同分按插入顺序而非 map 顺序。
 type transportPathQueue []*transportPathNode
 
 // Len 职责：提供堆长度；使用：container/heap；边界：不统计关闭节点。
 func (q transportPathQueue) Len() int { return len(q) }
 
-// Less 职责：按估价和稳定键排序；使用：container/heap；边界：不依赖运行时哈希顺序。
+// Less 职责：按估价、已行距离和稳定键排序；使用：container/heap；边界：只在相同估价内优先更小剩余估价，不改变 A* 主序或搜索预算。
 func (q transportPathQueue) Less(i, j int) bool {
 	if q[i].score != q[j].score {
 		return q[i].score < q[j].score
+	}
+	if q[i].distance != q[j].distance {
+		return q[i].distance > q[j].distance
 	}
 	return q[i].order < q[j].order
 }
@@ -70,6 +76,8 @@ type transportPathCacheKey struct {
 	source, target *placed
 	// merge 职责：区分接入已有合流点的占位权限；使用：缓存匹配；边界：不把普通终点路径用于其它合流语义。
 	merge bool
+	// shorterThan 职责：隔离只搜索更短候选的缓存；使用：相邻消费端口比较；边界：零表示没有已有路径上界。
+	shorterThan int
 }
 
 // transportEnvironment 职责：维护静态/动态分层空间哈希和路径缓存；使用：逐 lane 增量提交；边界：失败候选不污染其它排布候选。
@@ -87,14 +95,27 @@ type transportEnvironment struct {
 
 // routeTransport 职责：将全部规范 lane 写入 placed 指针图；使用：mode 1；边界：所有内部边都成功后才进入编码，不接受部分成功。
 func (b *builder) routeTransport(ctx context.Context) error {
-	minimum, _ := bounds(b.all)
+	minimum, maximum := bounds(b.all)
+	return b.routeTransportWithInputs(ctx, transportInputPositions(b.transportRoutes, minimum, maximum, b.busFabric == nil && !b.connectedLegacyInputs))
+}
+
+// routeTransportWithInputs 职责：从给定西侧边界端口完成所有真实物料路线；使用：就近入口、环路基线和同输入回归比较；边界：端口数必须匹配全部外供 lane，之后仍执行同一占位、容量和最终规则。
+func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions []vector) error {
+	routes := append([]*transportRoute{}, b.transportRoutes...)
+	for _, recycle := range b.machineRecycles {
+		routes = append(routes, recycle.route)
+	}
 	external := 0
 	b.owner = -1
-	for _, route := range b.transportRoutes {
+	for _, route := range routes {
 		if route.from != nil {
 			continue
 		}
-		p := b.make(2000+b.setting.BeltLv, math.Floor(minimum.x)-5, math.Floor(minimum.y)+float64(external*2), 0)
+		if external >= len(inputPositions) {
+			return transportAllocationError(route.edge, route.rate, "外供入口位置数量不足")
+		}
+		position := inputPositions[external]
+		p := b.make(2000+b.setting.BeltLv, position.x, position.y, position.z)
 		p.record.Parameters = []int32{int32(route.edge.ItemID), int32(math.Ceil(route.rate))}
 		route.start, route.boundary = p, p
 		route.path = []*placed{p}
@@ -104,6 +125,9 @@ func (b *builder) routeTransport(ctx context.Context) error {
 			route.end.record.Parameters = []int32{int32(route.edge.ItemID), int32(math.Ceil(route.rate))}
 		}
 		external++
+	}
+	if external != len(inputPositions) {
+		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "外供入口位置数量与真实 lane 不符"}
 	}
 	minimum, maximum := bounds(b.all)
 	buildingBlocked, err := stationBuildingObstacles(ctx, b.all)
@@ -125,7 +149,7 @@ func (b *builder) routeTransport(ctx context.Context) error {
 		}
 	}
 	// 为所有未来入口预留落地柱，防止先路由的高架封死尚未接线的端口。
-	for _, route := range b.transportRoutes {
+	for _, route := range routes {
 		if route.to == nil && route.from != nil {
 			continue
 		}
@@ -155,11 +179,11 @@ func (b *builder) routeTransport(ctx context.Context) error {
 		}
 	}
 	incoming := map[*placed][]*placed{}
-	for index, route := range b.transportRoutes {
+	for index, route := range routes {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
 		}
-		reportProgress(ctx, "routing", "正在自动连接内部物料与外部入口", index+1, len(b.transportRoutes))
+		reportProgress(ctx, "routing", "正在自动连接内部物料与外部入口", index+1, len(routes))
 		if route.to == nil && route.from != nil {
 			continue
 		}
@@ -198,18 +222,21 @@ func (b *builder) routeTransport(ctx context.Context) error {
 		}
 		destination := end
 		points, steps := []vector(nil), 0
+		maxSearchExpanded, searches := 0, 0
 		if route.to != nil && merge == nil {
-			// 目标本身已有带，不可将寻路末点与既有带叠放；逐个尝试真实可接的邻格并选最短可行路径。
+			// 保留各合法邻格原有的稳定优先级和最短路径比较。找到可行候选后，
+			// 只展开仍有可能缩短真实带链的节点，避免为封闭备选扫描整张工厂。
 			candidates := []vector{{end.x - 1, end.y, end.z}, {end.x, end.y + 1, end.z}, {end.x, end.y - 1, end.z}, {end.x + 1, end.y, end.z}, {end.x, end.y, end.z + 1}}
-			bestLength := math.Inf(1)
+			bestLength := 0
 			for _, candidate := range candidates {
 				if env.blocked[beltCell(candidate)] || env.reservedByOther(candidate, route.start, route.end) {
 					continue
 				}
-				path, expanded := env.findTransportPath(ctx, start, candidate, route.start, route.end, false)
-				steps += expanded
-				if len(path) > 0 && float64(len(path)) < bestLength {
-					destination, points, bestLength = candidate, path, float64(len(path))
+				path, expanded := env.findTransportPathWithinLength(ctx, start, candidate, route.start, route.end, false, bestLength)
+				steps, searches = steps+expanded, searches+1
+				maxSearchExpanded = max(maxSearchExpanded, expanded)
+				if len(path) > 0 && (bestLength == 0 || len(path) < bestLength) {
+					destination, points, bestLength = candidate, path, len(path)
 				}
 				if ctx.Err() != nil {
 					return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
@@ -217,8 +244,16 @@ func (b *builder) routeTransport(ctx context.Context) error {
 			}
 		} else {
 			points, steps = env.findTransportPath(ctx, start, destination, route.start, route.end, merge != nil)
+			maxSearchExpanded, searches = steps, 1
+		}
+		if ctx.Err() != nil {
+			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
 		}
 		if len(points) == 0 {
+			reason := "已穷尽当前候选空间仍无可行路线"
+			if maxSearchExpanded >= transportSearchLimit {
+				reason = "在固定展开预算内未找到可行路线（预算耗尽不代表几何无解）"
+			}
 			freeNeighbors := func(v vector) int {
 				count := 0
 				for _, d := range []vector{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
@@ -234,7 +269,7 @@ func (b *builder) routeTransport(ctx context.Context) error {
 				v := vector{end.x + d.x, end.y + d.y, end.z + d.z}
 				targetCells = append(targetCells, fmt.Sprintf("(%.0f,%.0f,%.0f):blocked=%t,reserved=%t", v.x, v.y, v.z, env.blocked[beltCell(v)], env.reservedByOther(v, route.start, route.end)))
 			}
-			return &blueprint.Error{Code: "GEN_E_ROUTE", Message: fmt.Sprintf("物品 %d、边 %s、%.3f/min 无可行路线；端口 (%.0f,%.0f,%.0f)→(%.0f,%.0f,%.0f)，展开 %d/%d、高度上限 %d，端点占位 %t/%t，可达邻格 %d/%d，边界 %.0f..%.0f/%.0f..%.0f，目标邻格 %v", route.edge.ItemID, route.edge.ID, route.rate, route.start.a.x, route.start.a.y, route.start.a.z, route.end.a.x, route.end.a.y, route.end.a.z, steps, transportSearchLimit, transportMaxHeight, env.blocked[beltCell(start)], env.blocked[beltCell(end)], freeNeighbors(start), freeNeighbors(end), env.minimum.x, env.maximum.x, env.minimum.y, env.maximum.y, targetCells)}
+			return &blueprint.Error{Code: "GEN_E_ROUTE", Message: fmt.Sprintf("物品 %d、边 %s、%.3f/min %s；端口 (%.0f,%.0f,%.0f)→(%.0f,%.0f,%.0f)，单次最高展开 %d/%d、本路 %d 次共 %d、全图累计 %d、高度上限 %d，端点占位 %t/%t，可达邻格 %d/%d，边界 %.0f..%.0f/%.0f..%.0f，目标邻格 %v", route.edge.ItemID, route.edge.ID, route.rate, reason, route.start.a.x, route.start.a.y, route.start.a.z, route.end.a.x, route.end.a.y, route.end.a.z, maxSearchExpanded, transportSearchLimit, searches, steps, env.totalExpanded, transportMaxHeight, env.blocked[beltCell(start)], env.blocked[beltCell(end)], freeNeighbors(start), freeNeighbors(end), env.minimum.x, env.maximum.x, env.minimum.y, env.maximum.y, targetCells)}
 		}
 		if len(b.all)+len(points) > blueprint.MaxBuildingCount {
 			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "完整物料路线会使建筑超过 20 万，请拆分目标"}
@@ -291,19 +326,24 @@ func (env *transportEnvironment) reservedByOther(v vector, source, target *place
 
 // findTransportPath 职责：在分层空间哈希中执行固定邻居序的三维 A*；使用：每条 lane；边界：最多指定展开次数，取消后退出，占位版本不同则缓存失效。
 func (env *transportEnvironment) findTransportPath(ctx context.Context, start, end vector, source, target *placed, merge bool) ([]vector, int) {
+	return env.findTransportPathWithinLength(ctx, start, end, source, target, merge, 0)
+}
+
+// findTransportPathWithinLength 职责：在原加权 A* 内安全剪除不可能缩短已有带链的前缀；使用：消费端有限邻格比较；边界：节点数上界和端口权限进入缓存键，不增加任何搜索预算。
+func (env *transportEnvironment) findTransportPathWithinLength(ctx context.Context, start, end vector, source, target *placed, merge bool, shorterThan int) ([]vector, int) {
 	env.searchCalls++
 	steps := 0
 	defer func() { env.totalExpanded += steps; env.maxExpanded = max(env.maxExpanded, steps) }()
 	if ctx.Err() != nil {
 		return nil, 0
 	}
-	key := transportPathCacheKey{start: start, end: end, version: env.version, source: source, target: target, merge: merge}
+	key := transportPathCacheKey{start: start, end: end, version: env.version, source: source, target: target, merge: merge, shorterThan: shorterThan}
 	if path, exists := env.cache[key]; exists {
 		env.cacheHits++
 		return append([]vector{}, path...), 0
 	}
 	allowed := func(v vector) bool {
-		if v.x < env.minimum.x || v.y < env.minimum.y || v.x > env.maximum.x || v.y > env.maximum.y || v.z < 0 || v.z > transportMaxHeight || env.blocked[beltCell(v)] && v != start && v != end && !(merge && v == end) {
+		if v.x < env.minimum.x || v.y < env.minimum.y || v.x > env.maximum.x || v.y > env.maximum.y || v.z < 0 || v.z > transportMaxHeight || env.blocked[beltCell(v)] && v != start && v != end {
 			return false
 		}
 		for owner := range env.reserved[beltCell(v)] {
@@ -316,16 +356,29 @@ func (env *transportEnvironment) findTransportPath(ctx context.Context, start, e
 	if !allowed(start) || !allowed(end) {
 		return nil, 0
 	}
+	canImprove := func(v vector, length int) bool {
+		return shorterThan <= 0 || float64(length)+math.Abs(v.x-end.x)+math.Abs(v.y-end.y)+math.Abs(v.z-end.z) < float64(shorterThan)
+	}
+	if !canImprove(start, 1) {
+		return nil, 0
+	}
 	heuristic := func(v vector) float64 { return math.Abs(v.x-end.x) + math.Abs(v.y-end.y) + math.Abs(v.z-end.z)*1.5 }
-	first := &transportPathNode{point: start, score: heuristic(start)}
+	first := &transportPathNode{point: start, score: heuristic(start), length: 1}
 	queue := transportPathQueue{first}
 	seen := map[vector]*transportPathNode{start: first}
+	seenFrontier := map[vector][]*transportPathNode{}
+	if shorterThan > 0 {
+		seenFrontier[start] = []*transportPathNode{first}
+	}
 	serial := 0
 	for len(queue) > 0 && steps < transportSearchLimit {
 		if ctx.Err() != nil {
 			return nil, steps
 		}
 		current := heap.Pop(&queue).(*transportPathNode)
+		if current.discarded {
+			continue
+		}
 		current.closed = true
 		steps++
 		if current.point == end {
@@ -341,7 +394,8 @@ func (env *transportEnvironment) findTransportPath(ctx context.Context, start, e
 		}
 		for _, delta := range []vector{{-1, 0, 0}, {0, 1, 0}, {1, 0, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
 			v := vector{current.point.x + delta.x, current.point.y + delta.y, current.point.z + delta.z}
-			if !allowed(v) {
+			length := current.length + 1
+			if !canImprove(v, length) || !allowed(v) {
 				continue
 			}
 			cost := 1.
@@ -350,16 +404,50 @@ func (env *transportEnvironment) findTransportPath(ctx context.Context, start, e
 			}
 			distance := current.distance + cost
 			old := seen[v]
+			if shorterThan > 0 {
+				// 长度受限搜索是带资源约束的路径问题：同一坐标不能只保留
+				// 加权代价最低的前缀，否则较贵但更短的前缀可能被误剪。
+				// 这里用 (distance, length) 的 Pareto 前沿，废弃节点仍留在堆中，
+				// 由 discarded 标记惰性删除，避免破坏 heap 索引。
+				frontier := seenFrontier[v]
+				dominated := false
+				for _, candidate := range frontier {
+					if candidate.discarded {
+						continue
+					}
+					if candidate.distance <= distance && candidate.length <= length {
+						dominated = true
+						break
+					}
+				}
+				if dominated {
+					continue
+				}
+				for _, candidate := range frontier {
+					if candidate.discarded {
+						continue
+					}
+					if distance <= candidate.distance && length <= candidate.length && (distance < candidate.distance || length < candidate.length) {
+						candidate.discarded = true
+					}
+				}
+				node := &transportPathNode{point: v, parent: current, distance: distance, score: distance + heuristic(v), order: serial, length: length}
+				serial++
+				seenFrontier[v] = append(frontier, node)
+				heap.Push(&queue, node)
+				continue
+			}
 			if old != nil && (old.closed || distance >= old.distance) {
 				continue
 			}
 			if old != nil {
 				old.distance, old.score, old.parent = distance, distance+heuristic(v), current
+				old.length = length
 				heap.Fix(&queue, old.index)
 				continue
 			}
 			serial++
-			node := &transportPathNode{point: v, parent: current, distance: distance, score: distance + heuristic(v), order: serial}
+			node := &transportPathNode{point: v, parent: current, distance: distance, score: distance + heuristic(v), order: serial, length: length}
 			seen[v] = node
 			heap.Push(&queue, node)
 		}

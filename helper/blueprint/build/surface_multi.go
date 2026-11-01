@@ -91,68 +91,49 @@ func (b *builder) preparePackedSurfaceEncoding(ctx context.Context, layout *Surf
 		cache[key] = err == nil
 		return err == nil
 	}
-	packing, err := planSurfaceBlocksAccepted(&packLayout, sizes, gap, accept)
+	stations := make([][]blueprint.Building, len(sizes))
+	for i, block := range b.surfaceBlocks {
+		for _, p := range b.all[block.begin:block.end] {
+			if !surfaceIsStation(p.record.ItemID) {
+				continue
+			}
+			r := p.record
+			r.LocalOffset = blueprint.Point{X: float32(p.a.x - minima[i].x), Y: float32(p.a.y - minima[i].y), Z: float32(p.a.z)}
+			stations[i] = append(stations[i], r)
+		}
+	}
+	var acceptPlacement func(surfacePackPlacement, []surfacePackPlacement) bool
+	hasStations := false
+	for _, block := range stations {
+		hasStations = hasStations || len(block) > 0
+	}
+	if hasStations {
+		acceptPlacement = func(candidate surfacePackPlacement, previous []surfacePackPlacement) bool {
+			if geometryError != nil {
+				return false
+			}
+			valid, err := surfacePackedStationsFit(ctx, &packLayout, stations, candidate, previous)
+			if err != nil {
+				geometryError = err
+			}
+			return valid
+		}
+	}
+	packing, err := planSurfaceBlocksChecked(ctx, &packLayout, sizes, gap, accept, acceptPlacement)
 	if geometryError != nil {
 		return nil, geometryError
 	}
 	if err != nil {
 		return nil, err
 	}
-	// 空纬带也保留 Area，保证游戏的 SnapTropic 按相邻纬带边界吸附，不跨过中间段数。
-	allBands := surfaceLatitudeBands(packing.segment)
-	first, last := -1, -1
-	for i, band := range allBands {
-		if band == packing.bands[0] {
-			first = i
-		}
-		if band == packing.bands[len(packing.bands)-1] {
-			last = i
-		}
+	encoding, bands, err := newPackedSurfaceEncoding(layout, packing)
+	if err != nil {
+		return nil, err
 	}
-	if first < 0 || last < first || last-first+1 > surfaceMaxAreas {
-		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "连续纬带区域范围无效"}
-	}
-	bands := allBands[first : last+1]
-	primary := 0
-	for i, band := range bands {
-		if band.segments > bands[primary].segments {
-			primary = i
-		}
-	}
-	anchor := bands[primary].low
-	if layout.Mode == "explicitTropic" && !layout.ExpandAdjacent {
-		anchor = layout.LatitudeGridIndex
-	}
-	encoding := &surfaceEncoding{
-		packed: true,
-		areas:  make([]blueprint.Area, len(bands)), latitudeOffsets: make([]int, len(bands)),
-		byBuilding: make(map[*placed]int, len(b.all)), anchorCandidates: []int{anchor},
-		plan: makeSurfacePlan(layout.Mode, packing.segment, packing.preferred, anchor, 0, 0),
-	}
-	encoding.plan.AnchorLatitudeGrid, encoding.plan.PrimaryAreaIndex = anchor, primary
-	encoding.plan.Bands = make([]SurfaceBandPlan, len(bands))
+	anchor := encoding.plan.AnchorLatitudeGrid
 	bandIndex := make(map[surfacePackedBand]int, len(bands))
 	for i, band := range bands {
 		bandIndex[band] = i
-		origin := band.low
-		if i == primary {
-			origin = anchor
-		}
-		parent, offsetY := -1, 0
-		if i != primary {
-			parent = i - 1
-			if i < primary {
-				parent = i + 1
-			}
-			parentOrigin := bands[parent].low
-			if parent == primary {
-				parentOrigin = anchor
-			}
-			offsetY = origin - parentOrigin
-		}
-		encoding.areas[i] = blueprint.Area{Index: int8(i), ParentIndex: int8(parent), AreaSegments: int16(band.segments), AnchorLocalOffsetY: int16(offsetY), Width: 1, Height: int16(band.high-origin) + 1}
-		encoding.latitudeOffsets[i] = origin - anchor
-		encoding.plan.Bands[i] = SurfaceBandPlan{AreaIndex: i, MinLatitudeGrid: origin, MaxLatitudeGrid: band.high, LongitudeSegments: band.segments}
 	}
 	for i, block := range b.surfaceBlocks {
 		packed := packing.blocks[i]

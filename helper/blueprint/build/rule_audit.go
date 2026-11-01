@@ -48,6 +48,9 @@ func validateFinalPlanetRules(ctx context.Context, req Request, encoding *surfac
 	if err := validateFinalReferences(ctx, records); err != nil {
 		return nil, err
 	}
+	if err := validatePastedConnections(ctx, records); err != nil {
+		return nil, err
+	}
 	audit := &RuleAudit{Profile: profile, QuantDataVersion: req.Plan.DataVersion, CoordinateSpace: "planet-surface", Coverage: "partial-numeric", Checks: []LogisticsCheck{}, Unverified: []string{"既有世界实体与真实地形", "Unity Physics、运行时 Mod 与科技环境", "外部原料、增产剂、机队与电力供应", "实际游戏放置与连续十分钟产量"}}
 	if req.Plan.Dataset != "" {
 		dataset, err := quant.LoadDataset(req.Plan.Dataset)
@@ -86,6 +89,7 @@ func validateFinalPlanetRules(ctx context.Context, req Request, encoding *surfac
 	}
 	for _, check := range []LogisticsCheck{
 		{RuleID: "final-references", Status: "passed", Message: "最终 float32 坐标、编号和引用闭合"},
+		{RuleID: "pasted-connection-slots", Status: "passed", Message: "按游戏粘贴顺序重放独占连接槽，所有声明的带、分拣器和设施连接在后续写入后仍存续"},
 		{RuleID: "static-build-colliders", Status: "passed", Message: "已核对原型 OBB 与三维空间索引，无未知静态模型"},
 		{RuleID: "belt-distance-occupancy", Status: "passed", Message: "带连接距离、无连接交叉、建筑占用与喷涂通道"},
 		{RuleID: "inserter-slot-geometry", Status: "passed", Message: "分拣器槽位修正、方向、长度、跨格和动态 OBB"},

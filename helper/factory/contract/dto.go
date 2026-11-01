@@ -110,7 +110,7 @@ type WorkspaceRequest struct {
 	Setting build.Setting `json:"setting"`
 	// SurfaceLayout 职责：保存行星网格布局偏好；使用：复现纬圈预检输入；边界：不包含游戏存档位置或碰撞验收结果。
 	SurfaceLayout *build.SurfaceLayout `json:"surfaceLayout,omitempty"`
-	// Mode 职责：保存生成策略；使用：复现生成输入；边界：取值 1..6。
+	// Mode 职责：保存生成策略；使用：复现生成输入；边界：仅接受当前支持的 1..4。
 	Mode int `json:"mode"`
 }
 

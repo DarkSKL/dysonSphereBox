@@ -6,6 +6,7 @@ import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
 import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, solveFactory} from '../../services/dysonSphere/factory'
 import {enableEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../services/dysonSphere/environment'
 import {requestBlueprintLibrary} from '../../services/dysonSphere/blueprint-navigation'
+import {buildFactoryLayoutRequest} from '../../services/dysonSphere/factory-layout'
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../services/dysonSphere/blueprint-preview-host'
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
@@ -35,10 +36,10 @@ export const useQuantWorkspace = () => {
   const sprayItself = ref(true)
   const spaceCost = ref<number | null>(1)
   const powerCost = ref<number | null>(0)
-  const mode = ref(3)
+  const mode = ref(1)
   // 蓝图名称：默认按目标自动生成（如「电磁矩阵 60 + 能量矩阵 60」）；用户手动修改后保持手动值，清空即恢复自动。
   const customName = ref('')
-  const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, useMixed: false, mix2: true, needCoaterNet: false})
+  const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, useMixed: false, mix2: false, needCoaterNet: false})
   const surfaceLayout = reactive({mode: 'autoTropic', gridSegment: 200, latitudeGridIndex: 0, expandAdjacent: true})
   const plan = ref<quant.Result | null>(null)
   const generated = ref<build.Result | null>(null)
@@ -79,10 +80,16 @@ export const useQuantWorkspace = () => {
   const generatedSignature = ref('')
   const itemMap = computed(() => new Map((detail.value?.items ?? []).map(item => [item.id, item])))
   const itemOptions = computed(() => (detail.value?.items ?? []).filter(item => item.id > 0).map(item => ({label: item.name, value: item.id})))
-  const requestSettings = computed(() => ({miningSpeedMultiple: miningSpeed.value ?? 1, fixedNum: fixedNum.value ?? 2, stackResearchLab: researchStack.value ?? 15, proliferateItself: sprayItself.value, mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true]))}))
-  const requestScheme = computed(() => ({itemRecipeChoices: {...itemRecipeChoices}, schemeForRecipe: (detail.value?.recipes ?? []).map((_recipe, index) => recipeOverrides[index] ?? {building: 0, productionMode: 0, increasePoints: 0}), costWeight: {space: spaceCost.value ?? 1, power: powerCost.value ?? 0}}))
+  // 自动球面布局固定使用默认量化精度与成本，不暴露平面优化参数；平面兼容模式仍可调节。
+  const automaticSurface = computed(() => surfaceLayout.mode !== 'planar')
+  const effectiveFixedNum = computed(() => automaticSurface.value ? 2 : fixedNum.value ?? 2)
+  const requestSettings = computed(() => ({miningSpeedMultiple: miningSpeed.value ?? 1, fixedNum: effectiveFixedNum.value, stackResearchLab: researchStack.value ?? 15, proliferateItself: sprayItself.value, mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true]))}))
+  const requestScheme = computed(() => ({itemRecipeChoices: {...itemRecipeChoices}, schemeForRecipe: (detail.value?.recipes ?? []).map((_recipe, index) => recipeOverrides[index] ?? {building: 0, productionMode: 0, increasePoints: 0}), costWeight: automaticSurface.value ? {space: 1, power: 0} : {space: spaceCost.value ?? 1, power: powerCost.value ?? 0}}))
+  // 混带与旧供剂网络开关不再由工作台控制；请求保留 DTO 字段但固定为 false。
+  const requestLayout = computed(() => buildFactoryLayoutRequest(layout, automaticSurface.value))
+  const requestSurfaceLayout = computed(() => ({...surfaceLayout, mode: surfaceLayout.mode === 'explicitTropic' ? 'autoTropic' : surfaceLayout.mode}))
   const querySignature = computed(() => JSON.stringify([datasetKey.value, targets.value.map(({itemId, ratePerMinute}) => ({itemId, ratePerMinute})), requestSettings.value, requestScheme.value]))
-  const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, {...layout}, {...surfaceLayout}, name.value]))
+  const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, requestLayout.value, requestSurfaceLayout.value, name.value]))
   const quantStale = computed(() => Boolean(plan.value && solvedSignature.value !== querySignature.value))
   const previewStale = computed(() => Boolean(code.value && !replay.value && (generatedSignature.value !== generationSignature.value || generating.value || generationFailed.value)))
   const expectedBuildings = computed(() => replay.value ? inspection.value?.summary.buildingCount ?? 0 : generated.value?.buildingCount ?? 0)
@@ -112,7 +119,7 @@ export const useQuantWorkspace = () => {
       dialog.error({title: '蓝图生成失败', content: failure.message, positiveText: '知道了'})
     }
   }
-  const number = (value: number | undefined): string => (value ?? 0).toLocaleString('zh-CN', {maximumFractionDigits: fixedNum.value ?? 2})
+  const number = (value: number | undefined): string => (value ?? 0).toLocaleString('zh-CN', {maximumFractionDigits: effectiveFixedNum.value})
   const itemName = (id: number): string => itemMap.value.get(id)?.name ?? `物品 ${id}`
   // 自动名称：按目标物品与每分钟产量生成，多目标用「+」连接，超过 3 个目标时概括为「等 N 项」；
   // 去掉 Windows 文件名不允许的字符并限制 60 字，末尾不留空格或点号（与 Go safeWindowsName 规则一致）。
@@ -141,7 +148,7 @@ export const useQuantWorkspace = () => {
   }
   const buildingOptions = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => (recipe?.factories ?? []).map((id, index) => ({label: itemName(id), value: index, icon: itemName(id)}))
   const sprayModes = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => [{label: '不喷涂', value: 0, icon: ''}, ...[{label: '加速', value: 1, icon: '增产剂 Mk.III'}, {label: '额外产出', value: 2, icon: '增产剂 Mk.III'}, {label: '透镜', value: 3, icon: '引力透镜'}, {label: '分馏', value: 4, icon: '分馏塔'}].filter(value => Boolean((recipe?.proliferator ?? 0) & (1 << (value.value - 1))))]
-  const pointOptions = computed(() => [{label: '默认', value: 0, icon: ''}, {label: '1 点', value: 1, icon: '增产剂 Mk.I'}, {label: '2 点', value: 2, icon: '增产剂 Mk.II'}, {label: '4 点', value: 4, icon: '增产剂 Mk.III'}, ...(datasetKey.value.includes('FractionateEverything') ? [{label: '10 点', value: 10, icon: '增产剂 Mk.III'}] : [])])
+  const pointOptions = computed(() => [{label: '默认', value: 0, icon: ''}, {label: '1 点', value: 1, icon: '增产剂 Mk.I'}, {label: '2 点', value: 2, icon: '增产剂 Mk.II'}, {label: '4 点', value: 4, icon: '增产剂 Mk.III'}])
 
   const loadDataset = async (): Promise<void> => {
     const version = ++datasetVersion
@@ -187,7 +194,7 @@ export const useQuantWorkspace = () => {
     saving.value = true
     try {
       const request = new quant.Request({dataset: datasetKey.value, targets: targets.value.map(target => ({itemId: target.itemId, ratePerMinute: target.ratePerMinute})), scheme: requestScheme.value, settings: requestSettings.value})
-      const path = await exportFactoryWorkspace(new factorycontract.WorkspaceRequest({name: name.value, request, plan: plan.value, setting: {...layout}, surfaceLayout: {...surfaceLayout}, mode: mode.value}))
+      const path = await exportFactoryWorkspace(new factorycontract.WorkspaceRequest({name: name.value, request, plan: plan.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, mode: mode.value}))
       if (path) message.success('计算方案与结果已导出为 JSON')
     } catch (caught) { report(caught) } finally { saving.value = false }
   }
@@ -203,7 +210,7 @@ export const useQuantWorkspace = () => {
     const observer = new AbortController()
     generationObserver = observer
     try {
-      const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, setting: {...layout}, surfaceLayout: {...surfaceLayout}, name: name.value}), progress => {
+      const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value}), progress => {
         if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
         generationProgress.value = progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
       }, observer.signal)
@@ -416,6 +423,7 @@ export const useQuantWorkspace = () => {
   watch(querySignature, scheduleSolve)
   watch(() => [plan.value?.planId, generationSignature.value], () => scheduleGenerate())
   watch(autoRun, value => { if (value) { scheduleSolve(); scheduleGenerate(0) } else { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer) } })
+  watch(mode, value => { if (![1, 2, 3, 4].includes(value)) mode.value = 1 })
   watch(generationSignature, () => { if (generating.value) generationProgress.value = '参数已变化，等待重新生成'; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
   watch(datasetKey, () => { if (initialized) void loadDataset() })
   watch(() => route.query.itemId, value => { if (initialized && typeof value === 'string' && value) void loadLibraryItem(value) })
@@ -426,7 +434,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

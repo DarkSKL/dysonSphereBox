@@ -10,15 +10,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 )
 
-// dataFiles 职责：携带全部 12 份原始 JSON；使用：加载；边界：不含图标美术。
+// dataFiles 职责：携带原版量化数据；使用：离线量化与蓝图生成；边界：不嵌入外部数据集、不联网、不读取用户 Mod 数据。
 //
-//go:embed data/*.json
+//go:embed data/Vanilla.json
 var dataFiles embed.FS
 
 // datasetCache 职责：保存只读缓存；使用：多次求解；边界：不得修改缓存内的切片或 map。
@@ -44,20 +42,31 @@ type Dataset struct {
 	Order []string
 }
 
-// LoadDataset 职责：读取/缓存指定内置数据；使用：服务开始求解时；边界：未知键明确失败，不回退猜测。
-func LoadDataset(key string) (*Dataset, error) {
-	if key == "" {
-		key = "Vanilla"
+// IsVanillaDatasetKey 职责：判断数据集键是否属于原版数据；使用：服务层阻断外部 Mod 进入蓝图工作流；边界：只按稳定键判断，不检查文件内容。
+func IsVanillaDatasetKey(key string) bool {
+	return strings.TrimSpace(key) == "" || strings.EqualFold(strings.TrimSpace(key), "Vanilla")
+}
+
+// LoadVanillaDataset 职责：读取唯一允许进入用户量化/生成流程的原版数据；使用：Wails factory 服务边界；边界：外部数据集键明确失败。
+func LoadVanillaDataset(key string) (*Dataset, error) {
+	if !IsVanillaDatasetKey(key) {
+		return nil, qerror("Q_E_DATASET_MOD_UNSUPPORTED", "蓝图生成仅支持原版游戏数据集")
 	}
+	return LoadDataset("Vanilla")
+}
+
+// LoadDataset 职责：读取并缓存唯一内置原版数据；使用：量化与生成内部统一入口；边界：非原版键明确失败，不保留外部数据回放通道。
+func LoadDataset(key string) (*Dataset, error) {
+	if !IsVanillaDatasetKey(key) {
+		return nil, qerror("Q_E_DATASET_MOD_UNSUPPORTED", "蓝图生成仅支持原版游戏数据集")
+	}
+	key = "Vanilla"
 	if v, ok := datasetCache.Load(key); ok {
 		return v.(*Dataset), nil
 	}
-	if strings.ContainsAny(key, "/\\.") {
-		return nil, qerror("Q_E_DATASET", "无效数据集键")
-	}
 	raw, err := dataFiles.ReadFile("data/" + key + ".json")
 	if err != nil {
-		return nil, qerror("Q_E_DATASET", "数据集不存在: "+key)
+		return nil, qerror("Q_E_DATASET", "原版内置数据集不存在")
 	}
 	var input struct {
 		Items   []Item
@@ -71,9 +80,7 @@ func LoadDataset(key string) (*Dataset, error) {
 	}
 	sum := sha256.Sum256(raw)
 	d := &Dataset{Info: DatasetInfo{Key: key, Name: key, GameVersion: "0.10.34.28524", DataVersion: hex.EncodeToString(sum[:8]), ItemCount: len(input.Items), RecipeCount: len(input.Recipes)}, Items: input.Items, Recipes: input.Recipes, ByID: map[int]Item{}, ByName: map[string]Item{}, RecipeByID: map[int]int{}, Choices: map[string][]int{}}
-	if key == "Vanilla" {
-		d.Info.Name = "原版游戏"
-	}
+	d.Info.Name = "原版游戏"
 	for _, item := range d.Items {
 		d.ByID[item.ID] = item
 		d.ByName[item.Name] = item
@@ -100,31 +107,11 @@ func LoadDataset(key string) (*Dataset, error) {
 	return actual.(*Dataset), nil
 }
 
-// ListDatasets 职责：枚举内置组合；使用：工作区切换；边界：损坏数据不静默消失。
+// ListDatasets 职责：返回唯一可供用户选择的原版数据集；使用：工作区初始化；边界：不扫描目录或暴露外部数据组合。
 func ListDatasets() ([]DatasetInfo, error) {
-	files, err := dataFiles.ReadDir("data")
+	d, err := LoadVanillaDataset("Vanilla")
 	if err != nil {
 		return nil, err
 	}
-	result := []DatasetInfo{}
-	for _, f := range files {
-		if filepath.Ext(f.Name()) != ".json" || f.Name() == "manifest.json" {
-			continue
-		}
-		d, err := LoadDataset(strings.TrimSuffix(f.Name(), ".json"))
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, d.Info)
-	}
-	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].Key == "Vanilla" {
-			return true
-		}
-		if result[j].Key == "Vanilla" {
-			return false
-		}
-		return result[i].Key < result[j].Key
-	})
-	return result, nil
+	return []DatasetInfo{d.Info}, nil
 }

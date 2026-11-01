@@ -220,6 +220,9 @@ func (b *builder) validateBusFabric() error {
 			return transportAllocationError(edge, edge.RatePerMinute-edgeTotals[edge.ID], "混带规范边未被完整守恒覆盖")
 		}
 	}
+	if err := b.validateMachineRecycles(indices, beltLoads); err != nil {
+		return err
+	}
 	for layer, load := range layerLoads {
 		if load > summary.BeltCapacityPerMinute+1e-6 {
 			return &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("混带第%d圈实际负载%.3f/min超过所选单带%.3f/min", layer+1, load, summary.BeltCapacityPerMinute)}
@@ -248,13 +251,25 @@ func (b *builder) validateBusFabric() error {
 
 // validateBusFabricProducer 职责：证明过滤器实际从指定生产行输出干线抓取并进入此 lane 支路；使用：混带源端核验；边界：过滤标记和额定能力不能代替生产者/消费者的物理连接。
 func validateBusFabricProducer(route *transportRoute) error {
-	if route.from == nil || route.from.line == nil || len(route.from.line.output) == 0 || len(route.path) == 0 || route.start != route.path[len(route.path)-1] {
+	if route.from == nil || route.from.line == nil || len(route.path) == 0 || route.start != route.path[len(route.path)-1] {
 		return transportAllocationError(route.edge, route.rate, "混带生产者缺少真实输出干线或过滤支路")
 	}
 	trunk, branch := map[*placed]bool{}, map[*placed]bool{}
-	row := route.from.line.output
+	row := route.from.line.outputForItem(route.edge.ItemID)
+	if len(row) == 0 {
+		return transportAllocationError(route.edge, route.rate, "机器行没有该物品的独立出货带")
+	}
 	for current := row[len(row)-1]; current != nil && !trunk[current] && len(trunk) <= blueprint.MaxBuildingCount; current = current.output {
 		trunk[current] = true
+		if current.record.ItemID == 2020 {
+			for _, recycle := range route.from.recycles {
+				if recycle.item == route.edge.ItemID && current == recycle.outputGate && len(recycle.surplus) > 0 {
+					current = recycle.surplus[0]
+					trunk[current] = true
+					break
+				}
+			}
+		}
 	}
 	for _, belt := range route.path {
 		branch[belt] = true
@@ -302,6 +317,13 @@ func busFabricConsumerTail(route *transportRoute) ([]*placed, error) {
 	}
 	if terminal == nil {
 		return nil, transportAllocationError(route.edge, route.rate, "混带物品不属于指定机器输入端")
+	}
+	// 净补料进入机器内部回流的“新料”端，下一段物理连接由Model38优先门接管，
+	// 不能把非传送带门错误地当成普通belt.output继续遍历。
+	for _, recycle := range route.to.recycles {
+		if recycle != nil && recycle.item == route.edge.ItemID && route.end == recycle.fresh {
+			return []*placed{route.end}, nil
+		}
 	}
 	path, seen := []*placed{}, map[*placed]bool{}
 	for current := route.end; current != nil && !seen[current] && len(path) <= blueprint.MaxBuildingCount; current = current.output {

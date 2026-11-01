@@ -90,6 +90,9 @@ func (b *builder) finalizeLogistics(mode int, records []blueprint.Building, area
 			}
 		}
 	}
+	if err := b.validateMachineRecycles(indices, sharedBeltRates); err != nil {
+		return nil, err
+	}
 	maxShared := 0.0
 	for belt, rate := range sharedBeltRates {
 		if rate > maxShared {

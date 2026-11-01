@@ -80,6 +80,15 @@ func (b *builder) bindFlyTransportEdges(mode int) error {
 		}
 		target[endpoint.owner][endpoint.item] = append(target[endpoint.owner][endpoint.item], endpoint)
 	}
+	// 先验证完整本地链再提交规范边；不能让端点存在或部分带链
+	// 掩盖机器到箱体的断路，也不能在失败后遗留已发布的路线。
+	if err := b.validateFlyEndpointTopology(mode); err != nil {
+		return err
+	}
+	capacityChecks, capacityWarnings, err := b.flyLocalInserterChecks(mode)
+	if err != nil {
+		return err
+	}
 
 	boundEdges := 0
 	plannedRoutes := []*transportRoute{}
@@ -120,6 +129,8 @@ func (b *builder) bindFlyTransportEdges(mode int) error {
 		}
 	}
 	b.transportRoutes = plannedRoutes
+	b.logistics.Checks = append(b.logistics.Checks, capacityChecks...)
+	b.warnings = append(b.warnings, capacityWarnings...)
 	b.logistics.Checks = append(b.logistics.Checks,
 		LogisticsCheck{RuleID: "fly-edge-binding", Status: "passed", Message: fmt.Sprintf("模式 %d 已将 %d 条规范边按端点实际份额拆成 %d 条计划 lane；每路只引用对应的真实本地配送器/箱体接驳链", mode, boundEdges, len(b.transportRoutes))},
 		LogisticsCheck{RuleID: "fly-runtime-delivery", Status: "unverified", Message: "配送机队、箱体库存、远程供给和游戏科技状态未在离线蓝图中模拟；逐边速率是按计划供料/取货契约记录"},
@@ -266,6 +277,21 @@ func appendFlyEndpointEntities(out []*placed, endpoints ...*flyTransportEndpoint
 		entities := append([]*placed{endpoint.link, endpoint.splitter, endpoint.box, endpoint.delivery, endpoint.arm}, endpoint.belts...)
 		entities = append(entities, endpoint.arms...)
 		entities = append(entities, endpoint.filters...)
+		// 每根过滤臂的实际支路可能从link上游若干格合流；不能只列臂和
+		// 最后一个带端而遗漏已编码的中间带。完整性入口先保证整链可达。
+		for _, filter := range endpoint.filters {
+			if filter == nil {
+				continue
+			}
+			branchSeen := map[*placed]bool{}
+			for belt := filter.output; belt != nil && surfaceIsBelt(belt.record.ItemID) && !branchSeen[belt]; belt = belt.output {
+				branchSeen[belt] = true
+				entities = append(entities, belt)
+				if belt == endpoint.link || belt.record.OutputToSlot != 1 {
+					break
+				}
+			}
+		}
 		for _, p := range entities {
 			if p != nil && !seen[p] {
 				seen[p] = true
@@ -276,45 +302,7 @@ func appendFlyEndpointEntities(out []*placed, endpoints ...*flyTransportEndpoint
 	return out
 }
 
-// validateFlyEndpointTopology 职责：检查端点本地接驳链；使用：模式收尾回归；边界：不把远程机队行为当成本地带连接。
+// validateFlyEndpointTopology 职责：检查每条接驳带、机器方向链和真实设施槽位；使用：绑定规范边之前及模式收尾；边界：不把远程机队行为当成本地连续带连接。
 func (b *builder) validateFlyEndpointTopology(mode int) error {
-	for _, endpoint := range b.flyEndpoints {
-		if endpoint == nil || endpoint.delivery == nil || endpoint.box == nil || endpoint.link == nil || len(endpoint.belts) == 0 {
-			return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: "配送端点缺少箱体、配送器或实体接驳带"}
-		}
-		if endpoint.delivery.input != endpoint.box {
-			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 配送器未连接箱体", endpoint.owner, endpoint.item)}
-		}
-		if mode == 5 {
-			if endpoint.splitter == nil || endpoint.box.input != endpoint.splitter {
-				return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 四向分流器未连接箱体", endpoint.owner, endpoint.item)}
-			}
-			// 端口事实来自固定目录的 Model39：Yaw90 的地面东西口是0/2，
-			// 箱体位于其上方；不能把沿北/南方向的视觉近邻当成真实接线。
-			end := endpoint.belts[len(endpoint.belts)-1]
-			want := int8(0)
-			if end.a.x < endpoint.splitter.a.x {
-				want = 2
-			}
-			if endpoint.splitter.record.ModelIndex != 39 || endpoint.splitter.record.Yaw != 90 || math.Abs(end.a.y-endpoint.splitter.a.y) > 1e-6 || math.Abs(math.Abs(end.a.x-endpoint.splitter.a.x)-1) > 1e-6 || math.Abs(end.a.z) > 1e-6 {
-				return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 物品 %d 分流器接驳不在已核对地面东西口", endpoint.owner, endpoint.item)}
-			}
-			if endpoint.input && (end.input != endpoint.splitter || end.record.InputFromSlot != want) || !endpoint.input && (end.output != endpoint.splitter || end.record.OutputToSlot != want) {
-				return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 分流器接驳端口或方向错误", endpoint.owner, endpoint.item)}
-			}
-		} else if endpoint.arm == nil {
-			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 配送器缺少箱体分拣器", endpoint.owner, endpoint.item)}
-		}
-		for _, arm := range endpoint.arms {
-			if arm == nil || arm.input == nil || arm.output == nil {
-				return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 存在未连接的并联箱体分拣器", endpoint.owner, endpoint.item)}
-			}
-		}
-		for _, filter := range endpoint.filters {
-			if filter == nil || filter.input == nil || filter.output == nil || int(filter.record.FilterID) != endpoint.item {
-				return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("产线 %d 物品 %d 输出过滤分拣器不完整或物品不匹配", endpoint.owner, endpoint.item)}
-			}
-		}
-	}
-	return nil
+	return b.validateFlyLocalIntegrity(mode)
 }

@@ -140,7 +140,7 @@ func effects(points int) (increase, speed, power float64) {
 	return 1.15 + .025*float64(points), 1 + .25*float64(points), .9 + .4*float64(points)
 }
 
-// sprayCost 职责：选择可用增产剂；使用：单位喷涂原料；边界：1/2/4 点采用原版喷涂次数，其他点需数据支持。
+// sprayCost 职责：选择原版增产剂消耗；使用：量化原版喷涂配置；边界：只接受 1、2、4 点。
 func sprayCost(d *Dataset, points int, self bool) (string, float64, error) {
 	id, times := 1141, 12.
 	if points == 2 {
@@ -149,10 +149,7 @@ func sprayCost(d *Dataset, points int, self bool) (string, float64, error) {
 	if points >= 4 {
 		id, times = 1143, 60
 	}
-	if points == 10 && strings.Contains(d.Info.Key, "FractionateEverything") {
-		times = 24
-	}
-	if points != 1 && points != 2 && points != 4 && !(points == 10 && strings.Contains(d.Info.Key, "FractionateEverything")) {
+	if points != 1 && points != 2 && points != 4 {
 		return "", 0, qerror("Q_E_BAD_REQUEST", "当前数据集没有对应点数的增产剂，支持 1、2、4 点")
 	}
 	item, ok := d.ByID[id]
@@ -262,11 +259,8 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 		}
 		if rs.ProductionMode > 0 && rs.IncreasePoints == 0 {
 			rs.IncreasePoints = 4
-			if strings.Contains(d.Info.Key, "FractionateEverything") {
-				rs.IncreasePoints = 10
-			}
 		}
-		if rs.Building < 0 || rs.Building >= len(r.Factories) || rs.ProductionMode < 0 || rs.ProductionMode > 4 || rs.IncreasePoints < 0 || rs.IncreasePoints > 10 {
+		if rs.Building < 0 || rs.Building >= len(r.Factories) || rs.ProductionMode < 0 || rs.ProductionMode > 4 || rs.IncreasePoints < 0 || rs.IncreasePoints > 4 {
 			return nil, qerror("Q_E_BAD_REQUEST", fmt.Sprintf("配方 %d 的设施或喷涂配置无效", r.ID))
 		}
 		if rs.ProductionMode > 0 && r.Proliferator&(1<<uint(rs.ProductionMode-1)) == 0 {
@@ -278,13 +272,12 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 		output := 0.
 		products := newRates()
 		for i, id := range r.Results {
-			products.set(d.ByID[id].Name, r.ResultCounts[i])
 			if d.ByID[id].Name == name {
 				output = r.ResultCounts[i]
 			}
 		}
-		if strings.Contains(d.Info.Key, "TheyComeFromVoid") && s.BlueBuff && len(r.Items) >= 2 {
-			products.set(d.ByID[r.Items[0]].Name, r.ResultCounts[0])
+		for i, id := range r.Results {
+			products.set(d.ByID[id].Name, r.ResultCounts[i])
 		}
 		total := 0.
 		for i, id := range r.Items {

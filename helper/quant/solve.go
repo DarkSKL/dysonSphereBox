@@ -106,17 +106,13 @@ func Solve(parent context.Context, req Request) (Result, error) {
 			}
 			continue
 		}
-		speed := n.factory.Speed
-		if speed <= 0 {
-			speed = 1
+		singleOutput := machineOutputPerMinute(n)
+		if singleOutput <= 0 || math.IsNaN(singleOutput) || math.IsInf(singleOutput, 0) {
+			return Result{}, qerror("Q_E_BAD_REQUEST", "设备配置满负荷速率超出计算范围: "+name)
 		}
-		exact := amount / 60 / n.rate / speed
-		if exact > 1000000 {
-			return Result{}, qerror("Q_E_BAD_REQUEST", "单条产线机器数超过 100 万，请拆分目标")
-		}
-		count := int(math.Ceil(math.Round(exact*100) / 100))
-		if count < 1 {
-			count = 1
+		exact, count, err := requiredMachineCount(amount, singleOutput)
+		if err != nil {
+			return Result{}, err
 		}
 		level := 0
 		if n.scheme.IncreasePoints > 0 {
@@ -136,6 +132,10 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		}
 		p.PowerMW = exact * n.factory.WorkEnergyPerTick * .00006 * power
 		p.Inputs, p.Outputs = flows(d, n, amount)
+		p.Capacity, err = productionCapacity(d, n, p)
+		if err != nil {
+			return Result{}, err
+		}
 		out.Productions = append(out.Productions, p)
 		out.MachineCount += count
 		out.PowerMW += p.PowerMW

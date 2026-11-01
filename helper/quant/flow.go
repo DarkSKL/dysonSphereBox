@@ -69,6 +69,8 @@ func BuildFlowGraphContext(ctx context.Context, plan Result) (FlowGraph, error) 
 		}
 		inputs, outputs = netFlowRates(inputs, outputs)
 		canonical := p
+		// 条件能力不是期望净流图的一部分，旧快照与新元数据必须保持同一规范摘要。
+		canonical.Capacity = nil
 		canonical.Inputs, canonical.Outputs = inputs, outputs
 		canonical.TargetItemIDs = append([]int{}, p.TargetItemIDs...)
 		sort.Ints(canonical.TargetItemIDs)

@@ -141,12 +141,20 @@ type builder struct {
 	flowGraph *quant.FlowGraph
 	// transportRoutes 职责：保存 lane 与真实建筑指针的关联；使用：重排后的最终连通检查；边界：索引只在统一编号后生成。
 	transportRoutes []*transportRoute
+	// machineRecycles 职责：保存机器内部毛流回收的物理证据；使用：直连/总线局部路由和共享带复核；边界：不加入规范净流账或额外外供份额。
+	machineRecycles []*machineRecycle
+	// connectedCompactBelts 职责：启用完整直连路线的闲置带尾裁剪；使用：生成候选与同输入基线对照；边界：不参与装箱或占位判断，必须在路由之后执行以保留原空间布局。
+	connectedCompactBelts bool
+	// connectedLegacyInputs 职责：为就近入口无可行候选时保留原集中入口退路；使用：mode1完整重建的第二组候选；边界：不得复用失败候选的路径、实体或诊断，mode6仍使用自己的原入口。
+	connectedLegacyInputs bool
 	// logistics 职责：积累本次生成的物流与空间证据；使用：finish；边界：硬错误不随结果返回部分蓝图。
 	logistics *LogisticsSummary
 	// stationLinks 职责：保存每条塔路线；使用：模式3/4按FlowGraph核验；边界：不跨请求复用。
 	stationLinks []stationTransportLink
 	// flyEndpoints 职责：保存 mode2/5 每条产线端点；使用：按 FlowGraph 逐边绑定；边界：没有端点的规范边必须硬失败。
 	flyEndpoints []*flyTransportEndpoint
+	// flyCompact 职责：启用配送候选的紧凑本地端点余量；使用：有界布局候选；边界：基线保持原几何，紧凑方案仍经过同一预提交和最终规则。
+	flyCompact bool
 	// busLinks 职责：保存混带输入、回流及边界的实体引用；使用：mode6 逐边绑定与容量校验；边界：不跨请求复用。
 	busLinks []busTransportLink
 	// busLayers 职责：保存物品到共享环路的确定映射；使用：检查每圈累计带负载；边界：未调度物品不得默认归入第一圈。
@@ -206,7 +214,7 @@ func itoa(v int) string {
 	return string(out[i:])
 }
 
-// connect 职责：连接有向带；使用：路径装配；边界：不猜测输入反向字段。
+// connect 职责：连接有向带并设置待编号的默认输入槽；使用：路径装配；边界：多路汇流的独占输入槽由records统一分配，不写带到带的反向输入字段。
 func connect(a, b *placed) { a.output = b; a.record.OutputToSlot = 1 }
 
 // reverse 职责：反转原数组中的带方向；使用：输入/输出转换；边界：保持数组位置稳定。
@@ -360,6 +368,9 @@ func (b *builder) records() ([]blueprint.Building, []ProductionBinding, []int, e
 				machines[p.owner] = append(machines[p.owner], i)
 			}
 		}
+	}
+	if err := assignBeltInputSlots(out); err != nil {
+		return nil, nil, nil, err
 	}
 	result := []ProductionBinding{}
 	for owner := 0; owner < len(b.all); owner++ {

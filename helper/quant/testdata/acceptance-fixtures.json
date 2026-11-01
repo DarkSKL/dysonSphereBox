@@ -42,7 +42,6 @@
       "proliferateItself": false,
       "accRate": 1,
       "incRate": 1,
-      "blueBuff": false,
       "mineralizeList": {},
       "naturalProductionLine": []
     }

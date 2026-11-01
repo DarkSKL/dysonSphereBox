@@ -37,7 +37,7 @@ const laneCounts = computed(() => {
 })
 const edges = computed(() => graph.value.edges.map(edge => ({
   id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle, type: 'flow',
-  data: {name: edge.name, rate: edge.rate, cycle: edge.cycle, label: `${edge.name} ${props.w.number(edge.rate)}/min${laneCounts.value.has(edge.id) ? ` · ${laneCounts.value.get(edge.id)} 路` : ''}`, width: 1 + 3 * Math.log1p(edge.rate) / Math.log1p(maxRate.value), highlighted: related.value?.has(edge.id) ?? false, dimmed: related.value ? !related.value.has(edge.id) : false},
+  data: {name: edge.name, rate: edge.rate, cycle: edge.cycle, label: `${edge.name} 期望 ${props.w.number(edge.rate)}/min${laneCounts.value.has(edge.id) ? ` · ${laneCounts.value.get(edge.id)} 路` : ''}`, width: 1 + 3 * Math.log1p(edge.rate) / Math.log1p(maxRate.value), highlighted: related.value?.has(edge.id) ?? false, dimmed: related.value ? !related.value.has(edge.id) : false},
 })))
 
 // 选中节点在重算后消失（如改为外供）时清空，避免面板停留在过期节点。
@@ -136,7 +136,7 @@ watch(paletteView, value => { try { localStorage.setItem(paletteViewKey, value) 
 // =============== 顶部参数栏 ===============
 // 说明：最常改的数据集、生成模式、传送带与分拣器放在画布顶部，其余参数留在格式面板。
 // icon 为图鉴中文名：生成模式取该模式的核心物流设施，传送带与分拣器取对应等级；数据集不显示物品图标。
-const modeOptions = [{label: '机器直连带', value: 1, icon: '传送带'}, {label: '物流配送器', value: 2, icon: '物流配送器'}, {label: '行星内物流塔', value: 3, icon: '行星内物流运输站'}, {label: '星际物流塔', value: 4, icon: '星际物流运输站'}, {label: '四向分流', value: 5, icon: '四向分流器'}, {label: '混带总线', value: 6, icon: '急速传送带'}]
+const modeOptions = [{label: '机器直连带', value: 1, icon: '传送带'}, {label: '物流配送器', value: 2, icon: '物流配送器'}, {label: '行星内物流塔', value: 3, icon: '行星内物流运输站'}, {label: '星际物流塔', value: 4, icon: '星际物流运输站'}]
 const beltOptions = [{label: '传送带', value: 1, icon: '传送带'}, {label: '高速带', value: 2, icon: '高速传送带'}, {label: '极速带', value: 3, icon: '急速传送带'}]
 const inserterOptions = [{label: '分拣器', value: 1, icon: '分拣器'}, {label: '高速分拣', value: 2, icon: '高速分拣器'}, {label: '极速分拣', value: 3, icon: '极速分拣器'}, {label: '集装分拣', value: 4, icon: '集装分拣器'}]
 const datasetOptions = computed(() => props.w.datasets.map(item => ({label: item.name, value: item.key, icon: ''})))
@@ -186,7 +186,7 @@ const targetIds = computed(() => new Set(props.w.targets.map(target => target.it
           <IconSelect v-model:value="w.layout.beltLv" class="tool-select short" :options="beltOptions" aria-label="传送带" />
           <IconSelect v-model:value="w.layout.inserterLv" class="tool-select short" :options="inserterOptions" aria-label="分拣器" />
         </div>
-        <span v-if="w.plan && !w.replay" class="flow-stats"><span><strong class="type-display">{{ w.plan.machineCount }}</strong> 台</span><span><strong class="type-display">{{ w.number(w.plan.powerMw) }}</strong> MW</span><span><strong class="type-display">{{ w.plan.productions.length }}</strong> 线</span></span>
+        <span v-if="w.plan && !w.replay" class="flow-stats"><span><strong class="type-display">{{ w.plan.machineCount }}</strong> 台</span><span title="按期望速率折算的制造设备工作功耗">期望功耗 <strong class="type-display">{{ w.number(w.plan.powerMw) }}</strong> MW</span><span><strong class="type-display">{{ w.plan.productions.length }}</strong> 线</span></span>
         <span class="flow-state" :class="{'is-busy': w.solving}">{{ w.solving ? '计算中…' : w.quantStale ? '等待计算' : w.plan ? '已同步' : '' }}</span>
         <div class="tool-group is-view">
           <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="放大" @click="zoomIn({duration: 150})"><Plus :size="14" /></button></template>放大</n-tooltip>

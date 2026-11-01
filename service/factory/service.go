@@ -31,7 +31,7 @@ type Service struct {
 	artifacts factoryHelper.Artifacts
 }
 
-// ListDatasets 职责：返回 12 个内置组合；使用：页面初始化；边界：不运行联网发现。
+// ListDatasets 职责：返回原版游戏量化数据集；使用：页面初始化；边界：不暴露外部 Mod 数据，不运行联网发现。
 func (s *Service) ListDatasets() contract.DatasetResponse {
 	data, err := quant.ListDatasets()
 	return contract.DatasetResponse{Status: factoryHelper.Status(err), Data: data}
@@ -39,7 +39,7 @@ func (s *Service) ListDatasets() contract.DatasetResponse {
 
 // DescribeDataset 职责：返回当前物品与配方选项；使用：目标及人工方案控件；边界：前端不执行配方计算。
 func (s *Service) DescribeDataset(key string) contract.DatasetDetailResponse {
-	d, err := quant.LoadDataset(key)
+	d, err := quant.LoadVanillaDataset(key)
 	if err != nil {
 		return contract.DatasetDetailResponse{Status: factoryHelper.Status(err)}
 	}
@@ -48,6 +48,11 @@ func (s *Service) DescribeDataset(key string) contract.DatasetDetailResponse {
 
 // Solve 职责：校验并执行量化，保存可信快照；使用：工作区量化按钮；边界：失败不缓存部分结果，不修改数据集。
 func (s *Service) Solve(req quant.Request) contract.QuantResponse {
+	if !quant.IsVanillaDatasetKey(req.Dataset) {
+		err := &blueprint.Error{Code: "Q_E_DATASET_MOD_UNSUPPORTED", Message: "蓝图生成仅支持原版游戏数据集"}
+		systemHelper.RecordFailure("factory", "quant", "solve", "量化求解失败", err, map[string]interface{}{"targets": len(req.Targets), "dataset": req.Dataset})
+		return contract.QuantResponse{Status: factoryHelper.Status(err)}
+	}
 	data, err := quant.Solve(context.Background(), req)
 	if err != nil {
 		systemHelper.RecordFailure("factory", "quant", "solve", "量化求解失败", err, map[string]interface{}{"targets": len(req.Targets), "dataset": req.Dataset})
@@ -110,6 +115,19 @@ func (s *Service) Encode(req contract.EncodeRequest) contract.EncodeResponse {
 
 // Generate 职责：复核方案后取消旧生成并串行接替、自检；使用：生成按钮；边界：只接受可信方案，被替代任务不返回成功结果。
 func (s *Service) Generate(req build.Request) contract.GenerateResponse {
+	if !quant.IsVanillaDatasetKey(req.Plan.Dataset) {
+		err := &blueprint.Error{Code: "GEN_E_DATASET_MOD_UNSUPPORTED", Message: "蓝图生成仅支持原版游戏数据集"}
+		return contract.GenerateResponse{Status: factoryHelper.Status(err)}
+	}
+	if req.Mode < 1 || req.Mode > 4 {
+		err := &blueprint.Error{Code: "GEN_E_MODE", Message: "当前只支持机器直连带、物流配送器、行星物流塔和星际物流塔模式"}
+		return contract.GenerateResponse{Status: factoryHelper.Status(err)}
+	}
+	if req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "" && req.SurfaceLayout.Mode != "autoTropic" && req.SurfaceLayout.Mode != "planar" {
+		err := &blueprint.Error{Code: "GEN_E_SURFACE", Message: "当前只支持球面自动模式与旧平面兼容模式"}
+		return contract.GenerateResponse{Status: factoryHelper.Status(err)}
+	}
+	req.Setting = factoryHelper.NormalizeCurrentLayoutSetting(req.Setting)
 	s.mu.Lock()
 	plan, ok := s.plans[req.Plan.PlanID]
 	s.mu.Unlock()
@@ -151,6 +169,10 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 
 // Inspect 职责：只读反算配方理论速率；使用：导入或库内回放；边界：不伪造量化结果，不修改原资源。
 func (s *Service) Inspect(req contract.InspectRequest) contract.InspectResponse {
+	if !quant.IsVanillaDatasetKey(req.Dataset) {
+		err := &blueprint.Error{Code: "Q_E_DATASET_MOD_UNSUPPORTED", Message: "蓝图回放仅支持原版游戏数据集"}
+		return contract.InspectResponse{Status: factoryHelper.Status(err)}
+	}
 	data, err := factoryHelper.Inspect(req)
 	if err != nil {
 		return contract.InspectResponse{Status: factoryHelper.Status(err)}

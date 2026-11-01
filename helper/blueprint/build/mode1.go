@@ -17,33 +17,47 @@ import (
 // generateConnected 职责：在固定预算内选择最小面积可行候选；使用：直连带主链；边界：候选必须通过最终数值、连通和编码检查，不以矩形面积替代可行性。
 func (b *builder) generateConnected(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
 	limits := []float64{math.Max(60, b.setting.BlockWidthLimit), math.Max(100, b.setting.BlockWidthLimit*1.5), math.Max(160, b.setting.BlockWidthLimit*2)}
-	budget := len(limits) * 2
+	layouts := len(limits) * 2
+	budget := layouts * 2
 	var best *Result
 	var lastError error
 	evaluated, rejected := 0, 0
 	for candidateIndex := 0; candidateIndex < budget; candidateIndex++ {
+		// 就近入口改变了前序路径占位；只有整组均不可行时才独立重建旧入口候选，
+		// 避免线路节省变成生成兼容性回退，也不在常规成功路径上翻倍装配开销。
+		if candidateIndex == layouts && best != nil {
+			break
+		}
+		legacyInputs := candidateIndex >= layouts
+		layoutIndex := candidateIndex % layouts
 		limit := limits[candidateIndex%len(limits)]
-		compact := candidateIndex >= len(limits)
+		compact := layoutIndex >= len(limits)
 		if ctx.Err() != nil {
 			return Result{}, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成已取消或超过 4 分钟"}
 		}
 		evaluated++
-		reportProgress(ctx, "flow-layout", fmt.Sprintf("正在检查直连带布局候选 %d/%d", evaluated, budget), evaluated, budget)
+		inputKind := "就近原料入口"
+		if legacyInputs {
+			inputKind = "兼容原料入口"
+		}
+		reportProgress(ctx, "flow-layout", fmt.Sprintf("正在检查直连带布局候选 %d/%d（%s）", evaluated, budget, inputKind), evaluated, budget)
 		candidate, err := newBuilder(b.setting)
 		if err != nil {
 			return Result{}, err
 		}
 		candidate.flowGraph = b.flowGraph
+		candidate.connectedCompactBelts = true
+		candidate.connectedLegacyInputs = legacyInputs
 		candidate.generationCtx = ctx
 		candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 		candidate.logistics.Metrics.CandidateBudget = budget
 		if err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, compact); err != nil {
-			lastError, rejected = err, rejected+1
+			lastError, rejected = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err), rejected+1
 			continue
 		}
 		out, err := candidate.finish(ctx, req, dataset)
 		if err != nil {
-			lastError, rejected = err, rejected+1
+			lastError, rejected = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err), rejected+1
 			continue
 		}
 		if out.LogisticsSummary == nil {
@@ -53,6 +67,9 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 		if best == nil || betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
 			best = &out
 		}
+	}
+	if ctx.Err() != nil {
+		return Result{}, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成已取消或超过 4 分钟"}
 	}
 	if best == nil {
 		if lastError == nil {
@@ -65,7 +82,7 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 	}
 	best.LogisticsSummary.Metrics.EvaluatedCandidates = evaluated
 	best.LogisticsSummary.Metrics.RejectedCandidates = rejected
-	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: fmt.Sprintf("固定 %d 个候选预算内比较矩形基线与实体轮廓靠拢；评估 %d、拒绝 %d，按面积和内部带长选择可行方案，不代表数学全局最优", budget, evaluated, rejected)})
+	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: fmt.Sprintf("最多 %d 个候选：先比较 %d 个就近入口矩形/轮廓布局，仅在全部不可行时独立重建兼容入口布局；评估 %d、拒绝 %d，按面积和内部带长选择可行方案，不代表数学全局最优", budget, layouts, evaluated, rejected)})
 	return *best, nil
 }
 
@@ -93,7 +110,13 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 	if err := b.prepareConnectedRows(ctx, req, dataset, heightLimit, compact); err != nil {
 		return err
 	}
-	return b.routeTransport(ctx)
+	if err := b.routeTransport(ctx); err != nil {
+		return err
+	}
+	if b.connectedCompactBelts {
+		return b.trimConnectedTails()
+	}
+	return nil
 }
 
 // prepareConnectedRows 职责：装配统一机器行和逐物品过滤端口但不决定全局运输拓扑；使用：直连带与可扩展混带环路共用局部几何；边界：调用方必须继续完成全图路由与最终规则，不能直接编码半成品。
@@ -146,10 +169,8 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			}
 			return row.outputs[i].edge.ID < row.outputs[j].edge.ID
 		})
-		if err := b.attachFilteredOutputs(row); err != nil {
-			return err
-		}
-		// 接入干线属于机器行真实占地，必须在装箱前生成，否则后补的西侧带会侵入上一列。
+		// 先落位完整输入接驳；低等级分拣器可能把产物移到内轨，过滤区必须
+		// 知道所有输入带真实西端（包括mode6动态长度），才能避免向外取料撞带。
 		items := make([]int, 0, len(row.inputs))
 		for item := range row.inputs {
 			items = append(items, item)
@@ -174,6 +195,7 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			}
 			stub := b.byPath(points)
 			connect(stub[len(stub)-1], endpoint)
+			row.inputStubs[item] = stub
 			row.inputs[item] = stub[0]
 			inputIndex := 0
 			for _, route := range b.transportRoutes {
@@ -186,6 +208,27 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 				}
 			}
 		}
+		if err := b.prepareMachineRecycles(row); err != nil {
+			return err
+		}
+		if req.Mode == 6 {
+			for _, route := range b.transportRoutes {
+				if route.to != row {
+					continue
+				}
+				for _, recycle := range row.recycles {
+					if recycle.item == route.edge.ItemID {
+						// 混带取料须进入新料侧优先门，不能沿原stub绕开回流门。
+						route.end = recycle.fresh
+						break
+					}
+				}
+			}
+		}
+		if err := b.attachFilteredOutputs(row); err != nil {
+			return err
+		}
+		// 接入干线属于机器行真实占地，必须在装箱前生成，否则后补的西侧带会侵入上一列。
 		block := b.all[begin:]
 		minimum, maximum := bounds(block)
 		width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
@@ -232,61 +275,146 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 	return nil
 }
 
-// attachFilteredOutputs 职责：把共享输出带按物品与流量拆为真实过滤支路；使用：机器行平移前；边界：多产物不再被当作一条可分别交付的匿名输出。
+// attachFilteredOutputs 职责：从逐产物独立出货带按消费者流量拆出过滤支路；使用：机器行平移前；边界：不同产物不共享机器干线，同物品各份额仍合并核算带容量。
 func (b *builder) attachFilteredOutputs(row *transportRow) error {
-	if len(row.line.output) == 0 {
-		return &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: "机器行没有输出带"}
+	// output 职责：保存同一产物的独立机器带和消费者分支；使用：物理轨位排序；边界：不同产物绝不借用同一机器输出干线。
+	type output struct {
+		belts  []*placed
+		routes []*transportRoute
 	}
-	trunk := row.line.output[0]
-	shared := append([]*placed{}, row.line.output...)
-	cursor := trunk.a.x - 1
+	outputs := []output{}
+	cursor := math.Inf(1)
+	for _, item := range row.recipe.Results {
+		belts := row.line.outputForItem(item)
+		if len(belts) == 0 {
+			return &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行产物%d没有独立输出带", item)}
+		}
+		group := output{belts: belts}
+		for _, route := range row.outputs {
+			if route.edge.ItemID == item {
+				group.routes = append(group.routes, route)
+			}
+		}
+		outputs = append(outputs, group)
+		cursor = math.Min(cursor, belts[0].a.x-1)
+	}
+	// 外侧轨先分支，内侧轨沿西侧越过外轨尾端后再向外取料，避免一格过滤带
+	// 落在邻近产物干线上；逻辑route顺序不变，仅调整各item的实际引出位置。
+	machineY := row.line.machines[0].a.y
+	sort.SliceStable(outputs, func(i, j int) bool {
+		isRecycle := func(group output) bool {
+			for _, recycle := range row.recycles {
+				if group.belts[0] == row.line.outputForItem(recycle.item)[0] {
+					return true
+				}
+			}
+			return false
+		}
+		if first, second := isRecycle(outputs[i]), isRecycle(outputs[j]); first != second {
+			return !first
+		}
+		return math.Abs(outputs[i].belts[0].a.y-machineY) > math.Abs(outputs[j].belts[0].a.y-machineY)
+	})
 	poles := []*placed{}
-	for _, route := range row.outputs {
-		capacity := inserterCapacityPerMinute(b.setting.InserterLv, 1)
-		arms := int(math.Ceil((route.rate - 1e-8) / capacity))
-		arms = max(1, arms)
-		// 每个过滤器有自己的抓取点；输入共享带的总流量另在拆行阶段核算。
-		branch := []*placed{}
-		for i := 0; i < arms; i++ {
-			main := b.make(2000+b.setting.BeltLv, cursor, trunk.a.y, trunk.a.z)
+	for _, group := range outputs {
+		if len(group.routes) == 0 {
+			continue
+		}
+		trunk := group.belts[0]
+		shared := append([]*placed{}, group.belts...)
+		recycled := false
+		for _, recycle := range row.recycles {
+			if recycle.item != group.routes[0].edge.ItemID {
+				continue
+			}
+			if len(recycle.surplus) == 0 {
+				return transportAllocationError(group.routes[0].edge, group.routes[0].rate, "回流物品没有真实净产物出口")
+			}
+			trunk = recycle.surplus[len(recycle.surplus)-1]
+			shared = append(shared, recycle.source...)
+			shared = append(shared, recycle.surplus...)
+			cursor = math.Min(cursor, trunk.a.x-1)
+			recycled = true
+		}
+		direction := 1.
+		if trunk.a.y < machineY {
+			direction = -1
+		}
+		if recycled {
+			// 回收口沿原出货轨向西，净产品必须从优先门另一侧向机器侧
+			// 分支，不能把过滤支带重新放到西向回流带所在的同一轨。
+			direction = -direction
+		} else {
+			// 多产物中的回流轨仍占用真实格位，即使净流为零、没有规范外送路线。
+			// 先避开另一产物的机器带，再建立净产品过滤支路，不能等最终碰撞审计才发现交叉。
+			for _, other := range outputs {
+				if other.belts[0] != group.belts[0] && math.Abs(other.belts[0].a.y-(trunk.a.y+direction)) < 1e-6 {
+					direction = -direction
+					break
+				}
+			}
+		}
+		for _, input := range row.inputs {
+			if direction*(input.a.y-trunk.a.y) > 0 {
+				// 产物位于同侧原料内轨时，先在原料接驳西端外留一格净空再分支；
+				// 不能把(-1,y±1)过滤带放到之后才延伸的原料带末格上。
+				cursor = math.Min(cursor, input.a.x-2)
+			}
+		}
+		// 前一个产物的过滤干线更短；当前干线逐格延长到独立取料区，不能跨格接线。
+		for trunk.a.x-1 > cursor {
+			main := b.make(2000+b.setting.BeltLv, trunk.a.x-1, trunk.a.y, trunk.a.z)
 			connect(trunk, main)
 			trunk = main
 			shared = append(shared, main)
-			pickup := b.make(2000+b.setting.BeltLv, cursor, trunk.a.y+1, trunk.a.z)
-			if len(branch) > 0 {
-				connect(branch[len(branch)-1], pickup)
-			}
-			branch = append(branch, pickup)
-			arm, err := b.beltTransfer(main, pickup, b.setting.InserterLv, route.edge.ItemID)
-			if err != nil {
-				return err
-			}
-			route.filters = append(route.filters, arm)
-			cursor--
 		}
-		// 抓取行末另留一格作为寻路端点，避免路由与分拣器本体争用同一个格。
-		end := b.make(2000+b.setting.BeltLv, cursor, trunk.a.y+1, trunk.a.z)
-		connect(branch[len(branch)-1], end)
-		branch = append(branch, end)
-		route.start, route.path = end, branch
-		route.sharedPath = append([]*placed{}, shared...)
-		end.record.Parameters = []int32{int32(route.edge.ItemID), int32(math.Ceil(route.rate))}
-		if route.to == nil {
-			route.boundary = end
-		}
-		if *b.setting.NeedPower {
-			position := vector{branch[0].a.x, branch[0].a.y + 2, 0}
-			if len(poles) == 0 || math.Abs(poles[len(poles)-1].a.x-position.x) >= 6 {
-				poles = append(poles, b.make(2201, position.x, position.y, 0))
+		for _, route := range group.routes {
+			capacity := inserterCapacityPerMinute(b.setting.InserterLv, 1)
+			arms := int(math.Ceil((route.rate - 1e-8) / capacity))
+			arms = max(1, arms)
+			// 每个过滤器有自己的抓取点；输入共享带的总流量另在拆行阶段核算。
+			branch := []*placed{}
+			for i := 0; i < arms; i++ {
+				main := b.make(2000+b.setting.BeltLv, cursor, trunk.a.y, trunk.a.z)
+				connect(trunk, main)
+				trunk = main
+				shared = append(shared, main)
+				pickup := b.make(2000+b.setting.BeltLv, cursor, trunk.a.y+direction, trunk.a.z)
+				if len(branch) > 0 {
+					connect(branch[len(branch)-1], pickup)
+				}
+				branch = append(branch, pickup)
+				arm, err := b.beltTransfer(main, pickup, b.setting.InserterLv, route.edge.ItemID)
+				if err != nil {
+					return err
+				}
+				route.filters = append(route.filters, arm)
+				cursor--
 			}
-		}
-		// 一格隔离两条不同物品/消费者支路，不能直接把相邻过滤行合并。
-		for i := 0; i < 2; i++ {
-			main := b.make(2000+b.setting.BeltLv, cursor, trunk.a.y, trunk.a.z)
-			connect(trunk, main)
-			trunk = main
-			shared = append(shared, main)
-			cursor--
+			// 抓取行末另留一格作为寻路端点，避免路由与分拣器本体争用同一个格。
+			end := b.make(2000+b.setting.BeltLv, cursor, trunk.a.y+direction, trunk.a.z)
+			connect(branch[len(branch)-1], end)
+			branch = append(branch, end)
+			route.start, route.path = end, branch
+			route.sharedPath = append([]*placed{}, shared...)
+			end.record.Parameters = []int32{int32(route.edge.ItemID), int32(math.Ceil(route.rate))}
+			if route.to == nil {
+				route.boundary = end
+			}
+			if *b.setting.NeedPower {
+				position := vector{branch[0].a.x, branch[0].a.y + 2*direction, 0}
+				if len(poles) == 0 || math.Hypot(poles[len(poles)-1].a.x-position.x, poles[len(poles)-1].a.y-position.y) >= 6 {
+					poles = append(poles, b.make(2201, position.x, position.y, 0))
+				}
+			}
+			// 一格隔离两条不同物品/消费者支路，不能直接把相邻过滤行合并；无用的最终尾带在整体落位后统一裁剪。
+			for i := 0; i < 2; i++ {
+				main := b.make(2000+b.setting.BeltLv, cursor, trunk.a.y, trunk.a.z)
+				connect(trunk, main)
+				trunk = main
+				shared = append(shared, main)
+				cursor--
+			}
 		}
 	}
 	return nil
@@ -389,6 +517,9 @@ func (b *builder) connectedBlockShape(ctx context.Context, row *transportRow, bl
 		if route.to != nil {
 			ports = append(ports, route.start)
 		}
+	}
+	for _, recycle := range row.recycles {
+		ports = append(ports, recycle.route.start, recycle.route.end)
 	}
 	for _, port := range ports {
 		point := world(vector{port.a.x - 1, port.a.y, port.a.z})

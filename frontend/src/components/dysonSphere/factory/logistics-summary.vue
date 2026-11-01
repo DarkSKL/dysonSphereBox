@@ -18,8 +18,11 @@ const emit = defineEmits<{(event: 'select', index: number): void}>()
 const visibleLanes = ref(40)
 const visiblePorts = ref(40)
 watch(() => props.summary, () => { visibleLanes.value = 40; visiblePorts.value = 40 })
+// 原版增产剂 ID；仅在其作为边界输入时提示玩家接入持续供给。
+const proliferatorItemIds = new Set([1141, 1142, 1143])
 const lanes = computed(() => props.summary.lanes ?? [])
 const ports = computed(() => props.summary.externalPorts ?? [])
+const proliferatorPorts = computed(() => ports.value.filter(port => port.kind === 'proliferator' || (port.kind === 'external-input' && proliferatorItemIds.has(port.itemId))))
 const checks = computed(() => props.summary.checks ?? [])
 const auditChecks = computed(() => props.audit?.checks ?? [])
 const metrics = computed(() => props.summary.metrics)
@@ -51,7 +54,8 @@ const coordinateLabel = computed(() => props.audit?.coordinateSpace === 'planet-
       <div><span>外部入口</span><strong class="type-display">{{ format(metrics.externalInputCount) }}<small>个</small></strong></div>
       <div><span>边界接口</span><strong class="type-display">{{ format(ports.length) }}<small>个</small></strong></div>
     </div>
-    <p class="hint">入口由实际流量自动分配；需改变容量时调整传送带等级后重新生成。仅边界端口需玩家接入蓝图外部物流。</p>
+    <p class="hint">线路按期望净流量规划，不代表设备满负荷时的运输能力。需改变容量时调整传送带等级后重新生成；仅边界端口需玩家接入蓝图外部物流。</p>
+    <p v-if="proliferatorPorts.length" class="hint is-warning">蓝图已生成增产剂供剂入口；增产剂库存不包含在蓝图内，需在游戏内将入口接入持续供料。</p>
 
     <n-collapse :default-expanded-names="['checks']" class="diagnostic-sections">
       <n-collapse-item name="checks" title="检查与覆盖边界">

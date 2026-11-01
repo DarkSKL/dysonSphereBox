@@ -7,6 +7,7 @@ package build
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"slices"
 
@@ -31,6 +32,13 @@ type surfacePackedBand struct{ low, high, segments int }
 // surfacePackedBlock 职责：记录产线块的落点；使用：整块平移到所属 Area；边界：band 为 surfacePacking.bands 下标，x/y 为相对纬带 low 行与环向起点的局部整数，指块占地左下格。
 type surfacePackedBlock struct{ band, x, y int }
 
+// surfacePackPlacement 职责：描述待提交的绝对纬带块落点；使用：装箱跨块几何筛选；边界：不引用可变 shelf 状态，previous 仅包含本次试装已经提交的块。
+type surfacePackPlacement struct {
+	index int
+	band  surfacePackedBand
+	x, y  int
+}
+
 // surfacePacking 职责：汇总有限容量纬带装箱结果；使用：生产编码器映射块到 Area；边界：几何容量通过不代表游戏碰撞通过。
 type surfacePacking struct {
 	// segment 职责：保存实际使用的主网格分段数；使用：复现纬圈容量；边界：缺省请求补为 200。
@@ -48,8 +56,12 @@ type surfacePacking struct {
 // surfacePackRules 职责：保存一次装箱的间距与余量；使用：shelf 装箱与容量判断；边界：由 gap 推导，调用期间不变。
 type surfacePackRules struct {
 	gap, edgeMargin, ringMargin int
+	// ctx 职责：传播生产取消；使用：逐块、逐行与逐格候选检查；边界：纯装箱测试可以为空。
+	ctx context.Context
 	// accept 职责：按块检查候选南缘的实际几何；使用：生产装箱；边界：nil 时仅验证矩形容量。
 	accept func(int, surfacePackedBand, int) bool
+	// acceptPlacement 职责：核对候选与同次试装前序块之间的空间约束；使用：球面塔间距筛选；边界：回调不得修改候选或已放置块。
+	acceptPlacement func(surfacePackPlacement, []surfacePackPlacement) bool
 }
 
 // newSurfacePackRules 由块间距推导纬带边缘与环向首尾余量。
@@ -119,7 +131,11 @@ type surfacePackAttempt struct {
 // 边界：任何块放不下即整体失败，不截断、不跳过；返回的错误说明首个失败块。
 func packSurfaceBands(bands []surfacePackedBand, order []int, sizes []surfaceBlockSize, rules surfacePackRules, maxAreas int) (*surfacePackAttempt, error) {
 	attempt := &surfacePackAttempt{blocks: make([]surfacePackedBlock, len(sizes)), states: make([]surfaceShelfState, len(bands))}
+	previous := make([]surfacePackPlacement, 0, len(sizes))
 	for i, size := range sizes {
+		if rules.ctx != nil && rules.ctx.Err() != nil {
+			return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "产线块装箱已取消或超时"}
+		}
 		placed, limited := false, false
 		for _, index := range order {
 			state := &attempt.states[index]
@@ -130,17 +146,24 @@ func packSurfaceBands(bands []surfacePackedBand, order []int, sizes []surfaceBlo
 			wasUsed := state.used
 			trial := *state
 			x, y, ok := trial.place(bands[index], size, rules)
-			if ok && rules.accept != nil && !rules.accept(i, bands[index], y) {
-				// 当前 shelf 的曲率可能压缩机器间距；仅在几何通过的另一行开启新 shelf。
-				ok = false
+			if ok {
+				initialX := x
+				x, ok = rules.acceptedX(i, bands[index], x, y, size, previous)
+				trial.cursorX += x - initialX
+			}
+			if !ok && rules.fitsEmpty(bands[index], size) && (rules.accept != nil || rules.acceptPlacement != nil) {
+				// 同行向东仍无法满足真实几何时，再逐行尝试新 shelf；不修改失败候选的游标。
 				start := 0
 				if state.used {
 					start = state.shelfY + state.shelfHeight + rules.gap
 				}
 				for row := start; row+size.height <= rules.usableHeight(bands[index]); row++ {
-					if rules.accept(i, bands[index], row+rules.edgeMargin) {
-						trial = surfaceShelfState{used: true, shelfY: row, shelfHeight: size.height, cursorX: size.width}
-						x, y, ok = rules.ringMargin, row+rules.edgeMargin, true
+					if rules.ctx != nil && rules.ctx.Err() != nil {
+						return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "产线块装箱已取消或超时"}
+					}
+					y = row + rules.edgeMargin
+					if x, ok = rules.acceptedX(i, bands[index], rules.ringMargin, y, size, previous); ok {
+						trial = surfaceShelfState{used: true, shelfY: row, shelfHeight: size.height, cursorX: x - rules.ringMargin + size.width}
 						break
 					}
 				}
@@ -151,6 +174,7 @@ func packSurfaceBands(bands []surfacePackedBand, order []int, sizes []surfaceBlo
 					attempt.opened++
 				}
 				attempt.blocks[i] = surfacePackedBlock{band: index, x: x, y: y}
+				previous = append(previous, surfacePackPlacement{index: i, band: bands[index], x: x, y: y})
 				placed = true
 				break
 			}
@@ -163,7 +187,26 @@ func packSurfaceBands(bands []surfacePackedBand, order []int, sizes []surfaceBlo
 		}
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("可用纬带已装满，无法放置第 %d 个产线块（%dx%d），请启用邻圈扩展或拆分布局", i+1, size.width, size.height)}
 	}
+	if rules.ctx != nil && rules.ctx.Err() != nil {
+		return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "产线块装箱已取消或超时"}
+	}
 	return attempt, nil
+}
+
+// acceptedX 职责：在当前 shelf 的剩余宽度内选择首个几何可行整数落点；使用：跨块塔间距候选；边界：行内几何失败不重复扫描经度，取消不发布落点。
+func (rules surfacePackRules) acceptedX(index int, band surfacePackedBand, x, y int, size surfaceBlockSize, previous []surfacePackPlacement) (int, bool) {
+	if rules.accept != nil && !rules.accept(index, band, y) {
+		return x, false
+	}
+	for candidate := x; candidate+size.width <= rules.ringMargin+rules.usableWidth(band); candidate++ {
+		if rules.ctx != nil && rules.ctx.Err() != nil {
+			return x, false
+		}
+		if rules.acceptPlacement == nil || rules.acceptPlacement(surfacePackPlacement{index: index, band: band, x: candidate, y: y}, previous) {
+			return candidate, true
+		}
+	}
+	return x, false
 }
 
 // surfaceLatitudeBands 把经度段数相同的连续纬向细格行合并为纬带。
@@ -231,6 +274,11 @@ func planSurfaceBlocks(layout *SurfaceLayout, blocks []surfaceBlockSize, gap int
 
 // planSurfaceBlocksAccepted 职责：在相同装箱硬容量上加入候选块几何筛选；使用：生产多 Area 编码；边界：回调不修改块与纬带状态。
 func planSurfaceBlocksAccepted(layout *SurfaceLayout, blocks []surfaceBlockSize, gap int, accept func(int, surfacePackedBand, int) bool) (*surfacePacking, error) {
+	return planSurfaceBlocksChecked(context.Background(), layout, blocks, gap, accept, nil)
+}
+
+// planSurfaceBlocksChecked 职责：统一行内与跨块几何筛选并传播取消；使用：生产球面块装箱；边界：失败候选不提交，原有无几何回调装箱顺序保持不变。
+func planSurfaceBlocksChecked(ctx context.Context, layout *SurfaceLayout, blocks []surfaceBlockSize, gap int, accept func(int, surfacePackedBand, int) bool, acceptPlacement func(surfacePackPlacement, []surfacePackPlacement) bool) (*surfacePacking, error) {
 	if layout == nil || layout.Mode == "" || layout.Mode == "planar" {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "平面布局不能进入纬带装箱"}
 	}
@@ -258,7 +306,7 @@ func planSurfaceBlocksAccepted(layout *SurfaceLayout, blocks []surfaceBlockSize,
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "纬带装箱至少需要一个产线块"}
 	}
 	rules := newSurfacePackRules(gap)
-	rules.accept = accept
+	rules.ctx, rules.accept, rules.acceptPlacement = ctx, accept, acceptPlacement
 	bands := surfaceLatitudeBands(segment)
 	for i, size := range blocks {
 		if size.width <= 0 || size.height <= 0 {
@@ -301,6 +349,9 @@ func packSurfaceLayout(mode string, segment, preferred int, expand bool, bands [
 			}
 			candidate, err := packSurfaceBands(bands, surfaceBandOrder(bands, i, bandCenter(band), expand), blocks, rules, maxAreas)
 			if err != nil {
+				if failure, ok := err.(*blueprint.Error); !ok || failure.Code != "GEN_E_SURFACE_CAPACITY" {
+					return nil, err
+				}
 				continue
 			}
 			state := candidate.states[i]

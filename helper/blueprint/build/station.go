@@ -181,11 +181,6 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 	}
 	routes := []stationRoute{}
 	resultIDs := uniqueStationItems(recipe.Results)
-	// 过滤出口在机器行摆好后创建，必须看到同组全部带，避免短行拆分后侵占下一行入口。
-	groupOccupancy := []*placed{}
-	for _, l := range lines {
-		groupOccupancy = append(groupOccupancy, l.all...)
-	}
 	for _, l := range lines {
 		share := 0.
 		if l.info.MachineCount > 0 {
@@ -200,13 +195,11 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			}
 			routes = append(routes, stationRoute{head: l.coaterInput, item: spray, tower: itemTower[spray], rate: productionItemRate(l.info.Inputs, spray) * share})
 		}
-		for resultIndex, item := range resultIDs {
-			previousSize := len(l.all)
-			head, err := b.stationOutputHead(l, item, resultIndex, len(resultIDs), groupOccupancy)
+		for _, item := range resultIDs {
+			head, err := b.stationOutputHead(l, item)
 			if err != nil {
 				return err
 			}
-			groupOccupancy = append(groupOccupancy, l.all[previousSize:]...)
 			routes = append(routes, stationRoute{head: head, item: item, output: true, tower: itemTower[item], rate: productionItemRate(l.info.Outputs, item) * share})
 		}
 	}
@@ -223,8 +216,10 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		routes[i].slot = priority[used[t]]
 		used[t]++
 	}
-	startY := lines[0].inputs[0][0].a.y
-	endY := lines[len(lines)-1].output[0].a.y
+	startY, endY := routes[0].head.a.y, routes[0].head.a.y
+	for _, route := range routes {
+		startY, endY = math.Min(startY, route.head.a.y), math.Max(endY, route.head.a.y)
+	}
 	centerY := math.Floor((endY-startY)/2) + startY
 	centers := make([]vector, len(groups))
 	var existing []*placed
@@ -427,7 +422,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 	return nil
 }
 
-// uniqueStationItems 职责：按配方结果顺序去重多产物；使用：塔槽位和过滤出口规划；边界：不排序、不丢副产物。
+// uniqueStationItems 职责：按配方结果顺序去重多产物；使用：独立出货带与塔槽位规划；边界：不排序、不丢副产物。
 func uniqueStationItems(items []int) []int {
 	seen := map[int]bool{}
 	result := make([]int, 0, len(items))
@@ -487,80 +482,31 @@ func stationPathCrosses(path []vector, previous []stationRoute) bool {
 	return false
 }
 
-// stationOutputHead 职责：为多产物共享出货带创建带物品过滤的实体支路；使用：mode3/4塔供货端；边界：只支持带间距不超过三格的分拣器，不把匿名混带当作已分离。
-func (b *builder) stationOutputHead(l *line, item, resultIndex, resultCount int, occupancy ...[]*placed) (*placed, error) {
-	if len(l.output) == 0 {
-		return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: "物流塔多产物出口没有共享输出带"}
+// stationOutputHead 职责：取得机器端已经按物品过滤的独立出货带首端并写入物品图标；使用：mode3/4逐物品塔路；边界：多产物缺少独立带时硬失败，不再从共享干线二次过滤。
+func (b *builder) stationOutputHead(l *line, item int) (*placed, error) {
+	row := l.outputForItem(item)
+	if len(row) == 0 || len(l.recipe.Results) > 1 && len(l.outputs) != len(l.recipe.Results) {
+		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 产物 %d 缺少独立机器出货带", l.recipe.ID, item)}
 	}
-	if resultCount <= 1 {
-		l.output[0].record.Parameters = []int32{int32(item), 0}
-		return l.output[0], nil
-	}
-	// 以不同输出带段作为抓取源，避免多个过滤分支叠在同一格；侧支路仅占用相邻一格，后续塔路线再从此端点展开。
-	source := l.output[resultIndex%len(l.output)]
-	// 输出带方向随机器原型变化，不能固定向某一侧偏移；逐候选检查机器 footprint 与分拣器扫掠段，避免把过滤带放进机器建造盒。
-	offsets := []float64{1, -1, 2, -2, 3, -3}
-	offset := 0.0
-	existing := l.all
-	if len(occupancy) > 0 {
-		existing = occupancy[0]
-	}
-	for _, candidate := range offsets {
-		if stationOutputOffsetFree(source, l.machines, candidate) && stationOutputEndpointFree(source, candidate, existing) {
-			offset = candidate
-			break
+	members := map[*placed]bool{}
+	for _, belt := range row {
+		if belt == nil || !surfaceIsBelt(belt.record.ItemID) || members[belt] {
+			return nil, &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("配方 %d 产物 %d 的塔出货带存在空节点、非带实体或重复引用", l.recipe.ID, item)}
 		}
+		members[belt] = true
 	}
-	if offset == 0 {
-		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 物品 %d 没有避开机器建造盒的过滤支路位置", l.machines[0].owner, item)}
-	}
-	previousOwner := b.owner
-	owner := previousOwner
-	if len(l.machines) > 0 {
-		owner = l.machines[0].owner
-	}
-	b.owner = owner
-	branch := b.make(2000+b.setting.BeltLv, source.a.x, source.a.y+offset, source.a.z)
-	branch.record.Parameters = []int32{int32(item), 0}
-	arm, err := b.beltTransfer(source, branch, b.setting.InserterLv, item)
-	b.owner = previousOwner
-	if err != nil {
-		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 物品 %d 多产物过滤出口不可达：%v", owner, item, err)}
-	}
-	// 分拣器自身记录 source -> branch，主输出带的 output 链保持不变；branch/arm 已由 b.make 登记到 builder.all。
-	branch.input = arm
-	// 局部块切片可能仍共享 builder.all 的底层数组，直接 append 会
-	// 覆盖已经装配的后续机器行；复制后登记，使寻路也能看见过滤端口。
-	l.all = append(append([]*placed{}, l.all...), branch, arm)
-	return branch, nil
-}
-
-// stationOutputEndpointFree 职责：拒绝过滤出口与同组既有带端点重叠；使用：多产物过滤候选选择；边界：只检查新增带实体位置，分拣器扫掠和静态盒仍由最终规则核验。
-func stationOutputEndpointFree(source *placed, offset float64, existing []*placed) bool {
-	target := vector{source.a.x, source.a.y + offset, source.a.z}
-	for _, p := range existing {
-		if surfaceIsBelt(p.record.ItemID) && beltCell(p.a) == beltCell(target) {
-			return false
+	for _, other := range l.recipe.Results {
+		if other == item {
+			continue
 		}
-	}
-	return true
-}
-
-// stationOutputOffsetFree 职责：判断共享输出带到过滤支路的候选分拣器是否侵占机器占地；使用：多产物塔供货出口；边界：只做保守平面检查，最终动态碰撞仍由收尾规则核验。
-func stationOutputOffsetFree(source *placed, machines []*placed, offset float64) bool {
-	for _, machine := range machines {
-		lo, hi := footprint(machine.record.ItemID)
-		inside := func(v vector) bool {
-			return v.x >= machine.a.x+lo.x-1e-6 && v.x <= machine.a.x+hi.x+1e-6 && v.y >= machine.a.y+lo.y-1e-6 && v.y <= machine.a.y+hi.y+1e-6
-		}
-		for step := 0; step <= int(math.Ceil(math.Abs(offset))); step++ {
-			v := vector{source.a.x, source.a.y + math.Copysign(float64(step), offset), source.a.z}
-			if inside(v) {
-				return false
+		for _, belt := range l.outputForItem(other) {
+			if members[belt] {
+				return nil, &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("配方 %d 不同产物共用物流塔出货带", l.recipe.ID)}
 			}
 		}
 	}
-	return true
+	row[0].record.Parameters = []int32{int32(item), 0}
+	return row[0], nil
 }
 
 // stationPowerCovered 职责：冲突时复用同一产线块内覆盖塔心的感应塔；使用：物流塔补电；边界：仅合并追加点三格内且覆盖塔心六格内的杆，不改变其他补电点或跨块网络。

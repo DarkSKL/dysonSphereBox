@@ -46,7 +46,9 @@ type line struct {
 	all []*placed
 	// inputs 职责：每种原料一条带；使用：配送；边界：保持配方顺序。
 	inputs [][]*placed
-	// output 职责：共享出货带；使用：多产物允许混合；边界：后续站点须配置所有产物。
+	// outputs 职责：按配方产物顺序保存机器端独立出货带；使用：各模式逐物品接驳；边界：不同产物不得共享实体带或机器槽位。
+	outputs [][]*placed
+	// output 职责：保留首条产物带的兼容引用；使用：旧单产物调用；边界：新多产物接驳必须使用outputForItem或outputRows。
 	output []*placed
 	// machines 职责：包含堆叠的机器；使用：计数；边界：地面分拣器不重复。
 	machines []*placed
@@ -98,7 +100,7 @@ func (s Setting) maxCount(typ int) int {
 	return s.MaxMachineInALine
 }
 
-// buildLine 职责：装配基础机器行；使用：所有生成策略；边界：配方输入超过六种明确失败，保持槽位合法。
+// buildLine 职责：装配基础机器行与逐产物独立输出；使用：所有生成策略；边界：输入和产物合计不超过六个真实槽位，容量无解不伪造拓扑。
 func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lineIndex int, last bool) (*line, error) {
 	if err := b.checkGeneration("机器行装配"); err != nil {
 		return nil, err
@@ -106,8 +108,11 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	if count <= 0 || count > 10000 {
 		return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "机器行必须包含1到10000台真实机器，拒绝空行或超限行"}
 	}
-	if b.setting.UseMixed || len(r.Items) > 5 {
-		return b.buildMixedLine(p, r, count, mode)
+	if b.setting.UseMixed || len(r.Items)+len(r.Results) > 6 || len(r.Results) == 0 {
+		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: "独立物料带需要至少一种产物且原料与产物合计至多六种；旧循环混带尚无按所选分拣器等级逐物品验证的实体端口拓扑，需要独立规划"}
+	}
+	if _, err := productionMaterialFlows(p, r); err != nil {
+		return nil, err
 	}
 	start := len(b.all)
 	gmap := map[int]geometry{}
@@ -115,28 +120,26 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		return nil, err
 	}
 	conf, ok := gmap[p.MachineType]
-	if !ok || len(r.Items) > 5 {
+	if !ok {
 		return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "配方机器或输入数量不支持当前布局"}
 	}
 	l := &line{recipe: r, info: p}
-	bottom := len(r.Items)
-	if bottom > 3 {
-		bottom = 3
-	}
+	ports := planMachineInserters(p, r, b.setting, count)
+	bottom := ports.bottom
 	pre := 0.
 	if p.IncreasePoints > 0 && p.ProductionMode >= 0 {
 		pre = 4
 	}
 	ground := count
 	if p.MachineType == 6 {
-		ground = int(math.Ceil(float64(count) / float64(b.setting.MaxLays)))
+		ground = int(math.Ceil(float64(count) / float64(ports.layers)))
 	}
-	spacing := conf.Space + float64(b.setting.extraSpace(p.MachineType))
+	spacing := machineSpacing(p.MachineType, conf, b.setting.extraSpace(p.MachineType))
 	beltLen := int(float64(ground)*spacing + conf.Start + pre)
 	machineX := math.Floor(conf.Left + conf.Start + pre)
 	machineY := float64(bottom) + conf.Bottom
-	belts := make([][]*placed, 0, len(r.Items)+1)
-	for i := 0; i < len(r.Items)+1; i++ {
+	belts := make([][]*placed, 0, len(r.Items)+len(r.Results))
+	for i := 0; i < len(r.Items)+len(r.Results); i++ {
 		if err := b.checkGeneration("机器行传送带装配"); err != nil {
 			return nil, err
 		}
@@ -146,17 +149,22 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		}
 		row := b.straight(0, y, beltLen, 2)
 		belts = append(belts, row)
-		if i < len(r.Items) {
-			l.inputs = append(l.inputs, row)
-		} else {
-			l.output = row
+	}
+	for _, port := range ports.inputs {
+		track := bottom - port.reach
+		if port.top {
+			track = bottom + port.reach - 1
 		}
+		l.inputs = append(l.inputs, belts[track])
 	}
-	// 底侧端口的几何槽序反向，逻辑 inputs 切片则始终遵循配方原料顺序。
-	// 机器插臂仍引用下方 belts 物理槽，不改变端点坐标或蓝图几何。
-	for i, j := 0, bottom-1; i < j; i, j = i+1, j-1 {
-		l.inputs[i], l.inputs[j] = l.inputs[j], l.inputs[i]
+	for _, port := range ports.outputs {
+		track := bottom - port.reach
+		if port.top {
+			track = bottom + port.reach - 1
+		}
+		l.outputs = append(l.outputs, belts[track])
 	}
+	l.output = l.outputs[0]
 	groundMachines := []*placed{}
 	for i := 0; i < ground; i++ {
 		if i%32 == 0 {
@@ -190,7 +198,7 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			if err := b.checkGeneration("研究站堆叠装配"); err != nil {
 				return nil, err
 			}
-			layers := b.setting.MaxLays
+			layers := ports.layers
 			if remaining < layers {
 				layers = remaining
 			}
@@ -206,54 +214,21 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			}
 		}
 	}
-	upInput := len(r.Items) - bottom
 	for machineIndex, m := range groundMachines {
 		if machineIndex%32 == 0 {
 			if err := b.checkGeneration("机器端口装配"); err != nil {
 				return nil, err
 			}
 		}
-		for i := 0; i < len(r.Items)+1; i++ {
-			inserter := b.make(2010+b.setting.InserterLv, 0, 0, 0)
-			inserter.record.InputFromSlot = -1
-			slot, reach := 0, 0
-			if i < bottom {
-				slot = bottom - i - 1
-				reach = i + 1
-				inserter.output = m
-				inserter.record.OutputToSlot = conf.Slots[i]
-				inserter.input = belts[slot][machineIndex*int(spacing)+int(conf.Start)+i+int(pre)]
-				inserter.record.Yaw = 0
-				inserter.record.Yaw2 = 0
-				px := m.a.x - conf.Left + float64(i)*(1-conf.Outside) + conf.Outside
-				inserter.a = vector{px, m.a.y - conf.Bottom - float64(reach), 0}
-				inserter.b = vector{px, m.a.y - conf.Bottom + conf.Lack, 0}
-			} else if i < len(r.Items) {
-				j := i - bottom
-				slot = i
-				reach = j + 1
-				inserter.output = m
-				inserter.record.OutputToSlot = conf.Slots[3+j]
-				inserter.input = belts[slot][machineIndex*int(spacing)+int(conf.Start)+j+int(pre)]
-				inserter.record.Yaw = 180
-				inserter.record.Yaw2 = 180
-				px := m.a.x - conf.Left + float64(j)*(1-conf.Outside) + conf.Outside
-				inserter.a = vector{px, m.a.y + conf.Top + float64(reach), 0}
-				inserter.b = vector{px, m.a.y + conf.Top - conf.Lack, 0}
-			} else {
-				reach = 1 + upInput
-				slot = len(r.Items)
-				inserter.output = belts[slot][machineIndex*int(spacing)+int(conf.Start)+int(pre)]
-				inserter.record.OutputToSlot = -1
-				inserter.input = m
-				inserter.record.InputFromSlot = conf.Slots[3+upInput]
-				inserter.record.Yaw = 0
-				inserter.record.Yaw2 = 0
-				px := m.a.x - conf.Left + float64(upInput)*(1-conf.Outside) + conf.Outside
-				inserter.a = vector{px, m.a.y + conf.Top - conf.Lack, 0}
-				inserter.b = vector{px, m.a.y + conf.Top + float64(reach), 0}
+		for index, port := range ports.inputs {
+			b.buildMachineInserterPort(m, l.inputs[index], port, conf, machineIndex, spacing, pre, false, 0)
+		}
+		for index, port := range ports.outputs {
+			filter := 0
+			if len(r.Results) > 1 {
+				filter = r.Results[index]
 			}
-			inserter.record.Parameters = []int32{int32(reach)}
+			b.buildMachineInserterPort(m, l.outputs[index], port, conf, machineIndex, spacing, pre, true, filter)
 		}
 	}
 	if pre > 0 {
@@ -267,13 +242,17 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		}
 	}
 	if mode == 1 || mode == 3 || mode == 4 {
-		reverse(l.output)
+		for _, row := range l.outputs {
+			reverse(row)
+		}
 	}
 	if mode == 1 {
 		for i, row := range l.inputs {
 			row[0].record.Parameters = []int32{int32(r.Items[i]), 0}
 		}
-		l.output[0].record.Parameters = []int32{int32(r.Results[0]), 0}
+	}
+	for index, row := range l.outputs {
+		row[0].record.Parameters = []int32{int32(r.Results[index]), 0}
 	}
 	if mode == 2 || mode == 5 {
 		if err := b.coatSupply([]*line{l}); err != nil {
@@ -290,9 +269,19 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			}
 		} else {
 			b.linePower(l, conf, p.MachineType, mode, lineIndex, last)
+			// 多产物可能占满两侧六轨，旧单侧杆列不能据机器中心推定所有长臂已覆盖。
+			// 沿用实际覆盖与有界合法补杆，单产物基线和电力半径保持不变。
+			if len(l.outputs) > 1 {
+				if err := b.completeFlyPower(start); err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 	l.all = b.all[start:]
+	if err := b.checkLineMachineInserters(l); err != nil {
+		return nil, err
+	}
 	return l, nil
 }
 
@@ -325,13 +314,19 @@ func (b *builder) linePower(l *line, conf geometry, typ, mode, lineIndex int, la
 			if typ == 6 {
 				step = 5
 			}
-			y := l.output[0].a.y + 1
+			top, bottom := l.output[0].a.y, l.output[0].a.y
+			for _, row := range append(append([][]*placed{}, l.inputs...), l.outputRows()...) {
+				if len(row) > 0 {
+					top, bottom = math.Max(top, row[0].a.y), math.Min(bottom, row[0].a.y)
+				}
+			}
+			y := top + 1
 			if mode == 6 {
 				// 总线回流轨位于出货带外侧一格，电线杆必须再向外让开一格。
 				y++
 			}
 			if lineIndex > 0 && last {
-				y = l.inputs[0][0].a.y - 1
+				y = bottom - 1
 			}
 			start, end := l.machines[0].a.x, l.output[len(l.output)-1].a.x
 			lastX := start

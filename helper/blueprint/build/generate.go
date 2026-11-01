@@ -61,7 +61,7 @@ func normalizeSetting(s Setting) (Setting, error) {
 	return s, nil
 }
 
-// lineCounts 职责：按参考运力和列上限均匀拆列；使用：每条量化产线；边界：运力不足时减列，不丢机器。
+// lineCounts 职责：按单机满负荷毛流、真实带宽和列上限均匀拆列；使用：每条量化产线；边界：不把期望速率均摊到整数机器当作已降速，不丢机器。
 func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([]int, error) {
 	capacity, err := transport.BeltCapacityPerMinute(s.BeltLv)
 	if err != nil {
@@ -74,11 +74,9 @@ func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([
 	for _, n := range r.ItemCounts {
 		maxUse = math.Max(maxUse, n)
 	}
-	output := 0.
 	for _, n := range r.ResultCounts {
-		output += n
+		maxUse = math.Max(maxUse, n)
 	}
-	maxUse = math.Max(maxUse, output)
 	acc := 1.
 	if p.ProductionMode == 1 && p.IncreaseLv > 0 {
 		rates := []float64{0, .25, .5, 1}
@@ -94,19 +92,29 @@ func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([
 		limit = min(limit, s.MaxMachineInALine)
 	}
 	limit = min(limit, theory)
-	// 配方额定值之外还核对可信计划的实际净流量；共享输出带必须承载全部产物。
-	rowRate := 0.
+	// 喷涂及自定义倍率以可信计划的单机毛流为准；每种物品独立占带，
+	// 不能累加不同产物，也不能用期望流量/取整机器数低估整行满载需求。
+	inputs, outputs, err := machineInserterRates(p, r)
+	if err != nil {
+		return nil, err
+	}
+	for _, rate := range inputs {
+		perMachine = math.Max(perMachine, rate)
+	}
+	for _, rate := range outputs {
+		perMachine = math.Max(perMachine, rate)
+	}
+	denominator := p.ExactMachineCount
+	if denominator <= 0 {
+		denominator = float64(p.MachineCount)
+	}
 	for _, rate := range p.Inputs {
-		rowRate = math.Max(rowRate, rate.RatePerMinute)
+		perMachine = math.Max(perMachine, rate.RatePerMinute/denominator)
 	}
-	outputRate := 0.
 	for _, rate := range p.Outputs {
-		outputRate += rate.RatePerMinute
+		perMachine = math.Max(perMachine, rate.RatePerMinute/denominator)
 	}
-	rowRate = math.Max(rowRate, outputRate)
-	if rowRate > 0 {
-		limit = min(limit, int(math.Floor((capacity+1e-6)*float64(p.MachineCount)/rowRate)))
-	}
+	limit = min(limit, int(math.Floor((capacity+1e-6)/perMachine)))
 	if limit <= 0 {
 		return nil, &blueprint.Error{Code: "GEN_E_OVERFLOW", Message: "带速不足以支持一台机器，请升级传送带"}
 	}
@@ -157,8 +165,14 @@ func (b *builder) coatSupply(lines []*line) error {
 		}
 		// 入口降到地面，再用一个水平格加一层的真实斜坡进入供剂轨；
 		// 各模式可以统一连接地面端点，不要求箱体臂跨层斜插。
-		points := []vector{{first.a.x - 3, first.a.y - 1, 0}, {first.a.x - 2, first.a.y - 1, 0}}
-		for y := first.a.y - 1; y <= last.a.y; y++ {
+		startY := first.a.y - 1
+		for _, row := range append(append([][]*placed{}, l.inputs...), l.outputRows()...) {
+			if len(row) > 0 {
+				startY = math.Min(startY, row[0].a.y-1)
+			}
+		}
+		points := []vector{{first.a.x - 3, startY, 0}, {first.a.x - 2, startY, 0}}
+		for y := startY; y <= last.a.y; y++ {
 			points = append(points, vector{first.a.x - 1, y, 1})
 		}
 		owner := b.owner
@@ -183,7 +197,7 @@ func (b *builder) coatSupply(lines []*line) error {
 	return nil
 }
 
-// Generate 职责：生成并严格自检蓝图；使用：服务对已验证方案调用；边界：超时/布局失败不返回部分串，预览不参与判定。
+// Generate 职责：生成并严格自检蓝图；使用：服务对已验证方案调用；边界：超时/布局失败不返回部分串，显式预览失败也不会返回未完整标记的结果。
 func Generate(parent context.Context, req Request) (Result, error) {
 	result := Result{Warnings: []string{}, Bindings: []ProductionBinding{}, SharedBuildingIndices: []int{}}
 	reportProgress(parent, "validate", "正在校验生成参数", 0, 0)
@@ -232,17 +246,26 @@ func Generate(parent context.Context, req Request) (Result, error) {
 		if err := validateProductionCapacity(production, dataset, setting); err != nil {
 			return result, err
 		}
-		recipe := dataset.Recipes[dataset.RecipeByID[production.RecipeID]]
-		if err := validateMachineInserterCapacity(production, recipe, setting); err != nil {
-			return result, err
+		recipe, recipeErr := datasetRecipeForProduction(dataset, production)
+		if recipeErr != nil {
+			return result, recipeErr
+		}
+		if req.Mode != 1 && req.Mode != 6 && recipeHasMachineRecycle(recipe) {
+			return result, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 的机器内部回流当前只支持直连带与总线模式；配送/物流塔净流端点不能代替本地毛流回收", production.RecipeID)}
 		}
 	}
-	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "machine-inserter-capacity", Status: "passed", Message: "全部生产节点按所选分拣器等级、真实跨度及研究站堆叠核算机器端口额定能力；不依赖未知科技补齐超载"})
+	// 机器端能力由实际机器行创建后的槽位、跨度和并联臂复核；入口不再假定每种物料只能有一臂。
 	if req.Mode == 1 {
-		return b.generateConnected(ctx, req, dataset)
+		generated, err := b.generateConnected(ctx, req, dataset)
+		return publishFinalBlueprintProgress(ctx, req, dataset, generated, err)
 	}
 	if req.Mode == 6 {
-		return b.generateBus(ctx, req, dataset)
+		generated, err := b.generateBus(ctx, req, dataset)
+		return publishFinalBlueprintProgress(ctx, req, dataset, generated, err)
+	}
+	if req.Mode == 2 || req.Mode == 5 {
+		generated, err := b.generateFlyLayout(ctx, req, dataset)
+		return publishFinalBlueprintProgress(ctx, req, dataset, generated, err)
 	}
 	// 设施模式保留目标分组，但组内顺序必须来自同一规范依赖图。
 	reportProgress(ctx, "zones", "正在规划产线分区", 0, 0)
@@ -282,6 +305,10 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				return result, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "配方已变化"}
 			}
 			recipe := dataset.Recipes[ri]
+			recipe, err = effectiveProductionRecipe(p, recipe)
+			if err != nil {
+				return result, err
+			}
 			valid := false
 			for _, id := range recipe.Factories {
 				if p.MachineID == id {
@@ -378,7 +405,7 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				}
 			}
 			if len(recipe.Results) > 1 {
-				b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 的多个产物共用输出带，请保证所有副产物有消耗出口", p.RecipeID))
+				b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 各产物已从机器端过滤并独立分带；剩余副产物仍需持续取走，避免设备自身满仓停产", p.RecipeID))
 			}
 		}
 		if len(b.all) > zoneBegin {
@@ -391,7 +418,19 @@ func Generate(parent context.Context, req Request) (Result, error) {
 		b.warnings = append(b.warnings, fmt.Sprintf("多目标已按 %d 个分区排开：共用中间产物只生成一份，并按规范供需边配置各区物流；原料、目标及剩余副产物的外部接口见物流诊断", len(zones)))
 	}
 	b.zones = zones
-	return b.finish(ctx, req, dataset)
+	generated, err := b.finish(ctx, req, dataset)
+	return publishFinalBlueprintProgress(ctx, req, dataset, generated, err)
+}
+
+// publishFinalBlueprintProgress 职责：只为最终成功蓝图发布预览事件；使用：Generate 各模式选择完成后；边界：候选布局和失败结果永不泄露为动画结果。
+func publishFinalBlueprintProgress(ctx context.Context, request Request, dataset *quant.Dataset, result Result, generationErr error) (Result, error) {
+	if generationErr != nil {
+		return result, generationErr
+	}
+	if err := emitBlueprintProgress(ctx, request, result, dataset); err != nil {
+		return Result{}, err
+	}
+	return result, nil
 }
 
 // planZones 职责：按产线服务的目标划分分区；使用：普通模式布局；边界：只服务一个目标的产线归该目标，多目标或无目标归「共用」。
@@ -435,6 +474,7 @@ func planZones(plan quant.Result) []Zone {
 // finish 职责：构建文档、归属和严格编码；使用：所有模式共同出口；边界：只有 Go 自检通过才返回串。
 func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
 	result := Result{}
+	b.recordProductionRateBasis(req.Plan)
 	// 增产剂现在和其它物料一样走规范流边；旧可选网络不能再次接入同一端点造成重复带和双重供给。
 	if req.Mode == 6 && req.SurfaceLayout != nil {
 		reportProgress(ctx, "surface", "正在折叠球面总线布局", 0, 0)

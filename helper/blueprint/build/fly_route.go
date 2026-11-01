@@ -92,7 +92,7 @@ func (b *builder) validateFlyPathCandidate(points []vector, link, splitter *plac
 					}
 				}
 				if box.SegmentDistanceSquared(world(points[i-1]), world(points[i])) < .23*.23 {
-					return &blueprint.Error{Code: "GEN_E_ROUTE", Message: fmt.Sprintf("产线 %d 的配送接驳侵占物品 %d 的建造盒", link.owner, p.record.ItemID)}
+					return &blueprint.Error{Code: "GEN_E_ROUTE", Message: fmt.Sprintf("产线 %d 的配送接驳格(%.2f,%.2f)侵占物品 %d 于(%.2f,%.2f,%.2f)的建造盒", link.owner, points[i].x, points[i].y, p.record.ItemID, p.a.x, p.a.y, p.a.z)}
 				}
 			}
 		}

@@ -117,7 +117,7 @@ func (g *graph) balanceNatural(needs *rates) error {
 			return qerror("Q_E_BAD_REQUEST", "已有产线的配方或数量无效")
 		}
 		r := g.dataset.Recipes[choices[line.RecipeChoice-1]]
-		if line.Building < 0 || line.Building >= len(r.Factories) || line.IncreasePoints < 0 || line.IncreasePoints > 10 || line.ProductionMode < 0 || line.ProductionMode > 4 {
+		if line.Building < 0 || line.Building >= len(r.Factories) || line.IncreasePoints < 0 || line.IncreasePoints > 4 || line.ProductionMode < 0 || line.ProductionMode > 4 {
 			return qerror("Q_E_BAD_REQUEST", "已有产线配置无效")
 		}
 		factory := g.dataset.ByID[r.Factories[line.Building]]

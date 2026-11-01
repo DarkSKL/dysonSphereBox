@@ -21,6 +21,37 @@ type connectedSurfaceBridge struct {
 	belts []*placed
 }
 
+// connectedSurfacePathRefs 职责：枚举跨区补带需要同步的有向路线字段；使用：候选快照恢复和成功接驳共用；边界：本地回流仍为独立毛流，不加入规范路线，source保持机器出货口之后的原始直连顺序。
+func (b *builder) connectedSurfacePathRefs() []*[]*placed {
+	refs := make([]*[]*placed, 0, 2*len(b.transportRoutes)+5*len(b.machineRecycles))
+	seen := map[*[]*placed]bool{}
+	addPath := func(ref *[]*placed) {
+		if !seen[ref] {
+			refs = append(refs, ref)
+			seen[ref] = true
+		}
+	}
+	addRoute := func(route *transportRoute) {
+		if route != nil {
+			addPath(&route.path)
+			addPath(&route.sharedPath)
+		}
+	}
+	for _, route := range b.transportRoutes {
+		addRoute(route)
+	}
+	for _, entry := range b.machineRecycles {
+		if entry == nil {
+			continue
+		}
+		addRoute(entry.route)
+		addPath(&entry.source)
+		addPath(&entry.intake)
+		addPath(&entry.surplus)
+	}
+	return refs
+}
+
 // connectedSurfaceCuts 职责：在端点安全切面上额外保留不可拆分的设施连接；使用：直连工厂跨纬带规划；边界：带与带可以切分，非带连接不可跨切面。
 func connectedSurfaceCuts(ctx context.Context, all []*placed, height int) ([]bool, error) {
 	cuts := surfaceRectangleSafeCuts(all, height)
@@ -110,9 +141,10 @@ func (b *builder) prepareConnectedSurfaceEncoding(ctx context.Context, layout *S
 	for i, p := range original {
 		states[i] = *p
 	}
-	paths, sharedPaths := make([][]*placed, len(b.transportRoutes)), make([][]*placed, len(b.transportRoutes))
-	for i, route := range b.transportRoutes {
-		paths[i], sharedPaths[i] = route.path, route.sharedPath
+	pathRefs := b.connectedSurfacePathRefs()
+	paths := make([][]*placed, len(pathRefs))
+	for i, ref := range pathRefs {
+		paths[i] = *ref
 	}
 	owner := b.owner
 	restore := func() {
@@ -120,8 +152,8 @@ func (b *builder) prepareConnectedSurfaceEncoding(ctx context.Context, layout *S
 		for i, p := range original {
 			*p = states[i]
 		}
-		for i, route := range b.transportRoutes {
-			route.path, route.sharedPath = paths[i], sharedPaths[i]
+		for i, ref := range pathRefs {
+			*ref = paths[i]
 		}
 	}
 	shift(b.all, -minimum.x, -minimum.y, 0)
@@ -285,9 +317,8 @@ func (b *builder) applyConnectedSurfaceChunks(ctx context.Context, layout *Surfa
 		}
 		bridges[p] = connectedSurfaceBridge{target: other, belts: added}
 	}
-	for _, route := range b.transportRoutes {
-		route.path = expandConnectedSurfacePath(route.path, bridges)
-		route.sharedPath = expandConnectedSurfacePath(route.sharedPath, bridges)
+	for _, ref := range b.connectedSurfacePathRefs() {
+		*ref = expandConnectedSurfacePath(*ref, bridges)
 	}
 	return encoding, nil
 }
@@ -309,6 +340,9 @@ func (b *builder) connectedSurfaceRoutingError(from, to *placed, reason string) 
 
 // expandConnectedSurfacePath 职责：把逐原始带边的新增实体补入路线证据；使用：多 Area 重接后；边界：只扩展与原目标相邻的边，不把不相关带误计入流量。
 func expandConnectedSurfacePath(path []*placed, bridges map[*placed]connectedSurfaceBridge) []*placed {
+	if len(path) == 0 {
+		return path
+	}
 	out := make([]*placed, 0, len(path))
 	for i, p := range path {
 		out = append(out, p)

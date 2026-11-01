@@ -4,10 +4,13 @@ import test from 'node:test'
 import ts from 'typescript'
 
 // 说明：复用已安装的 TypeScript 编译器加载纯展示服务，用 Node 内置测试验证规范流图契约；不引入测试运行库。
-// 边界：只覆盖画板映射、稳定坐标与循环边保留，不把前端断言当作后端带路或游戏验收。
+// 边界：只覆盖画板映射、双速率语义、自动布局请求归一、稳定坐标与循环边保留，不把前端断言当作后端带路或游戏验收。
 const file = new URL('../src/services/dysonSphere/factory-graph.ts', import.meta.url)
 const {outputText} = ts.transpileModule(await readFile(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}})
 const {buildFlowGraph} = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
+const layoutFile = new URL('../src/services/dysonSphere/factory-layout.ts', import.meta.url)
+const {outputText: layoutOutput} = ts.transpileModule(await readFile(layoutFile, 'utf8'), {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}})
+const {buildFactoryLayoutRequest} = await import(`data:text/javascript;base64,${Buffer.from(layoutOutput).toString('base64')}`)
 const itemName = id => `物品 ${id}`
 
 const fixture = () => ({
@@ -34,6 +37,49 @@ const fixture = () => ({
     ],
     components: Array.from({length: 5}, (_, index) => ({id: `c${index}`, nodeIds: [], cyclic: false, level: index})),
   },
+})
+
+const layoutFixture = () => ({
+  beltLv: 3,
+  inserterLv: 4,
+  maxLays: 5,
+  maxMachineInALine: 80,
+  blockWidthLimit: 420,
+  mergeType: 1,
+  needPower: false,
+  useMixed: true,
+  mix2: true,
+  needCoaterNet: true,
+})
+
+test('自动球面请求省略平面专属参数且不改写工作区状态', () => {
+  const layout = layoutFixture()
+  const request = buildFactoryLayoutRequest(layout, true)
+
+  assert.equal('maxMachineInALine' in request, false)
+  assert.equal('blockWidthLimit' in request, false)
+  assert.equal('mergeType' in request, false)
+  assert.equal(request.beltLv, layout.beltLv)
+  assert.equal(request.maxLays, layout.maxLays)
+  assert.equal(request.needPower, layout.needPower)
+  assert.equal(request.useMixed, false)
+  assert.equal(request.mix2, false)
+  assert.equal(request.needCoaterNet, false)
+  assert.equal(layout.maxMachineInALine, 80)
+  assert.equal(layout.blockWidthLimit, 420)
+  assert.equal(layout.mergeType, 1)
+})
+
+test('旧平面兼容请求保留布局参数并关闭已移除开关', () => {
+  const layout = layoutFixture()
+  const request = buildFactoryLayoutRequest(layout, false)
+
+  assert.equal(request.maxMachineInALine, 80)
+  assert.equal(request.blockWidthLimit, 420)
+  assert.equal(request.mergeType, 1)
+  assert.equal(request.useMixed, false)
+  assert.equal(request.mix2, false)
+  assert.equal(request.needCoaterNet, false)
 })
 
 test('旧方案缺少规范图时不猜测供需边', () => {
@@ -105,4 +151,78 @@ test('用户指定外供的来源类型不退化为普通原料，渲染测量�
   assert.equal(before.nodes[0].data.externalSource, true)
   assert.deepEqual(measured.edges, before.edges)
   assert.deepEqual(measured.nodes.map(node => node.position.x), before.nodes.map(node => node.position.x))
+})
+
+const fullLoadCapacity = (expected, fullLoad, cycles = fullLoad) => ({
+  basis: 'configured-full-load',
+  outputPerMinute: fullLoad,
+  outputPerMachinePerMinute: fullLoad,
+  cyclesPerMinute: cycles,
+  utilization: expected / fullLoad,
+  powerMw: .27,
+  inputs: [{itemId: 1, name: itemName(1), ratePerMinute: fullLoad}],
+  outputs: [{itemId: 2, name: itemName(2), ratePerMinute: fullLoad}],
+  grossInputs: [{itemId: 1, name: itemName(1), ratePerMinute: fullLoad}],
+  grossOutputs: [{itemId: 2, name: itemName(2), ratePerMinute: fullLoad}],
+})
+
+test('期望 40 与设备满负荷 45 独立展示，不改变守恒边与期望端口', () => {
+  const plan = fixture()
+  const before = buildFlowGraph(plan, itemName)
+  plan.productions[0].capacity = fullLoadCapacity(40, 45)
+  const view = buildFlowGraph(plan, itemName)
+  const node = view.nodes.find(node => node.id === 'production:0').data
+  assert.equal(node.expectedRate, 40)
+  assert.equal(node.capacity.outputPerMinute, 45)
+  assert.equal(node.capacity, plan.productions[0].capacity)
+  assert.equal(node.inputs[0].rate, 40)
+  assert.equal(node.outputs[0].rate, 40)
+  assert.deepEqual(view.edges, before.edges)
+  assert.equal(plan.productions[0].outputCount, 40)
+})
+
+test('单机循环次数不是物品产量，目标和外供节点不冒用设备满负荷速率', () => {
+  const plan = fixture()
+  plan.productions[2].outputCount = 120
+  plan.productions[2].capacity = fullLoadCapacity(120, 135, 45)
+  plan.targets[0].ratePerMinute = 120
+  plan.flowGraph.edges.find(edge => edge.edgeId === 'e').ratePerMinute = 120
+  const view = buildFlowGraph(plan, itemName)
+  const production = view.nodes.find(node => node.id === 'production:2').data
+  const target = view.nodes.find(node => node.id === 'target:3').data
+  const source = view.nodes.find(node => node.id === 'source:1').data
+  assert.equal(production.expectedRate, 120)
+  assert.equal(production.capacity.outputPerMachinePerMinute, 135)
+  assert.equal(production.capacity.cyclesPerMinute, 45)
+  assert.equal(target.expectedRate, 120)
+  assert.equal(target.capacity, undefined)
+  assert.equal(source.capacity, undefined)
+  assert.equal(view.edges.find(edge => edge.id === 'e').rate, 120)
+})
+
+test('旧快照或不明容量依据不以期望值补造满负荷数据', () => {
+  const legacy = buildFlowGraph(fixture(), itemName)
+  const legacyProduction = legacy.nodes.find(node => node.id === 'production:0').data
+  assert.equal(legacyProduction.expectedRate, 40)
+  assert.equal(legacyProduction.capacity, undefined)
+  const plan = fixture()
+  plan.productions[0].capacity = {...fullLoadCapacity(40, 45), basis: 'unknown'}
+  assert.equal(buildFlowGraph(plan, itemName).nodes.find(node => node.id === 'production:0').data.capacity, undefined)
+  plan.productions[0].capacity = {...fullLoadCapacity(40, 45), outputPerMinute: undefined}
+  assert.equal(buildFlowGraph(plan, itemName).nodes.find(node => node.id === 'production:0').data.capacity, undefined)
+})
+
+test('满负荷毛物料保留循环消耗，不添加或膨胀净物流连线', () => {
+  const plan = fixture()
+  const capacity = fullLoadCapacity(40, 45)
+  capacity.grossInputs.push({itemId: 2, name: itemName(2), ratePerMinute: 90})
+  capacity.grossOutputs[0].ratePerMinute = 135
+  plan.productions[0].capacity = capacity
+  const view = buildFlowGraph(plan, itemName)
+  const data = view.nodes.find(node => node.id === 'production:0').data
+  assert.deepEqual(data.capacity.grossInputs, capacity.grossInputs)
+  assert.equal(data.capacity.outputs[0].ratePerMinute, 45)
+  assert.equal(data.capacity.grossOutputs[0].ratePerMinute, 135)
+  assert.equal(data.inputs.some(port => port.itemId === 2), false)
+  assert.equal(view.edges.length, plan.flowGraph.edges.length)
 })

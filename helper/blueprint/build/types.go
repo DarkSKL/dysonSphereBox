@@ -60,9 +60,11 @@ type Setting struct {
 type Request struct {
 	// RequestID 职责：关联本次生成进度；使用：前端生成唯一标识并过滤事件；边界：可省略，不参与方案可信性判断。
 	RequestID string `json:"requestId,omitempty"`
+	// EmitBlueprintProgress 职责：请求稳定建筑分块事件；使用：动画预览调用显式启用；边界：缺省关闭以避免大蓝图的额外解码与事件开销。
+	EmitBlueprintProgress bool `json:"emitBlueprintProgress,omitempty"`
 	// Plan 职责：保存求解后的产线；使用：桥接传递；边界：保持生成时序。
 	Plan quant.Result `json:"plan"`
-	// Mode 职责：保存策略编号 1 到 6；使用：桥接传递；边界：保持生成时序。
+	// Mode 职责：保存内部策略编号；使用：生成流程分派；边界：公开工作流仅开放补充需求指定的 1 到 4。
 	Mode int `json:"mode"`
 	// Setting 职责：保存布局参数；使用：桥接传递；边界：保持生成时序。
 	Setting Setting `json:"setting"`

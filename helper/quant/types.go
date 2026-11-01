@@ -68,7 +68,7 @@ type DatasetInfo struct {
 type RecipeScheme struct {
 	// Building 职责：保存建筑序号，从零开始；使用：引擎传递；边界：不隐式改变单位。
 	Building int `json:"building"`
-	// IncreasePoints 职责：保存增产点数 0 到 10；使用：引擎传递；边界：不隐式改变单位。
+	// IncreasePoints 职责：保存增产点数 0 到 4；使用：引擎传递；边界：只支持原版的 1/2/4 点档位。
 	IncreasePoints int `json:"increasePoints"`
 	// ProductionMode 职责：保存参考模式 0 到 4；使用：引擎传递；边界：不隐式改变单位。
 	ProductionMode int `json:"productionMode"`
@@ -178,8 +178,6 @@ type Settings struct {
 	AccRate float64 `json:"accRate,omitempty"`
 	// IncRate 职责：保存增产修正；使用：引擎传递；边界：不隐式改变单位。
 	IncRate float64 `json:"incRate,omitempty"`
-	// BlueBuff 职责：保存深空来敌蓝 buff；使用：引擎传递；边界：不隐式改变单位。
-	BlueBuff bool `json:"blueBuff,omitempty"`
 	// MineralizeList 职责：保存原矿化名称集合；使用：引擎传递；边界：不隐式改变单位。
 	MineralizeList map[string]bool `json:"mineralizeList,omitempty"`
 	// NaturalProductionLine 职责：保存已有产线；使用：引擎传递；边界：不隐式改变单位。
@@ -218,7 +216,7 @@ type Production struct {
 	BeltLv int `json:"beltLv"`
 	// MachineID 职责：保存设施原型；使用：引擎传递；边界：不隐式改变单位。
 	MachineID int `json:"machineId"`
-	// OutputCount 职责：保存目标每分钟毛产出；使用：引擎传递；边界：不隐式改变单位。
+	// OutputCount 职责：保存期望的主产物每分钟净产出；使用：需求守恒及节点计划；边界：不随机器取整扩大，不等于满负荷能力。
 	OutputCount float64 `json:"outputCount"`
 	// MainItemID 职责：保存主产物原型；使用：引擎传递；边界：不隐式改变单位。
 	MainItemID int `json:"mainItemId"`
@@ -234,8 +232,34 @@ type Production struct {
 	Outputs []ItemRate `json:"outputs"`
 	// PowerMW 职责：保存本产线制造工作功耗 MW；使用：节点功耗显示；边界：按精确台数计算，合计等于 Result.PowerMW。
 	PowerMW float64 `json:"powerMw"`
+	// Capacity 职责：保存配置下整数机器的满负荷能力；使用：区分期望净流与额定能力；边界：旧快照可缺省，不代表游戏实测或整线供料保证。
+	Capacity *ProductionCapacity `json:"capacity,omitempty"`
 	// TargetItemIDs 职责：保存本产线服务的目标物品（按目标顺序）；使用：蓝图按目标分区与节点流着色；边界：多于一个即为共用产线，空表示只供副产物剩余。
 	TargetItemIDs []int `json:"targetItemIds"`
+}
+
+// ProductionCapacity 职责：承载已选设备、配方和喷涂的整数机器满负荷能力；使用：能力展示及物理端口规划；边界：要求原料、增产剂、电力充足且出货畅通，不代表游戏实测速率。
+type ProductionCapacity struct {
+	// Basis 职责：标识能力来自配置计算；使用：前端区分测产与额定值；边界：configured-full-load 不证明蓝图运输或外部供给足额。
+	Basis string `json:"basis"`
+	// OutputPerMinute 职责：保存全线主产物满负荷净产出；使用：与 OutputCount 的期望值并列；边界：同物品循环原料已抵消。
+	OutputPerMinute float64 `json:"outputPerMinute"`
+	// OutputPerMachinePerMinute 职责：保存单机主产物满负荷净产出；使用：整数设备能力解释；边界：已计设备速度、每次件数和喷涂效果。
+	OutputPerMachinePerMinute float64 `json:"outputPerMachinePerMinute"`
+	// CyclesPerMinute 职责：保存单机每分钟等效配方执行次数；使用：解释周期与每次产出；边界：按所选量化模式和倍率推导，不乘每次产物件数，不保证与游戏面板数值相同。
+	CyclesPerMinute float64 `json:"cyclesPerMinute"`
+	// Inputs 职责：保存全线满负荷净消耗；使用：条件供料能力展示；边界：不能替换期望流图的 Inputs。
+	Inputs []ItemRate `json:"inputs"`
+	// Outputs 职责：保存全线满负荷净产出；使用：主副产物能力展示；边界：不能替换期望流图的 Outputs。
+	Outputs []ItemRate `json:"outputs"`
+	// GrossInputs 职责：保存全线满负荷毛消耗；使用：包含循环物料及增产剂的设备端口规划；边界：与 GrossOutputs 同物品时必须保留两侧。
+	GrossInputs []ItemRate `json:"grossInputs"`
+	// GrossOutputs 职责：保存全线满负荷毛产出；使用：包含循环及副产物的设备端口规划；边界：毛产出不全部等于可对外净供给。
+	GrossOutputs []ItemRate `json:"grossOutputs"`
+	// Utilization 职责：保存期望负荷占整数机器能力的比例；使用：解释取整余量；边界：0 到 1，不是游戏实时利用率。
+	Utilization float64 `json:"utilization"`
+	// PowerMW 职责：保存全线整数机器满负荷工作功耗 MW；使用：与期望功耗对照；边界：不含待机、电网、运输设施和外部供料设施。
+	PowerMW float64 `json:"powerMw"`
 }
 
 // ItemRate 职责：承载每分钟物品量；使用：量化边界；边界：不访问系统资源。

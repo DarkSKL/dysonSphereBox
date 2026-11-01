@@ -12,9 +12,13 @@ import (
 
 // MarshalWorkspace 职责：重新求解后保存版本化 JSON；使用：导出前检查；边界：输入改变或结果篡改立即拒绝，最多 1 MiB 配置记录。
 func MarshalWorkspace(req contract.WorkspaceRequest) (string, error) {
-	if req.Mode < 1 || req.Mode > 6 {
-		return "", &blueprint.Error{Code: "GEN_E_MODE", Message: "方案策略必须为 1 到 6"}
+	if req.Mode < 1 || req.Mode > 4 {
+		return "", &blueprint.Error{Code: "GEN_E_MODE", Message: "方案策略必须为 1 到 4"}
 	}
+	if !quant.IsVanillaDatasetKey(req.Request.Dataset) || !quant.IsVanillaDatasetKey(req.Plan.Dataset) {
+		return "", &blueprint.Error{Code: "Q_E_DATASET_MOD_UNSUPPORTED", Message: "蓝图方案仅支持原版游戏数据集"}
+	}
+	req.Setting = NormalizeCurrentLayoutSetting(req.Setting)
 	plan, err := quant.Solve(context.Background(), req.Request)
 	if err != nil {
 		return "", err

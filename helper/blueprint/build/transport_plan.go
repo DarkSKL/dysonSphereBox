@@ -21,6 +21,10 @@ type transportRow struct {
 	line         *line
 	inputs       map[int]*placed
 	outputs      []*transportRoute
+	// inputStubs 职责：保留原料入口至机器带的真实链；使用：回流接入时保留上游预充口；边界：不能用零净流催化剂伪造外供边。
+	inputStubs map[int][]*placed
+	// recycles 职责：登记本行独立物品的优先回流结构；使用：毛流容量、路由与机器出口追踪；边界：不属于规范净流边。
+	recycles []*machineRecycle
 }
 
 // transportRoute 职责：在重排期间保留规范 lane 与真实指针；使用：装配、路由和最终编号；边界：不以建筑位置反推物品。
@@ -31,7 +35,7 @@ type transportRoute struct {
 	from, to *transportRow
 	filters  []*placed
 	path     []*placed
-	// sharedPath 职责：记录分支拆出前被多条产物流共同使用的干线；使用：聚合共享带容量；边界：不作为单条 lane 的端到端路径。
+	// sharedPath 职责：记录同一产物各份额在分支前共用的干线；使用：聚合共享带容量；边界：不同产物不共用机器输出带，也不作为单条lane的端到端路径。
 	sharedPath []*placed
 	start, end *placed
 	boundary   *placed
@@ -46,7 +50,7 @@ type rowFlow struct {
 // newLogisticsSummary 职责：创建所有模式共用的诊断口径；使用：规范流图建立后；边界：带等级来自归一化设置而非旧 BeltSpeed。
 func newLogisticsSummary(graph quant.FlowGraph, setting Setting) *LogisticsSummary {
 	capacity, _ := transport.BeltCapacityPerMinute(setting.BeltLv)
-	return &LogisticsSummary{FlowGraphDigest: graph.Digest, BeltLevel: setting.BeltLv, BeltCapacityPerMinute: capacity, Lanes: []TransportLane{}, ExternalPorts: []BoundaryPort{}, Checks: []LogisticsCheck{{RuleID: "flow-conservation", Status: "passed", Message: "按可信量化字段重建规范供需边，逐物品守恒已通过"}, {RuleID: "machine-rounding", Status: "passed", Message: "保留所有取整机器；精确流量按需求节流，取整余量是设备能力余量而非凭空增加的物料"}, {RuleID: "game-runtime", Status: "unverified", Message: "离线数值与协议检查不等价于 Unity Physics、地形或游戏内连续运行验收"}}}
+	return &LogisticsSummary{FlowGraphDigest: graph.Digest, BeltLevel: setting.BeltLv, BeltCapacityPerMinute: capacity, Lanes: []TransportLane{}, ExternalPorts: []BoundaryPort{}, Checks: []LogisticsCheck{{RuleID: "flow-conservation", Status: "passed", Message: "按可信量化字段重建期望净供需边，逐物品守恒已通过"}, {RuleID: "machine-rounding", Status: "passed", Message: "保留全部整数机器；规范流边表示期望净流量，设备满负荷能力另列，不把取整余量重复加入守恒边，也未对设备写入降速"}, {RuleID: "game-runtime", Status: "unverified", Message: "离线数值与协议检查不等价于 Unity Physics、地形或游戏内连续运行验收"}}}
 }
 
 // planTransportRows 职责：按统一容量拆机器行并把每条供需边分配给实际行；使用：mode 1；边界：保留所有边、循环和副产物，不静默补供或减量。
@@ -67,14 +71,16 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 		if err := validateProductionCapacity(p, dataset, b.setting); err != nil {
 			return nil, err
 		}
-		if p.ExactMachineCount > 0 && float64(p.MachineCount) > p.ExactMachineCount+1e-8 {
-			b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "machine-throttle", Status: "unverified", Message: fmt.Sprintf("配方 %d 保留 %d 台机器但目标流量按精确需求 %.6f 台折算；生成器仅输送计划流量，不把余量当作额外产出或副产物", p.RecipeID, p.MachineCount, p.ExactMachineCount)})
-		}
 		ri, exists := dataset.RecipeByID[p.RecipeID]
 		if !exists || p.MachineCount <= 0 || p.MachineCount > 10000 || p.IncreaseLv < 0 || p.IncreaseLv > 3 {
 			return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: fmt.Sprintf("产线 %d 的配方、机器数或喷涂等级无效", owner)}
 		}
 		r := dataset.Recipes[ri]
+		effective, recipeErr := effectiveProductionRecipe(p, r)
+		if recipeErr != nil {
+			return nil, recipeErr
+		}
+		r = effective
 		validFactory := false
 		for _, id := range r.Factories {
 			validFactory = validFactory || id == p.MachineID
@@ -86,25 +92,19 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 		if p.ExactMachineCount > float64(p.MachineCount)+1e-9 {
 			return nil, &blueprint.Error{Code: "GEN_E_PLAN_ROUNDING", Message: fmt.Sprintf("产线 %d 的取整机器数 %d 小于精确需求 %.6f，拒绝生成以避免隐形欠产", owner, p.MachineCount, p.ExactMachineCount)}
 		}
-		if b.setting.UseMixed || len(r.Items) > 5 {
-			return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 的循环混带端口尚无已验证逐物品过滤拓扑，请取消混带输入或更换模式", r.ID)}
+		if b.setting.UseMixed || len(r.Items)+len(r.Results) > 6 || len(r.Results) == 0 {
+			return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 需要独立物料带且原料与产物合计至多六种；循环混带端口尚无已验证逐物品过滤拓扑，请取消混带输入或更换模式", r.ID)}
 		}
-		for _, in := range r.Items {
-			for _, out := range r.Results {
-				if in == out {
-					return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 物品 %d 存在设备内部循环，当前直连带未验证净流量与实体回流的转换", r.ID, in)}
-				}
-			}
+		if _, err := productionMaterialFlows(p, r); err != nil {
+			return nil, err
 		}
 		counts, err := lineCounts(p, r, b.setting, dataset.ByID[p.MachineID].Speed)
 		if err != nil {
 			return nil, err
 		}
-		if err := validateMachineInserterCapacity(p, r, b.setting); err != nil {
-			return nil, err
-		}
+		// 分拣器在机器行内按真实空槽并联和堆叠高度规划，不能在实体方案形成前按旧单臂布局拒绝。
 		for _, count := range counts {
-			row := &transportRow{owner: owner, count: count, info: p, recipe: r, inputs: map[int]*placed{}}
+			row := &transportRow{owner: owner, count: count, info: p, recipe: r, inputs: map[int]*placed{}, inputStubs: map[int][]*placed{}}
 			rows, byOwner[owner] = append(rows, row), append(byOwner[owner], row)
 		}
 	}
@@ -159,13 +159,13 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 	}
 	for _, row := range rows {
 		inputRates := map[int]float64{}
-		outputRate := 0.
+		outputRates := map[int]float64{}
 		for _, route := range b.transportRoutes {
 			if route.to == row {
 				inputRates[route.edge.ItemID] += route.rate
 			}
 			if route.from == row {
-				outputRate += route.rate
+				outputRates[route.edge.ItemID] += route.rate
 			}
 		}
 		for item, rate := range inputRates {
@@ -173,8 +173,10 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 				return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行 %d 原料 %d 汇入 %.3f/min，超过单物品输入带容量 %.3f/min", row.owner, item, rate, capacity)}
 			}
 		}
-		if outputRate > capacity+1e-6 {
-			return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行 %d 多产物合计输出 %.3f/min，超过共享输出干线容量 %.3f/min", row.owner, outputRate, capacity)}
+		for _, item := range row.recipe.Results {
+			if rate := outputRates[item]; rate > capacity+1e-6 {
+				return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行 %d 产物 %d 独立输出 %.3f/min，超过单带容量 %.3f/min", row.owner, item, rate, capacity)}
+			}
 		}
 	}
 	return rows, nil
@@ -194,6 +196,11 @@ func validateProductionCapacity(p quant.Production, dataset *quant.Dataset, sett
 		return &blueprint.Error{Code: "GEN_E_MACHINE_CAPACITY", Message: fmt.Sprintf("配方 %d 取整机器 %d 少于精确需求 %.6f，拒绝欠能力蓝图", p.RecipeID, p.MachineCount, denom)}
 	}
 	r := dataset.Recipes[ri]
+	if effective, err := effectiveProductionRecipe(p, r); err != nil {
+		return err
+	} else {
+		r = effective
+	}
 	inputIDs, outputIDs := map[int]bool{}, map[int]bool{}
 	for _, id := range r.Items {
 		inputIDs[id] = true
@@ -243,44 +250,4 @@ func inserterCapacityPerMinute(level, reach int) float64 {
 		return 0
 	}
 	return capacity
-}
-
-// validateMachineInserterCapacity 职责：独立检查机器端单臂吞吐；使用：直连带装配前；边界：超能力明确拒绝，不用带容量冒充设备端口能力。
-func validateMachineInserterCapacity(p quant.Production, recipe quant.Recipe, setting Setting) error {
-	denominator := p.ExactMachineCount
-	if denominator <= 0 {
-		denominator = float64(p.MachineCount)
-	}
-	for i, item := range recipe.Items {
-		reach := i + 1
-		if i >= 3 {
-			reach = i - 2
-		}
-		for _, in := range p.Inputs {
-			if in.ItemID != item {
-				continue
-			}
-			rate := in.RatePerMinute / denominator
-			if p.MachineType == 6 {
-				rate *= float64(min(p.MachineCount, setting.MaxLays))
-			}
-			capacity := inserterCapacityPerMinute(setting.InserterLv, reach)
-			if rate > capacity+1e-6 {
-				return &blueprint.Error{Code: "GEN_E_INSERTER_CAPACITY", Message: fmt.Sprintf("配方 %d 原料 %d 单端口 %.3f/min 超过 Mk.%d 跨 %d 格分拣器已验证能力 %.3f/min，请提高分拣器等级或降低设备工作倍率", recipe.ID, item, rate, setting.InserterLv, reach, capacity)}
-			}
-		}
-	}
-	output := 0.
-	for _, out := range p.Outputs {
-		output += out.RatePerMinute / denominator
-	}
-	if p.MachineType == 6 {
-		output *= float64(min(p.MachineCount, setting.MaxLays))
-	}
-	reach := 1 + max(0, len(recipe.Items)-3)
-	capacity := inserterCapacityPerMinute(setting.InserterLv, reach)
-	if output > capacity+1e-6 {
-		return &blueprint.Error{Code: "GEN_E_INSERTER_CAPACITY", Message: fmt.Sprintf("配方 %d 混合输出单臂 %.3f/min 超过 Mk.%d 跨 %d 格能力 %.3f/min", recipe.ID, output, setting.InserterLv, reach, capacity)}
-	}
-	return nil
 }

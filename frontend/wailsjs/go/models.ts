@@ -636,6 +636,7 @@ export namespace build {
 	}
 	export class Request {
 	    requestId?: string;
+	    emitBlueprintProgress?: boolean;
 	    plan: quant.Result;
 	    mode: number;
 	    setting: Setting;
@@ -649,6 +650,7 @@ export namespace build {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.requestId = source["requestId"];
+	        this.emitBlueprintProgress = source["emitBlueprintProgress"];
 	        this.plan = this.convertValues(source["plan"], quant.Result);
 	        this.mode = source["mode"];
 	        this.setting = this.convertValues(source["setting"], Setting);
@@ -4597,6 +4599,54 @@ export namespace quant {
 	        this.increasePoints = source["increasePoints"];
 	    }
 	}
+	export class ProductionCapacity {
+	    basis: string;
+	    outputPerMinute: number;
+	    outputPerMachinePerMinute: number;
+	    cyclesPerMinute: number;
+	    inputs: ItemRate[];
+	    outputs: ItemRate[];
+	    grossInputs: ItemRate[];
+	    grossOutputs: ItemRate[];
+	    utilization: number;
+	    powerMw: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductionCapacity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.basis = source["basis"];
+	        this.outputPerMinute = source["outputPerMinute"];
+	        this.outputPerMachinePerMinute = source["outputPerMachinePerMinute"];
+	        this.cyclesPerMinute = source["cyclesPerMinute"];
+	        this.inputs = this.convertValues(source["inputs"], ItemRate);
+	        this.outputs = this.convertValues(source["outputs"], ItemRate);
+	        this.grossInputs = this.convertValues(source["grossInputs"], ItemRate);
+	        this.grossOutputs = this.convertValues(source["grossOutputs"], ItemRate);
+	        this.utilization = source["utilization"];
+	        this.powerMw = source["powerMw"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Production {
 	    proliferatorMode: number;
 	    recipeId: number;
@@ -4615,6 +4665,7 @@ export namespace quant {
 	    inputs: ItemRate[];
 	    outputs: ItemRate[];
 	    powerMw: number;
+	    capacity?: ProductionCapacity;
 	    targetItemIds: number[];
 	
 	    static createFrom(source: any = {}) {
@@ -4640,6 +4691,7 @@ export namespace quant {
 	        this.inputs = this.convertValues(source["inputs"], ItemRate);
 	        this.outputs = this.convertValues(source["outputs"], ItemRate);
 	        this.powerMw = source["powerMw"];
+	        this.capacity = this.convertValues(source["capacity"], ProductionCapacity);
 	        this.targetItemIds = source["targetItemIds"];
 	    }
 	
@@ -4661,6 +4713,7 @@ export namespace quant {
 		    return a;
 		}
 	}
+	
 	export class Recipe {
 	    id: number;
 	    name: string;
@@ -4730,7 +4783,6 @@ export namespace quant {
 	    proliferateItself?: boolean;
 	    accRate?: number;
 	    incRate?: number;
-	    blueBuff?: boolean;
 	    mineralizeList?: Record<string, boolean>;
 	    naturalProductionLine?: NaturalProduction[];
 	
@@ -4762,7 +4814,6 @@ export namespace quant {
 	        this.proliferateItself = source["proliferateItself"];
 	        this.accRate = source["accRate"];
 	        this.incRate = source["incRate"];
-	        this.blueBuff = source["blueBuff"];
 	        this.mineralizeList = source["mineralizeList"];
 	        this.naturalProductionLine = this.convertValues(source["naturalProductionLine"], NaturalProduction);
 	    }

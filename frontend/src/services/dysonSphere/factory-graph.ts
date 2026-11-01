@@ -10,11 +10,12 @@ export interface FlowNodeData {
   kind: FlowNodeKind
   itemId: number
   title: string
-  rate: number
+  expectedRate: number
   inputs: FlowPort[]
   outputs: FlowPort[]
   productionIndex?: number
   production?: quant.Production
+  capacity?: quant.ProductionCapacity
   externalSource?: boolean
 }
 export interface FlowLayoutNode {id: string; position: {x: number; y: number}; data: FlowNodeData}
@@ -24,10 +25,20 @@ export interface FlowLayout {nodes: FlowLayoutNode[]; edges: FlowLayoutEdge[]; n
 const COLUMN_GAP = 300
 const ROW_GAP = 28
 const PORT_HEIGHT = 22
-const NODE_BASE = {source: 60, production: 160, target: 100, leftover: 60}
+const NODE_BASE = {source: 70, production: 195, target: 110, leftover: 70}
 
 export const portId = (side: 'in' | 'out', itemId: number): string => `${side}-${itemId}`
 const estimateHeight = (node: FlowLayoutNode): number => NODE_BASE[node.data.kind] + Math.max(node.data.inputs.length, node.data.outputs.length, 1) * PORT_HEIGHT
+
+/** 职责：仅接收完整的配置满负荷数据；使用：节点映射；边界：不替旧快照推算缺失值，不把未提供显示成零产能。 */
+function configuredCapacity(production: quant.Production | undefined): quant.ProductionCapacity | undefined {
+  const capacity = production?.capacity
+  if (capacity?.basis !== 'configured-full-load') return undefined
+  const rates = [capacity.outputPerMinute, capacity.outputPerMachinePerMinute, capacity.cyclesPerMinute]
+  const totals = [capacity.utilization, capacity.powerMw]
+  return rates.every(value => Number.isFinite(value) && value > 0)
+    && totals.every(value => Number.isFinite(value) && value >= 0) ? capacity : undefined
+}
 
 /**
  * buildFlowGraph 展示后端的唯一规范物料图。
@@ -77,11 +88,13 @@ export function buildFlowGraph(plan: quant.Result, itemName: (id: number) => str
       kind,
       itemId: node.itemId,
       title: itemName(node.itemId),
-      rate: production?.outputCount ?? (kind === 'source' ? outputs : inputs).reduce((sum, port) => sum + port.rate, 0),
+      expectedRate: production?.outputCount ?? (kind === 'source' ? outputs : inputs).reduce((sum, port) => sum + port.rate, 0),
       inputs,
       outputs,
       productionIndex: production ? node.productionIndex : undefined,
       production,
+      // 容量是单产线在配置条件下的理论值，不向目标或外部来源节点推算吞吐。
+      capacity: configuredCapacity(production),
       externalSource: node.kind === 'external-source',
     }}
   })
