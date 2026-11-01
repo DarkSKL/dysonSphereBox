@@ -334,34 +334,52 @@ const disposeViewer = (): void => {
   isLoadingViewer.value = false
 }
 
+// 蓝图加载器入口
 const loadCurrentBlueprint = async (): Promise<void> => {
+  // 检查状态
   if (!active || !containerRef.value || !props.code) return
   if (!hasRenderableSize()) return
+
   const version = ++loadVersion
   isLoadingViewer.value = true
   viewerError.value = ''
   let phase: 'load' | 'render' = 'load'
+
   try {
+    // 加载蓝图编辑器
     const editor = await ensureBlueprintEditor()
+    // 检查状态
     if (!active || version !== loadVersion || !containerRef.value) return
     phase = 'render'
+    // 清理旧实例
     releaseViewerInstance()
+    // 创建新实例
     if (!viewer.value) {
+      // 登记释放函数
       releaseHost = claimBlueprintPreview(disposeViewer)
+      // 
       viewer.value = withAppThemeIsolation(() => new editor.BlueprintViewer({container: containerRef.value!, theme: themeMode.value}, {
+        // 注册建筑选择事件
         onBuildingSelect: (index) => withAppThemeIsolation(() => {
           if (active && props.interactive) emit('select', {index})
         }),
       }))
+      // 获取画布
       const canvas = viewer.value.getCanvas?.()
+      // 启用旋转交互
       if (canvas) releaseInteraction = enableBlueprintPreviewRotation(viewer.value, canvas)
     }
     withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
     buildingCount.value = viewer.value.getBlueprintData()?.buildings.length ?? 0
+    // 强制重置尺寸
     lastSize = {width: 0, height: 0}
+    // 同步画布尺寸
     applyViewerSize()
+    // 重置相机
     resetCamera()
+    // 回填选中态
     selectBuilding(props.selectedIndex)
+    // 提示建筑数量
     if (buildingCount.value > props.maxBuildings) emit('error', {code: 'PREVIEW_E_LIMIT', message: `共 ${buildingCount.value} 个建筑，模型交互可能较慢`})
     emit('ready', {buildingCount: buildingCount.value})
   } catch (error) {
