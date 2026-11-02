@@ -1,0 +1,3037 @@
+{
+  "rowTolerance": 0.002,
+  "rows": [
+    {
+      "itemId": 2317,
+      "row": 1,
+      "y": -0.7700317326666667,
+      "count": 30,
+      "previousRowDeltaY": null,
+      "xMin": 3.518306,
+      "xMax": 196.7198,
+      "deltaXMedian": 6.662124000000002,
+      "deltaXRange": [
+        6.662053999999998,
+        6.662199999999984
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 30
+      },
+      "recipeCounts": {
+        "35": 30
+      },
+      "firstThreeIndices": [
+        550,
+        549,
+        548
+      ],
+      "lastThreeIndices": [
+        523,
+        522,
+        521
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 2,
+      "y": 3.1269660933333334,
+      "count": 30,
+      "previousRowDeltaY": 3.896997826,
+      "xMin": 3.5183063,
+      "xMax": 196.7198,
+      "deltaXMedian": 6.662120000000002,
+      "deltaXRange": [
+        6.662067,
+        6.662199999999984
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 30
+      },
+      "recipeCounts": {
+        "35": 30
+      },
+      "firstThreeIndices": [
+        520,
+        519,
+        518
+      ],
+      "lastThreeIndices": [
+        493,
+        492,
+        491
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 3,
+      "y": 6.62496622,
+      "count": 30,
+      "previousRowDeltaY": 3.4980001266666667,
+      "xMin": 3.5183065,
+      "xMax": 196.7198,
+      "deltaXMedian": 6.662126000000001,
+      "deltaXRange": [
+        6.662053999999998,
+        6.662199999999984
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 30
+      },
+      "recipeCounts": {
+        "35": 30
+      },
+      "firstThreeIndices": [
+        490,
+        489,
+        488
+      ],
+      "lastThreeIndices": [
+        463,
+        462,
+        461
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 4,
+      "y": 10.521967933333334,
+      "count": 30,
+      "previousRowDeltaY": 3.897001713333334,
+      "xMin": 3.5183063,
+      "xMax": 196.7198,
+      "deltaXMedian": 6.662123000000001,
+      "deltaXRange": [
+        6.662060000000025,
+        6.662219999999991
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 30
+      },
+      "recipeCounts": {
+        "35": 30
+      },
+      "firstThreeIndices": [
+        460,
+        459,
+        458
+      ],
+      "lastThreeIndices": [
+        433,
+        432,
+        431
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 5,
+      "y": 14.019963833333334,
+      "count": 30,
+      "previousRowDeltaY": 3.4979958999999994,
+      "xMin": 3.518306,
+      "xMax": 196.7198,
+      "deltaXMedian": 6.662120000000002,
+      "deltaXRange": [
+        6.661966000000007,
+        6.662275999999991
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 30
+      },
+      "recipeCounts": {
+        "35": 30
+      },
+      "firstThreeIndices": [
+        430,
+        429,
+        428
+      ],
+      "lastThreeIndices": [
+        403,
+        402,
+        401
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 6,
+      "y": 17.9169594,
+      "count": 30,
+      "previousRowDeltaY": 3.896995566666666,
+      "xMin": 3.5183063,
+      "xMax": 196.7198,
+      "deltaXMedian": 6.6621277,
+      "deltaXRange": [
+        6.662049999999994,
+        6.662199999999984
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 30
+      },
+      "recipeCounts": {
+        "35": 30
+      },
+      "firstThreeIndices": [
+        400,
+        399,
+        398
+      ],
+      "lastThreeIndices": [
+        373,
+        372,
+        371
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 7,
+      "y": 21.41993919230769,
+      "count": 26,
+      "previousRowDeltaY": 3.5029797923076913,
+      "xMin": 3.518306,
+      "xMax": 192.3423,
+      "deltaXMedian": 6.743713,
+      "deltaXRange": [
+        6.743645000000001,
+        13.487503999999987
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 26
+      },
+      "recipeCounts": {
+        "35": 26
+      },
+      "firstThreeIndices": [
+        370,
+        369,
+        368
+      ],
+      "lastThreeIndices": [
+        347,
+        346,
+        345
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 8,
+      "y": 23.035324,
+      "count": 1,
+      "previousRowDeltaY": 1.6153848076923083,
+      "xMin": 197.6728,
+      "xMax": 197.6728,
+      "deltaXMedian": null,
+      "deltaXRange": null,
+      "yawCountsRoundedDegrees": {
+        "90": 1
+      },
+      "recipeCounts": {
+        "35": 1
+      },
+      "firstThreeIndices": [
+        344
+      ],
+      "lastThreeIndices": [
+        344
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 9,
+      "y": 25.316938846153846,
+      "count": 26,
+      "previousRowDeltaY": 2.281614846153847,
+      "xMin": 3.5183053,
+      "xMax": 192.3423,
+      "deltaXMedian": 6.743709999999993,
+      "deltaXRange": [
+        6.743672,
+        13.487509999999986
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 26
+      },
+      "recipeCounts": {
+        "35": 26
+      },
+      "firstThreeIndices": [
+        343,
+        342,
+        341
+      ],
+      "lastThreeIndices": [
+        320,
+        319,
+        318
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 10,
+      "y": 28.822945178571427,
+      "count": 28,
+      "previousRowDeltaY": 3.5060063324175808,
+      "xMin": 3.55999,
+      "xMax": 196.68364,
+      "deltaXMedian": 6.897279,
+      "deltaXRange": [
+        6.897199999999998,
+        13.79449000000001
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 28
+      },
+      "recipeCounts": {
+        "35": 28
+      },
+      "firstThreeIndices": [
+        317,
+        316,
+        315
+      ],
+      "lastThreeIndices": [
+        292,
+        291,
+        290
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 11,
+      "y": 32.719950857142855,
+      "count": 28,
+      "previousRowDeltaY": 3.8970056785714284,
+      "xMin": 3.5599895,
+      "xMax": 196.68364,
+      "deltaXMedian": 6.897279999999995,
+      "deltaXRange": [
+        6.897179999999992,
+        13.794594000000004
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 28
+      },
+      "recipeCounts": {
+        "35": 28
+      },
+      "firstThreeIndices": [
+        289,
+        288,
+        287
+      ],
+      "lastThreeIndices": [
+        264,
+        263,
+        262
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 12,
+      "y": 36.22595413793103,
+      "count": 29,
+      "previousRowDeltaY": 3.5060032807881782,
+      "xMin": 3.5599895,
+      "xMax": 196.68364,
+      "deltaXMedian": 6.897272999999998,
+      "deltaXRange": [
+        6.897179999999992,
+        6.897400000000005
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 29
+      },
+      "recipeCounts": {
+        "35": 29
+      },
+      "firstThreeIndices": [
+        261,
+        260,
+        259
+      ],
+      "lastThreeIndices": [
+        235,
+        234,
+        233
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 13,
+      "y": 40.12295844827586,
+      "count": 29,
+      "previousRowDeltaY": 3.897004310344826,
+      "xMin": 3.559989,
+      "xMax": 196.68364,
+      "deltaXMedian": 6.8972775,
+      "deltaXRange": [
+        6.8971699999999885,
+        6.8973900000000015
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 29
+      },
+      "recipeCounts": {
+        "35": 29
+      },
+      "firstThreeIndices": [
+        232,
+        231,
+        230
+      ],
+      "lastThreeIndices": [
+        206,
+        205,
+        204
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 14,
+      "y": 43.62996428571429,
+      "count": 28,
+      "previousRowDeltaY": 3.5070058374384274,
+      "xMin": 3.6099834,
+      "xMax": 192.41129,
+      "deltaXMedian": 6.992633999999999,
+      "deltaXRange": [
+        6.992599999999982,
+        6.9926909999999936
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 28
+      },
+      "recipeCounts": {
+        "35": 28
+      },
+      "firstThreeIndices": [
+        203,
+        202,
+        201
+      ],
+      "lastThreeIndices": [
+        178,
+        177,
+        176
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 15,
+      "y": 45.34696,
+      "count": 1,
+      "previousRowDeltaY": 1.7169957142857157,
+      "xMin": 197.59088,
+      "xMax": 197.59088,
+      "deltaXMedian": null,
+      "deltaXRange": null,
+      "yawCountsRoundedDegrees": {
+        "90": 1
+      },
+      "recipeCounts": {
+        "35": 1
+      },
+      "firstThreeIndices": [
+        175
+      ],
+      "lastThreeIndices": [
+        175
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 16,
+      "y": 47.526957214285716,
+      "count": 28,
+      "previousRowDeltaY": 2.179997214285713,
+      "xMin": 3.6099825,
+      "xMax": 192.41129,
+      "deltaXMedian": 6.992633000000001,
+      "deltaXRange": [
+        6.992573,
+        6.992698999999995
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 28
+      },
+      "recipeCounts": {
+        "35": 28
+      },
+      "firstThreeIndices": [
+        174,
+        173,
+        172
+      ],
+      "lastThreeIndices": [
+        149,
+        148,
+        147
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 17,
+      "y": 51.035984178571425,
+      "count": 28,
+      "previousRowDeltaY": 3.5090269642857095,
+      "xMin": 3.6699934,
+      "xMax": 196.57982,
+      "deltaXMedian": 7.144800000000018,
+      "deltaXRange": [
+        7.144759999999998,
+        7.144867999999999
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 28
+      },
+      "recipeCounts": {
+        "35": 28
+      },
+      "firstThreeIndices": [
+        146,
+        145,
+        144
+      ],
+      "lastThreeIndices": [
+        121,
+        120,
+        119
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 18,
+      "y": 54.932959964285715,
+      "count": 28,
+      "previousRowDeltaY": 3.8969757857142895,
+      "xMin": 3.6699934,
+      "xMax": 196.57982,
+      "deltaXMedian": 7.144805000000005,
+      "deltaXRange": [
+        7.144759999999991,
+        7.144870000000026
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 28
+      },
+      "recipeCounts": {
+        "35": 28
+      },
+      "firstThreeIndices": [
+        118,
+        117,
+        116
+      ],
+      "lastThreeIndices": [
+        93,
+        92,
+        91
+      ]
+    },
+    {
+      "itemId": 2317,
+      "row": 19,
+      "y": 58.435999214285715,
+      "count": 28,
+      "previousRowDeltaY": 3.5030392500000005,
+      "xMin": 3.699989,
+      "xMax": 196.55151,
+      "deltaXMedian": 7.142653999999993,
+      "deltaXRange": [
+        7.14255,
+        7.142699999999991
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 28
+      },
+      "recipeCounts": {
+        "35": 28
+      },
+      "firstThreeIndices": [
+        90,
+        89,
+        88
+      ],
+      "lastThreeIndices": [
+        65,
+        64,
+        63
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 1,
+      "y": 61.59021443333334,
+      "count": 60,
+      "previousRowDeltaY": null,
+      "xMin": 1.6799989,
+      "xMax": 198.31996,
+      "deltaXMedian": 3.332884,
+      "deltaXRange": [
+        3.332790000000017,
+        3.332950000000011
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 60
+      },
+      "recipeCounts": {
+        "108": 60
+      },
+      "firstThreeIndices": [
+        1200,
+        1199,
+        1198
+      ],
+      "lastThreeIndices": [
+        1143,
+        1142,
+        1141
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 2,
+      "y": 64.99021179661017,
+      "count": 59,
+      "previousRowDeltaY": 3.3999973632768317,
+      "xMin": 1.6799989,
+      "xMax": 198.31996,
+      "deltaXMedian": 3.3903499999999838,
+      "deltaXRange": [
+        3.3902900000000216,
+        3.3904299999999807
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 59
+      },
+      "recipeCounts": {
+        "108": 59
+      },
+      "firstThreeIndices": [
+        1140,
+        1139,
+        1138
+      ],
+      "lastThreeIndices": [
+        1084,
+        1083,
+        1082
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 3,
+      "y": 68.03520114,
+      "count": 50,
+      "previousRowDeltaY": 3.0449893433898296,
+      "xMin": 1.7199744,
+      "xMax": 198.28004,
+      "deltaXMedian": 3.430229000000004,
+      "deltaXRange": [
+        3.4301599999999723,
+        10.55001999999999
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 50
+      },
+      "recipeCounts": {
+        "108": 50
+      },
+      "firstThreeIndices": [
+        1081,
+        1080,
+        1079
+      ],
+      "lastThreeIndices": [
+        1034,
+        1033,
+        1032
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 4,
+      "y": 71.43522412,
+      "count": 50,
+      "previousRowDeltaY": 3.400022980000003,
+      "xMin": 1.7199742,
+      "xMax": 198.28004,
+      "deltaXMedian": 3.4302319999999966,
+      "deltaXRange": [
+        3.4301599999999723,
+        10.550009999999986
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 50
+      },
+      "recipeCounts": {
+        "108": 50
+      },
+      "firstThreeIndices": [
+        1031,
+        1030,
+        1029
+      ],
+      "lastThreeIndices": [
+        984,
+        983,
+        982
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 5,
+      "y": 74.481254,
+      "count": 57,
+      "previousRowDeltaY": 3.046029880000006,
+      "xMin": 1.7624923,
+      "xMax": 198.23747,
+      "deltaXMedian": 3.5084844999999962,
+      "deltaXRange": [
+        3.508409999999998,
+        3.5085599999999886
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 57
+      },
+      "recipeCounts": {
+        "108": 57
+      },
+      "firstThreeIndices": [
+        981,
+        980,
+        979
+      ],
+      "lastThreeIndices": [
+        927,
+        926,
+        925
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 6,
+      "y": 77.88122796296297,
+      "count": 54,
+      "previousRowDeltaY": 3.39997396296296,
+      "xMin": 1.7624927,
+      "xMax": 198.23747,
+      "deltaXMedian": 3.5084799999999916,
+      "deltaXRange": [
+        3.508409999999998,
+        7.016999999999996
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 54
+      },
+      "recipeCounts": {
+        "108": 54
+      },
+      "firstThreeIndices": [
+        924,
+        923,
+        922
+      ],
+      "lastThreeIndices": [
+        873,
+        872,
+        871
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 7,
+      "y": 80.92923735849055,
+      "count": 53,
+      "previousRowDeltaY": 3.048009395527586,
+      "xMin": 1.8125045,
+      "xMax": 198.1875,
+      "deltaXMedian": 3.570459999999997,
+      "deltaXRange": [
+        3.570399999999978,
+        7.140906000000001
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 53
+      },
+      "recipeCounts": {
+        "108": 53
+      },
+      "firstThreeIndices": [
+        870,
+        869,
+        868
+      ],
+      "lastThreeIndices": [
+        820,
+        819,
+        818
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 8,
+      "y": 84.32924403636365,
+      "count": 55,
+      "previousRowDeltaY": 3.400006677873094,
+      "xMin": 1.8125045,
+      "xMax": 198.1875,
+      "deltaXMedian": 3.6365800000000092,
+      "deltaXRange": [
+        3.636499999999984,
+        3.6366299999999967
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 55
+      },
+      "recipeCounts": {
+        "108": 55
+      },
+      "firstThreeIndices": [
+        817,
+        816,
+        815
+      ],
+      "lastThreeIndices": [
+        765,
+        764,
+        763
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 9,
+      "y": 87.37586335185186,
+      "count": 54,
+      "previousRowDeltaY": 3.046619315488215,
+      "xMin": 1.8437526,
+      "xMax": 198.15627,
+      "deltaXMedian": 3.704010000000011,
+      "deltaXRange": [
+        3.7039299999999855,
+        3.704090000000008
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 54
+      },
+      "recipeCounts": {
+        "108": 54
+      },
+      "firstThreeIndices": [
+        762,
+        761,
+        760
+      ],
+      "lastThreeIndices": [
+        711,
+        710,
+        709
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 10,
+      "y": 90.77587325925926,
+      "count": 54,
+      "previousRowDeltaY": 3.4000099074073944,
+      "xMin": 1.8437526,
+      "xMax": 198.15627,
+      "deltaXMedian": 3.704010000000011,
+      "deltaXRange": [
+        3.7039299999999855,
+        3.704090000000008
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 54
+      },
+      "recipeCounts": {
+        "108": 54
+      },
+      "firstThreeIndices": [
+        708,
+        707,
+        706
+      ],
+      "lastThreeIndices": [
+        657,
+        656,
+        655
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 11,
+      "y": 93.82387798076923,
+      "count": 52,
+      "previousRowDeltaY": 3.048004721509969,
+      "xMin": 1.9000068,
+      "xMax": 198.09999,
+      "deltaXMedian": 3.847059999999999,
+      "deltaXRange": [
+        3.8470200000000006,
+        3.847139999999996
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 52
+      },
+      "recipeCounts": {
+        "108": 52
+      },
+      "firstThreeIndices": [
+        654,
+        653,
+        652
+      ],
+      "lastThreeIndices": [
+        605,
+        604,
+        603
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 12,
+      "y": 97.22389153846154,
+      "count": 52,
+      "previousRowDeltaY": 3.4000135576923185,
+      "xMin": 1.900007,
+      "xMax": 198.09999,
+      "deltaXMedian": 3.847059999999999,
+      "deltaXRange": [
+        3.846993999999995,
+        3.847139999999996
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 52
+      },
+      "recipeCounts": {
+        "108": 52
+      },
+      "firstThreeIndices": [
+        602,
+        601,
+        600
+      ],
+      "lastThreeIndices": [
+        553,
+        552,
+        551
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 13,
+      "y": 100.27189823529412,
+      "count": 51,
+      "previousRowDeltaY": 3.048006696832573,
+      "xMin": 1.9625031,
+      "xMax": 198.03754,
+      "deltaXMedian": 3.921495,
+      "deltaXRange": [
+        3.9214549999999946,
+        3.9215899999999806
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 51
+      },
+      "recipeCounts": {
+        "107": 51
+      },
+      "firstThreeIndices": [
+        1720,
+        1719,
+        1718
+      ],
+      "lastThreeIndices": [
+        1672,
+        1671,
+        1670
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 14,
+      "y": 103.67189450980392,
+      "count": 51,
+      "previousRowDeltaY": 3.399996274509803,
+      "xMin": 1.9625022,
+      "xMax": 198.03754,
+      "deltaXMedian": 3.9214969999999987,
+      "deltaXRange": [
+        3.921440000000004,
+        3.9215899999999806
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 51
+      },
+      "recipeCounts": {
+        "107": 51
+      },
+      "firstThreeIndices": [
+        1669,
+        1668,
+        1667
+      ],
+      "lastThreeIndices": [
+        1621,
+        1620,
+        1619
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 15,
+      "y": 106.71989914285714,
+      "count": 49,
+      "previousRowDeltaY": 3.0480046330532247,
+      "xMin": 2.0249994,
+      "xMax": 197.97504,
+      "deltaXMedian": 4.08229,
+      "deltaXRange": [
+        4.082250000000002,
+        4.082335999999998
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 49
+      },
+      "recipeCounts": {
+        "107": 49
+      },
+      "firstThreeIndices": [
+        1618,
+        1617,
+        1616
+      ],
+      "lastThreeIndices": [
+        1572,
+        1571,
+        1570
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 16,
+      "y": 110.119913,
+      "count": 48,
+      "previousRowDeltaY": 3.400013857142852,
+      "xMin": 2.0249994,
+      "xMax": 197.97504,
+      "deltaXMedian": 4.08229,
+      "deltaXRange": [
+        4.082250000000002,
+        8.16458
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 48
+      },
+      "recipeCounts": {
+        "107": 48
+      },
+      "firstThreeIndices": [
+        1569,
+        1568,
+        1567
+      ],
+      "lastThreeIndices": [
+        1524,
+        1523,
+        1522
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 17,
+      "y": 113.1679256097561,
+      "count": 41,
+      "previousRowDeltaY": 3.0480126097560998,
+      "xMin": 2.1062405,
+      "xMax": 197.89372,
+      "deltaXMedian": 4.247961800000001,
+      "deltaXRange": [
+        4.24790999999999,
+        13.125045
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 41
+      },
+      "recipeCounts": {
+        "107": 41
+      },
+      "firstThreeIndices": [
+        1521,
+        1520,
+        1519
+      ],
+      "lastThreeIndices": [
+        1483,
+        1482,
+        1481
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 18,
+      "y": 116.56792420454546,
+      "count": 44,
+      "previousRowDeltaY": 3.3999985947893663,
+      "xMin": 2.1062407,
+      "xMax": 197.89372,
+      "deltaXMedian": 4.247960000000006,
+      "deltaXRange": [
+        4.247900000000001,
+        13.125029999999995
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 44
+      },
+      "recipeCounts": {
+        "107": 44
+      },
+      "firstThreeIndices": [
+        1480,
+        1479,
+        1478
+      ],
+      "lastThreeIndices": [
+        1439,
+        1438,
+        1437
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 19,
+      "y": 119.617905,
+      "count": 46,
+      "previousRowDeltaY": 3.0499807954545304,
+      "xMin": 2.1875012,
+      "xMax": 197.81248,
+      "deltaXMedian": 4.347224999999995,
+      "deltaXRange": [
+        4.347149999999999,
+        4.34726999999998
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 46
+      },
+      "recipeCounts": {
+        "107": 46
+      },
+      "firstThreeIndices": [
+        1436,
+        1435,
+        1434
+      ],
+      "lastThreeIndices": [
+        1393,
+        1392,
+        1391
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 20,
+      "y": 123.01790555555556,
+      "count": 45,
+      "previousRowDeltaY": 3.4000005555555646,
+      "xMin": 2.1875012,
+      "xMax": 197.81248,
+      "deltaXMedian": 4.446025500000001,
+      "deltaXRange": [
+        4.44597499999999,
+        4.446079999999995
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 45
+      },
+      "recipeCounts": {
+        "107": 45
+      },
+      "firstThreeIndices": [
+        1390,
+        1389,
+        1388
+      ],
+      "lastThreeIndices": [
+        1348,
+        1347,
+        1346
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 21,
+      "y": 126.06787445454546,
+      "count": 44,
+      "previousRowDeltaY": 3.0499688989899028,
+      "xMin": 2.2916613,
+      "xMax": 197.70836,
+      "deltaXMedian": 4.544578000000001,
+      "deltaXRange": [
+        4.5445100000000025,
+        4.544620000000009
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 44
+      },
+      "recipeCounts": {
+        "107": 44
+      },
+      "firstThreeIndices": [
+        1345,
+        1344,
+        1343
+      ],
+      "lastThreeIndices": [
+        1304,
+        1303,
+        1302
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 22,
+      "y": 129.46788093023255,
+      "count": 43,
+      "previousRowDeltaY": 3.4000064756870927,
+      "xMin": 2.2916613,
+      "xMax": 197.70836,
+      "deltaXMedian": 4.652778999999988,
+      "deltaXRange": [
+        4.652710000000013,
+        4.652826000000005
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 43
+      },
+      "recipeCounts": {
+        "107": 43
+      },
+      "firstThreeIndices": [
+        1301,
+        1300,
+        1299
+      ],
+      "lastThreeIndices": [
+        1261,
+        1260,
+        1259
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 23,
+      "y": 132.51793515151516,
+      "count": 33,
+      "previousRowDeltaY": 3.0500542212826076,
+      "xMin": 2.3999956,
+      "xMax": 197.60002,
+      "deltaXMedian": 4.864288699999998,
+      "deltaXRange": [
+        4.864200000000011,
+        14.75005999999999
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 33
+      },
+      "recipeCounts": {
+        "107": 29,
+        "106": 4
+      },
+      "firstThreeIndices": [
+        1258,
+        1257,
+        1256
+      ],
+      "lastThreeIndices": [
+        1979,
+        1978,
+        1977
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 24,
+      "y": 135.9179093939394,
+      "count": 33,
+      "previousRowDeltaY": 3.3999742424242356,
+      "xMin": 2.3999956,
+      "xMax": 197.60002,
+      "deltaXMedian": 4.864284000000001,
+      "deltaXRange": [
+        4.864249999999998,
+        14.750039999999998
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 33
+      },
+      "recipeCounts": {
+        "107": 29,
+        "106": 4
+      },
+      "firstThreeIndices": [
+        1229,
+        1228,
+        1227
+      ],
+      "lastThreeIndices": [
+        1975,
+        1974,
+        1973
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 25,
+      "y": 139.80002,
+      "count": 2,
+      "previousRowDeltaY": 3.8821106060605928,
+      "xMin": 191.53539,
+      "xMax": 197.30397,
+      "deltaXMedian": 5.768579999999986,
+      "deltaXRange": [
+        5.768579999999986,
+        5.768579999999986
+      ],
+      "yawCountsRoundedDegrees": {
+        "270": 1,
+        "90": 1
+      },
+      "recipeCounts": {
+        "106": 2
+      },
+      "firstThreeIndices": [
+        1972,
+        1971
+      ],
+      "lastThreeIndices": [
+        1972,
+        1971
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 26,
+      "y": 142.842,
+      "count": 2,
+      "previousRowDeltaY": 3.0419800000000237,
+      "xMin": 191.53539,
+      "xMax": 197.30397,
+      "deltaXMedian": 5.768579999999986,
+      "deltaXRange": [
+        5.768579999999986,
+        5.768579999999986
+      ],
+      "yawCountsRoundedDegrees": {
+        "270": 1,
+        "90": 1
+      },
+      "recipeCounts": {
+        "106": 2
+      },
+      "firstThreeIndices": [
+        1970,
+        1969
+      ],
+      "lastThreeIndices": [
+        1970,
+        1969
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 27,
+      "y": 145.884,
+      "count": 2,
+      "previousRowDeltaY": 3.041999999999973,
+      "xMin": 191.53539,
+      "xMax": 197.30397,
+      "deltaXMedian": 5.768579999999986,
+      "deltaXRange": [
+        5.768579999999986,
+        5.768579999999986
+      ],
+      "yawCountsRoundedDegrees": {
+        "270": 1,
+        "90": 1
+      },
+      "recipeCounts": {
+        "106": 2
+      },
+      "firstThreeIndices": [
+        1968,
+        1967
+      ],
+      "lastThreeIndices": [
+        1968,
+        1967
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 28,
+      "y": 149.20300864864865,
+      "count": 37,
+      "previousRowDeltaY": 3.319008648648662,
+      "xMin": 2.7700021,
+      "xMax": 197.22998,
+      "deltaXMedian": 5.401663500000005,
+      "deltaXRange": [
+        5.401620000000008,
+        5.401700000000005
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 37
+      },
+      "recipeCounts": {
+        "106": 37
+      },
+      "firstThreeIndices": [
+        1966,
+        1965,
+        1964
+      ],
+      "lastThreeIndices": [
+        1932,
+        1931,
+        1930
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 29,
+      "y": 152.60297916666667,
+      "count": 36,
+      "previousRowDeltaY": 3.399970518018023,
+      "xMin": 2.7700016,
+      "xMax": 197.22998,
+      "deltaXMedian": 5.555999999999999,
+      "deltaXRange": [
+        5.5559399999999926,
+        5.556060000000002
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 36
+      },
+      "recipeCounts": {
+        "106": 36
+      },
+      "firstThreeIndices": [
+        1929,
+        1928,
+        1927
+      ],
+      "lastThreeIndices": [
+        1896,
+        1895,
+        1894
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 30,
+      "y": 155.657,
+      "count": 35,
+      "previousRowDeltaY": 3.0540208333333396,
+      "xMin": 2.9599953,
+      "xMax": 197.04002,
+      "deltaXMedian": 5.708236349999998,
+      "deltaXRange": [
+        5.7081699999999955,
+        5.708300000000008
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 35
+      },
+      "recipeCounts": {
+        "106": 35
+      },
+      "firstThreeIndices": [
+        1893,
+        1892,
+        1891
+      ],
+      "lastThreeIndices": [
+        1861,
+        1860,
+        1859
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 31,
+      "y": 159.0569903125,
+      "count": 32,
+      "previousRowDeltaY": 3.3999903124999946,
+      "xMin": 2.9599953,
+      "xMax": 197.04002,
+      "deltaXMedian": 6.065006999999994,
+      "deltaXRange": [
+        6.06495000000001,
+        12.129959999999983
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 32
+      },
+      "recipeCounts": {
+        "106": 32
+      },
+      "firstThreeIndices": [
+        1858,
+        1857,
+        1856
+      ],
+      "lastThreeIndices": [
+        1829,
+        1828,
+        1827
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 32,
+      "y": 162.1129239130435,
+      "count": 23,
+      "previousRowDeltaY": 3.055933600543483,
+      "xMin": 3.1999812,
+      "xMax": 196.80002,
+      "deltaXMedian": 6.464785000000006,
+      "deltaXRange": [
+        6.464713999999997,
+        19.27998500000001
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 23
+      },
+      "recipeCounts": {
+        "106": 23
+      },
+      "firstThreeIndices": [
+        1826,
+        1825,
+        1824
+      ],
+      "lastThreeIndices": [
+        1806,
+        1805,
+        1804
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 33,
+      "y": 165.5129048,
+      "count": 25,
+      "previousRowDeltaY": 3.399980886956513,
+      "xMin": 3.1999826,
+      "xMax": 196.80002,
+      "deltaXMedian": 6.464771500000007,
+      "deltaXRange": [
+        6.464694999999992,
+        19.28002500000001
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 25
+      },
+      "recipeCounts": {
+        "106": 25
+      },
+      "firstThreeIndices": [
+        1803,
+        1802,
+        1801
+      ],
+      "lastThreeIndices": [
+        1781,
+        1780,
+        1779
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 34,
+      "y": 168.56784413793102,
+      "count": 29,
+      "previousRowDeltaY": 3.0549393379310175,
+      "xMin": 3.460003,
+      "xMax": 196.54005,
+      "deltaXMedian": 6.657925999999997,
+      "deltaXRange": [
+        6.657880000000006,
+        13.315869999999999
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 29
+      },
+      "recipeCounts": {
+        "106": 29
+      },
+      "firstThreeIndices": [
+        1778,
+        1777,
+        1776
+      ],
+      "lastThreeIndices": [
+        1752,
+        1751,
+        1750
+      ]
+    },
+    {
+      "itemId": 2318,
+      "row": 35,
+      "y": 171.96787275862067,
+      "count": 29,
+      "previousRowDeltaY": 3.4000286206896533,
+      "xMin": 3.460003,
+      "xMax": 196.54005,
+      "deltaXMedian": 6.895719999999997,
+      "deltaXRange": [
+        6.895659999999992,
+        6.895800000000008
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 29
+      },
+      "recipeCounts": {
+        "106": 29
+      },
+      "firstThreeIndices": [
+        1749,
+        1748,
+        1747
+      ],
+      "lastThreeIndices": [
+        1723,
+        1722,
+        1721
+      ]
+    },
+    {
+      "itemId": 2319,
+      "row": 1,
+      "y": 138.5990094117647,
+      "count": 51,
+      "previousRowDeltaY": null,
+      "xMin": 1.9300027,
+      "xMax": 187.15002,
+      "deltaXMedian": 3.7043950000000034,
+      "deltaXRange": [
+        3.704350000000005,
+        3.7044599999999974
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 51
+      },
+      "recipeCounts": {
+        "61": 51
+      },
+      "firstThreeIndices": [
+        2175,
+        2174,
+        2173
+      ],
+      "lastThreeIndices": [
+        2127,
+        2126,
+        2125
+      ]
+    },
+    {
+      "itemId": 2319,
+      "row": 2,
+      "y": 141.399,
+      "count": 49,
+      "previousRowDeltaY": 2.799990588235289,
+      "xMin": 1.930003,
+      "xMax": 187.15002,
+      "deltaXMedian": 3.858750000000015,
+      "deltaXRange": [
+        3.8586899999999957,
+        3.8588000000000022
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 49
+      },
+      "recipeCounts": {
+        "61": 49
+      },
+      "firstThreeIndices": [
+        2124,
+        2123,
+        2122
+      ],
+      "lastThreeIndices": [
+        2078,
+        2077,
+        2076
+      ]
+    },
+    {
+      "itemId": 2319,
+      "row": 3,
+      "y": 143.7158,
+      "count": 48,
+      "previousRowDeltaY": 2.3168000000000006,
+      "xMin": 2.0500057,
+      "xMax": 186.94003,
+      "deltaXMedian": 3.9338289999999994,
+      "deltaXRange": [
+        3.9337799999999845,
+        3.9338800000000163
+      ],
+      "yawCountsRoundedDegrees": {
+        "180": 48
+      },
+      "recipeCounts": {
+        "61": 48
+      },
+      "firstThreeIndices": [
+        2075,
+        2074,
+        2073
+      ],
+      "lastThreeIndices": [
+        2030,
+        2029,
+        2028
+      ]
+    },
+    {
+      "itemId": 2319,
+      "row": 4,
+      "y": 146.5158,
+      "count": 47,
+      "previousRowDeltaY": 2.8000000000000114,
+      "xMin": 2.050006,
+      "xMax": 186.94003,
+      "deltaXMedian": 4.019344500000001,
+      "deltaXRange": [
+        4.019279999999981,
+        4.01943
+      ],
+      "yawCountsRoundedDegrees": {
+        "0": 47
+      },
+      "recipeCounts": {
+        "61": 47
+      },
+      "firstThreeIndices": [
+        2027,
+        2026,
+        2025
+      ],
+      "lastThreeIndices": [
+        1983,
+        1982,
+        1981
+      ]
+    }
+  ],
+  "selectedMachineConnections": [
+    {
+      "machine": {
+        "num": -102,
+        "recordLayout": "v2",
+        "index": 548,
+        "itemId": 2317,
+        "modelIndex": 376,
+        "areaIndex": 0,
+        "localOffset": {
+          "x": 16.842545,
+          "y": -0.77003205,
+          "z": -2.2910538e-06
+        },
+        "yaw": 180,
+        "tilt": 0,
+        "pitch": 0,
+        "localOffset2": {
+          "x": 16.842545,
+          "y": -0.77003205,
+          "z": -2.2910538e-06
+        },
+        "yaw2": 180,
+        "tilt2": 0,
+        "pitch2": 0,
+        "outputObjIdx": -1,
+        "inputObjIdx": -1,
+        "outputToSlot": 0,
+        "inputFromSlot": 0,
+        "outputFromSlot": 0,
+        "inputToSlot": 0,
+        "outputOffset": 0,
+        "inputOffset": 0,
+        "recipeId": 35,
+        "filterId": 0,
+        "parameters": [
+          1
+        ],
+        "content": ""
+      },
+      "inserters": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 4556,
+          "itemId": 2014,
+          "modelIndex": 483,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 15.252334,
+            "y": -0.054680347,
+            "z": 0.0045066816
+          },
+          "yaw": 359.98694,
+          "tilt": 359.4276,
+          "pitch": 0.24740079,
+          "localOffset2": {
+            "x": 15.244002,
+            "y": 0.90196824,
+            "z": -2.2910538e-06
+          },
+          "yaw2": 8.957465e-05,
+          "tilt2": 0.0035927328,
+          "pitch2": -2.2071981e-06,
+          "outputObjIdx": 14112,
+          "inputObjIdx": 548,
+          "outputToSlot": -1,
+          "inputFromSlot": 3,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": -13,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 6586,
+          "itemId": 2013,
+          "modelIndex": 43,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 15.844239,
+            "y": 0.9019653,
+            "z": -0.0002655052
+          },
+          "yaw": 180.00005,
+          "tilt": -0.0018127172,
+          "pitch": -3.6171732e-06,
+          "localOffset2": {
+            "x": 16.047419,
+            "y": -0.054570366,
+            "z": -0.0011123681
+          },
+          "yaw2": 179.99348,
+          "tilt2": 0.28619877,
+          "pitch2": 359.7526,
+          "outputObjIdx": 548,
+          "inputObjIdx": 14362,
+          "outputToSlot": 4,
+          "inputFromSlot": -1,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": -18,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        }
+      ],
+      "connectedBelts": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 14112,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 14.116956,
+            "y": 0.70196766,
+            "z": 0.5000123
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 14.116956,
+            "y": 0.70196766,
+            "z": 0.5000123
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 14113,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 14362,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 15.582333,
+            "y": 0.7019634,
+            "z": 0.12520567
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 15.582333,
+            "y": 0.7019634,
+            "z": 0.12520567
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 14363,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        }
+      ]
+    },
+    {
+      "machine": {
+        "num": -102,
+        "recordLayout": "v2",
+        "index": 518,
+        "itemId": 2317,
+        "modelIndex": 376,
+        "areaIndex": 0,
+        "localOffset": {
+          "x": 16.842525,
+          "y": 3.1269596,
+          "z": 0.00019225852
+        },
+        "yaw": 180,
+        "tilt": 0,
+        "pitch": 0,
+        "localOffset2": {
+          "x": 16.842525,
+          "y": 3.1269596,
+          "z": 0.00019225852
+        },
+        "yaw2": 180,
+        "tilt2": 0,
+        "pitch2": 0,
+        "outputObjIdx": -1,
+        "inputObjIdx": -1,
+        "outputToSlot": 0,
+        "inputFromSlot": 0,
+        "outputFromSlot": 0,
+        "inputToSlot": 0,
+        "outputOffset": 0,
+        "inputOffset": 0,
+        "recipeId": 35,
+        "filterId": 0,
+        "parameters": [
+          1
+        ],
+        "content": ""
+      },
+      "inserters": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 4526,
+          "itemId": 2014,
+          "modelIndex": 483,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 17.637844,
+            "y": 1.4573426,
+            "z": -0.004671481
+          },
+          "yaw": 180.00671,
+          "tilt": 359.7138,
+          "pitch": 0.261956,
+          "localOffset2": {
+            "x": 17.651356,
+            "y": 0.5019676,
+            "z": 0.00023803489
+          },
+          "yaw2": 179.99997,
+          "tilt2": 0.001797703,
+          "pitch2": -5.761006e-06,
+          "outputObjIdx": 14110,
+          "inputObjIdx": 518,
+          "outputToSlot": -1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": -9,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 6604,
+          "itemId": 2013,
+          "modelIndex": 43,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 17.052097,
+            "y": 0.5019664,
+            "z": -4.8067424e-05
+          },
+          "yaw": -1.8150519e-06,
+          "tilt": -5.8290993e-07,
+          "pitch": 9.661554e-08,
+          "localOffset2": {
+            "x": 16.842525,
+            "y": 1.4573984,
+            "z": -0.006536868
+          },
+          "yaw2": 8.879e-06,
+          "tilt2": 3.91866e-07,
+          "pitch2": 359.73804,
+          "outputObjIdx": 518,
+          "inputObjIdx": 14362,
+          "outputToSlot": 1,
+          "inputFromSlot": -1,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": -18,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        }
+      ],
+      "connectedBelts": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 14110,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 17.759594,
+            "y": 0.70196766,
+            "z": 0.50001204
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 17.759594,
+            "y": 0.70196766,
+            "z": 0.50001204
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 14111,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 14362,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 15.582333,
+            "y": 0.7019634,
+            "z": 0.12520567
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 15.582333,
+            "y": 0.7019634,
+            "z": 0.12520567
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 14363,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        }
+      ]
+    },
+    {
+      "machine": {
+        "num": -102,
+        "recordLayout": "v2",
+        "index": 1198,
+        "itemId": 2318,
+        "modelIndex": 456,
+        "areaIndex": 0,
+        "localOffset": {
+          "x": 8.34577,
+          "y": 61.59021,
+          "z": -2.2910538e-06
+        },
+        "yaw": 180,
+        "tilt": 0,
+        "pitch": 0,
+        "localOffset2": {
+          "x": 8.34577,
+          "y": 61.59021,
+          "z": -2.2910538e-06
+        },
+        "yaw2": 180,
+        "tilt2": 0,
+        "pitch2": 0,
+        "outputObjIdx": -1,
+        "inputObjIdx": -1,
+        "outputToSlot": 0,
+        "inputFromSlot": 0,
+        "outputFromSlot": 0,
+        "inputToSlot": 0,
+        "outputOffset": 0,
+        "inputOffset": 0,
+        "recipeId": 108,
+        "filterId": 0,
+        "parameters": [
+          0
+        ],
+        "content": ""
+      },
+      "inserters": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 4066,
+          "itemId": 2014,
+          "modelIndex": 483,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 9.213096,
+            "y": 62.463837,
+            "z": -0.00035705793
+          },
+          "yaw": 0.12588245,
+          "tilt": 0.28619647,
+          "pitch": 0.20118594,
+          "localOffset2": {
+            "x": 9.282122,
+            "y": 63.490234,
+            "z": -0.0006774925
+          },
+          "yaw2": 0.004143925,
+          "tilt2": 359.98935,
+          "pitch2": -2.2976279e-05,
+          "outputObjIdx": 17624,
+          "inputObjIdx": 1198,
+          "outputToSlot": -1,
+          "inputFromSlot": 8,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": -2,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 6092,
+          "itemId": 2013,
+          "modelIndex": 43,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 7.167879,
+            "y": 63.44022,
+            "z": 0.0013824442
+          },
+          "yaw": 179.99983,
+          "tilt": 0.00039198846,
+          "pitch": 7.477428e-06,
+          "localOffset2": {
+            "x": 7.4784427,
+            "y": 62.463837,
+            "z": -0.00035705793
+          },
+          "yaw2": 179.87419,
+          "tilt2": 0.2861962,
+          "pitch2": 359.7988,
+          "outputObjIdx": 1198,
+          "inputObjIdx": 9773,
+          "outputToSlot": 6,
+          "inputFromSlot": -1,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        }
+      ],
+      "connectedBelts": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 9773,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 6.5844917,
+            "y": 63.28896,
+            "z": 0.12500153
+          },
+          "yaw": 269.90485,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 6.5844917,
+            "y": 63.28896,
+            "z": 0.12500153
+          },
+          "yaw2": 269.90485,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 9796,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 17624,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 10.16176,
+            "y": 63.288956,
+            "z": 0.5000086
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 10.16176,
+            "y": 63.288956,
+            "z": 0.5000086
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 17625,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        }
+      ]
+    },
+    {
+      "machine": {
+        "num": -102,
+        "recordLayout": "v2",
+        "index": 1138,
+        "itemId": 2318,
+        "modelIndex": 456,
+        "areaIndex": 0,
+        "localOffset": {
+          "x": 8.460708,
+          "y": 64.99021,
+          "z": -2.2910538e-06
+        },
+        "yaw": 0,
+        "tilt": 0,
+        "pitch": 0,
+        "localOffset2": {
+          "x": 8.460708,
+          "y": 64.99021,
+          "z": -2.2910538e-06
+        },
+        "yaw2": 0,
+        "tilt2": 0,
+        "pitch2": 0,
+        "outputObjIdx": -1,
+        "inputObjIdx": -1,
+        "outputToSlot": 0,
+        "inputFromSlot": 0,
+        "outputFromSlot": 0,
+        "inputToSlot": 0,
+        "outputOffset": 0,
+        "inputOffset": 0,
+        "recipeId": 108,
+        "filterId": 0,
+        "parameters": [
+          0
+        ],
+        "content": ""
+      },
+      "inserters": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 3993,
+          "itemId": 2014,
+          "modelIndex": 483,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 8.460708,
+            "y": 64.115715,
+            "z": -0.0022338892
+          },
+          "yaw": 180.00003,
+          "tilt": -5.54225e-08,
+          "pitch": 0.20118295,
+          "localOffset2": {
+            "x": 8.530583,
+            "y": 63.09021,
+            "z": -0.0019363427
+          },
+          "yaw2": 180.00468,
+          "tilt2": 0.009375457,
+          "pitch2": 5.4259053e-06,
+          "outputObjIdx": 17623,
+          "inputObjIdx": 1138,
+          "outputToSlot": -1,
+          "inputFromSlot": 7,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 4,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 6115,
+          "itemId": 2013,
+          "modelIndex": 43,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 7.9010196,
+            "y": 63.1402,
+            "z": 0.0014053324
+          },
+          "yaw": 0.00043300973,
+          "tilt": 0.0009934847,
+          "pitch": -1.3735934e-07,
+          "localOffset2": {
+            "x": 7.589391,
+            "y": 64.114815,
+            "z": -0.00035705793
+          },
+          "yaw2": 359.87265,
+          "tilt2": 359.7138,
+          "pitch2": 359.79883,
+          "outputObjIdx": 1138,
+          "inputObjIdx": 9795,
+          "outputToSlot": 8,
+          "inputFromSlot": -1,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        }
+      ],
+      "connectedBelts": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 9795,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 8.583234,
+            "y": 63.28896,
+            "z": 0.12501298
+          },
+          "yaw": 270.04453,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 8.583234,
+            "y": 63.28896,
+            "z": 0.12501298
+          },
+          "yaw2": 270.04453,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 9773,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 17623,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 8.311289,
+            "y": 63.288956,
+            "z": 0.5000095
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 8.311289,
+            "y": 63.288956,
+            "z": 0.5000095
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 17624,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        }
+      ]
+    },
+    {
+      "machine": {
+        "num": -102,
+        "recordLayout": "v2",
+        "index": 2173,
+        "itemId": 2319,
+        "modelIndex": 457,
+        "areaIndex": 0,
+        "localOffset": {
+          "x": 9.338803,
+          "y": 138.59901,
+          "z": -2.2910538e-06
+        },
+        "yaw": 180,
+        "tilt": 0,
+        "pitch": 0,
+        "localOffset2": {
+          "x": 9.338803,
+          "y": 138.59901,
+          "z": -2.2910538e-06
+        },
+        "yaw2": 180,
+        "tilt2": 0,
+        "pitch2": 0,
+        "outputObjIdx": -1,
+        "inputObjIdx": -1,
+        "outputToSlot": 0,
+        "inputFromSlot": 0,
+        "outputFromSlot": 0,
+        "inputToSlot": 0,
+        "outputOffset": 0,
+        "inputOffset": 0,
+        "recipeId": 61,
+        "filterId": 0,
+        "parameters": [
+          1
+        ],
+        "content": ""
+      },
+      "inserters": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 2742,
+          "itemId": 2014,
+          "modelIndex": 483,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 8.068389,
+            "y": 139.39154,
+            "z": -0.00075760117
+          },
+          "yaw": 359.64227,
+          "tilt": 359.7138,
+          "pitch": 0.20779856,
+          "localOffset2": {
+            "x": 7.9640965,
+            "y": 140.41945,
+            "z": 0.3741852
+          },
+          "yaw2": 0.036303114,
+          "tilt2": 0.048745047,
+          "pitch2": -1.5948606e-06,
+          "outputObjIdx": 17784,
+          "inputObjIdx": 2173,
+          "outputToSlot": -1,
+          "inputFromSlot": 6,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 12,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 4967,
+          "itemId": 2013,
+          "modelIndex": 43,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 8.790663,
+            "y": 140.24901,
+            "z": -7.095561e-05
+          },
+          "yaw": 180,
+          "tilt": -5.187348e-06,
+          "pitch": 2.0601905e-05,
+          "localOffset2": {
+            "x": 9.338802,
+            "y": 139.39401,
+            "z": -0.0026344324
+          },
+          "yaw2": 180.00003,
+          "tilt2": 1.3000074e-07,
+          "pitch2": 359.7922,
+          "outputObjIdx": 2173,
+          "inputObjIdx": 17744,
+          "outputToSlot": 7,
+          "inputFromSlot": -1,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 5,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        }
+      ],
+      "connectedBelts": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 17744,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 8.9991665,
+            "y": 139.99727,
+            "z": 0.12499008
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 8.9991665,
+            "y": 139.99727,
+            "z": 0.12499008
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 17745,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 17784,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 7.7405167,
+            "y": 139.9973,
+            "z": 0.49996722
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 7.7405167,
+            "y": 139.9973,
+            "z": 0.49996722
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 17785,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        }
+      ]
+    },
+    {
+      "machine": {
+        "num": -102,
+        "recordLayout": "v2",
+        "index": 2122,
+        "itemId": 2319,
+        "modelIndex": 457,
+        "areaIndex": 0,
+        "localOffset": {
+          "x": 9.64751,
+          "y": 141.399,
+          "z": -2.2910538e-06
+        },
+        "yaw": 0,
+        "tilt": 0,
+        "pitch": 0,
+        "localOffset2": {
+          "x": 9.64751,
+          "y": 141.399,
+          "z": -2.2910538e-06
+        },
+        "yaw2": 0,
+        "tilt2": 0,
+        "pitch2": 0,
+        "outputObjIdx": -1,
+        "inputObjIdx": -1,
+        "outputToSlot": 0,
+        "inputFromSlot": 0,
+        "outputFromSlot": 0,
+        "inputToSlot": 0,
+        "outputOffset": 0,
+        "inputOffset": 0,
+        "recipeId": 61,
+        "filterId": 0,
+        "parameters": [
+          1
+        ],
+        "content": ""
+      },
+      "inserters": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 2690,
+          "itemId": 2014,
+          "modelIndex": 483,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 10.930115,
+            "y": 140.60147,
+            "z": -0.00075760117
+          },
+          "yaw": 180.36134,
+          "tilt": 359.7138,
+          "pitch": 0.20779559,
+          "localOffset2": {
+            "x": 11.038071,
+            "y": 139.57857,
+            "z": 0.37421954
+          },
+          "yaw2": 179.96643,
+          "tilt2": 0.046858516,
+          "pitch2": -1.1909019e-05,
+          "outputObjIdx": 17785,
+          "inputObjIdx": 2122,
+          "outputToSlot": -1,
+          "inputFromSlot": 6,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 5003,
+          "itemId": 2013,
+          "modelIndex": 43,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 10.195648,
+            "y": 139.749,
+            "z": -3.6623333e-05
+          },
+          "yaw": 7.5049757e-06,
+          "tilt": 5.6777008e-06,
+          "pitch": 3.2168175e-06,
+          "localOffset2": {
+            "x": 9.647511,
+            "y": 140.60399,
+            "z": -0.0026344324
+          },
+          "yaw2": 3.745196e-05,
+          "tilt2": 2.7048856e-07,
+          "pitch2": 359.7922,
+          "outputObjIdx": 2122,
+          "inputObjIdx": 17743,
+          "outputToSlot": 7,
+          "inputFromSlot": -1,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 17,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [
+            1
+          ],
+          "content": ""
+        }
+      ],
+      "connectedBelts": [
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 17743,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 11.919862,
+            "y": 139.99727,
+            "z": 0.12499008
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 11.919862,
+            "y": 139.99727,
+            "z": 0.12499008
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 17744,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        },
+        {
+          "num": -102,
+          "recordLayout": "v2",
+          "index": 17785,
+          "itemId": 2003,
+          "modelIndex": 37,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 10.653947,
+            "y": 139.9973,
+            "z": 0.49996722
+          },
+          "yaw": 0,
+          "tilt": 0,
+          "pitch": 0,
+          "localOffset2": {
+            "x": 10.653947,
+            "y": 139.9973,
+            "z": 0.49996722
+          },
+          "yaw2": 0,
+          "tilt2": 0,
+          "pitch2": 0,
+          "outputObjIdx": 17786,
+          "inputObjIdx": -1,
+          "outputToSlot": 1,
+          "inputFromSlot": 0,
+          "outputFromSlot": 0,
+          "inputToSlot": 1,
+          "outputOffset": 0,
+          "inputOffset": 0,
+          "recipeId": 0,
+          "filterId": 0,
+          "parameters": [],
+          "content": ""
+        }
+      ]
+    }
+  ],
+  "analysis": {
+    "sourceSha256": "8f6ef87ef8eeef70e998b4e1f23d4b5259759a4b5e7b684717ef032bf1d94492",
+    "coordinateSpace": "raw Area 0 local coordinates; not game world distance",
+    "rowClustering": "同原型按 Y 升序；分组最大 Y 与起点 Y 差不超过 0.002；组内按 X 排序；ΔX 为相邻差中位数。",
+    "orientationGrouping": "仅统计朝向时四舍五入到整数度并模 360；原始样本保持原值。",
+    "selectedConnections": "每类原型前两条 Y 行内按 X 排序的第三台机器，以及引用它的分拣器和对应带。"
+  },
+  "machineInserterConnections": [
+    {
+      "machineItemId": 2317,
+      "recipeId": 35,
+      "direction": "input",
+      "inserterItemId": 2013,
+      "filterId": 0,
+      "count": 488
+    },
+    {
+      "machineItemId": 2317,
+      "recipeId": 35,
+      "direction": "output",
+      "inserterItemId": 2013,
+      "filterId": 0,
+      "count": 97
+    },
+    {
+      "machineItemId": 2317,
+      "recipeId": 35,
+      "direction": "output",
+      "inserterItemId": 2014,
+      "filterId": 0,
+      "count": 391
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 106,
+      "direction": "input",
+      "inserterItemId": 2013,
+      "filterId": 0,
+      "count": 260
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 106,
+      "direction": "output",
+      "inserterItemId": 2014,
+      "filterId": 0,
+      "count": 260
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 107,
+      "direction": "input",
+      "inserterItemId": 2013,
+      "filterId": 0,
+      "count": 450
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 107,
+      "direction": "input",
+      "inserterItemId": 2014,
+      "filterId": 0,
+      "count": 70
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 107,
+      "direction": "output",
+      "inserterItemId": 2013,
+      "filterId": 0,
+      "count": 85
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 107,
+      "direction": "output",
+      "inserterItemId": 2014,
+      "filterId": 0,
+      "count": 435
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 108,
+      "direction": "input",
+      "inserterItemId": 2013,
+      "filterId": 0,
+      "count": 616
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 108,
+      "direction": "input",
+      "inserterItemId": 2014,
+      "filterId": 0,
+      "count": 34
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 108,
+      "direction": "output",
+      "inserterItemId": 2013,
+      "filterId": 0,
+      "count": 139
+    },
+    {
+      "machineItemId": 2318,
+      "recipeId": 108,
+      "direction": "output",
+      "inserterItemId": 2014,
+      "filterId": 0,
+      "count": 511
+    },
+    {
+      "machineItemId": 2319,
+      "recipeId": 61,
+      "direction": "input",
+      "inserterItemId": 2013,
+      "filterId": 0,
+      "count": 195
+    },
+    {
+      "machineItemId": 2319,
+      "recipeId": 61,
+      "direction": "output",
+      "inserterItemId": 2014,
+      "filterId": 0,
+      "count": 195
+    }
+  ],
+  "machineInOutCounts": [
+    {
+      "inputCount": 1,
+      "outputCount": 1,
+      "machineCount": 2113
+    }
+  ],
+  "machineParametersByRecipe": {
+    "35": {
+      "[1]": 488
+    },
+    "61": {
+      "[1]": 195
+    },
+    "106": {
+      "[1]": 260
+    },
+    "107": {
+      "[0]": 520
+    },
+    "108": {
+      "[0]": 650
+    }
+  }
+}
