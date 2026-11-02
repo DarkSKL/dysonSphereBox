@@ -10,7 +10,9 @@ type BlueprintEditorModule = typeof import('../../../packages/dsp-blueprint-edit
 interface BlueprintViewerPanelProps {
   code: string
   interactive?: boolean
-  selectedIndex?: number | null
+  selectedBuildings?: number[]
+  focusIndex?: number | null
+  focusRevision?: number
   maxBuildings?: number
   revision?: number
 }
@@ -20,7 +22,7 @@ interface AppThemeSnapshot {
   readonly blueprintEditorStoredTheme: string | null
 }
 
-const props = withDefaults(defineProps<BlueprintViewerPanelProps>(), {interactive: false, selectedIndex: null, maxBuildings: BLUEPRINT_PREVIEW_BUILDING_LIMIT, revision: 0})
+const props = withDefaults(defineProps<BlueprintViewerPanelProps>(), {interactive: false, selectedBuildings: () => [], focusIndex: null, focusRevision: 0, maxBuildings: BLUEPRINT_PREVIEW_BUILDING_LIMIT, revision: 0})
 const emit = defineEmits<{
   (event: 'ready', value: {buildingCount: number}): void
   (event: 'select', value: {index: number | null}): void
@@ -97,11 +99,12 @@ const ensureBlueprintEditor = (): Promise<BlueprintEditorModule> =>
 // 说明：初始化、加载蓝图和同步尺寸都集中在这里，详情切换时复用实例刷新模型。
 // 边界：容器不可用或编码为空时不创建实例；组件卸载时释放 WebGL 资源。
 
-// 选中建筑
-const selectBuilding = (index: number | null): void => {
-  console.log("selectBuilding", index)
-  if (index !== null && (!Number.isInteger(index) || index < 0 || index >= buildingCount.value)) return
-  withAppThemeIsolation(() => viewer.value?.selectBuilding(index))
+// =============== 多建筑选中 ===============
+// 说明：预览库提供 selectedBuildings 批量高亮，这里只过滤越界下标并转调；空数组等价取消选中。
+// 边界：库在任一建筑找不到时整次调用失败并保持原选中，因此必须先按建筑总数过滤。
+const selectBuildings = (indices: number[]): void => {
+  const next = [...new Set(indices)].filter(index => Number.isInteger(index) && index >= 0 && index < buildingCount.value)
+  withAppThemeIsolation(() => viewer.value?.selectedBuildings(next.length ? next : null))
 }
 // 重置相机
 const resetCamera = (): void => { withAppThemeIsolation(() => viewer.value?.resetCamera()) }
@@ -110,15 +113,20 @@ const captureImage = (): string | null => withAppThemeIsolation(() => viewer.val
 
 // 聚焦建筑
 const focusBuilding = (index: number | null): void => {
-  console.log("focusBuilding", index)
   withAppThemeIsolation(() => viewer.value?.focusBuilding(index))
+}
+// 上半部分触发的聚焦：选中态已由 selectBuildings 处理，这里只移动镜头
+const focusRequestedBuilding = (): void => {
+  const index = props.focusIndex
+  if (index === null || !Number.isInteger(index) || index < 0 || index >= buildingCount.value) return
+  withAppThemeIsolation(() => viewer.value?.focusBuilding(index, {select: false}))
 }
 // 设置渲染参数
 const setRenderSettings = (showRealModels: boolean, maxInstancesPerModel: number): void => {
   withAppThemeIsolation(() => viewer.value?.setRenderSettings({showRealModels, maxInstancesPerModel}))
 }
 // 暴露 API
-defineExpose({selectBuilding, focusBuilding, resetCamera, captureImage, setRenderSettings})
+defineExpose({selectBuildings, focusBuilding, resetCamera, captureImage, setRenderSettings})
 
 // 释放预览器实例
 const releaseViewerInstance = (): void => {
@@ -193,9 +201,7 @@ const loadCurrentBlueprint = async (): Promise<void> => {
     // 重置相机
     resetCamera()
     // 回填选中态
-    selectBuilding(props.selectedIndex)
-    // 回填聚焦建筑
-    focusBuilding(props.selectedIndex)
+    selectBuildings(props.selectedBuildings)
     // 设置渲染参数
     setRenderSettings(true,1024)
     // 提示建筑数量
@@ -265,7 +271,8 @@ const activate = async (): Promise<void> => {
 onMounted(() => { void activate() })
 onActivated(() => { if (!viewer.value) void activate() })
 onDeactivated(() => { active = false; disposeViewer() })
-watch(() => props.selectedIndex, selectBuilding)
+watch(() => props.selectedBuildings, selectBuildings)
+watch(() => props.focusRevision, focusRequestedBuilding)
 
 watch(() => [props.code, props.revision], () => {
   if (!props.code) { disposeViewer(); buildingCount.value = 0; return }

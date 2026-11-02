@@ -1,7 +1,7 @@
 import { computed, nextTick, ref } from 'vue';
 import { GetConfig, SetConfig } from '../../wailsjs/go/system/ConfigurationService';
 
-export type ThemeMode = 'light' | 'dark';
+export type ThemeMode = 'light' | 'dark' | 'editor';
 
 interface ThemeTogglePoint {
   readonly x: number;
@@ -19,7 +19,7 @@ let loadThemeModePromise: Promise<void> | null = null;
 // =============== 主题值归一 ===============
 // 说明：约束数据库读取值只落到 light/dark，避免历史脏数据影响渲染。
 const normalizeThemeMode = (value: string): ThemeMode => {
-  return value === 'dark' ? 'dark' : DEFAULT_THEME_MODE;
+  return value === 'light' ? 'dark' : DEFAULT_THEME_MODE;
 };
 
 // =============== 根节点主题应用 ===============

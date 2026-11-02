@@ -107,7 +107,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
       </header>
       <div class="preview-body">
         <div class="preview-stage">
-          <BlueprintViewerPanel v-if="w.active && w.code && w.showPreview" ref="viewer" :code="w.code" :revision="w.previewRevision" interactive :selected-index="w.previewStale ? null : w.selectedBuilding" @ready="w.onPreviewReady" @select="w.onBuildingSelect" @error="w.onPreviewError" />
+          <BlueprintViewerPanel v-if="w.active && w.code && w.showPreview" ref="viewer" :code="w.code" :revision="w.previewRevision" interactive :selected-buildings="w.previewStale ? [] : w.selectedBuildings" :focus-index="w.focusIndex" :focus-revision="w.focusRevision" @ready="w.onPreviewReady" @select="w.onBuildingSelect" @error="w.onPreviewError" />
           <div v-else class="preview-empty">
             <Sparkles :size="22" />
             <p v-if="w.code && !w.showPreview">{{ w.previewNotice || '预览已折叠' }}</p>
