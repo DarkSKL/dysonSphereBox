@@ -897,15 +897,28 @@ func (service *EnvironmentManagerService) EnableBlueprint(itemId string) (Enviro
 	return service.runRecordedEnvironmentOperation("enable", "blueprint", itemId, map[string]interface{}{
 		"itemId": itemId,
 	}, func() (EnvironmentOperationResult, error) {
-		return service.enableBlueprintWithoutOperation(itemId)
+		return service.enableBlueprintWithoutOperation(itemId, false)
+	})
+}
+
+// EnableGeneratedBlueprint 启用刚保存的生成蓝图并更新游戏侧同名文件。
+// 职责：记录覆盖意图，同步资源库内的指定蓝图并更新同步证据。
+// 使用：量化工作台保存后选择「立即启用」时调用。
+// 边界：只覆盖该蓝图对应的相对路径；游戏蓝图目录未确认时仍拒绝写入。
+func (service *EnvironmentManagerService) EnableGeneratedBlueprint(itemId string) (EnvironmentOperationResult, error) {
+	return service.runRecordedEnvironmentOperation("enable", "blueprint", itemId, map[string]interface{}{
+		"itemId":    itemId,
+		"overwrite": true,
+	}, func() (EnvironmentOperationResult, error) {
+		return service.enableBlueprintWithoutOperation(itemId, true)
 	})
 }
 
 // enableBlueprintWithoutOperation 执行蓝图启用的真实同步逻辑。
 // 职责：复制单个蓝图文件并保存同步记录。
-// 使用：EnableBlueprint 的 operation wrapper 调用。
+// 使用：普通启用与生成蓝图启用的 operation wrapper 调用。
 // 边界：不创建 operation 记录，不处理文件夹批量启用。
-func (service *EnvironmentManagerService) enableBlueprintWithoutOperation(itemId string) (EnvironmentOperationResult, error) {
+func (service *EnvironmentManagerService) enableBlueprintWithoutOperation(itemId string, overwrite bool) (EnvironmentOperationResult, error) {
 	resolver := environmentHelper.Resolver{}
 	blueprintRoot := resolver.ResolveBlueprintRoot()
 	if blueprintRoot.Path == "" || blueprintRoot.NeedConfirm {
@@ -933,7 +946,11 @@ func (service *EnvironmentManagerService) enableBlueprintWithoutOperation(itemId
 	relativePath := filepath.FromSlash(selected.RelativePath)
 	sourcePath := filepath.Join(libraryRoot, relativePath)
 	targetPath := filepath.Join(blueprintRoot.Path, relativePath)
-	plan, err := environmentHelper.CopySingleFileSafely(sourcePath, targetPath, relativePath)
+	copyFile := environmentHelper.CopySingleFileSafely
+	if overwrite {
+		copyFile = environmentHelper.OverwriteSingleFileWithEvidence
+	}
+	plan, err := copyFile(sourcePath, targetPath, relativePath)
 	if err != nil {
 		return EnvironmentOperationResult{}, err
 	}

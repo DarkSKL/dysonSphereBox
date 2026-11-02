@@ -67,9 +67,10 @@ func main() {
 			ZoomFactor:           1,
 			DisablePinchZoom:     true,
 		},
+		// Wails 2.12 在创建控制器前处理 DisableWebViewDrop，会触发空指针；
+		// 保留文件拖入桥接，拖入文件或链接的默认导航由前端入口阻止。
 		DragAndDrop: &options.DragAndDrop{
-			EnableFileDrop:     true,
-			DisableWebViewDrop: true,
+			EnableFileDrop: true,
 		},
 		OnStartup:  app.startup,
 		OnShutdown: app.shutdown,

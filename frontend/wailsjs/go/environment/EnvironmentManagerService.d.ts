@@ -18,6 +18,8 @@ export function DisableMod(arg1:string):Promise<environment.EnvironmentOperation
 
 export function EnableBlueprint(arg1:string):Promise<environment.EnvironmentOperationResult>;
 
+export function EnableGeneratedBlueprint(arg1:string):Promise<environment.EnvironmentOperationResult>;
+
 export function EnableMod(arg1:string):Promise<environment.EnvironmentOperationResult>;
 
 export function ExportBlueprint(arg1:string,arg2:string):Promise<environment.EnvironmentOperationResult>;

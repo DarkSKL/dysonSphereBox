@@ -121,7 +121,6 @@ const importedRows = computed(() => {
       <div class="inspector-body">
         <!-- 目标：图标 + 名称 + 速率一行，速率直接输入；物品库或画布中添加，名称可下拉更换 -->
         <h3>期望目标<span class="count">{{ w.targets.length }}</span></h3>
-        <p class="capacity-hint">输入每分钟期望物品数量；整数设备的满负荷产能在产线节点单独显示，实际运行产量需在游戏内验证。</p>
         <div class="target-list">
           <div v-for="target in w.targets" :key="target.key" class="target-card ds-bracket">
             <ItemIcon :name="target.itemId ? w.itemName(target.itemId) : ''" :size="26" />
@@ -144,7 +143,6 @@ const importedRows = computed(() => {
           <label class="field">电力权重<n-input-number v-model:value="w.powerCost" size="small" :min="0" /></label>
         </div>
         <label class="field">研究站堆叠<n-input-number v-model:value="w.researchStack" size="small" :min="1" :max="15" /></label>
-        <n-text depth="3">供剂按未自喷消耗计算，不假定蓝图具备增产剂自喷设施。</n-text>
         <template v-if="w.mineralized.length">
           <h3><PackageOpen :size="13" />外部供应<span class="count">{{ w.mineralized.length }}</span></h3>
           <div class="chip-list">

@@ -66,5 +66,11 @@ export const encodeFactoryBlueprint = async (document: blueprint.Document): Prom
   const result = unwrap(await Encode(new factorycontract.EncodeRequest({document, envelope: document.envelopeVersion, recompute: true})))
   return readGenerated(result)
 }
+export const renameFactoryBlueprint = async (code: string, name: string): Promise<string> => {
+  const document = await decodeFactoryBlueprint(code)
+  if (document.name === name) return code
+  document.name = name
+  return encodeFactoryBlueprint(document)
+}
 export const exportFactoryBlueprint = async (name: string, code: string): Promise<string> => { ready(); return ExportBlueprint(name, code) }
 export const exportFactoryWorkspace = async (request: factorycontract.WorkspaceRequest): Promise<string> => { ready(); return ExportWorkspace(request) }

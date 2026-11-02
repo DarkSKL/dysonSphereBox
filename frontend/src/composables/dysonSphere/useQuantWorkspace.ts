@@ -3,8 +3,8 @@ import {useDialog, useMessage} from 'naive-ui'
 import {useRoute, useRouter} from 'vue-router'
 import {build, factorycontract, quant} from '../../../wailsjs/go/models'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
-import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, solveFactory} from '../../services/dysonSphere/factory'
-import {enableEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../services/dysonSphere/environment'
+import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, renameFactoryBlueprint, solveFactory} from '../../services/dysonSphere/factory'
+import {enableGeneratedEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../services/dysonSphere/environment'
 import {requestBlueprintLibrary} from '../../services/dysonSphere/blueprint-navigation'
 import {buildFactoryLayoutRequest} from '../../services/dysonSphere/factory-layout'
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../services/dysonSphere/blueprint-preview-host'
@@ -89,7 +89,7 @@ export const useQuantWorkspace = () => {
   const requestLayout = computed(() => buildFactoryLayoutRequest(layout, automaticSurface.value))
   const requestSurfaceLayout = computed(() => ({...surfaceLayout, mode: surfaceLayout.mode === 'explicitTropic' ? 'autoTropic' : surfaceLayout.mode}))
   const querySignature = computed(() => JSON.stringify([datasetKey.value, targets.value.map(({itemId, ratePerMinute}) => ({itemId, ratePerMinute})), requestSettings.value, requestScheme.value]))
-  const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, requestLayout.value, requestSurfaceLayout.value, name.value]))
+  const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, requestLayout.value, requestSurfaceLayout.value]))
   const quantStale = computed(() => Boolean(plan.value && solvedSignature.value !== querySignature.value))
   const previewStale = computed(() => Boolean(code.value && !replay.value && (generatedSignature.value !== generationSignature.value || generating.value || generationFailed.value)))
   const expectedBuildings = computed(() => replay.value ? inspection.value?.summary.buildingCount ?? 0 : generated.value?.buildingCount ?? 0)
@@ -309,21 +309,26 @@ export const useQuantWorkspace = () => {
     previewNotice.value = text
     if (failureCode !== 'PREVIEW_E_LIMIT') previewState.value = 'error'
   }
-  // 导出前只确认旧结果并校验快照一致性，避免确认期间结果更新后导出错版。
+  // 导出前确认旧结果并校验快照一致性；名称只在输出时更新编码，不触发布局重算或预览重载。
   const allowExport = async (): Promise<ExportSnapshot | null> => {
     if (!code.value) return null
     const snapshot: ExportSnapshot = {code: code.value, name: name.value || sourceName.value, revision: previewRevision.value, generated: generated.value}
-    if (!previewStale.value) return snapshot
-    const confirmed = await new Promise<boolean>(resolve => {
-      const reason = generationFailed.value ? '最近一次生成未成功' : generating.value ? '新结果仍在生成中' : '参数已经改变'
-      dialog.warning({title: '导出上次结果', content: `${reason}，当前蓝图属于上一次成功生成结果。确认仍导出上次结果？`, positiveText: '导出上次结果', negativeText: '取消', onPositiveClick: () => resolve(true), onNegativeClick: () => resolve(false), onClose: () => resolve(false), onMaskClick: () => resolve(false)})
-    })
-    if (!confirmed) return null
+    if (previewStale.value) {
+      const confirmed = await new Promise<boolean>(resolve => {
+        const reason = generationFailed.value ? '最近一次生成未成功' : generating.value ? '新结果仍在生成中' : '参数已经改变'
+        dialog.warning({title: '导出上次结果', content: `${reason}，当前蓝图属于上一次成功生成结果。确认仍导出上次结果？`, positiveText: '导出上次结果', negativeText: '取消', onPositiveClick: () => resolve(true), onNegativeClick: () => resolve(false), onClose: () => resolve(false), onMaskClick: () => resolve(false)})
+      })
+      if (!confirmed) return null
+    }
+    let renamedCode: string
+    try { renamedCode = await renameFactoryBlueprint(snapshot.code, snapshot.name) }
+    catch (caught) { report(caught); return null }
+    if (disposed) return null
     if (snapshot.revision !== previewRevision.value || snapshot.code !== code.value || snapshot.generated !== generated.value) {
-      message.warning('确认期间蓝图结果已变化，已取消导出；请对当前结果重新确认。')
+      message.warning('准备导出期间蓝图结果已变化，已取消导出；请对当前结果重新确认。')
       return null
     }
-    return snapshot
+    return {...snapshot, code: renamedCode}
   }
   const copy = async (): Promise<void> => {
     const snapshot = await allowExport()
@@ -353,7 +358,7 @@ export const useQuantWorkspace = () => {
       const confirmed = await new Promise<boolean>(resolve => {
         const prompt = dialog.success({
           title: '已存入蓝图库',
-          content: `是否立即启用蓝图「${savedBlueprint.name}」？启用后会同步到游戏蓝图目录。`,
+          content: `是否立即启用蓝图「${savedBlueprint.name}」？启用后会同步到游戏蓝图目录，并覆盖同名蓝图。`,
           positiveText: '立即启用',
           negativeText: '暂不启用',
           onPositiveClick: () => resolve(true),
@@ -366,7 +371,7 @@ export const useQuantWorkspace = () => {
       activationPrompt = undefined
       if (!confirmed || disposed || !active.value) return
       try {
-        const enabled = await enableEnvironmentBlueprint(savedBlueprint.id)
+        const enabled = await enableGeneratedEnvironmentBlueprint(savedBlueprint.id)
         if (!disposed) message.success(enabled.message)
       } catch (caught) {
         if (!disposed) message.error(`蓝图已保存，但启用失败：${caught instanceof Error ? caught.message : String(caught)}`)

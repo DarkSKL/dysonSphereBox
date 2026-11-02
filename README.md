@@ -215,6 +215,28 @@ wails dev
 - 修改后端导出服务的方法或签名后，运行 `wails generate module` 重新生成绑定。
 - `frontend/wailsjs/**`、`frontend/src/components.d.ts` 和 `frontend/src/typed-router.d.ts` 都是生成文件，不要手动编辑。
 
+### Windows WebView2 启动失败
+
+如果 Vite 和 Go 编译均成功，但创建 WebView2 控制器时报 `800700aa`（资源正在使用）或 `8000ffff`，先检查进程、运行目录和权限；仅凭错误码不能认定浏览器缓存损坏。开发输出目录可能继承受限执行环境留下的低完整性标签，使程序无法正常使用 WebView2 配置目录。
+
+停止当前开发进程，在应用根目录检查构建目录及程序的完整性标签：
+
+```powershell
+icacls '.\build\bin'
+icacls '.\build\bin\DysonSphereBox-dev.exe'
+```
+
+仅在输出含有 `Mandatory Label\Low Mandatory Level`（低完整性）时，将构建输出目录改为可继承的中完整性，再使用默认加载器启动：
+
+```powershell
+icacls '.\build\bin' /setintegritylevel '(OI)(CI)M'
+wails dev
+```
+
+该操作调整构建目录及继承项的完整性标签，保留原有访问权限；不需要清空 WebView2 配置或应用数据库。如果目录和程序已是中完整性，应继续排查实际占用与运行时错误，不要重复修改权限。
+
+Wails v2.12.0 还有一条独立的启动问题：`DisableWebViewDrop: true` 会在创建控制器之前调用拖拽配置，使用旧加载器时可触发空指针。本项目保留 `EnableFileDrop`，由前端入口阻止拖入文件或链接时的默认导航，并保留 Wails 文件路径回调与页面拖入事件；无需通过切换旧加载器规避。
+
 ## 常用验证
 
 前端构建（包含 `vue-tsc --noEmit` 类型检查）：

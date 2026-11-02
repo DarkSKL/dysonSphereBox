@@ -7,6 +7,7 @@ import {
   DisableBlueprint as disableBlueprintBinding,
   DisableMod as disableModBinding,
   EnableBlueprint as enableBlueprintBinding,
+  EnableGeneratedBlueprint as enableGeneratedBlueprintBinding,
   EnableMod as enableModBinding,
   ExportBlueprint as exportBlueprintBinding,
   ExportSave as exportSaveBinding,
@@ -83,6 +84,7 @@ type EnvironmentBridgeMethod =
   | 'RecoverInterruptedOperations'
   | 'RefreshManagedState'
   | 'EnableBlueprint'
+  | 'EnableGeneratedBlueprint'
   | 'DisableBlueprint'
   | 'MoveBlueprintItem'
   | 'RenameBlueprintItem'
@@ -263,6 +265,13 @@ export const enableEnvironmentBlueprint = async (
 ): Promise<environment.EnvironmentOperationResult> => {
   assertEnvironmentBridgeReady('EnableBlueprint')
   return enableBlueprintBinding(itemId)
+}
+
+export const enableGeneratedEnvironmentBlueprint = async (
+  itemId: string,
+): Promise<environment.EnvironmentOperationResult> => {
+  assertEnvironmentBridgeReady('EnableGeneratedBlueprint')
+  return enableGeneratedBlueprintBinding(itemId)
 }
 
 export const disableEnvironmentBlueprint = async (

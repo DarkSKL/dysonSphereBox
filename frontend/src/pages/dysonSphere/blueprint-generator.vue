@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import {computed, reactive, ref, watch} from 'vue'
-import {Copy, Download, FileInput, FileJson, FolderOpen, Network, Pause, Play, RotateCcw, Save, Sparkles, X} from '@lucide/vue'
+import {computed, reactive, ref} from 'vue'
+import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw, Save, Sparkles} from '@lucide/vue'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
-import LogisticsSummary from '../../components/dysonSphere/factory/logistics-summary.vue'
 import {useQuantWorkspace, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
 import {buildFlowGraph} from '../../services/dysonSphere/factory-graph'
 
@@ -20,12 +19,6 @@ const previewStatus = computed(() => {
   if (w.code && !w.showPreview) return {state: 'idle', text: '预览已折叠'}
   return {state: w.previewState, text: previewLabels[w.previewState]}
 })
-// =============== 结果诊断 ===============
-// 说明：保留后端所有覆盖边界与告警；窄窗口用可展开的侧栏查看，不能因收起预览而丢失诊断。
-const warningList = computed(() => [...new Set(w.warnings)])
-const hasPreviewNotes = computed(() => Boolean(w.generated?.logisticsSummary || warningList.value.length || w.previewNotice || w.error?.source === 'generation'))
-const diagnosticsOpen = ref(false)
-watch(() => w.error, failure => { if (failure?.source === 'generation') diagnosticsOpen.value = true })
 const onFile = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -80,7 +73,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <n-button size="small" quaternary aria-label="导出方案" :title="'导出方案'" :disabled="!w.plan || w.quantStale || w.solving || w.generating" :loading="w.saving" @click="w.exportWorkspace"><template #icon><FileJson :size="14" /></template>导出方案</n-button>
       </div>
     </header>
-    <n-alert v-if="w.error && w.error.source !== 'generation'" type="error" closable class="bench-alert" @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
+    <n-alert v-if="w.error" type="error" closable class="bench-alert" @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
 
     <!-- ~ 上层：网格节点图 -->
     <div class="bench-graph">
@@ -94,8 +87,6 @@ const resizeByKey = (event: KeyboardEvent): void => {
     <section class="bench-preview" aria-label="蓝图预览">
       <header class="preview-bar">
         <span class="preview-state" :class="`is-${previewStatus.state}`" :title="previewStatus.text" role="status" aria-live="polite" aria-atomic="true"><i aria-hidden="true" /><span class="preview-state-text">{{ previewStatus.text }}</span></span>
-        <span v-if="w.code" class="preview-meta type-display">{{ w.number(w.expectedBuildings) }} 建筑</span>
-        <span v-if="w.generated?.surfacePlan" class="preview-meta surface-plan" :title="`首选纬圈格 ${w.generated.surfacePlan.selectedLatitudeGrid} · 平面占地 ${w.generated.surfacePlan.layoutWidth}×${w.generated.surfacePlan.layoutHeight} · 环向容量 ${w.generated.surfacePlan.ringGridCells} 格`">整块平面蓝图 · 粘贴锚点 {{ w.number(w.generated.surfacePlan.anchorLatitudeGrid * 360 / (w.generated.surfacePlan.gridSegment * 5)) }}°</span>
         <!-- 多目标归属只用于查看与聚焦，真实上下游路线由统一流图决定，不要求用户手工跨区分送。 -->
         <div v-if="w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
           <n-tooltip v-for="(zone, index) in w.zones" :key="zone.key"><template #trigger><button type="button" class="preview-zone" :class="{'is-active': w.activeZone === zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key)"><i />{{ zone.label }}</button></template>目标归属 {{ index + 1 }} · {{ zone.productionIndices.length }} 条产线{{ zone.key === 'shared' ? '，多个目标共享同一份上游产线' : '' }}</n-tooltip>
@@ -103,13 +94,13 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <!-- 蓝图名称：留空即按目标自动命名，输入后改为手动名称 -->
         <n-input v-model:value="w.customName" size="tiny" class="name-input" :placeholder="w.autoName" maxlength="60" clearable aria-label="蓝图名称（留空自动命名）" :title="w.nameIsAuto ? `自动命名：${w.autoName}` : '手动名称，清空恢复自动命名'" />
         <div class="preview-actions">
-          <n-button v-if="w.narrow && hasPreviewNotes" size="tiny" quaternary :aria-expanded="diagnosticsOpen" aria-controls="blueprint-diagnostics" @click="diagnosticsOpen = !diagnosticsOpen"><template #icon><Network :size="14" /></template>物流</n-button>
           <n-button v-if="!w.autoRun" size="tiny" type="primary" :loading="w.generating" :disabled="!w.plan || w.quantStale || w.solving || w.importing" @click="w.generate"><template #icon><Sparkles :size="13" /></template>生成</n-button>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="复制蓝图" @click="w.copy"><template #icon><Copy :size="14" /></template></n-button></template>复制蓝图编码</n-tooltip>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="导出文本" @click="w.download"><template #icon><Download :size="14" /></template></n-button></template>导出文本</n-tooltip>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" :loading="w.saving" aria-label="存入蓝图库" @click="w.save"><template #icon><Save :size="14" /></template></n-button></template>存入蓝图库</n-tooltip>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="重置视角" @click="viewer?.resetCamera()"><template #icon><RotateCcw :size="14" /></template></n-button></template>重置视角</n-tooltip>
         </div>
+        <div v-if="w.generating" class="preview-progress" role="progressbar" aria-label="蓝图生成进度" :aria-valuetext="w.generationProgress || '正在准备生成'" />
       </header>
       <div class="preview-body">
         <div class="preview-stage">
@@ -123,18 +114,6 @@ const resizeByKey = (event: KeyboardEvent): void => {
           </div>
           <div v-if="w.previewStale && w.code" class="preview-overlay">{{ w.generationFailed ? '最近一次生成未成功，当前显示上次成功结果' : w.generating ? '正在生成，当前显示上次成功结果' : `参数已改变，${w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览'}` }}</div>
         </div>
-        <!-- ~ 物流与预检诊断 -->
-        <!-- * 说明：展示自动入口、每路运力、边界接口、搜索指标和数值检查，不提供入口数量编辑 -->
-        <!-- * 交互：窄窗口从「物流」按钮展开；生成失败时自动展开，旧结果明确标记 -->
-        <!-- * 依赖：同一生成结果的 LogisticsSummary 和生成时 FlowGraph 快照 -->
-        <!-- * 边界：诊断不是 Unity Physics 或实际游戏产出证明，未知覆盖不得默认为通过 -->
-        <aside v-if="hasPreviewNotes" v-show="!w.narrow || diagnosticsOpen" id="blueprint-diagnostics" class="preview-notes" aria-label="物流与预检诊断">
-          <div v-if="w.narrow" class="diagnostic-close"><span>物流与预检</span><button type="button" class="close-notes" aria-label="收起物流诊断" @click="diagnosticsOpen = false"><X :size="14" /></button></div>
-          <n-alert v-if="w.error?.source === 'generation'" title="蓝图生成失败" type="error" closable @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
-          <LogisticsSummary v-if="w.generated?.logisticsSummary && !w.replay" :summary="w.generated.logisticsSummary" :audit="w.generated.ruleAudit" :graph="w.generatedFlowGraph" :stale="w.previewStale" :item-name="w.itemName" :format="w.number" @select="index => w.onBuildingSelect({index})" />
-          <p v-if="w.previewNotice && w.showPreview" class="note">{{ w.previewNotice }}</p>
-          <div v-if="warningList.length" class="warning-list ds-bracket"><div v-for="warning in warningList" :key="warning">{{ warning }}</div></div>
-        </aside>
       </div>
     </section>
 
@@ -166,16 +145,15 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .bench-splitter:hover span, .bench-splitter:focus-visible span { width: 72px; background: var(--ds-brand); }
 .bench-splitter:focus-visible { outline: none; }
 .bench-preview { flex-direction: column; }
-.preview-bar { position: relative; display: flex; min-height: 38px; min-width: 0; align-items: center; gap: 10px; white-space: nowrap; border-bottom: 1px solid var(--ds-border-subtle); padding: 0 16px 0 14px; }
+.preview-bar { position: relative; display: flex; min-height: 38px; min-width: 0; flex-shrink: 0; align-items: center; gap: 10px; white-space: nowrap; border-bottom: 1px solid var(--ds-border-subtle); padding: 0 16px 0 14px; }
+.preview-progress { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; overflow: hidden; background: var(--ds-border-subtle); pointer-events: none; }
+.preview-progress::after { content: ''; position: absolute; inset: 0; background: var(--ds-brand); transform-origin: left; animation: preview-progress-travel 1.4s linear infinite; }
 .preview-state { display: inline-flex; width: 240px; min-width: 100px; flex: 0 1 240px; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
 .preview-state-text { overflow: hidden; text-overflow: ellipsis; }
 .preview-state i { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--ds-text-muted); }
 .preview-state.is-ready i { background: var(--ds-success); box-shadow: 0 0 6px var(--ds-success); }
 .preview-state.is-loading i, .preview-state.is-stale i { background: var(--ds-brand); animation: pulse 1s ease-in-out infinite; }
 .preview-state.is-error i { background: var(--ds-error); }
-.preview-meta { color: var(--ds-text-muted); font-size: 12px; }
-.surface-plan { color: var(--ds-warning); }
-.surface-plan small { color: var(--ds-text-muted); font-size: 10px; }
 .preview-zones { display: flex; min-width: 0; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .preview-zone { --zone: var(--ds-brand); position: relative; display: inline-flex; height: 24px; flex: 0 0 auto; align-items: center; gap: 5px; border: 0; border-radius: 2px; padding: 0 8px; background: transparent; color: var(--ds-text-secondary); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .preview-zone i { width: 8px; height: 8px; border-radius: 1px; background: var(--zone); }
@@ -190,17 +168,10 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-empty { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); font-size: 13px; }
 .preview-empty p { margin: 0; }
 .preview-overlay { position: absolute; top: 10px; left: 50%; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 3px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; transform: translateX(-50%); pointer-events: none; }
-.preview-notes { display: flex; width: 300px; flex: 0 0 auto; flex-direction: column; gap: 8px; overflow-y: auto; border-left: 1px solid var(--ds-border-subtle); padding: 10px 12px; }
-.diagnostic-close { display: flex; align-items: center; justify-content: space-between; color: var(--ds-text-primary); font-size: 12px; }
-.close-notes { display: inline-flex; border: 0; border-radius: 2px; padding: 4px; background: transparent; color: var(--ds-text-secondary); cursor: pointer; }
-.close-notes:hover { background: var(--ds-hover-bg); }
-.note { margin: 0; color: var(--ds-text-secondary); font-size: 11px; line-height: 1.6; }
-.warning-list { --bracket-color: var(--ds-warning-border); display: grid; gap: 4px; padding: 8px 10px 8px 12px; background: var(--ds-warning-bg); color: var(--ds-warning); font-size: 11px; line-height: 1.6; }
-.warning-list.is-error { --bracket-color: var(--ds-error-border); background: var(--ds-error-bg); color: var(--ds-error); }
 .muted { color: var(--ds-text-muted); font-size: 12px; line-height: 1.6; }
 .import-actions { display: flex; justify-content: space-between; margin: 16px 0; }
 @keyframes pulse { 50% { opacity: .35; } }
-// 窄窗口：诊断可从工具栏展开为覆盖侧栏；保留错误、自动入口与每路流量的查看入口。
-@media (max-width: 1099px) { .preview-notes { position: absolute; top: 0; right: 0; bottom: 0; z-index: 2; width: min(300px, calc(100% - 24px)); background: var(--ds-bg-panel); } .bench-actions :deep(.n-button__content) { display: none; } .bench-actions :deep(.n-button__icon) { margin: 0; } .preview-meta { display: none; } }
-@media (prefers-reduced-motion: reduce) { .preview-state i { animation: none !important; } .bench-splitter span { transition: none; } }
+@keyframes preview-progress-travel { from { transform: translateX(-35%) scaleX(.35); } to { transform: translateX(100%) scaleX(.35); } }
+@media (max-width: 1099px) { .bench-actions :deep(.n-button__content) { display: none; } .bench-actions :deep(.n-button__icon) { margin: 0; } }
+@media (prefers-reduced-motion: reduce) { .preview-state i { animation: none !important; } .preview-progress::after { animation: none; transform: scaleX(1); opacity: .65; } .bench-splitter span { transition: none; } }
 </style>

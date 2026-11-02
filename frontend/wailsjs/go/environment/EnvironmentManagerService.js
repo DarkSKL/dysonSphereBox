@@ -34,6 +34,10 @@ export function EnableBlueprint(arg1) {
   return window['go']['environment']['EnvironmentManagerService']['EnableBlueprint'](arg1);
 }
 
+export function EnableGeneratedBlueprint(arg1) {
+  return window['go']['environment']['EnvironmentManagerService']['EnableGeneratedBlueprint'](arg1);
+}
+
 export function EnableMod(arg1) {
   return window['go']['environment']['EnvironmentManagerService']['EnableMod'](arg1);
 }
