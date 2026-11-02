@@ -335,10 +335,10 @@ code { font-family: var(--ds-font-mono); font-variant-numeric: tabular-nums; }
 .seat.is-self { background: linear-gradient(var(--ds-active-bg), var(--ds-active-bg)), var(--ds-res-on-surface); }
 .seat-kick { z-index: 1; }
 @media (prefers-reduced-motion: reduce) { .seat::before { animation: none !important; } }
-.seat-avatar { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; border: 1px solid var(--ds-border-default); border-radius: 4px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 16px; font-weight: 700; }
+.seat-avatar { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; overflow: hidden; border: 1px solid var(--ds-border-default); border-radius: 4px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 16px; font-weight: 700; }
 .is-host .seat-avatar { color: var(--ds-brand); border-color: var(--ds-border-strong); }
 .is-empty .seat-avatar { border: 0; background: transparent; color: var(--ds-text-disabled); }
-.seat-avatar img { width: 100%; height: 100%; border-radius: 3px; object-fit: cover; }
+.seat-avatar img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: 3px; object-fit: cover; }
 .seat-info { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
 .seat-info strong { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; color: var(--ds-text-primary); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .self-tag { flex: none; padding: 0 5px; border: 1px solid var(--ds-border-default); border-radius: 3px; color: var(--ds-text-secondary); font-size: 10px; font-weight: 400; }
