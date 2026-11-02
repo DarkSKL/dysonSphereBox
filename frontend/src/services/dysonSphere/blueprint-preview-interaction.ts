@@ -1,10 +1,14 @@
 // =============== 蓝图预览输入适配 ===============
-// 说明：当前随包预览库的控制器默认仅允许中键旋转，这里补齐左键与单指拖动，并区分旋转和建筑单击。
+// 说明：当前随包预览库的控制器映射为左键旋转，这里改为左键拖动平移、右键拖动旋转，并保留滚轮缩放；同时区分拖动和建筑单击。
 // 边界：仅适配已固定版本的 controls 映射，不改第三方包、相机或蓝图；实例释放前移除监听并恢复原设置。
 interface PreviewControls {
-  mouseButtons: {LEFT: number; MIDDLE: number}
+  mouseButtons: {LEFT: number; MIDDLE: number; RIGHT: number}
   touches: {ONE: number}
 }
+
+const MOUSE_BUTTON = {LEFT: 0, RIGHT: 2} as const
+// 控制器沿用 Three.js 的动作编号：ROTATE = 0、DOLLY = 1、PAN = 2。
+const CONTROL_ACTION = {ROTATE: 0, PAN: 2} as const
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
@@ -15,28 +19,30 @@ const resolveControls = (viewer: unknown): PreviewControls => {
   const core = isRecord(host?.core) ? host.core : null
   const controls = host?.controls ?? core?.controls ?? null
   if (!isRecord(controls) || !isRecord(controls.mouseButtons) || !isRecord(controls.touches)
-    || typeof controls.mouseButtons.LEFT !== 'number' || typeof controls.mouseButtons.MIDDLE !== 'number'
+    || typeof controls.mouseButtons.LEFT !== 'number' || typeof controls.mouseButtons.RIGHT !== 'number'
     || typeof controls.touches.ONE !== 'number') {
-    throw new Error('当前蓝图预览库不支持拖动旋转，请检查预览库版本。')
+    throw new Error('当前蓝图预览库不支持自定义拖动操作，请检查预览库版本。')
   }
   return controls as unknown as PreviewControls
 }
 
-export const enableBlueprintPreviewRotation = (viewer: unknown, canvas: HTMLCanvasElement): (() => void) => {
+export const enableBlueprintPreviewInteraction = (viewer: unknown, canvas: HTMLCanvasElement): (() => void) => {
   const controls = resolveControls(viewer)
   const previousLeft = controls.mouseButtons.LEFT
+  const previousRight = controls.mouseButtons.RIGHT
   const previousTouch = controls.touches.ONE
   const previousTouchAction = canvas.style.touchAction
-  // 控制器沿用 Three.js 的 ROTATE = 0；中键和双指缩放映射保持原值。
-  controls.mouseButtons.LEFT = 0
-  controls.touches.ONE = 0
+  // 左键拖动平移、右键拖动旋转；单指拖动与左键保持一致，双指缩放旋转沿用控制器默认值。
+  controls.mouseButtons.LEFT = CONTROL_ACTION.PAN
+  controls.mouseButtons.RIGHT = CONTROL_ACTION.ROTATE
+  controls.touches.ONE = CONTROL_ACTION.PAN
   canvas.style.touchAction = 'none'
 
   let pointer: {id: number; x: number; y: number; moved: boolean} | null = null
   let suppressClick = false
   const onPointerDown = (event: PointerEvent): void => {
     suppressClick = false
-    if (event.button !== 0) return
+    if (event.button !== MOUSE_BUTTON.LEFT) return
     pointer = {id: event.pointerId, x: event.clientX, y: event.clientY, moved: false}
   }
   const onPointerMove = (event: PointerEvent): void => {
@@ -69,6 +75,7 @@ export const enableBlueprintPreviewRotation = (viewer: unknown, canvas: HTMLCanv
     canvas.removeEventListener('pointercancel', onPointerCancel, true)
     canvas.removeEventListener('click', onClick, true)
     controls.mouseButtons.LEFT = previousLeft
+    controls.mouseButtons.RIGHT = previousRight
     controls.touches.ONE = previousTouch
     canvas.style.touchAction = previousTouchAction
   }

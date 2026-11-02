@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview} from '../../../services/dysonSphere/blueprint-preview-host'
-import {enableBlueprintPreviewRotation} from '../../../services/dysonSphere/blueprint-preview-interaction'
+import {enableBlueprintPreviewInteraction} from '../../../services/dysonSphere/blueprint-preview-interaction'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
 import type {BlueprintViewer as BlueprintViewerInstance} from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js'
 
@@ -96,16 +96,31 @@ const ensureBlueprintEditor = (): Promise<BlueprintEditorModule> =>
 // =============== 预览器生命周期 ===============
 // 说明：初始化、加载蓝图和同步尺寸都集中在这里，详情切换时复用实例刷新模型。
 // 边界：容器不可用或编码为空时不创建实例；组件卸载时释放 WebGL 资源。
+
+// 选中建筑
 const selectBuilding = (index: number | null): void => {
+  console.log("selectBuilding", index)
   if (index !== null && (!Number.isInteger(index) || index < 0 || index >= buildingCount.value)) return
   withAppThemeIsolation(() => viewer.value?.selectBuilding(index))
 }
+// 重置相机
 const resetCamera = (): void => { withAppThemeIsolation(() => viewer.value?.resetCamera()) }
+// 捕获当前视图
 const captureImage = (): string | null => withAppThemeIsolation(() => viewer.value?.toDataURL?.() ?? null)
-defineExpose({selectBuilding, resetCamera, captureImage})
 
-// 说明：当前库反复 loadBlueprint 会保留已上传的纹理；通过公开 dispose/getCanvas 释放整个旧实例及 WebGL 上下文，再建立新实例。
-// 边界：不修改第三方包；停止其渲染循环后才丢失上下文，避免隐藏页继续持有 GPU 资源。
+// 聚焦建筑
+const focusBuilding = (index: number | null): void => {
+  console.log("focusBuilding", index)
+  withAppThemeIsolation(() => viewer.value?.focusBuilding(index))
+}
+// 设置渲染参数
+const setRenderSettings = (showRealModels: boolean, maxInstancesPerModel: number): void => {
+  withAppThemeIsolation(() => viewer.value?.setRenderSettings({showRealModels, maxInstancesPerModel}))
+}
+// 暴露 API
+defineExpose({selectBuilding, focusBuilding, resetCamera, captureImage, setRenderSettings})
+
+// 释放预览器实例
 const releaseViewerInstance = (): void => {
   const canvas = viewer.value?.getCanvas?.() ?? containerRef.value?.querySelector('canvas')
   releaseInteraction?.()
@@ -115,7 +130,7 @@ const releaseViewerInstance = (): void => {
   const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl')
   context?.getExtension('WEBGL_lose_context')?.loseContext()
 }
-
+// 释放预览器实例
 const disposeViewer = (): void => {
   loadVersion++
   if (pendingLoadFrame) window.cancelAnimationFrame(pendingLoadFrame)
@@ -164,9 +179,11 @@ const loadCurrentBlueprint = async (): Promise<void> => {
       }))
       // 获取画布
       const canvas = viewer.value.getCanvas?.()
-      // 启用旋转交互
-      if (canvas) releaseInteraction = enableBlueprintPreviewRotation(viewer.value, canvas)
+      // 启用预览交互
+      if (canvas) releaseInteraction = enableBlueprintPreviewInteraction(viewer.value, canvas)
     }
+    setRenderSettings(false,1024)
+    // 加载蓝图模型
     withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
     buildingCount.value = viewer.value.getBlueprintData()?.buildings.length ?? 0
     // 强制重置尺寸
@@ -177,6 +194,10 @@ const loadCurrentBlueprint = async (): Promise<void> => {
     resetCamera()
     // 回填选中态
     selectBuilding(props.selectedIndex)
+    // 回填聚焦建筑
+    focusBuilding(props.selectedIndex)
+    // 设置渲染参数
+    setRenderSettings(true,1024)
     // 提示建筑数量
     if (buildingCount.value > props.maxBuildings) emit('error', {code: 'PREVIEW_E_LIMIT', message: `共 ${buildingCount.value} 个建筑，模型交互可能较慢`})
     emit('ready', {buildingCount: buildingCount.value})
@@ -272,7 +293,7 @@ onBeforeUnmount(() => { active = false; disposeViewer() })
   <section class="blueprint-viewer-panel">
     <div class="blueprint-viewer-canvas">
       <div ref="containerRef" class="blueprint-viewer-mount" />
-      <span v-if="!isLoadingViewer && !viewerError && buildingCount" class="blueprint-viewer-hint">左键拖动旋转 · 滚轮缩放</span>
+      <span v-if="!isLoadingViewer && !viewerError && buildingCount" class="blueprint-viewer-hint">左键拖动平移 · 右键拖动旋转 · 滚轮缩放</span>
 
       <div v-if="isLoadingViewer" class="blueprint-viewer-overlay">
         <n-spin size="small" />
