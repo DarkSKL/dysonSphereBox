@@ -44,11 +44,11 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
   <!-- * 交互：产线节点内可直接切换配方、设备、喷涂与点数；目标节点可改产量；来源节点可取消外供 -->
   <!-- * 依赖：画布注入的 FactoryNodeContext；数值均来自 Go 求解快照 -->
   <!-- * 边界：控件阻止拖拽冒泡（nodrag），编辑只修改请求参数，由工作区重新求解 -->
-  <div class="factory-node" :class="[`is-${data.kind}`, {'is-selected': selected, 'is-dimmed': dimmed}]" :style="zone ? {'--accent': zone.color} : undefined" :data-production="data.productionIndex" :data-zone="zone?.key">
+  <div class="factory-node" :class="[`is-${data.kind}`, {'is-selected': selected, 'is-related': data.related, 'is-dimmed': dimmed || data.dimmed}]" :style="zone ? {'--accent': zone.color} : undefined" :data-production="data.productionIndex" :data-zone="zone?.key">
     <header class="node-head">
       <ItemIcon :name="data.title" :size="data.kind === 'production' ? 30 : 24" />
       <div class="node-title"><span class="node-kind">{{ data.kind === 'source' ? data.externalSource ? '指定外供' : '外部原料' : kindLabel[data.kind] }}<template v-if="zone"> · {{ zone.label }}</template></span><strong>{{ data.title }}</strong></div>
-      <span class="node-rate" :title="data.kind === 'production' ? '期望 / 配置满负荷。满负荷要求供料、供电和出货畅通，不是游戏实测；蓝图物流仍按期望净流规划。' : '规划期望流量'"><span class="rate-label">{{ data.kind === 'production' ? '期望 / 配置满负荷' : '期望' }}</span><span class="type-display">{{ context.format(data.expectedRate) }}<small>/min</small><template v-if="data.kind === 'production'"> / {{ data.capacity ? context.format(data.capacity.outputPerMinute) : '—' }}<small>/min</small></template></span></span>
+      <span class="node-rate" :title="data.kind === 'production' ? '期望 / 配置满负荷。蓝图机器带按本行整数设备配置速率标注，拆行后合计对应此能力；边界与跨产线分配保留期望净流。满负荷需供料、供电和出货畅通，不是游戏实测。' : '规划期望流量'"><span class="rate-label">{{ data.kind === 'production' ? '期望 / 配置满负荷' : '期望' }}</span><span class="type-display">{{ context.format(data.expectedRate) }}<small>/min</small><template v-if="data.kind === 'production'"> / {{ data.capacity ? context.format(data.capacity.outputPerMinute) : '—' }}<small>/min</small></template></span></span>
       <n-tooltip v-if="data.kind === 'production'"><template #trigger><button type="button" class="node-action nodrag" :disabled="context.locked" :aria-label="`${data.title} 改为外部供应`" @click.stop="context.setExternal(data.itemId, true)"><PackageOpen :size="13" /></button></template>改为外部供应</n-tooltip>
     </header>
 
@@ -103,6 +103,8 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
 .factory-node::before { inset: 0; background: var(--ds-border-default); transition: background-color 150ms; }
 .factory-node::after { inset: 1px; background: var(--ds-bg-panel-elevated); }
 .factory-node:hover::before { background: var(--ds-border-strong); }
+.factory-node.is-related::before { background: color-mix(in srgb, var(--ds-brand) 68%, var(--ds-border-default)); }
+.factory-node.is-related::after { background: color-mix(in srgb, var(--ds-bg-panel-elevated) 94%, var(--ds-brand)); }
 .factory-node.is-selected::before { background: var(--ds-brand); }
 .factory-node.is-dimmed { opacity: .32; }
 .factory-node { transition: opacity 150ms; }

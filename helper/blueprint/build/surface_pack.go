@@ -56,6 +56,8 @@ type surfacePacking struct {
 // surfacePackRules 职责：保存一次装箱的间距与余量；使用：shelf 装箱与容量判断；边界：由 gap 推导，调用期间不变。
 type surfacePackRules struct {
 	gap, edgeMargin, ringMargin int
+	// widthLimit 职责：限制单纬带实际使用的环向格数；使用：塔组有限矩形候选；边界：零保留原满纬圈容量，只能缩小真实容量。
+	widthLimit int
 	// ctx 职责：传播生产取消；使用：逐块、逐行与逐格候选检查；边界：纯装箱测试可以为空。
 	ctx context.Context
 	// accept 职责：按块检查候选南缘的实际几何；使用：生产装箱；边界：nil 时仅验证矩形容量。
@@ -74,7 +76,11 @@ func newSurfacePackRules(gap int) surfacePackRules {
 
 // usableWidth 职责：返回纬带扣除环向首尾余量后的可用格数；使用：容量判断；边界：可能为非正数，表示不可用。
 func (rules surfacePackRules) usableWidth(band surfacePackedBand) int {
-	return band.segments*5 - 2*rules.ringMargin
+	width := band.segments*5 - 2*rules.ringMargin
+	if rules.widthLimit > 0 {
+		width = min(width, rules.widthLimit)
+	}
+	return width
 }
 
 // usableHeight 职责：返回纬带扣除南北余量后的可用行数；使用：容量判断；边界：可能为非正数，表示不可用。
@@ -279,6 +285,11 @@ func planSurfaceBlocksAccepted(layout *SurfaceLayout, blocks []surfaceBlockSize,
 
 // planSurfaceBlocksChecked 职责：统一行内与跨块几何筛选并传播取消；使用：生产球面块装箱；边界：失败候选不提交，原有无几何回调装箱顺序保持不变。
 func planSurfaceBlocksChecked(ctx context.Context, layout *SurfaceLayout, blocks []surfaceBlockSize, gap int, accept func(int, surfacePackedBand, int) bool, acceptPlacement func(surfacePackPlacement, []surfacePackPlacement) bool) (*surfacePacking, error) {
+	return planSurfaceBlocksWidthChecked(ctx, layout, blocks, gap, 0, accept, acceptPlacement)
+}
+
+// planSurfaceBlocksWidthChecked 职责：在真实纬带容量内限制矩形候选宽度并保留全部几何回调；使用：塔球面回退的有界宽度比较；边界：零宽度等同旧入口，不更改分段、余量或区域上限。
+func planSurfaceBlocksWidthChecked(ctx context.Context, layout *SurfaceLayout, blocks []surfaceBlockSize, gap, widthLimit int, accept func(int, surfacePackedBand, int) bool, acceptPlacement func(surfacePackPlacement, []surfacePackPlacement) bool) (*surfacePacking, error) {
 	if layout == nil || layout.Mode == "" || layout.Mode == "planar" {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "平面布局不能进入纬带装箱"}
 	}
@@ -306,6 +317,7 @@ func planSurfaceBlocksChecked(ctx context.Context, layout *SurfaceLayout, blocks
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "纬带装箱至少需要一个产线块"}
 	}
 	rules := newSurfacePackRules(gap)
+	rules.widthLimit = widthLimit
 	rules.ctx, rules.accept, rules.acceptPlacement = ctx, accept, acceptPlacement
 	bands := surfaceLatitudeBands(segment)
 	for i, size := range blocks {

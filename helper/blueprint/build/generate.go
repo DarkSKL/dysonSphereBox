@@ -198,8 +198,20 @@ func (b *builder) coatSupply(lines []*line) error {
 }
 
 // Generate 职责：生成并严格自检蓝图；使用：服务对已验证方案调用；边界：超时/布局失败不返回部分串，显式预览失败也不会返回未完整标记的结果。
-func Generate(parent context.Context, req Request) (Result, error) {
-	result := Result{Warnings: []string{}, Bindings: []ProductionBinding{}, SharedBuildingIndices: []int{}}
+func Generate(parent context.Context, req Request) (result Result, generateErr error) {
+	parent, performance := beginGenerationPerformance(parent)
+	observedCtx := parent
+	var cancel context.CancelFunc
+	defer func() {
+		if cancel != nil {
+			defer cancel()
+		}
+		snapshot := performance.finish(observedCtx, result, generateErr)
+		if generateErr == nil && req.CollectPerformance {
+			result.Performance = &snapshot
+		}
+	}()
+	result = Result{Warnings: []string{}, Bindings: []ProductionBinding{}, SharedBuildingIndices: []int{}}
 	reportProgress(parent, "validate", "正在校验生成参数", 0, 0)
 	if req.Mode < 1 || req.Mode > 6 {
 		return result, &blueprint.Error{Code: "GEN_E_MODE", Message: "策略必须为 1 到 6"}
@@ -210,7 +222,7 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	}
 	req.SurfaceLayout = surface
 	ctx, cancel := context.WithTimeout(parent, generationTimeout)
-	defer cancel()
+	observedCtx = ctx
 	setting, err := normalizeSetting(req.Setting)
 	if err != nil {
 		return result, err
@@ -226,6 +238,10 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	if len(req.Plan.Productions) == 0 {
 		return result, &blueprint.Error{Code: "BP_E_EMPTY", Message: "当前方案没有可生成的制造产线"}
 	}
+	req.Plan, err = normalizeProductionRateBasis(ctx, req.Plan, dataset)
+	if err != nil {
+		return result, err
+	}
 	b, err := newBuilder(setting)
 	if err != nil {
 		return result, err
@@ -233,12 +249,15 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	b.generationCtx = ctx
 	// 所有模式共享同一份守恒物料图和容量诊断；不能让普通生成路径
 	// 继续在没有 flowGraph 的情况下按匿名产线返回“成功”蓝图。
+	reportProgress(ctx, "flow", "正在构建守恒物料图与强连通分量", 0, 0)
 	graph, err := quant.BuildFlowGraphContext(ctx, req.Plan)
 	if err != nil {
 		return result, err
 	}
 	b.flowGraph = &graph
+	recordPerformanceFlow(ctx, graph)
 	b.logistics = newLogisticsSummary(graph, setting)
+	reportProgress(ctx, "capacity", "正在核验物料与设备端口容量", 0, 0)
 	for _, production := range req.Plan.Productions {
 		if err := ctx.Err(); err != nil {
 			return result, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "设备端口能力核验已取消或超时"}
@@ -285,6 +304,7 @@ func Generate(parent context.Context, req Request) (Result, error) {
 	const zoneGap = blockGap
 	zoneX := 0.
 	productionNumber := 0
+	stationBlocks := []surfaceBlockRange{}
 	for zi := range zones {
 		zone := &zones[zi]
 		zoneBegin := len(b.all)
@@ -340,18 +360,14 @@ func Generate(parent context.Context, req Request) (Result, error) {
 					inputItems[spray] = true
 				}
 				routeCount := len(inputItems) + len(resultItems)
-				perGroup = max(1, 12/max(1, routeCount))
 				slots := 4
 				if req.Mode == 4 {
 					slots = 5
 				}
-				if routeCount > slots*2 {
-					perGroup = 1
-				}
-				if len(resultItems) > 1 {
-					// 多产物需要独立过滤支路；逐行独立塔组避免短行出口被相邻行输入封闭。
-					perGroup = 1
-				}
+				// 单塔十二个物理端口按该塔的物品种类计数；双塔分别承担自己的端口。
+				// 分臂仅细分已有容量行，不改变机器取整与单机满负荷毛流。
+				counts, perGroup = stationSurroundCounts(counts, routeCount, slots)
+				perGroup = b.stationLeftoverGroupLimit(index, routeCount, slots, perGroup)
 			}
 			for groupStart := 0; groupStart < len(counts); groupStart += perGroup {
 				reportProgress(ctx, "production", productionMessage, productionNumber, len(req.Plan.Productions))
@@ -362,7 +378,8 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				for i := groupStart; i < groupEnd; i++ {
 					// 独立塔组会整体移到不同位置，补电奇偶和末行必须以组内行序计算。
 					lineIndex, last := i-groupStart, i == groupEnd-1
-					if req.SurfaceLayout != nil && req.Mode != 3 && req.Mode != 4 {
+					if req.SurfaceLayout != nil || req.Mode == 3 || req.Mode == 4 {
+						// 环绕塔的南北独立机器行不再借用旧相邻行的电杆。
 						lineIndex, last = 0, true
 					}
 					l, err := b.buildLine(p, recipe, counts[i], req.Mode, lineIndex, last)
@@ -379,11 +396,12 @@ func Generate(parent context.Context, req Request) (Result, error) {
 				}
 				if req.Mode == 3 || req.Mode == 4 {
 					reportProgress(ctx, "stations", "正在连接物流站与传送带", productionNumber, len(req.Plan.Productions))
-					if err := b.attachStations(ctx, lines, req.Mode); err != nil {
+					if err := b.attachStations(ctx, lines, req.Mode, begin); err != nil {
 						return result, err
 					}
 				}
 				block := b.all[begin:]
+				stationBlocks = append(stationBlocks, surfaceBlockRange{begin: begin, end: len(b.all)})
 				minimum, maximum := bounds(block)
 				width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
 				if setting.MergeType == 2 && nextY > 0 && nextY+height > setting.BlockWidthLimit {
@@ -418,7 +436,7 @@ func Generate(parent context.Context, req Request) (Result, error) {
 		b.warnings = append(b.warnings, fmt.Sprintf("多目标已按 %d 个分区排开：共用中间产物只生成一份，并按规范供需边配置各区物流；原料、目标及剩余副产物的外部接口见物流诊断", len(zones)))
 	}
 	b.zones = zones
-	generated, err := b.finish(ctx, req, dataset)
+	generated, err := b.finishSurroundStationLayouts(ctx, req, dataset, stationBlocks)
 	return publishFinalBlueprintProgress(ctx, req, dataset, generated, err)
 }
 
@@ -546,6 +564,42 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 			return result, err
 		}
 	}
+	reportProgress(ctx, "power", "正在按最终坐标补齐覆盖并连接内部电网", 0, 0)
+	addedPoles, err := b.repairFinalPower(ctx, surface, records)
+	if err != nil {
+		return result, err
+	}
+	if addedPoles > 0 {
+		records, bindings, shared, err = b.records()
+		if err != nil {
+			return result, err
+		}
+		if surface != nil {
+			if err := surface.applyRecords(b.all, records); err != nil {
+				return result, err
+			}
+		}
+	}
+	reportProgress(ctx, "power", "正在按最终覆盖与电网连接去除冗余感应塔", 0, 0)
+	removedPoles, err := b.pruneFinalPower(ctx, surface, records)
+	if err != nil {
+		return result, err
+	}
+	if removedPoles > 0 {
+		records, bindings, shared, err = b.records()
+		if err != nil {
+			return result, err
+		}
+		if surface != nil {
+			if err := surface.applyRecords(b.all, records); err != nil {
+				return result, err
+			}
+		}
+	}
+	if b.logistics != nil {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "final-power-repair", Status: "passed", Message: fmt.Sprintf("按最终坐标补建 %d 座地面感应塔，消费者覆盖与内部单网随后共同终检", addedPoles)})
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "final-power-prune", Status: "passed", Message: fmt.Sprintf("按最终坐标去除 %d 座冗余感应塔，保留消费者覆盖和原电网连接", removedPoles)})
+	}
 	zones := []Zone{}
 	for _, r := range b.zoneRanges {
 		if r.end <= r.begin {
@@ -587,6 +641,9 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	}
 	logistics, err := b.finalizeLogistics(req.Mode, records, areas)
 	if err != nil {
+		return result, err
+	}
+	if err := b.finalizeProductionRateAnnotations(records); err != nil {
 		return result, err
 	}
 	name := req.Name

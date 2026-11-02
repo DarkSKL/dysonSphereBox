@@ -36,6 +36,8 @@ type stationRoute struct {
 	path []vector
 	// rate 职责：记录本行分配的每分钟流量；使用：塔端口容量核验；边界：不以额定机器余量扩大可信需求。
 	rate float64
+	// sprayRecycle 职责：标记净输入已抵消的自产供剂行；使用：同塔库存回送；边界：必须另行验证毛流与真实产物入塔链。
+	sprayRecycle *line
 }
 
 // slotOffset 职责：取得参考端口路径；使用：物流塔的整数过渡点与内部微调；边界：原样保留经验小数。
@@ -138,7 +140,7 @@ func (b *builder) createStation(center vector, items []stationItem, mode int) *p
 }
 
 // attachStations 职责：为一组机器行创建单/双塔；使用：mode 3/4；边界：所有路径可达才写出站点，失败不留下半个布局。
-func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) error {
+func (b *builder) attachStations(ctx context.Context, lines []*line, mode, blockBegin int) error {
 	if len(lines) == 0 {
 		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "没有可连接的产线"}
 	}
@@ -173,6 +175,9 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		groups = [][]stationItem{items[:slots], items[slots:]}
 		b.warnings = append(b.warnings, fmt.Sprintf("配方 %d 使用双塔，请确认所有原料供给和副产物消耗", recipe.ID))
 	}
+	linkBegin := len(b.stationLinks)
+	reserved := b.stationLeftoverReservedSlots(lines, groups)
+	surroundStationRows(lines, len(groups))
 	itemTower := map[int]int{}
 	for t, group := range groups {
 		for _, item := range group {
@@ -193,7 +198,11 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			if l.coaterInput == nil {
 				return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 缺少增产剂 %d 的真实供剂入口", l.machines[0].owner, spray)}
 			}
-			routes = append(routes, stationRoute{head: l.coaterInput, item: spray, tower: itemTower[spray], rate: productionItemRate(l.info.Inputs, spray) * share})
+			route := stationRoute{head: l.coaterInput, item: spray, tower: itemTower[spray], rate: productionItemRate(l.info.Inputs, spray) * share}
+			if route.rate == 0 && productionItemRate(l.info.Outputs, spray) > 0 {
+				route.sprayRecycle = l
+			}
+			routes = append(routes, route)
 		}
 		for _, item := range resultIDs {
 			head, err := b.stationOutputHead(l, item)
@@ -216,11 +225,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		routes[i].slot = priority[used[t]]
 		used[t]++
 	}
-	startY, endY := routes[0].head.a.y, routes[0].head.a.y
-	for _, route := range routes {
-		startY, endY = math.Min(startY, route.head.a.y), math.Max(endY, route.head.a.y)
-	}
-	centerY := math.Floor((endY-startY)/2) + startY
+	centerY := 0.
 	centers := make([]vector, len(groups))
 	var existing []*placed
 	for _, l := range lines {
@@ -237,10 +242,13 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成超过截止时间"}
 		}
 		for i := range centers {
-			// 30 格是本地端口走廊的候选间隔，不冒充游戏距离常量；
-			// 行星/星际塔分别按 15/29 米在最终规则中核验。
-			// 塔先放到产线外侧，让普通地面寻路优先绕过机器。
-			centers[i] = vector{-30 - float64(attempt)*2 - float64(i)*30, centerY, 0}
+			// 中央塔组两侧保留真实端口走廊；双塔间距仍由最终米制规则核验。
+			// 候选仅在中央横廊内左右微移，不再退回塔左、机器右的旧排列。
+			offset := float64((attempt+1)/2) * 2
+			if attempt%2 == 0 {
+				offset = -offset
+			}
+			centers[i] = vector{float64(i)*30 + offset, centerY, 0}
 		}
 		blocked := map[vector]bool{}
 		for point := range buildingObstacles {
@@ -272,21 +280,25 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		for _, route := range routes {
 			blocked[route.head.a] = true
 		}
-		for _, center := range centers {
+		for towerIndex, center := range centers {
 			// 物流塔路线必须绕过完整的静态建造盒，不能只屏蔽中心五格后从塔角擦行。
 			for dx := -3.; dx <= 3; dx++ {
 				for dy := -3.; dy <= 3; dy++ {
 					blocked[vector{center.x + dx, center.y + dy, 0}] = true
 				}
 			}
-			for _, slot := range priority {
+			for slot := 0; slot < 12; slot++ {
 				for _, point := range stationInner(center, slot) {
-					blocked[point] = true
+					blocked[beltCell(point)] = true
 				}
 				p := slotOffset(slot)[0]
 				p.x += center.x
 				p.y += center.y
 				blocked[p] = true
+			}
+			for _, slot := range reserved[towerIndex] {
+				p, direction := slotOffset(slot)[0], stationApproach(slot)
+				blocked[vector{p.x + center.x + direction.x, p.y + center.y + direction.y, 0}] = true
 			}
 		}
 		ready = true
@@ -294,6 +306,9 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		usedSlots := make([]map[int]bool, len(groups))
 		for i := range usedSlots {
 			usedSlots[i] = map[int]bool{}
+			for _, slot := range reserved[i] {
+				usedSlots[i][slot] = true
+			}
 		}
 		for i := range routes {
 			route := &routes[i]
@@ -353,22 +368,26 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 		}
 	}
 	if !ready {
-		// 拥挤的混带入口允许显式跨层桥接，垂直爬升沿用参考 A/B 带的微移规则，避免平面路线互相封死。
+		// 南北多行端点拥挤时复用统一三维寻路，未来端口柱预留与固定高度预算仍然生效。
 		usedSlots := make([]int, len(groups))
 		for i := range centers {
-			centers[i] = vector{-45 - float64(i)*30, centerY, 0}
+			centers[i] = vector{float64(i) * 30, centerY, 0}
 		}
 		priority := []int{9, 10, 11, 8, 0, 7, 1, 6, 2, 5, 3, 4}
 		for i := range routes {
 			r := &routes[i]
-			r.slot = priority[usedSlots[r.tower]]
+			available := stationUnreservedSlots(priority, reserved[r.tower])
+			if usedSlots[r.tower] >= len(available) {
+				return &blueprint.Error{Code: "GEN_E_STATION_PORT", Message: "预留副产物真实出带口后普通塔端口不足"}
+			}
+			r.slot = available[usedSlots[r.tower]]
 			usedSlots[r.tower]++
 		}
 		// 本组仍在局部坐标中；已排好的其他组不在同一坐标系，不能当作障碍或叠加其高架层数。
-		if err := b.bridgeStationRoutes(ctx, routes, centers, existing); err != nil {
+		if err := b.routeSurroundStationBridges(ctx, routes, centers, existing, reserved); err != nil {
 			return err
 		}
-		b.warnings = append(b.warnings, "复杂混料入口使用跨层物流桥接，建议在游戏中检查高度与贴合："+failure)
+		b.warnings = append(b.warnings, "中央物流塔使用有界三维接驳，建议在游戏中检查高度与贴合："+failure)
 	}
 	towers := make([]*placed, len(groups))
 	for i, group := range groups {
@@ -408,7 +427,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 					break
 				}
 			}
-			b.stationLinks = append(b.stationLinks, stationTransportLink{item: route.item, tower: tower, belt: last, slot: route.slot, head: route.head, path: append([]*placed{}, belts...), owner: route.head.owner, rate: route.rate})
+			b.stationLinks = append(b.stationLinks, stationTransportLink{item: route.item, tower: tower, belt: last, slot: route.slot, head: route.head, path: append([]*placed{}, belts...), owner: route.head.owner, rate: route.rate, sprayRecycle: route.sprayRecycle})
 		}
 	}
 	if *b.setting.NeedPower {
@@ -419,7 +438,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, mode int) e
 			}
 		}
 	}
-	return nil
+	return b.prepareStationLeftovers(ctx, mode, blockBegin, linkBegin, towers, reserved)
 }
 
 // uniqueStationItems 职责：按配方结果顺序去重多产物；使用：独立出货带与塔槽位规划；边界：不排序、不丢副产物。

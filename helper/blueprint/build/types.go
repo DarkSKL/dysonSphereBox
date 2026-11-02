@@ -16,6 +16,8 @@ type Setting struct {
 	MaxLays int `json:"maxLays"`
 	// NeedPower 职责：保存是否创建供电；使用：布局约束；边界：不修改全局设置。
 	NeedPower *bool `json:"needPower,omitempty"`
+	// EnableFlowMonitor 职责：保存是否在独立物料带上创建流速监测器；使用：蓝图生成选项；边界：仅覆盖本次生成，不修改游戏内监测阈值。
+	EnableFlowMonitor bool `json:"enableFlowMonitor"`
 	// BeltSpeed 职责：保存参考运力上限每分钟；使用：布局约束；边界：不修改全局设置。
 	BeltSpeed float64 `json:"beltSpeed"`
 	// SmelterMaxCount 职责：保存熔炉单列上限；使用：布局约束；边界：不修改全局设置。
@@ -62,6 +64,8 @@ type Request struct {
 	RequestID string `json:"requestId,omitempty"`
 	// EmitBlueprintProgress 职责：请求稳定建筑分块事件；使用：动画预览调用显式启用；边界：缺省关闭以避免大蓝图的额外解码与事件开销。
 	EmitBlueprintProgress bool `json:"emitBlueprintProgress,omitempty"`
+	// CollectPerformance 职责：请求在成功结果中附带实测性能快照；使用：性能诊断或验收；边界：缺省关闭，避免墙钟值改变既有结果的确定性比较。
+	CollectPerformance bool `json:"collectPerformance,omitempty"`
 	// Plan 职责：保存求解后的产线；使用：桥接传递；边界：保持生成时序。
 	Plan quant.Result `json:"plan"`
 	// Mode 职责：保存内部策略编号；使用：生成流程分派；边界：公开工作流仅开放补充需求指定的 1 到 4。
@@ -203,4 +207,6 @@ type Result struct {
 	LogisticsSummary *LogisticsSummary `json:"logisticsSummary,omitempty"`
 	// RuleAudit 职责：保存最终记录的版本化数值规则覆盖；使用：诊断与验收；边界：不等于真实游戏实测。
 	RuleAudit *RuleAudit `json:"ruleAudit,omitempty"`
+	// Performance 职责：保存请求级结构化性能事实；使用：成功结果与性能回归；边界：失败快照仅经 WithPerformance 观察回调提供。
+	Performance *GenerationPerformance `json:"performance,omitempty"`
 }

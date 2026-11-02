@@ -4,10 +4,10 @@ import test from 'node:test'
 import ts from 'typescript'
 
 // 说明：复用已安装的 TypeScript 编译器加载纯展示服务，用 Node 内置测试验证规范流图契约；不引入测试运行库。
-// 边界：只覆盖画板映射、双速率语义、自动布局请求归一、稳定坐标与循环边保留，不把前端断言当作后端带路或游戏验收。
+// 边界：覆盖画板映射、双速率语义、关联闭包、自动布局请求归一、稳定坐标与循环边保留，不把前端断言当作后端带路或游戏验收。
 const file = new URL('../src/services/dysonSphere/factory-graph.ts', import.meta.url)
 const {outputText} = ts.transpileModule(await readFile(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}})
-const {buildFlowGraph} = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
+const {buildFlowGraph, relatedFlowElements} = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
 const layoutFile = new URL('../src/services/dysonSphere/factory-layout.ts', import.meta.url)
 const {outputText: layoutOutput} = ts.transpileModule(await readFile(layoutFile, 'utf8'), {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}})
 const {buildFactoryLayoutRequest} = await import(`data:text/javascript;base64,${Buffer.from(layoutOutput).toString('base64')}`)
@@ -128,6 +128,27 @@ test('SCC 的所有真实循环边都保留，非循环入口不被标记为循�
   const view = buildFlowGraph(plan, itemName)
   assert.equal(view.edges.length, 7)
   assert.deepEqual(view.edges.filter(edge => edge.cycle).map(edge => edge.id), ['loop-a', 'loop-b'])
+})
+
+test('选中节点高亮完整有向上下游，但不吞入独立支路', () => {
+  const edges = [
+    {id: 'raw-a', source: 'raw-a', target: 'a'},
+    {id: 'raw-b', source: 'raw-b', target: 'b'},
+    {id: 'a-consumer', source: 'a', target: 'consumer'},
+    {id: 'b-consumer', source: 'b', target: 'consumer'},
+    {id: 'consumer-target', source: 'consumer', target: 'target'},
+  ]
+  const result = relatedFlowElements(edges, 'a')
+  assert.deepEqual([...result.nodeIds].sort(), ['a', 'consumer', 'raw-a', 'target'].sort())
+  assert.deepEqual([...result.edgeIds].sort(), ['a-consumer', 'consumer-target', 'raw-a'].sort())
+  assert.equal(relatedFlowElements(edges, null), null)
+})
+
+test('选中节点的关联遍历在循环边中安全终止', () => {
+  const edges = [{id: 'forward', source: 'a', target: 'b'}, {id: 'back', source: 'b', target: 'a'}]
+  const result = relatedFlowElements(edges, 'a')
+  assert.deepEqual([...result.nodeIds].sort(), ['a', 'b'])
+  assert.deepEqual([...result.edgeIds].sort(), ['back', 'forward'])
 })
 
 test('缺失端点、重复边和无效流量不会成为看似正常的画板', () => {

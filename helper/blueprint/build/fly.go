@@ -103,7 +103,16 @@ func flySplitterApproach(from, splitter vector) vector {
 }
 
 // flyBlocks 职责：在行末连接逐物品配送块；使用：mode 2/5；边界：输入按真实轨位从上往下展开，输出逆向阶梯排布，避免无连接交叉。
-func (b *builder) flyBlocks(l *line, mode, begin int) error {
+func (b *builder) flyBlocks(l *line, mode, begin int) (err error) {
+	monitors, err := b.captureFlyFlowMonitorHosts(begin)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err == nil {
+			err = b.syncFlyFlowMonitorHosts(monitors, begin)
+		}
+	}()
 	if len(l.recipe.Results) > 1 {
 		return b.flyIndependentOutputBlocks(l, mode, begin)
 	}
@@ -118,7 +127,8 @@ func (b *builder) flyBlocks(l *line, mode, begin int) error {
 		reverse(row)
 		inlets = append(inlets, inlet{l.recipe.Items[i], row[len(row)-1]})
 	}
-	if l.coaterInput != nil {
+	selfSpray := mode == 2 && l.coaterInput != nil && flyLineRate(l.info, productionSprayItem(l.info), true, len(l.machines)) == 0
+	if l.coaterInput != nil && !selfSpray {
 		entry := l.coaterInput
 		right := l.output[len(l.output)-1].a.x
 		points := manhattan(entry.a, vector{entry.a.x - 1, entry.a.y, 0}, true)
@@ -165,7 +175,13 @@ func (b *builder) flyBlocks(l *line, mode, begin int) error {
 		// 全局 beginX 累加造成超宽蓝图；不同物料仍保持独立 lane。
 		linkX := row.link.a.x
 		rate := flyLineRate(l.info, row.item, true, len(l.machines))
-		endpoint, err := b.flyAtRate(row.item, row.link, true, linkX+inputOffset+inputStep*float64(depth), beginY+3*float64(depth), mode, begin, rate)
+		inputY := beginY + 3*float64(depth)
+		if b.flyCompact && mode == 2 {
+			// 输入竖轨已按箱体宽度分列，共用同一纬向接口行仍保持五格净距；
+			// 不再叠加三格阶梯，避免有喷涂的闭合块只能挤入赤道最宽纬带。
+			inputY = beginY
+		}
+		endpoint, err := b.flyAtRate(row.item, row.link, true, linkX+inputOffset+inputStep*float64(depth), inputY, mode, begin, rate)
 		if err != nil {
 			return err
 		}
@@ -176,6 +192,10 @@ func (b *builder) flyBlocks(l *line, mode, begin int) error {
 	outputBaseY := beginY + 3*float64(len(order)) + 6
 	if b.flyCompact {
 		outputBaseY -= 3
+		if mode == 2 {
+			// 输出位于全部输入箱体以北，真实带仍先纵向绕开输入横带。
+			outputBaseY = beginY + 6
+		}
 	}
 	for outputIndex, item := range l.recipe.Results {
 		if err := b.checkGeneration("配送输出端点"); err != nil {
@@ -196,7 +216,15 @@ func (b *builder) flyBlocks(l *line, mode, begin int) error {
 		connect(trunk, trunkPath[0])
 		trunk = trunkPath[len(trunkPath)-1]
 		rate := flyLineRate(l.info, item, false, len(l.machines))
-		branch, filters, err := b.flyOutputFilters(trunkPath, item, rate)
+		localRate := rate
+		if selfSpray && item == productionSprayItem(l.info) {
+			net, returned, err := flySelfSprayRates(l)
+			if err != nil {
+				return err
+			}
+			localRate = net + returned
+		}
+		branch, filters, err := b.flyOutputFilters(trunkPath, item, localRate)
 		if err != nil {
 			return err
 		}
@@ -206,12 +234,17 @@ func (b *builder) flyBlocks(l *line, mode, begin int) error {
 		if b.flyCompact {
 			outputX = branch.a.x + 16
 		}
-		endpoint, err := b.flyAtRate(item, branch, false, outputX, outputBaseY+3*float64(len(l.recipe.Results)-1-outputIndex), mode, begin, rate)
+		endpoint, err := b.flyAtRate(item, branch, false, outputX, outputBaseY+3*float64(len(l.recipe.Results)-1-outputIndex), mode, begin, localRate)
 		if err != nil {
 			return err
 		}
 		endpoint.filters = append(endpoint.filters, filters...)
+		// 本地臂组运送回流前的毛输出；规范端点仍只分配净出货。
+		endpoint.rate = rate
 		b.flyEndpoints = append(b.flyEndpoints, endpoint)
+	}
+	if selfSpray {
+		return b.connectFlySelfSpray(l, begin)
 	}
 	return nil
 }

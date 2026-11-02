@@ -138,8 +138,9 @@ func validateStationPorts(ctx context.Context, records []blueprint.Building) err
 			}
 			itemMatches := filter == 0
 			if end == 0 {
-				// 塔向外送货的端口必须选择对应的需求物品槽，避免带路接到另一个物料。
-				itemMatches = len(record.Parameters) > 0 && filter > 0 && int(filter) <= kinds && tower.Parameters[(filter-1)*6] == record.Parameters[0] && tower.Parameters[(filter-1)*6+1] == 2
+				// 真实出带可从需求槽供给机器，也可从供货库存槽导出副产物。
+				// 机器需求角色仍由validateStationLink校验，回收供货角色由独立实体链校验。
+				itemMatches = len(record.Parameters) > 0 && filter > 0 && int(filter) <= kinds && tower.Parameters[(filter-1)*6] == record.Parameters[0] && (tower.Parameters[(filter-1)*6+1] == 1 || tower.Parameters[(filter-1)*6+1] == 2)
 			} else if itemMatches {
 				// 产线向塔供货时端口不筛选，但塔内必须声明同物品的供给槽。
 				itemMatches = false

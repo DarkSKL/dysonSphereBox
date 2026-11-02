@@ -21,9 +21,17 @@ const path = computed(() => getBezierPath({sourceX: props.sourceX, sourceY: prop
 <style scoped>
 .flow-edge { stroke: var(--ds-border-strong); fill: none; transition: stroke 150ms, opacity 150ms; }
 .flow-edge.is-cycle { stroke-dasharray: 6 4; }
-.flow-edge.is-highlighted { stroke: var(--ds-brand); }
+.flow-edge.is-highlighted { stroke: var(--ds-brand); stroke-dasharray: 10 7; animation: flow-edge-pulse 900ms linear infinite; }
 .flow-edge.is-dimmed { opacity: .25; }
 .flow-label { position: absolute; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 0 5px; background: var(--ds-bg-panel); color: var(--ds-text-secondary); font-family: var(--ds-font-display); font-size: 10px; line-height: 16px; white-space: nowrap; pointer-events: none; transition: opacity 150ms; }
 .flow-label.is-highlighted { border-color: var(--ds-brand); color: var(--ds-text-primary); }
 .flow-label.is-dimmed { opacity: .2; }
+
+@keyframes flow-edge-pulse {
+  to { stroke-dashoffset: -17; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-edge.is-highlighted { animation: none; }
+}
 </style>

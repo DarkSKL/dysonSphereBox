@@ -13,6 +13,11 @@ import (
 
 // validateFlyPathCandidate 职责：拒绝占用已有物流或穿过建筑的接驳候选；使用：byPath 创建实体之前；边界：只允许首段复用同一个真实 link，分流器实体接驳由独立端口规则核验。
 func (b *builder) validateFlyPathCandidate(points []vector, link, splitter *placed, existing []*placed) error {
+	return b.validateFlyPathEndpoints(points, link, nil, splitter, existing)
+}
+
+// validateFlyPathEndpoints 职责：为本块闭合回流额外允许真实终端带的末段接入；使用：配送自产增产剂；边界：仅首尾相邻段豁免同一实体连接，途中占位和建造盒仍硬拒绝。
+func (b *builder) validateFlyPathEndpoints(points []vector, link, target, splitter *placed, existing []*placed) error {
 	if err := b.checkGeneration("配送路径预提交"); err != nil {
 		return err
 	}
@@ -59,6 +64,9 @@ func (b *builder) validateFlyPathCandidate(points []vector, link, splitter *plac
 					}
 				}
 				if i == 1 && (p == link || end == link) {
+					continue
+				}
+				if i == len(points)-1 && target != nil && (p == target || end == target) {
 					continue
 				}
 				candidate := surfaceBeltSpan{ends: [2]placement.Vector{world(points[i-1]), world(points[i])}}

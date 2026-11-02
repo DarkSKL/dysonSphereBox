@@ -5,6 +5,7 @@ type FactoryLayoutControls = {
   useMixed: boolean
   mix2: boolean
   needCoaterNet: boolean
+  enableFlowMonitor: boolean
 }
 
 /**

@@ -18,19 +18,28 @@ type flyLayoutVariant struct {
 	heightLimit float64
 	groupRows   bool
 	compact     bool
+	// surfacePairs 职责：启用独立反向交错球面候选；使用：mode2 自动布局；边界：旧九候选不被替换。
+	surfacePairs bool
 }
 
 // generateFlyLayout 职责：只从通过完整最终规则的配送候选中选择最小包络；使用：mode2/5 主链；边界：有界启发式不宣称数学全局最优，也不将机队能力标为已验证。
 func (b *builder) generateFlyLayout(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
 	variants := []flyLayoutVariant{{heightLimit: b.setting.BlockWidthLimit, groupRows: true}}
-	limits := []float64{math.Max(60, b.setting.BlockWidthLimit), math.Max(100, b.setting.BlockWidthLimit*1.5), math.Max(160, b.setting.BlockWidthLimit*2)}
+	limits, err := b.layoutHeightCandidates(ctx, req, dataset, false)
+	if err != nil {
+		return Result{}, err
+	}
 	for _, compact := range []bool{false, true} {
 		for _, limit := range limits {
 			variants = append(variants, flyLayoutVariant{heightLimit: limit, compact: compact})
 		}
 	}
+	if req.Mode == 2 && req.SurfaceLayout != nil && req.SurfaceLayout.Mode == "autoTropic" {
+		variants = append(variants, flyLayoutVariant{heightLimit: limits[0], compact: true, surfacePairs: true})
+	}
 	var best *Result
 	var lastError error
+	var searchCandidates []SearchCandidateDiagnostic
 	rejected := 0
 	for index, variant := range variants {
 		if err := b.checkGeneration("配送布局候选"); err != nil {
@@ -43,13 +52,27 @@ func (b *builder) generateFlyLayout(ctx context.Context, req Request, dataset *q
 		}
 		candidate.generationCtx, candidate.flowGraph = ctx, b.flowGraph
 		candidate.flyCompact = variant.compact
+		candidate.flySurfacePairs = variant.surfacePairs
 		candidate.warnings = append(candidate.warnings, b.warnings...)
 		candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 		candidate.logistics.Checks = append([]LogisticsCheck(nil), b.logistics.Checks...)
+		parameters := fmt.Sprintf("heightLimit=%g;groupRows=%t;compact=%t;surfacePairs=%t", variant.heightLimit, variant.groupRows, variant.compact, variant.surfacePairs)
+		stage := "assembly"
 		if err = candidate.assembleFlyLayout(ctx, req, dataset, variant); err == nil {
+			if variant.surfacePairs {
+				stage = "surface-pairing"
+				err = candidate.pairFlySurfaceBlocks(ctx)
+			}
+			if err != nil {
+				searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("fly-layout", index, parameters, stage, err), candidate.logistics)
+				lastError, rejected = err, rejected+1
+				continue
+			}
 			var out Result
+			stage = "final-validation"
 			out, err = candidate.finish(ctx, req, dataset)
 			if err == nil && out.LogisticsSummary != nil {
+				searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("fly-layout", index, parameters, stage, nil), out.LogisticsSummary)
 				if best == nil || betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
 					best = &out
 				}
@@ -59,6 +82,7 @@ func (b *builder) generateFlyLayout(ctx context.Context, req Request, dataset *q
 		if err == nil {
 			err = &blueprint.Error{Code: "GEN_E_FLOW", Message: "配送候选缺少最终物流证据"}
 		}
+		searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("fly-layout", index, parameters, stage, err), candidate.logistics)
 		lastError, rejected = err, rejected+1
 	}
 	if err := b.checkGeneration("配送候选提交"); err != nil {
@@ -69,12 +93,14 @@ func (b *builder) generateFlyLayout(ctx context.Context, req Request, dataset *q
 	}
 	metrics := &best.LogisticsSummary.Metrics
 	metrics.CandidateBudget, metrics.EvaluatedCandidates, metrics.RejectedCandidates = len(variants), len(variants), rejected
-	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-fly-layout-search", Status: "passed", Message: fmt.Sprintf("固定 %d 个候选预算内比较整配方矩形基线、独立机器行和真实轮廓靠拢；拒绝 %d 个，完整核验后按面积和带长选择，不改变规范物料流或机器数量", len(variants), rejected)})
+	best.LogisticsSummary.SearchCandidates = searchCandidates
+	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-fly-layout-search", Status: "passed", Message: fmt.Sprintf("固定 %d 个候选预算内按真实占地推导偏矩形列高，比较整配方基线、独立机器行和真实轮廓靠拢；自动球面配送另有一个反向交错候选，保留原有退路；拒绝 %d 个，完整核验后按面积×max(1,长宽比/2)、面积和带长选择，不改变规范物料流或机器数量", len(variants), rejected)})
 	return *best, nil
 }
 
 // assembleFlyLayout 职责：把配送闭合单元独立装箱并保留分区与产线映射；使用：每个有限候选；边界：整组基线仅为可行性对照，单行位置以全体带/箱体/臂/电杆轮廓检查。
 func (b *builder) assembleFlyLayout(ctx context.Context, req Request, dataset *quant.Dataset, variant flyLayoutVariant) error {
+	b.flyLayoutHeight = variant.heightLimit
 	zones := planZones(req.Plan)
 	rank := make(map[int]int, len(b.flowGraph.ProductionOrder))
 	for index, owner := range b.flowGraph.ProductionOrder {
@@ -138,6 +164,7 @@ func (b *builder) assembleFlyLayout(ctx context.Context, req Request, dataset *q
 					}
 				}
 				shift(block, x-low.x, y-low.y, 0)
+				b.flyLayoutBlocks = append(b.flyLayoutBlocks, surfaceBlockRange{begin: begin, end: len(b.all)})
 				nextY = math.Max(nextY, y+height+gap)
 				columnWidth = math.Max(columnWidth, x-nextX+width)
 				if req.SurfaceLayout != nil {
@@ -161,5 +188,5 @@ func (b *builder) assembleFlyLayout(ctx context.Context, req Request, dataset *q
 		b.warnings = append(b.warnings, fmt.Sprintf("多目标保留%d个分区；共享中间产物只生成一份，配送边按规范逐边分配；外部输入和副产物接口见物流诊断", len(zones)))
 	}
 	b.zones = zones
-	return nil
+	return b.prepareFlyLeftovers(ctx, req.Mode)
 }

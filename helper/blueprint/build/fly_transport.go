@@ -99,7 +99,7 @@ func (b *builder) bindFlyTransportEdges(mode int) error {
 		var source, target []flyEndpointUse
 		if owner, ok := owners[edge.SourceNodeID]; ok {
 			var err error
-			source, err = allocateFlyEndpoints(outputs[owner][edge.ItemID], remaining, edge.RatePerMinute)
+			source, err = allocateFlyEndpoints(flyEndpointsForEdge(outputs[owner][edge.ItemID], edge.ID), remaining, edge.RatePerMinute)
 			if err != nil {
 				return transportAllocationError(edge, edge.RatePerMinute, "生产输出没有足够的配送端点")
 			}
@@ -128,7 +128,15 @@ func (b *builder) bindFlyTransportEdges(mode int) error {
 			return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("产线 %d 物品 %d 仍有 %.6f/min 端点流量未绑定规范边", endpoint.owner, endpoint.item, rate)}
 		}
 	}
+	leftoverCheck, leftoverWarning, err := b.flyLeftoverBoundaryCheck(mode, plannedRoutes)
+	if err != nil {
+		return err
+	}
 	b.transportRoutes = plannedRoutes
+	if leftoverCheck != nil {
+		b.logistics.Checks = append(b.logistics.Checks, *leftoverCheck)
+		b.warnings = append(b.warnings, leftoverWarning)
+	}
 	b.logistics.Checks = append(b.logistics.Checks, capacityChecks...)
 	b.warnings = append(b.warnings, capacityWarnings...)
 	b.logistics.Checks = append(b.logistics.Checks,

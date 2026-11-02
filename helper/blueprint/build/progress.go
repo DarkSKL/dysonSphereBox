@@ -51,6 +51,7 @@ func WithProgress(ctx context.Context, observer func(Progress)) context.Context 
 
 // reportProgress 职责：发布实际到达的工作阶段；使用：生成检查点；边界：取消后不再通知，未订阅时不影响生成。
 func reportProgress(ctx context.Context, stage, message string, current, total int) {
+	recordPerformanceStage(ctx, stage, total)
 	publishProgress(ctx, Progress{Kind: ProgressKindPhase, Stage: stage, Message: message, Current: current, Total: total})
 }
 

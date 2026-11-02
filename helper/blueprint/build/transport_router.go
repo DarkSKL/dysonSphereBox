@@ -29,6 +29,8 @@ type transportPathNode struct {
 	discarded    bool
 	// length 职责：保留真实路径节点数；使用：已有可行候选的安全上界剪枝；边界：不同于带高度代价的distance。
 	length int
+	// lengthEstimate 职责：保存多终点搜索的节点数下界；使用：同代价时优先较短完整带链；边界：普通单终点队列不读取。
+	lengthEstimate int
 }
 
 // transportPathQueue 职责：稳定选择估价最低且同分时更接近终点的候选；使用：三维寻路；边界：最终同分按插入顺序而非 map 顺序。
@@ -78,6 +80,9 @@ type transportPathCacheKey struct {
 	merge bool
 	// shorterThan 职责：隔离只搜索更短候选的缓存；使用：相邻消费端口比较；边界：零表示没有已有路径上界。
 	shorterThan int
+	corridor    bool
+	// maxCost 职责：隔离已有候选代价上界；使用：相邻端口安全剪枝；边界：零表示不限制，同价路径必须保留。
+	maxCost float64
 }
 
 // transportEnvironment 职责：维护静态/动态分层空间哈希和路径缓存；使用：逐 lane 增量提交；边界：失败候选不污染其它排布候选。
@@ -91,6 +96,12 @@ type transportEnvironment struct {
 	searchCalls, cacheHits int
 	// totalExpanded/maxExpanded 职责：累计及记录单次最高展开数；使用：检查固定搜索预算；边界：缓存命中为零展开，不因此放宽硬约束。
 	totalExpanded, maxExpanded int
+	// preferCorridor 职责：为直连带优先复用平面走廊；使用：运输A*；边界：不强制升高，不改变碰撞、端口、高度或预算。
+	preferCorridor bool
+	// beltCorridors 职责：记录本地与已提交运输带的平面投影；使用：新路线跨高度复用走廊；边界：仅是软代价，不授权连接不同物品或穿过已有实体。
+	beltCorridors map[[2]int]bool
+	// corridorPotential 职责：缓存当前路线的平面松弛势场；使用：相邻端口下界复用；边界：占位版本变化即失效。
+	corridorPotential *transportCorridorPotential
 }
 
 // routeTransport 职责：将全部规范 lane 写入 placed 指针图；使用：mode 1；边界：所有内部边都成功后才进入编码，不接受部分成功。
@@ -101,6 +112,11 @@ func (b *builder) routeTransport(ctx context.Context) error {
 
 // routeTransportWithInputs 职责：从给定西侧边界端口完成所有真实物料路线；使用：就近入口、环路基线和同输入回归比较；边界：端口数必须匹配全部外供 lane，之后仍执行同一占位、容量和最终规则。
 func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions []vector) error {
+	return b.routeTransportWithStrategy(ctx, inputPositions, b.busFabric == nil)
+}
+
+// routeTransportWithStrategy 职责：以相同实体端点选择走廊软代价；使用：公开默认策略与同布局回归比较；边界：仅改变寻路目标，不改变物料图、硬约束或预算，不新增用户配置。
+func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions []vector, preferCorridor bool) error {
 	routes := append([]*transportRoute{}, b.transportRoutes...)
 	for _, recycle := range b.machineRecycles {
 		routes = append(routes, recycle.route)
@@ -129,15 +145,19 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 	if external != len(inputPositions) {
 		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "外供入口位置数量与真实 lane 不符"}
 	}
+	if err := b.prepareLeftoverBoundaries(ctx, inputPositions); err != nil {
+		return err
+	}
 	minimum, maximum := bounds(b.all)
 	buildingBlocked, err := stationBuildingObstacles(ctx, b.all)
 	if err != nil {
 		return err
 	}
-	env := &transportEnvironment{blocked: buildingBlocked, reserved: map[vector]map[*placed]bool{}, cache: map[transportPathCacheKey][]vector{}, minimum: vector{math.Floor(minimum.x) - 8, math.Floor(minimum.y) - 8, 0}, maximum: vector{math.Ceil(maximum.x) + 8, math.Ceil(maximum.y) + 8, transportMaxHeight}}
+	env := &transportEnvironment{blocked: buildingBlocked, reserved: map[vector]map[*placed]bool{}, cache: map[transportPathCacheKey][]vector{}, minimum: vector{math.Floor(minimum.x) - 8, math.Floor(minimum.y) - 8, 0}, maximum: vector{math.Ceil(maximum.x) + 8, math.Ceil(maximum.y) + 8, transportMaxHeight}, preferCorridor: preferCorridor, beltCorridors: map[[2]int]bool{}}
 	for _, p := range b.all {
 		if surfaceIsBelt(p.record.ItemID) {
 			env.blocked[beltCell(p.a)] = true
+			env.beltCorridors[beltColumn(p.a)] = true
 		}
 		if p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
 			// 分拣器胶囊通道也进入离散占位，最终仍由版本化 slotPose 精确预检决定。
@@ -150,7 +170,7 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 	}
 	// 为所有未来入口预留落地柱，防止先路由的高架封死尚未接线的端口。
 	for _, route := range routes {
-		if route.to == nil && route.from != nil {
+		if route.to == nil && route.from != nil && route.end == nil {
 			continue
 		}
 		for i, endpoint := range []*placed{route.start, route.end} {
@@ -159,6 +179,9 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 			}
 			direction := -1.
 			if i == 0 && route.from == nil {
+				direction = 1
+			}
+			if i == 1 && route.to == nil && route.edge.FlowKind == "leftover" {
 				direction = 1
 			}
 			for z := 0.; z <= transportMaxHeight; z++ {
@@ -179,12 +202,18 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 		}
 	}
 	incoming := map[*placed][]*placed{}
+	incomingCounts := map[*placed]int{}
+	for _, p := range b.all {
+		if p.output != nil {
+			incomingCounts[p.output]++
+		}
+	}
 	for index, route := range routes {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
 		}
 		reportProgress(ctx, "routing", "正在自动连接内部物料与外部入口", index+1, len(routes))
-		if route.to == nil && route.from != nil {
+		if route.to == nil && route.from != nil && route.end == nil {
 			continue
 		}
 		start := route.start.a
@@ -194,49 +223,62 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 			start.x--
 		}
 		end := vector{route.end.a.x - 1, route.end.a.y, route.end.a.z}
+		if route.to == nil && route.edge.FlowKind == "leftover" {
+			// 副产物从原料区向西出货，最后一段由东侧进入，避免把回收口变成朝机器的反向出口。
+			end.x = route.end.a.x + 1
+		}
 		if route.to != nil {
 			// 消费端 stub 由机器行外侧向西延伸；从 stub 首格进入可避免把目标分拣器本体当作障碍。
 			end = vector{route.end.a.x, route.end.a.y, route.end.a.z}
 		}
 		tail := incoming[route.end]
 		var merge *placed
-		if len(tail) > 0 {
-			// 上一条路线的首段可能仍处于其生产端预留柱中，不能让后续供应者借用该落地柱。
-			for i, candidate := range tail {
-				if env.reservedByOther(candidate.a, route.start, route.end) {
-					continue
-				}
-				free := false
-				for _, d := range []vector{{-1, 0, 0}, {0, 1, 0}, {1, 0, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
-					neighbor := vector{candidate.a.x + d.x, candidate.a.y + d.y, candidate.a.z + d.z}
-					if neighbor.z >= 0 && !env.blocked[beltCell(neighbor)] && !env.reservedByOther(neighbor, route.start, route.end) {
-						free = true
-						break
-					}
-				}
-				if free {
-					merge, tail, end = candidate, tail[i:], candidate.a
-					break
-				}
-			}
-		}
 		destination := end
 		points, steps := []vector(nil), 0
 		maxSearchExpanded, searches := 0, 0
-		if route.to != nil && merge == nil {
-			// 保留各合法邻格原有的稳定优先级和最短路径比较。找到可行候选后，
-			// 只展开仍有可能缩短真实带链的节点，避免为封闭备选扫描整张工厂。
+		if len(tail) > 0 {
+			// 从全部合法合流格反向搜索，不能凭一个空邻格就认定首个锚点可达。
+			// 多源搜索共用一次预算，封闭锚点不会令整张工厂徒劳扫描。
+			var tailIndex int
+			points, tailIndex, steps = env.findTransportMergePath(ctx, start, tail, route.start, route.end, incomingCounts)
+			maxSearchExpanded, searches = steps, 1
+			if tailIndex >= 0 {
+				merge, tail = tail[tailIndex], tail[tailIndex:]
+				end, destination = merge.a, merge.a
+			}
+		} else if route.to != nil && env.preferCorridor {
+			candidates := []vector{{end.x - 1, end.y, end.z}, {end.x, end.y + 1, end.z}, {end.x, end.y - 1, end.z}, {end.x + 1, end.y, end.z}, {end.x, end.y, end.z + 1}}
+			points, destination, steps = env.findTransportDestinationPath(ctx, start, candidates, route.start, route.end)
+			maxSearchExpanded, searches = steps, 1
+		} else if route.to != nil {
+			// 比较真实合法邻格；走廊策略按投影空间代价排序，兼容策略保留节点数剪枝。
 			candidates := []vector{{end.x - 1, end.y, end.z}, {end.x, end.y + 1, end.z}, {end.x, end.y - 1, end.z}, {end.x + 1, end.y, end.z}, {end.x, end.y, end.z + 1}}
 			bestLength := 0
+			bestCost := math.Inf(1)
 			for _, candidate := range candidates {
 				if env.blocked[beltCell(candidate)] || env.reservedByOther(candidate, route.start, route.end) {
 					continue
 				}
-				path, expanded := env.findTransportPathWithinLength(ctx, start, candidate, route.start, route.end, false, bestLength)
+				lengthLimit := bestLength
+				if env.preferCorridor {
+					// 节点更少但外扩的路线未必更好，不能以长度剪掉分层复用候选。
+					lengthLimit = 0
+				}
+				costLimit := 0.
+				if env.preferCorridor && bestLength > 0 {
+					costLimit = bestCost
+				}
+				path, expanded := env.findTransportPathWithinBounds(ctx, start, candidate, route.start, route.end, false, lengthLimit, costLimit)
 				steps, searches = steps+expanded, searches+1
 				maxSearchExpanded = max(maxSearchExpanded, expanded)
-				if len(path) > 0 && (bestLength == 0 || len(path) < bestLength) {
+				cost := env.transportPathCost(path)
+				better := bestLength == 0 || len(path) < bestLength
+				if env.preferCorridor && bestLength > 0 {
+					better = cost < bestCost || cost == bestCost && len(path) < bestLength
+				}
+				if len(path) > 0 && better {
 					destination, points, bestLength = candidate, path, len(path)
+					bestCost = cost
 				}
 				if ctx.Err() != nil {
 					return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
@@ -279,6 +321,9 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 			points = points[:len(points)-1]
 		}
 		path := b.byPath(points)
+		for _, point := range path {
+			incomingCounts[point]++
+		}
 		previous := route.start
 		if len(path) > 0 {
 			connect(previous, path[0])
@@ -286,9 +331,11 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 		}
 		if merge != nil {
 			connect(previous, merge)
+			incomingCounts[merge]++
 			path = append(path, tail...)
 		} else {
 			connect(previous, route.end)
+			incomingCounts[route.end]++
 			path = append(path, route.end)
 		}
 		route.path = append(route.path, path...)
@@ -297,6 +344,7 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 		incoming[route.end] = append([]*placed{}, path...)
 		for _, point := range points {
 			env.blocked[beltCell(point)] = true
+			env.beltCorridors[beltColumn(point)] = true
 		}
 		env.version++
 	}
@@ -311,6 +359,9 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 	}
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "belt-lanes", Status: "passed", Message: "每条规范边已分配到具体端口与不超所选等级容量的实体 lane"}, LogisticsCheck{RuleID: "mode1-internal-connectivity", Status: "passed", Message: "全部内部物料已自动接线；仅标记的原料、目标和剩余物品端口需要玩家连接外部设施"}, LogisticsCheck{RuleID: "inserter-capacity", Status: inserterStatus, Message: inserterMessage})
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "routing-budget", Status: "passed", Message: fmt.Sprintf("确定性路线预算：searchCalls=%d，cacheHits=%d，totalExpanded=%d，maxExpanded=%d，perSearchLimit=%d，maxHeight=%d，occupancyVersions=%d；缓存按端口身份、合流权限和占位版本隔离，带等级和高度上限固定于本次环境", env.searchCalls, env.cacheHits, env.totalExpanded, env.maxExpanded, transportSearchLimit, transportMaxHeight, env.version)})
+	if env.preferCorridor {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "stacked-corridor-routing", Status: "passed", Message: "独立传送带优先复用既有带的平面走廊，以不同高度区分并在端点真实逐格升降；走廊水平代价1、外扩1.25、升降1.5，不强制空场高架；平面下界预计算最多300000格，碰撞、端口权限、高度32和单次三维300000预算不变"})
+	}
 	return nil
 }
 
@@ -331,15 +382,26 @@ func (env *transportEnvironment) findTransportPath(ctx context.Context, start, e
 
 // findTransportPathWithinLength 职责：在原加权 A* 内安全剪除不可能缩短已有带链的前缀；使用：消费端有限邻格比较；边界：节点数上界和端口权限进入缓存键，不增加任何搜索预算。
 func (env *transportEnvironment) findTransportPathWithinLength(ctx context.Context, start, end vector, source, target *placed, merge bool, shorterThan int) ([]vector, int) {
+	return env.findTransportPathWithinBounds(ctx, start, end, source, target, merge, shorterThan, 0)
+}
+
+// findTransportPathWithinBounds 职责：以真实长度或一致代价下界安全排除不可能胜过已有候选的路径；使用：有限端口比较；边界：代价只剪严格较大者，保留同价短路径，预算和确定性顺序不变。
+func (env *transportEnvironment) findTransportPathWithinBounds(ctx context.Context, start, end vector, source, target *placed, merge bool, shorterThan int, maxCost float64) ([]vector, int) {
 	env.searchCalls++
 	steps := 0
-	defer func() { env.totalExpanded += steps; env.maxExpanded = max(env.maxExpanded, steps) }()
+	cacheHit := false
+	defer func() {
+		env.totalExpanded += steps
+		env.maxExpanded = max(env.maxExpanded, steps)
+		recordPerformanceSearch(ctx, steps, cacheHit)
+	}()
 	if ctx.Err() != nil {
 		return nil, 0
 	}
-	key := transportPathCacheKey{start: start, end: end, version: env.version, source: source, target: target, merge: merge, shorterThan: shorterThan}
+	key := transportPathCacheKey{start: start, end: end, version: env.version, source: source, target: target, merge: merge, shorterThan: shorterThan, corridor: env.preferCorridor, maxCost: maxCost}
 	if path, exists := env.cache[key]; exists {
 		env.cacheHits++
+		cacheHit = true
 		return append([]vector{}, path...), 0
 	}
 	allowed := func(v vector) bool {
@@ -362,7 +424,11 @@ func (env *transportEnvironment) findTransportPathWithinLength(ctx context.Conte
 	if !canImprove(start, 1) {
 		return nil, 0
 	}
-	heuristic := func(v vector) float64 { return math.Abs(v.x-end.x) + math.Abs(v.y-end.y) + math.Abs(v.z-end.z)*1.5 }
+	env.prepareTransportHeuristic(ctx, end)
+	heuristic := func(v vector) float64 { return env.transportHeuristic(v, end) }
+	if maxCost > 0 && heuristic(start) > maxCost {
+		return nil, 0
+	}
 	first := &transportPathNode{point: start, score: heuristic(start), length: 1}
 	queue := transportPathQueue{first}
 	seen := map[vector]*transportPathNode{start: first}
@@ -398,11 +464,10 @@ func (env *transportEnvironment) findTransportPathWithinLength(ctx context.Conte
 			if !canImprove(v, length) || !allowed(v) {
 				continue
 			}
-			cost := 1.
-			if delta.z != 0 {
-				cost = 1.5
+			distance := current.distance + env.transportStepCost(current.point, v)
+			if maxCost > 0 && distance+heuristic(v) > maxCost {
+				continue
 			}
-			distance := current.distance + cost
 			old := seen[v]
 			if shorterThan > 0 {
 				// 长度受限搜索是带资源约束的路径问题：同一坐标不能只保留

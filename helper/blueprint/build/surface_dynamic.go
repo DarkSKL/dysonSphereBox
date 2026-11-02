@@ -29,7 +29,8 @@ func (encoding *surfaceEncoding) validateDynamicFacilities(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	left, right, err := placement.FirstConflict(ctx, boxes)
+	left, right, statistics, err := placement.FirstConflictWithStatistics(ctx, boxes)
+	recordPerformanceCollision(ctx, "inserterBuildColliders", statistics.CandidatePairs, statistics.NarrowPhaseChecks)
 	if err != nil {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "分拣器动态占用检查已取消或超时"}

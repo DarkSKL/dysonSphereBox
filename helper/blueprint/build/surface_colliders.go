@@ -45,7 +45,8 @@ func (encoding *surfaceEncoding) validateStaticColliders(ctx context.Context, re
 			boxes = append(boxes, placement.OwnedBox{Owner: int(record.Index), Geometry: box})
 		}
 	}
-	left, right, err := placement.FirstConflict(ctx, boxes)
+	left, right, statistics, err := placement.FirstConflictWithStatistics(ctx, boxes)
+	recordPerformanceCollision(ctx, "staticBuildColliders", statistics.CandidatePairs, statistics.NarrowPhaseChecks)
 	if err != nil {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "静态建筑碰撞检查已取消或超时"}

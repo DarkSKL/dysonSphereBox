@@ -103,7 +103,10 @@ func validateFinalPlanetRules(ctx context.Context, req Request, encoding *surfac
 		if err != nil {
 			return nil, err
 		}
-		audit.Checks = append(audit.Checks, LogisticsCheck{RuleID: "power-coverage", Status: "passed", Message: fmt.Sprintf("全部消费者在感应塔覆盖内；%d 个网络仍需玩家连接充足电源", audit.PowerNetworkCount)})
+		if audit.PowerNetworkCount > 1 {
+			return nil, &blueprint.Error{Code: "GEN_E_POWER_NETWORK", Message: fmt.Sprintf("已生成感应塔分为 %d 个互不连通的内部电网，不能仅凭覆盖范围返回成功蓝图", audit.PowerNetworkCount)}
+		}
+		audit.Checks = append(audit.Checks, LogisticsCheck{RuleID: "power-coverage", Status: "passed", Message: "全部消费者接电位置在感应塔覆盖内，内部电塔已连成单网；仍需接入充足外部电源"})
 	} else {
 		audit.Checks = append(audit.Checks, LogisticsCheck{RuleID: "power-coverage", Status: "unverified", Message: "用户关闭供电设施生成，必须在游戏中补齐电网"})
 	}

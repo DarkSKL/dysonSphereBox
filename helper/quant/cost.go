@@ -143,7 +143,7 @@ func (g *graph) balanceNatural(needs *rates) error {
 			for _, v := range r.ItemCounts {
 				total += v
 			}
-			spray, cost, err := sprayCost(g.dataset, line.IncreasePoints, *g.settings.ProliferateItself)
+			spray, cost, err := sprayCost(g.dataset, line.IncreasePoints)
 			if err != nil {
 				return err
 			}

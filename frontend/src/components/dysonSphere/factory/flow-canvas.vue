@@ -5,7 +5,7 @@ import '@vue-flow/core/dist/style.css'
 import {Crosshair, LayoutGrid, LayoutList, Maximize2, Minus, Plus, Search, X} from '@lucide/vue'
 import {computed, nextTick, ref, shallowRef, watch} from 'vue'
 import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
-import {buildFlowGraph, type FlowLayoutNode} from '../../../services/dysonSphere/factory-graph'
+import {buildFlowGraph, relatedFlowElements, type FlowLayoutNode} from '../../../services/dysonSphere/factory-graph'
 import {ensureFactoryIcons} from '../../../services/dysonSphere/factory-icons'
 import FactoryNode, {type FactoryNodeContext} from './factory-node.vue'
 import FlowEdge from './flow-edge.vue'
@@ -24,12 +24,18 @@ ensureFactoryIcons()
 const measured = shallowRef(new Map<string, number>())
 const graph = computed(() => props.w.plan && !props.w.replay ? buildFlowGraph(props.w.plan, props.w.itemName, id => measured.value.get(id)) : {nodes: [], edges: [], notice: ''})
 const pinned = shallowRef(new Map<string, {x: number; y: number}>())
-const nodes = computed(() => graph.value.nodes.map((node: FlowLayoutNode) => ({id: node.id, type: 'factory', position: pinned.value.get(node.id) ?? node.position, data: node.data, selected: selectedNode.value === node.id})))
 const maxRate = computed(() => Math.max(1, ...graph.value.edges.map(edge => edge.rate)))
-const related = computed(() => {
-  if (!selectedNode.value) return null
-  return new Set(graph.value.edges.filter(edge => edge.source === selectedNode.value || edge.target === selectedNode.value).map(edge => edge.id))
-})
+const related = computed(() => relatedFlowElements(graph.value.edges, selectedNode.value))
+const nodes = computed(() => graph.value.nodes.map((node: FlowLayoutNode) => {
+  const isRelated = related.value?.nodeIds.has(node.id) ?? false
+  return {
+    id: node.id,
+    type: 'factory',
+    position: pinned.value.get(node.id) ?? node.position,
+    data: {...node.data, related: isRelated, dimmed: Boolean(related.value && !isRelated)},
+    selected: selectedNode.value === node.id,
+  }
+}))
 const laneCounts = computed(() => {
   const counts = new Map<string, number>()
   if (!props.w.previewStale && props.w.generated?.logisticsSummary?.flowGraphDigest === props.w.plan?.flowGraph?.digest) for (const lane of props.w.generated?.logisticsSummary?.lanes ?? []) counts.set(lane.edgeId, (counts.get(lane.edgeId) ?? 0) + 1)
@@ -37,7 +43,7 @@ const laneCounts = computed(() => {
 })
 const edges = computed(() => graph.value.edges.map(edge => ({
   id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle, type: 'flow',
-  data: {name: edge.name, rate: edge.rate, cycle: edge.cycle, label: `${edge.name} 期望 ${props.w.number(edge.rate)}/min${laneCounts.value.has(edge.id) ? ` · ${laneCounts.value.get(edge.id)} 路` : ''}`, width: 1 + 3 * Math.log1p(edge.rate) / Math.log1p(maxRate.value), highlighted: related.value?.has(edge.id) ?? false, dimmed: related.value ? !related.value.has(edge.id) : false},
+  data: {name: edge.name, rate: edge.rate, cycle: edge.cycle, label: `${edge.name} 期望 ${props.w.number(edge.rate)}/min${laneCounts.value.has(edge.id) ? ` · ${laneCounts.value.get(edge.id)} 路` : ''}`, width: 1 + 3 * Math.log1p(edge.rate) / Math.log1p(maxRate.value), highlighted: related.value?.edgeIds.has(edge.id) ?? false, dimmed: related.value ? !related.value.edgeIds.has(edge.id) : false},
 })))
 
 // 选中节点在重算后消失（如改为外供）时清空，避免面板停留在过期节点。

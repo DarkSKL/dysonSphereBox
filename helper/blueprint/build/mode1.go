@@ -14,13 +14,48 @@ import (
 	"DysonSphereBox/helper/quant"
 )
 
+// connectedLayoutVariant 职责：记录一次直连装配的真实宽高约束和轮廓策略；使用：固定候选预算与布局回归；边界：只影响排版，仍须寻路和完整终检。
+type connectedLayoutVariant struct {
+	limit   float64
+	compact bool
+	// horizontal 职责：明确水平轮廓候选；使用：自动球面空槽回填；边界：零值保持既有候选语义。
+	horizontal bool
+	// globalPower 职责：标记先完成机器装箱再统一补电；使用：减少稀疏电塔边带；边界：独立候选，不覆盖本地供电退路。
+	globalPower bool
+}
+
+// connectedLayoutVariants 职责：生成有限的矩形/轮廓排版候选；使用：布局测试与生成器扩展；边界：不扩大候选预算，不绕过碰撞和路线规则。
+func connectedLayoutVariants(req Request, limits []float64) []connectedLayoutVariant {
+	variants := make([]connectedLayoutVariant, 0, 2*len(limits))
+	for _, compact := range []bool{false, true} {
+		for _, limit := range limits {
+			variants = append(variants, connectedLayoutVariant{limit: limit, compact: compact})
+		}
+	}
+	if req.SurfaceLayout != nil && req.SurfaceLayout.Mode == "autoTropic" && len(limits) > 0 && limits[len(limits)-1] > 2*limits[0] {
+		variants[len(variants)-1] = connectedLayoutVariant{limit: 2 * limits[0]}
+	}
+	if req.SurfaceLayout != nil && req.SurfaceLayout.Mode == "autoTropic" && len(limits) > 1 {
+		variants[len(limits)] = connectedLayoutVariant{limit: math.Ceil(limits[0] * 1.6), compact: true, horizontal: true}
+		if len(limits) > 2 {
+			variants[len(limits)+1] = connectedLayoutVariant{limit: math.Max(10, math.Floor(limits[0]*4/3/10)*10), compact: true, horizontal: true, globalPower: true}
+		}
+	}
+	return variants
+}
+
 // generateConnected 职责：在固定预算内选择最小面积可行候选；使用：直连带主链；边界：候选必须通过最终数值、连通和编码检查，不以矩形面积替代可行性。
 func (b *builder) generateConnected(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
-	limits := []float64{math.Max(60, b.setting.BlockWidthLimit), math.Max(100, b.setting.BlockWidthLimit*1.5), math.Max(160, b.setting.BlockWidthLimit*2)}
-	layouts := len(limits) * 2
+	limits, err := b.layoutHeightCandidates(ctx, req, dataset, true)
+	if err != nil {
+		return Result{}, err
+	}
+	variants := connectedLayoutVariants(req, limits)
+	layouts := len(variants)
 	budget := layouts * 2
 	var best *Result
 	var lastError error
+	var searchCandidates []SearchCandidateDiagnostic
 	evaluated, rejected := 0, 0
 	for candidateIndex := 0; candidateIndex < budget; candidateIndex++ {
 		// 就近入口改变了前序路径占位；只有整组均不可行时才独立重建旧入口候选，
@@ -30,8 +65,7 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 		}
 		legacyInputs := candidateIndex >= layouts
 		layoutIndex := candidateIndex % layouts
-		limit := limits[candidateIndex%len(limits)]
-		compact := layoutIndex >= len(limits)
+		limit, compact := variants[layoutIndex].limit, variants[layoutIndex].compact
 		if ctx.Err() != nil {
 			return Result{}, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成已取消或超过 4 分钟"}
 		}
@@ -48,22 +82,31 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 		candidate.flowGraph = b.flowGraph
 		candidate.connectedCompactBelts = true
 		candidate.connectedLegacyInputs = legacyInputs
+		candidate.connectedHorizontalPacking = variants[layoutIndex].horizontal
+		candidate.connectedGlobalPower = variants[layoutIndex].globalPower
 		candidate.generationCtx = ctx
 		candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 		candidate.logistics.Metrics.CandidateBudget = budget
+		parameters := fmt.Sprintf("heightLimit=%g;compact=%t;horizontal=%t;globalPower=%t;legacyInputs=%t", limit, compact, variants[layoutIndex].horizontal, variants[layoutIndex].globalPower, legacyInputs)
 		if err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, compact); err != nil {
+			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "assembly", err), candidate.logistics)
 			lastError, rejected = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err), rejected+1
+			reportProgress(ctx, "layout-rejected", lastError.Error(), evaluated, budget)
 			continue
 		}
 		out, err := candidate.finish(ctx, req, dataset)
 		if err != nil {
+			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", err), candidate.logistics)
 			lastError, rejected = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err), rejected+1
+			reportProgress(ctx, "layout-rejected", lastError.Error(), evaluated, budget)
 			continue
 		}
 		if out.LogisticsSummary == nil {
 			lastError, rejected = &blueprint.Error{Code: "GEN_E_FLOW", Message: "直连候选缺少物流摘要"}, rejected+1
+			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", lastError), candidate.logistics)
 			continue
 		}
+		searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", nil), out.LogisticsSummary)
 		if best == nil || betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
 			best = &out
 		}
@@ -82,17 +125,29 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 	}
 	best.LogisticsSummary.Metrics.EvaluatedCandidates = evaluated
 	best.LogisticsSummary.Metrics.RejectedCandidates = rejected
+	best.LogisticsSummary.SearchCandidates = searchCandidates
 	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: fmt.Sprintf("最多 %d 个候选：先比较 %d 个就近入口矩形/轮廓布局，仅在全部不可行时独立重建兼容入口布局；评估 %d、拒绝 %d，按面积和内部带长选择可行方案，不代表数学全局最优", budget, layouts, evaluated, rejected)})
 	return *best, nil
 }
 
 // betterTransportCandidate 职责：按明确且稳定的空间目标比较可行候选；使用：候选选择；边界：不可行候选不得参与此比较。
 func betterTransportCandidate(a, b LayoutMetrics) bool {
+	if first, second := layoutShapeObjective(a), layoutShapeObjective(b); math.Abs(first-second) > 1e-9 {
+		return first < second
+	}
 	if a.EnvelopeArea != b.EnvelopeArea {
 		return a.EnvelopeArea < b.EnvelopeArea
 	}
+	// 包络相同的候选优先填充真实建筑/路线并集；该次序只在硬规则均通过后生效，
+	// 不以缩小碰撞盒或省略必要线路换取表面利用率。
+	if math.Abs(a.BlankRatio-b.BlankRatio) > 1e-9 {
+		return a.BlankRatio < b.BlankRatio
+	}
 	if a.InternalBeltLength != b.InternalBeltLength {
 		return a.InternalBeltLength < b.InternalBeltLength
+	}
+	if a.CrossLayerConnections != b.CrossLayerConnections {
+		return a.CrossLayerConnections < b.CrossLayerConnections
 	}
 	if a.CrossAreaConnections != b.CrossAreaConnections {
 		return a.CrossAreaConnections < b.CrossAreaConnections
@@ -114,19 +169,31 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 		return err
 	}
 	if b.connectedCompactBelts {
-		return b.trimConnectedTails()
+		if err := b.trimConnectedTails(); err != nil {
+			return err
+		}
 	}
-	return nil
+	if !b.connectedGlobalPower {
+		return b.completeBoundaryFlowMonitors(ctx, req.Mode)
+	}
+	return b.completeConnectedSurfacePower(ctx, req)
 }
 
 // prepareConnectedRows 职责：装配统一机器行和逐物品过滤端口但不决定全局运输拓扑；使用：直连带与可扩展混带环路共用局部几何；边界：调用方必须继续完成全图路由与最终规则，不能直接编码半成品。
 func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset *quant.Dataset, heightLimit float64, compact bool) error {
 	b.generationCtx = ctx
+	if b.connectedGlobalPower {
+		originalPower := b.setting.NeedPower
+		disabled := false
+		b.setting.NeedPower = &disabled
+		defer func() { b.setting.NeedPower = originalPower }()
+	}
 	rows, err := b.planTransportRows(ctx, req, dataset)
 	if err != nil {
 		return err
 	}
 	x, y, columnWidth := 0., 0., 0.
+	horizontal := req.SurfaceLayout != nil && req.SurfaceLayout.Mode == "autoTropic" && (!compact || b.connectedHorizontalPacking)
 	packing := &connectedPacking{cells: map[[3]int][]int{}}
 	for i, row := range rows {
 		if ctx.Err() != nil {
@@ -228,6 +295,11 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 		if err := b.attachFilteredOutputs(row); err != nil {
 			return err
 		}
+		if req.Mode == 1 {
+			if err := b.prepareConnectedSelfSpray(row, begin); err != nil {
+				return err
+			}
+		}
 		// 接入干线属于机器行真实占地，必须在装箱前生成，否则后补的西侧带会侵入上一列。
 		block := b.all[begin:]
 		minimum, maximum := bounds(block)
@@ -237,7 +309,9 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 		// 把可用面积浪费在每一行之间。
 		const rowGap = 1.0
 		const columnGap = 1.0
-		if y > 0 && y+height > heightLimit {
+		if horizontal && x > 0 && x+width > heightLimit {
+			x, y, columnWidth = 0, y+columnWidth+columnGap, 0
+		} else if !horizontal && y > 0 && y+height > heightLimit {
 			x, y, columnWidth = x+columnWidth+columnGap, 0, 0
 		}
 		placementX, placementY := x, y
@@ -246,14 +320,25 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			if err != nil {
 				return err
 			}
-			placementX, placementY, err = packing.place(ctx, shape, minimum, maximum, x, y, heightLimit)
+			if horizontal {
+				placementX, placementY, err = packing.placeHorizontal(ctx, shape, minimum, maximum, x, y, heightLimit)
+			} else {
+				placementX, placementY, err = packing.place(ctx, shape, minimum, maximum, x, y, heightLimit)
+			}
 			if err != nil {
 				return err
 			}
 		}
 		shift(block, placementX-minimum.x, placementY-minimum.y, 0)
-		y = math.Max(y, placementY+height+rowGap)
-		columnWidth = math.Max(columnWidth, placementX-x+width)
+		if horizontal {
+			if placementY+height > y {
+				x = math.Max(x, placementX+width+rowGap)
+				columnWidth = math.Max(columnWidth, placementY-y+height)
+			}
+		} else {
+			y = math.Max(y, placementY+height+rowGap)
+			columnWidth = math.Max(columnWidth, placementX-x+width)
+		}
 		if len(b.all) > blueprint.MaxBuildingCount {
 			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "机器和过滤端口超过 20 万建筑，请拆分目标"}
 		}
@@ -445,6 +530,8 @@ type connectedPacking struct {
 	cells  map[[3]int][]int
 	high   vector
 	ready  bool
+	// infillAnchors 职责：保存已落位块的有限边缘候选；使用：水平行架回填旧空槽；边界：只尝试不扩展既有包络的全局落点。
+	infillAnchors []vector
 }
 
 // connectedBlockShape 职责：从当前机器行生成可平移的规则轮廓；使用：局部装配完成、全局接线之前；边界：未知碰撞目录或非法分拣器端点必须失败，不通过粗矩形缩小几何。

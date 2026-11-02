@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"strings"
 )
 
 // rates 职责：维护 JS 对象等价的插入顺序；使用：图边与历史足迹；边界：删除不改变其他键顺序。
@@ -54,7 +53,7 @@ func (r *rates) clone() *rates {
 
 // node 职责：保存单位净产出关系；使用：成本、求解和取整；边界：速率单位为每秒每机器倍率前。
 type node struct {
-	// invalid 职责：保存不可执行配方原因；使用：实际需要该节点时报告；边界：未使用的 Mod 占位配方不阻塞其它目标。
+	// invalid 职责：保存不可执行配方原因；使用：实际需要该节点时报告；边界：未选中的不可执行配方不阻塞其它目标。
 	invalid string
 	// inputs 职责：单位原料；使用：展开；边界：含喷涂。
 	inputs *rates
@@ -72,6 +71,8 @@ type node struct {
 	scheme RecipeScheme
 	// raw 职责：外部原料标记；使用：结果分类；边界：不生成机器。
 	raw bool
+	// unsupportedFactory 职责：标记需要外供的不支持设施；使用：结果告警；边界：不展开其上游配方。
+	unsupportedFactory bool
 	// runInputs 职责：单次执行的毛原料（含喷涂）；使用：产线物料流；边界：不参与求解。
 	runInputs *rates
 	// runOutputs 职责：单次执行的毛产物（含额外产出）；使用：产线物料流；边界：不参与求解。
@@ -102,7 +103,7 @@ type graph struct {
 
 // normalizeSettings 职责：补齐参考默认值；使用：构图前；边界：显式无效值报错，不更改系统配置。
 func normalizeSettings(s Settings) (Settings, error) {
-	defaults := Settings{MiningSpeedOil: 3, MiningSpeedHydrogen: 1, MiningSpeedDeuterium: .05, MiningSpeedGasHydrate: .8, MiningSpeedHelium: .02, MiningSpeedAmmonia: .3, MiningSpeedNitrogen: 1.2, MiningSpeedOxygen: .6, MiningSpeedCarbonDioxide: .4, MiningSpeedSulfurDioxide: .6, CoveredVeinsSmall: 8, CoveredVeinsLarge: 16, MiningEfficiencyLarge: 3, MiningSpeedMultiple: 1, EnemyDropMultiple: 1, IcarusManufacturingSpeed: 1, FractionatingSpeed: 30, StackResearchLab: 15, AccRate: 1, IncRate: 1}
+	defaults := Settings{MiningSpeedOil: 3, MiningSpeedHydrogen: 1, MiningSpeedDeuterium: .05, MiningSpeedGasHydrate: .8, CoveredVeinsSmall: 8, CoveredVeinsLarge: 16, MiningEfficiencyLarge: 3, MiningSpeedMultiple: 1, EnemyDropMultiple: 1, IcarusManufacturingSpeed: 1, FractionatingSpeed: 30, StackResearchLab: 15, AccRate: 1, IncRate: 1}
 	value := reflect.ValueOf(&s).Elem()
 	def := reflect.ValueOf(defaults)
 	for i := 0; i < value.NumField(); i++ {
@@ -123,7 +124,7 @@ func normalizeSettings(s Settings) (Settings, error) {
 		return s, qerror("Q_E_BAD_REQUEST", "小数位需为 0 到 8")
 	}
 	if s.ProliferateItself == nil {
-		v := true
+		v := false
 		s.ProliferateItself = &v
 	}
 	return s, nil
@@ -140,8 +141,8 @@ func effects(points int) (increase, speed, power float64) {
 	return 1.15 + .025*float64(points), 1 + .25*float64(points), .9 + .4*float64(points)
 }
 
-// sprayCost 职责：选择原版增产剂消耗；使用：量化原版喷涂配置；边界：只接受 1、2、4 点。
-func sprayCost(d *Dataset, points int, self bool) (string, float64, error) {
+// sprayCost 职责：按未自喷的原版增产剂计算消耗；使用：量化和现有产线；边界：当前蓝图不保证自喷设施。
+func sprayCost(d *Dataset, points int) (string, float64, error) {
 	id, times := 1141, 12.
 	if points == 2 {
 		id, times = 1142, 24
@@ -156,14 +157,10 @@ func sprayCost(d *Dataset, points int, self bool) (string, float64, error) {
 	if !ok {
 		return "", 0, qerror("Q_E_BAD_REQUEST", "数据集缺少增产剂")
 	}
-	inc, _, _ := effects(points)
-	if self {
-		times = math.Floor(times*inc - 1 + 1e-6)
-	}
 	return item.Name, 1 / times, nil
 }
 
-// multiplier 职责：按原型应用采集倍率；使用：图速率；边界：Mod 专用原型退回名称兼容并在文档记录。
+// multiplier 职责：按原版设施原型应用采集和制造倍率；使用：图速率；边界：不按名称兼容外部设施，未知原型保留基础速率。
 func multiplier(out float64, f Item, item string, s Settings) float64 {
 	switch f.ID {
 	case 2301:
@@ -174,6 +171,12 @@ func multiplier(out float64, f Item, item string, s Settings) float64 {
 		return out * s.MiningSpeedMultiple * s.MiningSpeedOil
 	case 2306:
 		return out * s.MiningSpeedMultiple
+	case 2314:
+		return out * s.FractionatingSpeed
+	case 1:
+		return out * s.EnemyDropMultiple
+	case 0:
+		return out * s.IcarusManufacturingSpeed
 	case 2105:
 		rate := 1.
 		switch item {
@@ -183,36 +186,6 @@ func multiplier(out float64, f Item, item string, s Settings) float64 {
 			rate = s.MiningSpeedDeuterium
 		case "可燃冰":
 			rate = s.MiningSpeedGasHydrate
-		case "氦":
-			rate = s.MiningSpeedHelium
-		case "氨":
-			rate = s.MiningSpeedAmmonia
-		}
-		return out * s.MiningSpeedMultiple * rate
-	}
-	if strings.HasSuffix(f.Name, "分馏塔") {
-		return out * s.FractionatingSpeed
-	}
-	if f.Name == "聚束液体汲取设施" {
-		return out * s.MiningSpeedMultiple
-	}
-	if f.Name == "行星基地" {
-		return out * s.EnemyDropMultiple
-	}
-	if f.Name == "伊卡洛斯" {
-		return out * s.IcarusManufacturingSpeed
-	}
-	if f.Name == "大气采集站" {
-		rate := 1.
-		switch item {
-		case "氮":
-			rate = s.MiningSpeedNitrogen
-		case "氧":
-			rate = s.MiningSpeedOxygen
-		case "二氧化硫":
-			rate = s.MiningSpeedSulfurDioxide
-		case "二氧化碳":
-			rate = s.MiningSpeedCarbonDioxide
 		}
 		return out * s.MiningSpeedMultiple * rate
 	}
@@ -269,6 +242,12 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 		n.recipe = index
 		n.factory = d.ByID[r.Factories[rs.Building]]
 		n.scheme = rs
+		if typ, _ := MachineKind(n.factory.ID); typ < 0 && len(r.Items) > 0 {
+			n.raw = true
+			n.unsupportedFactory = true
+			n.rate = math.Pow(100000000, float64(*s.FixedNum+1))
+			continue
+		}
 		output := 0.
 		products := newRates()
 		for i, id := range r.Results {
@@ -289,7 +268,7 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 		n.rate = output
 		produce := 1.
 		if rs.ProductionMode > 0 && rs.IncreasePoints > 0 {
-			spray, cost, err := sprayCost(d, rs.IncreasePoints, *s.ProliferateItself)
+			spray, cost, err := sprayCost(d, rs.IncreasePoints)
 			if err != nil {
 				return nil, err
 			}

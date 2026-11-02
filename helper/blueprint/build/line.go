@@ -5,7 +5,9 @@ package build
 
 import (
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build/placement"
 	"DysonSphereBox/helper/quant"
+	"DysonSphereBox/helper/transport"
 	_ "embed"
 	"encoding/json"
 	"math"
@@ -254,6 +256,11 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	for index, row := range l.outputs {
 		row[0].record.Parameters = []int32{int32(r.Results[index]), 0}
 	}
+	if b.setting.EnableFlowMonitor {
+		if err := b.addLineFlowMonitors(l, start); err != nil {
+			return nil, err
+		}
+	}
 	if mode == 2 || mode == 5 {
 		if err := b.coatSupply([]*line{l}); err != nil {
 			return nil, err
@@ -263,47 +270,187 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		}
 	}
 	if *b.setting.NeedPower {
-		if mode == 2 || mode == 5 {
-			if err := b.completeFlyPower(start); err != nil {
+		if mode != 2 && mode != 5 {
+			// 固定规则只提供低成本的基线杆；随后统一按最终机器和分拣器端点补齐。
+			if err := b.linePower(l, conf, p.MachineType, mode, lineIndex, last, start); err != nil {
 				return nil, err
 			}
-		} else {
-			b.linePower(l, conf, p.MachineType, mode, lineIndex, last)
-			// 多产物可能占满两侧六轨，旧单侧杆列不能据机器中心推定所有长臂已覆盖。
-			// 沿用实际覆盖与有界合法补杆，单产物基线和电力半径保持不变。
-			if len(l.outputs) > 1 {
-				if err := b.completeFlyPower(start); err != nil {
-					return nil, err
-				}
-			}
+		}
+		// 每个随后独立移动的本地块必须自足，所有产物数量和模式均按实际消费者补齐。
+		if err := b.completeFlyPower(start); err != nil {
+			return nil, err
 		}
 	}
 	l.all = b.all[start:]
 	if err := b.checkLineMachineInserters(l); err != nil {
 		return nil, err
 	}
+	if err := b.annotateLineProductionRates(l); err != nil {
+		return nil, err
+	}
 	return l, nil
 }
 
+// addLineFlowMonitors 在每条独立物料带上选取空闲节点安装监测器。
+// 使用：buildLine 已创建机器、分拣器和物料带后调用；边界：监测器与宿主带同点共存，不更改带链和过滤参数。
+func (b *builder) addLineFlowMonitors(l *line, begin int) error {
+	rows := append(append([][]*placed{}, l.inputs...), l.outputRows()...)
+	seen := map[*placed]bool{}
+	for _, row := range rows {
+		if len(row) == 0 {
+			continue
+		}
+		mid := len(row) / 2
+		var selected *placed
+		for distance := 0; distance < len(row); distance++ {
+			for _, index := range []int{mid - distance, mid + distance} {
+				if index < 0 || index >= len(row) || seen[row[index]] || !b.flowMonitorNodeClearAmong(row[index], b.all[begin:]) {
+					continue
+				}
+				selected = row[index]
+				break
+			}
+			if selected != nil {
+				break
+			}
+		}
+		if selected == nil {
+			return &blueprint.Error{Code: "GEN_E_COLLISION", Message: "产线物料带没有可安全安装流速监测器的空闲节点"}
+		}
+		monitor := b.make(2030, selected.a.x, selected.a.y, selected.a.z)
+		monitor.record.Yaw = selected.record.Yaw
+		monitor.record.Yaw2 = selected.record.Yaw
+		seen[selected] = true
+	}
+	return nil
+}
+
+// flowMonitorNodeClear 检查候选带节点是否避开分拣器扫掠及其它设施占地。
+// 使用：流速监测器自动选点；边界：允许候选所在传送带共点，不覆盖最终三维碰撞审计。
+func (b *builder) flowMonitorNodeClear(belt *placed) bool {
+	return b.flowMonitorNodeClearAmong(belt, b.all)
+}
+
+// flowMonitorNodeClearAmong 职责：在同一坐标阶段的实体集合内审计监测器选点；使用：本地移块前及全局路由后；边界：调用方不能混用尚未独立平移的块，最终完整碰撞审计仍保留。
+func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bool {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		return false
+	}
+	monitorShapes, err := catalog.Shapes(2030, b.models["2030"])
+	if err != nil {
+		return false
+	}
+	encoding := newPlanarRuleEncoding()
+	origin := vector{belt.a.x * planarGridLength, belt.a.z*1.3333333 + .2, belt.a.y * planarGridLength}
+	monitorBoxes := make([]placement.Box, 0, len(monitorShapes))
+	for _, shape := range monitorShapes {
+		box, err := encoding.colliderBox(origin, belt.record.Yaw, shape)
+		if err != nil {
+			return false
+		}
+		monitorBoxes = append(monitorBoxes, box)
+	}
+	toWorld := func(point vector) placement.Vector {
+		return placement.Vector{point.x * planarGridLength, point.z*1.3333333 + .2, point.y * planarGridLength}
+	}
+	for index, other := range existing {
+		if index%64 == 0 && b.checkGeneration("流速监测器选点") != nil {
+			return false
+		}
+		if other == belt {
+			continue
+		}
+		if surfaceIsBelt(other.record.ItemID) {
+			// 监测器仅允许压在指定宿主带上；其它带节点仍按球面最终占用审计的胶囊半径排除。
+			point := toWorld(other.a)
+			for _, box := range monitorBoxes {
+				if box.SegmentDistanceSquared(point, point) < .23*.23 {
+					return false
+				}
+			}
+			continue
+		}
+		if other.record.ItemID >= 2011 && other.record.ItemID <= 2014 {
+			first, second := toWorld(other.a), toWorld(other.b)
+			for _, box := range monitorBoxes {
+				if box.SegmentDistanceSquared(first, second) < .55*.55 {
+					return false
+				}
+			}
+			continue
+		}
+		shapes, err := catalog.Shapes(other.record.ItemID, other.record.ModelIndex)
+		if err != nil {
+			return false
+		}
+		point := toWorld(other.a)
+		for _, shape := range shapes {
+			otherBox, err := encoding.colliderBox(vector{point[0], point[1], point[2]}, other.record.Yaw, shape)
+			if err != nil {
+				return false
+			}
+			for _, box := range monitorBoxes {
+				if box.Overlaps(otherBox) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 // linePower 职责：按机器参考规则补供电；使用：基础行装配；边界：不生成发电设施。
-func (b *builder) linePower(l *line, conf geometry, typ, mode, lineIndex int, last bool) {
-	add := func(x, y float64) { b.make(2201, x, y, 0) }
+func (b *builder) linePower(l *line, conf geometry, typ, mode, lineIndex int, last bool, begin int) error {
+	_ = conf
+	radius, err := transport.TeslaPowerCoverRadius()
+	if err != nil {
+		return err
+	}
+	add := func(x, y float64) error {
+		point := vector{x, y, 0}
+		// 仅当候选能覆盖尚未覆盖的消费者时才新增；候选点被另一塔覆盖并不能证明可省略。
+		needed := false
+		for _, consumer := range b.all[begin:] {
+			if !finalPowerConsumer(consumer.record) {
+				continue
+			}
+			center := consumer.a
+			if flyPowerDistance(center, point) <= radius-1e-4 && !b.flyPowerCovered(center, b.all[begin:]) {
+				needed = true
+				break
+			}
+		}
+		if err := b.checkGeneration("固定供电候选"); err != nil {
+			return err
+		}
+		if needed && b.flyPowerCandidateAvailable(point, b.all[begin:]) {
+			b.make(2201, x, y, 0)
+		}
+		return nil
+	}
 	switch typ {
 	case 2:
 		for i, m := range l.machines {
 			if i%4 == 1 || i == len(l.machines)-1 && len(l.machines)%4 == 1 {
-				add(m.a.x+2, m.a.y)
+				if err := add(m.a.x+2, m.a.y); err != nil {
+					return err
+				}
 			}
 		}
 	case 4:
 		for i, m := range l.machines {
 			if i%2 == 1 || i == len(l.machines)-1 && len(l.machines)%2 == 1 {
-				add(m.a.x-3, m.a.y+2)
+				if err := add(m.a.x-3, m.a.y+2); err != nil {
+					return err
+				}
 			}
 		}
 	case 5:
 		for _, m := range l.machines {
-			add(m.a.x+4, m.a.y)
+			if err := add(m.a.x+4, m.a.y); err != nil {
+				return err
+			}
 		}
 	default:
 		if lineIndex%2 == 0 {
@@ -331,15 +478,22 @@ func (b *builder) linePower(l *line, conf geometry, typ, mode, lineIndex int, la
 			start, end := l.machines[0].a.x, l.output[len(l.output)-1].a.x
 			lastX := start
 			for x := start; x <= end; x += step {
-				add(x, y)
+				if err := add(x, y); err != nil {
+					return err
+				}
 				lastX = x
 			}
 			if end-lastX >= 4 {
-				add(end, y)
+				if err := add(end, y); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	if len(l.coaters) > 0 && !(typ == 4 && len(l.machines) == 1) {
-		add(l.coaters[0].a.x+1, l.machines[0].a.y)
+		if err := add(l.coaters[0].a.x+1, l.machines[0].a.y); err != nil {
+			return err
+		}
 	}
+	return nil
 }

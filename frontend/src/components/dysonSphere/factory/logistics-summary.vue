@@ -17,15 +17,19 @@ const props = defineProps<{
 const emit = defineEmits<{(event: 'select', index: number): void}>()
 const visibleLanes = ref(40)
 const visiblePorts = ref(40)
-watch(() => props.summary, () => { visibleLanes.value = 40; visiblePorts.value = 40 })
+const visibleRates = ref(40)
+watch(() => props.summary, () => { visibleLanes.value = 40; visiblePorts.value = 40; visibleRates.value = 40 })
 // 原版增产剂 ID；仅在其作为边界输入时提示玩家接入持续供给。
 const proliferatorItemIds = new Set([1141, 1142, 1143])
 const lanes = computed(() => props.summary.lanes ?? [])
 const ports = computed(() => props.summary.externalPorts ?? [])
 const proliferatorPorts = computed(() => ports.value.filter(port => port.kind === 'proliferator' || (port.kind === 'external-input' && proliferatorItemIds.has(port.itemId))))
 const checks = computed(() => props.summary.checks ?? [])
+const rateAnnotations = computed(() => props.summary.rateAnnotations ?? [])
+const leftoversAtInputBoundary = computed(() => checks.value.some(check => check.ruleId === 'leftover-input-boundary' && check.status === 'passed'))
 const auditChecks = computed(() => props.audit?.checks ?? [])
 const metrics = computed(() => props.summary.metrics)
+const footprintUtilization = computed(() => metrics.value.envelopeArea > 0 ? metrics.value.footprintArea / metrics.value.envelopeArea : 0)
 const nodes = computed(() => new Map((props.graph?.digest === props.summary.flowGraphDigest ? props.graph.nodes : []).map(node => [node.id, node])))
 const kindLabels: Record<string, string> = {'raw-source': '原料', 'external-source': '外供', production: '产线', 'target-sink': '目标', 'leftover-sink': '副产物'}
 const flowLabels: Record<string, string> = {'external-input': '外部输入', 'target-output': '目标输出', leftover: '剩余输出', internal: '内部物流', proliferator: '增产剂输入'}
@@ -54,7 +58,7 @@ const coordinateLabel = computed(() => props.audit?.coordinateSpace === 'planet-
       <div><span>外部入口</span><strong class="type-display">{{ format(metrics.externalInputCount) }}<small>个</small></strong></div>
       <div><span>边界接口</span><strong class="type-display">{{ format(ports.length) }}<small>个</small></strong></div>
     </div>
-    <p class="hint">线路按期望净流量规划，不代表设备满负荷时的运输能力。需改变容量时调整传送带等级后重新生成；仅边界端口需玩家接入蓝图外部物流。</p>
+    <p class="hint">机器带数字为本行整数设备配置满负荷毛流；边界端口数字与跨产线线路仍按期望净流分配，不代表全厂同时满负荷时的运输能力。需改变容量时调整传送带等级后重新生成；仅边界端口需玩家接入蓝图外部物流。</p>
     <p v-if="proliferatorPorts.length" class="hint is-warning">蓝图已生成增产剂供剂入口；增产剂库存不包含在蓝图内，需在游戏内将入口接入持续供料。</p>
 
     <n-collapse :default-expanded-names="['checks']" class="diagnostic-sections">
@@ -83,13 +87,30 @@ const coordinateLabel = computed(() => props.audit?.coordinateSpace === 'planet-
         <p class="hint is-warning audit-boundary">这是基于指定离线规则版本的部分数值检查，不是 Unity Physics 结果。游戏内放置、碰撞、供电与连续产出仍未验证；必须在实际游戏中验收。</p>
       </n-collapse-item>
 
+      <!-- ~ 机器带双速率 -->
+      <!-- * 说明：逐条展示最终机器接带格的期望毛流、配置满负荷毛流与游戏整数标记 -->
+      <!-- * 交互：分批展开，并可定位当前预览中的真实机器带 -->
+      <!-- * 依赖：后端 RateAnnotations，速率不在浏览器重算 -->
+      <!-- * 边界：毛流包括本地回流，不能累加替代净供需；旧结果无注记时不伪造 -->
+      <n-collapse-item v-if="rateAnnotations.length" name="machine-rates" :title="`机器带速率 · ${rateAnnotations.length} 处`">
+        <p class="hint">期望毛流 / 配置满负荷毛流；机器带图标数字取配置值向上取整，仅影响显示。拆行后按实际机器数分配；满负荷需要持续供料、电力和畅通出货，不是实测产量。</p>
+        <ol class="route-list">
+          <li v-for="annotation in rateAnnotations.slice(0, visibleRates)" :key="annotation.buildingIndex">
+            <div class="item-line"><ItemIcon :name="itemName(annotation.itemId)" :size="16" /><strong>{{ itemName(annotation.itemId) }}</strong><span class="type-display">{{ format(annotation.plannedRatePerMinute) }} / {{ format(annotation.configuredRatePerMinute) }} /min</span></div>
+            <div class="route-meta"><span>产线 #{{ annotation.productionIndex + 1 }} · {{ annotation.machineCount }} 台 · {{ annotation.direction === 'input' ? '机器输入' : '机器输出' }}</span><button type="button" :disabled="stale" :aria-label="`定位${itemName(annotation.itemId)}机器带，建筑 ${annotation.buildingIndex}`" @click="emit('select', annotation.buildingIndex)">建筑 #{{ annotation.buildingIndex }}</button></div>
+            <p class="hint">期望净流 {{ format(annotation.plannedNetRatePerMinute) }}/min · 蓝图数字 {{ annotation.displayedRatePerMinute }}</p>
+          </li>
+        </ol>
+        <n-button v-if="rateAnnotations.length > visibleRates" size="tiny" block secondary @click="visibleRates += 40">再显示 {{ Math.min(40, rateAnnotations.length - visibleRates) }} 处标注</n-button>
+      </n-collapse-item>
+
       <n-collapse-item name="ports" :title="`外部接口 · ${ports.length} 个`">
-        <p class="hint">输入连接蓝图外供给，目标与副产物出口连接蓝图外接收端；坐标为蓝图本地网格。</p>
+        <p class="hint">输入连接蓝图外供给，目标与副产物出口连接蓝图外接收端；坐标为所标 Area 的局部网格，不同 Area 的坐标不能直接计算距离。</p>
         <ol class="route-list">
           <li v-for="(port, index) in ports.slice(0, visiblePorts)" :key="`${port.edgeId}-${port.buildingIndex}-${index}`">
             <div class="item-line"><ItemIcon :name="itemName(port.itemId)" :size="16" /><strong>{{ itemName(port.itemId) }}</strong><span class="type-display">{{ format(port.ratePerMinute) }}/min</span></div>
-            <div class="route-meta"><span>{{ flowLabels[port.kind] ?? port.kind }}</span><button type="button" :disabled="stale" :aria-label="`定位${itemName(port.itemId)}接口，建筑 ${port.buildingIndex}`" @click="emit('select', port.buildingIndex)">建筑 #{{ port.buildingIndex }}</button></div>
-            <code class="coordinate">({{ format(port.x) }}, {{ format(port.y) }}, {{ format(port.z) }})</code>
+            <div class="route-meta"><span>{{ port.kind === 'leftover' && leftoversAtInputBoundary ? '副产物回收（原料侧）' : flowLabels[port.kind] ?? port.kind }}</span><button type="button" :disabled="stale" :aria-label="`定位${itemName(port.itemId)}接口，建筑 ${port.buildingIndex}`" @click="emit('select', port.buildingIndex)">建筑 #{{ port.buildingIndex }}</button></div>
+            <code class="coordinate">Area {{ port.areaIndex }} · ({{ format(port.x) }}, {{ format(port.y) }}, {{ format(port.z) }})</code>
           </li>
         </ol>
         <n-button v-if="ports.length > visiblePorts" size="tiny" block secondary @click="visiblePorts += 40">再显示 {{ Math.min(40, ports.length - visiblePorts) }} 个接口</n-button>
@@ -112,13 +133,14 @@ const coordinateLabel = computed(() => props.audit?.coordinateSpace === 'planet-
         <dl class="metric-list">
           <div><dt>总包络面积</dt><dd class="type-display">{{ format(metrics.envelopeArea) }}</dd></div>
           <div><dt>Footprint 并集面积</dt><dd class="type-display">{{ format(metrics.footprintArea) }}</dd></div>
+          <div><dt>空间利用率</dt><dd class="type-display">{{ percent(footprintUtilization) }}</dd></div>
           <div><dt>空白率</dt><dd class="type-display">{{ percent(metrics.blankRatio) }}</dd></div>
           <div><dt>内部带长</dt><dd class="type-display">{{ format(metrics.internalBeltLength) }}</dd></div>
           <div><dt>路线交叉 / 跨 Area</dt><dd class="type-display">{{ format(metrics.routeCrossings) }} / {{ format(metrics.crossAreaConnections) }}</dd></div>
           <div><dt>已评估 / 候选预算</dt><dd class="type-display">{{ format(metrics.evaluatedCandidates) }} / {{ format(metrics.candidateBudget) }}</dd></div>
           <div><dt>被拒绝候选</dt><dd class="type-display">{{ format(metrics.rejectedCandidates) }}</dd></div>
         </dl>
-        <p class="hint">固定搜索预算与规则覆盖范围内选择可行方案，不宣称数学上的全局最优。</p>
+        <p class="hint">空间利用率按 Footprint 并集面积 ÷ 总包络面积计算（二维格网近似）；固定搜索预算与规则覆盖范围内选择可行方案，不代表真实碰撞体积或数学全局最优。</p>
         <p class="digest type-mono" :title="summary.flowGraphDigest">物料图 {{ summary.flowGraphDigest }}</p>
       </n-collapse-item>
     </n-collapse>

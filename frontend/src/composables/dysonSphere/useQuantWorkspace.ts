@@ -33,13 +33,13 @@ export const useQuantWorkspace = () => {
   const miningSpeed = ref<number | null>(1)
   const fixedNum = ref<number | null>(2)
   const researchStack = ref<number | null>(15)
-  const sprayItself = ref(true)
+  const sprayItself = ref(false)
   const spaceCost = ref<number | null>(1)
   const powerCost = ref<number | null>(0)
   const mode = ref(1)
   // 蓝图名称：默认按目标自动生成（如「电磁矩阵 60 + 能量矩阵 60」）；用户手动修改后保持手动值，清空即恢复自动。
   const customName = ref('')
-  const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, useMixed: false, mix2: false, needCoaterNet: false})
+  const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, enableFlowMonitor: false, useMixed: false, mix2: false, needCoaterNet: false})
   const surfaceLayout = reactive({mode: 'autoTropic', gridSegment: 200, latitudeGridIndex: 0, expandAdjacent: true})
   const plan = ref<quant.Result | null>(null)
   const generated = ref<build.Result | null>(null)
@@ -212,7 +212,12 @@ export const useQuantWorkspace = () => {
     try {
       const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value}), progress => {
         if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
-        generationProgress.value = progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
+        if (progress.kind === 'building-batch' && progress.previewBatch) {
+          const moduleName = progress.previewBatch.module.name || '共享设施'
+          generationProgress.value = `${progress.message} · ${moduleName} ${progress.current}/${progress.total}`
+        } else {
+          generationProgress.value = progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
+        }
       }, observer.signal)
       if (disposed || generationObserver !== observer) return
       if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) { if (active.value && !autoRun.value) message.warning('参数已变化，本次结果未替换预览，请重新量化或生成'); return }

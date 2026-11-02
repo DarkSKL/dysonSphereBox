@@ -34,6 +34,8 @@ type placed struct {
 	output *placed
 	// owner 职责：产线归属；使用：bindings；边界：-1 为公共设施。
 	owner int
+	// productionRate 职责：保留真实机器带的双速率标注；使用：最终编号后输出诊断；边界：不参与期望净流账，也不改变连接。
+	productionRate *ProductionRateAnnotation
 }
 
 // stationTransportLink 职责：保存物流塔路线与规范物料的实体绑定；使用：mode3/4收尾诊断；边界：仅描述生成器已装配的塔端口，不宣称机队吞吐。
@@ -47,6 +49,8 @@ type stationTransportLink struct {
 	path   []*placed
 	owner  int
 	rate   float64
+	// sprayRecycle 职责：保存自产供剂的机器行证据；使用：同塔库存真实出带的独立毛流核验；边界：不作为规范净流需求或外供。
+	sprayRecycle *line
 }
 
 // busTransportLink 职责：保存混带总线实体端点、共享环路和过滤分拣器；使用：mode6 流边收尾核验；边界：不模拟总线逐帧物料位置。
@@ -87,6 +91,12 @@ type busTransportLink struct {
 
 // flyTransportEndpoint 职责：登记配送器/分流器模式的一组真实设施端点；使用：把规范 FlowGraph 边映射到箱体、配送器和接驳带；边界：机队或远程分流的运行时吞吐仍由游戏负责。
 type flyTransportEndpoint struct {
+	// flowEdgeID 职责：限定独立副产物回收端点所属规范边；使用：共享产物拆分后的稳定绑定；边界：空值仍按普通供需端点分配，不改变规范边或产量。
+	flowEdgeID string
+	// leftoverAnchor 职责：保存实际外供箱体所在原料区的空间锚点；使用：回收端点布局验证；边界：仅表示邻近，不建立供给连接或循环消费。
+	leftoverAnchor *placed
+	// leftoverAnchorMatched 职责：标记回收锚点是否拥有同物品的真实输入路线；使用：边界摘要区分可复用入口与仅空间归集；边界：false 时不得宣称已回流或已消费。
+	leftoverAnchorMatched bool
 	// owner 职责：保存所属量化产线索引；使用：映射 production 节点；边界：沿用 builder.owner，不从坐标猜测。
 	owner int
 	// item 职责：保存端点过滤物品；使用：匹配规范边；边界：一个端点只承载一个物品。
@@ -111,6 +121,8 @@ type flyTransportEndpoint struct {
 	filters []*placed
 	// splitter 职责：保存 mode5 四向分流器；使用：确认分流模式端点；边界：mode2 必须为空。
 	splitter *placed
+	// selfSpray 职责：保存自产供剂的行、过滤臂和真实回流链；使用：独立重算本地出货毛流；边界：rate 始终保留规范净流。
+	selfSpray *flySelfSpray
 }
 
 // builder 职责：收集单次装配；使用：六种模式；边界：不做文件写入。
@@ -135,6 +147,10 @@ type builder struct {
 	zoneRanges []zoneRange
 	// surfaceBlocks 职责：保存标准模式中不可拆分的产线块范围；使用：球面多纬带装箱；边界：仅记录连续切片，不改变建筑连接。
 	surfaceBlocks []surfaceBlockRange
+	// flyLayoutBlocks 职责：保留配送闭合块身份；使用：副产物本组导回及球面独立装箱；边界：平面也登记，不能跨块连接实体回收带。
+	flyLayoutBlocks []surfaceBlockRange
+	// flyLayoutHeight 职责：保存当前配送候选列高；使用：副产物扩展后按同一候选重新装箱；边界：不能把所有候选重置成配置的旧长条列高。
+	flyLayoutHeight float64
 	// surfaceBusEncoding 职责：保存共享总线跨纬带重接后的区域坐标系；使用：统一编码出口；边界：仅成功完成全部物理迁移与接驳后设置，不能再按平面原点归一化。
 	surfaceBusEncoding *surfaceEncoding
 	// flowGraph 职责：保留可信字段重建的守恒流图；使用：全部模式的顺序、容量和诊断；边界：不信任请求自带的边。
@@ -147,14 +163,24 @@ type builder struct {
 	connectedCompactBelts bool
 	// connectedLegacyInputs 职责：为就近入口无可行候选时保留原集中入口退路；使用：mode1完整重建的第二组候选；边界：不得复用失败候选的路径、实体或诊断，mode6仍使用自己的原入口。
 	connectedLegacyInputs bool
+	// connectedHorizontalPacking 职责：在自动球面水平行架中启用真实轮廓空槽回填；使用：独立有界候选；边界：保留原矩形及竖向轮廓退路，不在全局接线后移动机器。
+	connectedHorizontalPacking bool
+	// connectedGlobalPower 职责：在独立候选中延后电塔落位；使用：机器与路线固定后统一补电；边界：不改变公开供电开关，候选仍须完整覆盖与碰撞审计。
+	connectedGlobalPower bool
+	// connectedPowerEncoding 职责：固定补电候选预检使用的球面坐标系；使用：球面全局供电索引；边界：新增塔复用同一映射，最终 records 与完整规则仍重新审计。
+	connectedPowerEncoding *surfaceEncoding
 	// logistics 职责：积累本次生成的物流与空间证据；使用：finish；边界：硬错误不随结果返回部分蓝图。
 	logistics *LogisticsSummary
 	// stationLinks 职责：保存每条塔路线；使用：模式3/4按FlowGraph核验；边界：不跨请求复用。
 	stationLinks []stationTransportLink
+	// stationLeftovers 职责：保存不重复记账的塔内存货实体回收出带；使用：剩余边最终边界与闭合块校验；边界：不作为另一条生产供给端点。
+	stationLeftovers []stationLeftoverReturn
 	// flyEndpoints 职责：保存 mode2/5 每条产线端点；使用：按 FlowGraph 逐边绑定；边界：没有端点的规范边必须硬失败。
 	flyEndpoints []*flyTransportEndpoint
 	// flyCompact 职责：启用配送候选的紧凑本地端点余量；使用：有界布局候选；边界：基线保持原几何，紧凑方案仍经过同一预提交和最终规则。
 	flyCompact bool
+	// flySurfacePairs 职责：标识本候选使用交错配送组合块；使用：球面宽度及完整占位预筛；边界：不影响旧单行候选。
+	flySurfacePairs bool
 	// busLinks 职责：保存混带输入、回流及边界的实体引用；使用：mode6 逐边绑定与容量校验；边界：不跨请求复用。
 	busLinks []busTransportLink
 	// busLayers 职责：保存物品到共享环路的确定映射；使用：检查每圈累计带负载；边界：未调度物品不得默认归入第一圈。

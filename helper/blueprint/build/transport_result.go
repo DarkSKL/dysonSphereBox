@@ -82,7 +82,10 @@ func (b *builder) finalizeLogistics(mode int, records []blueprint.Building, area
 		summary.Lanes = append(summary.Lanes, lane)
 		edgeTotals[route.edge.ID] += route.rate
 		if route.boundary != nil {
-			index := indices[route.boundary]
+			index, exists := indices[route.boundary]
+			if !exists {
+				return nil, transportAllocationError(route.edge, route.rate, "外部接口引用了蓝图外建筑")
+			}
 			point := route.boundary.a
 			summary.ExternalPorts = append(summary.ExternalPorts, BoundaryPort{EdgeID: route.edge.ID, ItemID: route.edge.ItemID, Kind: route.edge.FlowKind, RatePerMinute: route.rate, BuildingIndex: index, X: point.x, Y: point.y, Z: point.z})
 			if route.from == nil {
@@ -92,6 +95,16 @@ func (b *builder) finalizeLogistics(mode int, records []blueprint.Building, area
 	}
 	if err := b.validateMachineRecycles(indices, sharedBeltRates); err != nil {
 		return nil, err
+	}
+	if mode == 1 {
+		if err := b.validateConnectedSelfSprays(indices, sharedBeltRates); err != nil {
+			return nil, err
+		}
+	}
+	if mode == 1 {
+		if err := b.validateLeftoverBoundaries(); err != nil {
+			return nil, err
+		}
 	}
 	maxShared := 0.0
 	for belt, rate := range sharedBeltRates {
@@ -114,6 +127,7 @@ func (b *builder) finalizeLogistics(mode int, records []blueprint.Building, area
 	for _, area := range areas {
 		summary.Metrics.EnvelopeArea += float64(area.Width) * float64(area.Height)
 	}
+	updateLayoutShapeMetrics(summary, areas)
 	footprint := map[[2]int]bool{}
 	for _, p := range b.all {
 		low, high := footprintForMetrics(p)
@@ -128,15 +142,8 @@ func (b *builder) finalizeLogistics(mode int, records []blueprint.Building, area
 		summary.Metrics.BlankRatio = math.Max(0, 1-summary.Metrics.FootprintArea/summary.Metrics.EnvelopeArea)
 	}
 	summary.Metrics.LaneCount = len(summary.Lanes)
-	for _, record := range records {
-		if surfaceIsBelt(record.ItemID) && record.OutputObjIdx >= 0 {
-			if int(record.OutputObjIdx) >= len(records) {
-				return nil, &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("带 %d 指向蓝图外建筑", record.Index)}
-			}
-			if records[record.OutputObjIdx].AreaIndex != record.AreaIndex {
-				summary.Metrics.CrossAreaConnections++
-			}
-		}
+	if err := updateBeltConnectionMetrics(&summary.Metrics, records); err != nil {
+		return nil, err
 	}
 	if mode == 6 {
 		// finish 前的预检不持有最终编号；在 Area/records 归一后重建 mode6 lane 和外部端口。
@@ -150,6 +157,9 @@ func (b *builder) finalizeLogistics(mode int, records []blueprint.Building, area
 		if err := b.validateBusTransport(); err != nil {
 			return nil, err
 		}
+	}
+	if err := finalizeBoundaryCoordinates(summary, records, areas); err != nil {
+		return nil, err
 	}
 	return summary, nil
 }

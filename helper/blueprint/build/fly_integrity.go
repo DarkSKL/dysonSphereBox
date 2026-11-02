@@ -108,7 +108,9 @@ func (b *builder) newFlyLocalGraph() (*flyLocalGraph, error) {
 				}
 				seen[p] = true
 				for _, coater := range coaters[entry.owner] {
-					if flySamePoint(p.a, vector{coater.a.x - 1, coater.a.y, coater.a.z + 1}) {
+					// 供剂槽随喷涂机整体旋转，不能在交错行中仍假定西侧入口。
+					angle := (float64(coater.record.Yaw) - 90) * math.Pi / 180
+					if flySamePoint(p.a, vector{coater.a.x - math.Cos(angle), coater.a.y + math.Sin(angle), coater.a.z + 1}) {
 						graph.sprayInputs[item][entry] = true
 					}
 				}
@@ -279,6 +281,9 @@ func (b *builder) validateFlyLocalIntegrity(mode int) error {
 				return err
 			}
 			return flyEndpointFailure(endpoint, "机器侧带端没有到同产线设备或喷涂通道的有向链")
+		}
+		if err := b.validateFlySelfSpray(endpoint, graph); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -459,12 +464,16 @@ func flyInserterSpanMatchesGeometry(arm *placed) error {
 	return nil
 }
 
-// flyLocalInserterChecks 职责：逐端点核算已生成臂组并显式披露欠能力；使用：完整拓扑通过后、路线提交前；边界：欠能力允许结构导出但只标unverified，不声称实际产能或机队吞吐已通过。
+// flyLocalInserterChecks 职责：逐端点核算真实臂组，闭合自产剂按净出货加回流毛流校验；使用：完整拓扑通过后、路线提交前；边界：自产剂欠能力硬失败，普通端点保留结构导出但只标unverified。
 func (b *builder) flyLocalInserterChecks(mode int) ([]LogisticsCheck, []string, error) {
 	checks, warnings := []LogisticsCheck{}, []string{}
 	groups, insufficient := 0, false
 	for _, endpoint := range b.flyEndpoints {
 		if err := b.checkGeneration("配送分拣器能力核算"); err != nil {
+			return nil, nil, err
+		}
+		rate, err := flyLocalEndpointRate(endpoint)
+		if err != nil {
 			return nil, nil, err
 		}
 		arms, err := flyEndpointArms(endpoint)
@@ -491,7 +500,7 @@ func (b *builder) flyLocalInserterChecks(mode int) ([]LogisticsCheck, []string, 
 				capacity += part
 				counts[int(arm.record.ItemID)-2010][arm.record.Parameters[0]]++
 			}
-			if endpoint.rate > capacity+1e-6 {
+			if rate > capacity+1e-6 {
 				insufficient = true
 				kind := "箱体接驳"
 				if i == 1 {
@@ -505,7 +514,10 @@ func (b *builder) flyLocalInserterChecks(mode int) ([]LogisticsCheck, []string, 
 						}
 					}
 				}
-				message := fmt.Sprintf("产线 %d 物品 %d 配送%s计划 %.3f/min 超过 %d 个真实分拣器（%s）合计的已验证能力 %.3f/min；保留结构导出，持续吞吐未验证，请增加并行接口、提高分拣器等级或降低工作倍率", endpoint.owner, endpoint.item, kind, endpoint.rate, len(group), strings.Join(details, "，"), capacity)
+				if endpoint.selfSpray != nil {
+					return nil, nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("产线 %d 物品 %d 自产供剂本地%s毛流 %.6f/min（净出货 %.6f/min 加真实回流）超过实际臂组能力 %.6f/min", endpoint.owner, endpoint.item, kind, rate, endpoint.rate, capacity)}
+				}
+				message := fmt.Sprintf("产线 %d 物品 %d 配送%s计划 %.3f/min 超过 %d 个真实分拣器（%s）合计的已验证能力 %.3f/min；保留结构导出，持续吞吐未验证，请增加并行接口、提高分拣器等级或降低工作倍率", endpoint.owner, endpoint.item, kind, rate, len(group), strings.Join(details, "，"), capacity)
 				checks = append(checks, LogisticsCheck{RuleID: "fly-local-inserter-capacity", Status: "unverified", Message: message})
 				warnings = append(warnings, message)
 			}

@@ -14,6 +14,14 @@ import (
 
 // surfaceBeltBuildingLink 职责：识别游戏预览支持的三跳塔口连接及两跳堆叠分流器连接；使用：带与建筑盒相交后的豁免；边界：只沿 input 或 output 同向追溯，不做无界连通分量豁免。
 func surfaceBeltBuildingLink(belt, building int, records []blueprint.Building, byIndex map[int32]int) bool {
+	// 流速监测器按游戏规则直接落在宿主带节点；只豁免同 Area、同坐标且同朝向的这一对实体。
+	if records[building].ItemID == 2030 {
+		host := records[building]
+		segment := records[belt]
+		if host.AreaIndex == segment.AreaIndex && math.Abs(float64(host.LocalOffset.X-segment.LocalOffset.X)) < 1e-3 && math.Abs(float64(host.LocalOffset.Y-segment.LocalOffset.Y)) < 1e-3 && math.Abs(float64(host.LocalOffset.Z-segment.LocalOffset.Z)) < 1e-3 && math.Abs(math.Remainder(float64(host.Yaw-segment.Yaw), 360)) < 1e-2 {
+			return true
+		}
+	}
 	for _, output := range []bool{false, true} {
 		current := belt
 		for hop := 1; hop <= 3; hop++ {
@@ -78,6 +86,8 @@ func (encoding *surfaceEncoding) surfaceAddonBeltPass(belt, addon int, records [
 
 // validateBeltBuildingOccupancy 职责：用带节点球、游戏缩短胶囊及连接/喷涂豁免检查建筑占用；使用：动态预检；边界：保守离线规则，未复现场景碰撞恢复、合并已有带或科技限制。
 func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Context, records []blueprint.Building) error {
+	var candidates, narrow uint64
+	defer func() { recordPerformanceCollision(ctx, "beltBuildingOccupancy", candidates, narrow) }()
 	catalog, err := placement.LoadCatalog()
 	if err != nil {
 		return &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
@@ -169,8 +179,14 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 							continue
 						}
 						seen[index] = true
+						candidates++
 						box := boxes[index]
-						if box.Geometry.SegmentDistanceSquared(center, center) >= radius*radius-1e-6 || box.Geometry.SegmentDistanceSquared(first, second) >= radius*radius-1e-6 || surfaceBeltBuildingLink(i, box.Owner, records, byIndex) {
+						narrow++
+						if box.Geometry.SegmentDistanceSquared(center, center) >= radius*radius-1e-6 {
+							continue
+						}
+						narrow++
+						if box.Geometry.SegmentDistanceSquared(first, second) >= radius*radius-1e-6 || surfaceBeltBuildingLink(i, box.Owner, records, byIndex) {
 							continue
 						}
 						if geometry, exists := geometries[box.Owner]; exists && encoding.surfaceAddonBeltPass(i, box.Owner, records, positions, byIndex, geometry) {

@@ -402,6 +402,7 @@ export namespace build {
 	    kind: string;
 	    ratePerMinute: number;
 	    buildingIndex: number;
+	    areaIndex: number;
 	    x: number;
 	    y: number;
 	    z: number;
@@ -417,18 +418,160 @@ export namespace build {
 	        this.kind = source["kind"];
 	        this.ratePerMinute = source["ratePerMinute"];
 	        this.buildingIndex = source["buildingIndex"];
+	        this.areaIndex = source["areaIndex"];
 	        this.x = source["x"];
 	        this.y = source["y"];
 	        this.z = source["z"];
 	    }
 	}
+	export class PerformanceCollision {
+	    rule: string;
+	    invocations: number;
+	    candidatePairs: number;
+	    narrowPhaseChecks: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PerformanceCollision(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rule = source["rule"];
+	        this.invocations = source["invocations"];
+	        this.candidatePairs = source["candidatePairs"];
+	        this.narrowPhaseChecks = source["narrowPhaseChecks"];
+	    }
+	}
+	export class PerformanceRouting {
+	    searchCalls: number;
+	    cacheHits: number;
+	    totalExpanded: number;
+	    maxExpanded: number;
+	    averageExpanded: number;
+	    cacheHitRate: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PerformanceRouting(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.searchCalls = source["searchCalls"];
+	        this.cacheHits = source["cacheHits"];
+	        this.totalExpanded = source["totalExpanded"];
+	        this.maxExpanded = source["maxExpanded"];
+	        this.averageExpanded = source["averageExpanded"];
+	        this.cacheHitRate = source["cacheHitRate"];
+	    }
+	}
+	export class PerformanceCandidates {
+	    stage: string;
+	    attempts: number;
+	    maxGroupBudget: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PerformanceCandidates(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stage = source["stage"];
+	        this.attempts = source["attempts"];
+	        this.maxGroupBudget = source["maxGroupBudget"];
+	    }
+	}
+	export class PerformanceFlow {
+	    nodeCount: number;
+	    edgeCount: number;
+	    sccCount: number;
+	    cyclicSccCount: number;
+	    laneCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PerformanceFlow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nodeCount = source["nodeCount"];
+	        this.edgeCount = source["edgeCount"];
+	        this.sccCount = source["sccCount"];
+	        this.cyclicSccCount = source["cyclicSccCount"];
+	        this.laneCount = source["laneCount"];
+	    }
+	}
+	export class PerformanceStage {
+	    stage: string;
+	    durationMs: number;
+	    visits: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PerformanceStage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stage = source["stage"];
+	        this.durationMs = source["durationMs"];
+	        this.visits = source["visits"];
+	    }
+	}
+	export class GenerationPerformance {
+	    scope: string;
+	    outcome: string;
+	    totalDurationMs: number;
+	    stages: PerformanceStage[];
+	    flow: PerformanceFlow;
+	    candidateStages: PerformanceCandidates[];
+	    routing: PerformanceRouting;
+	    collisions: PerformanceCollision[];
+	    unmeasured: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new GenerationPerformance(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scope = source["scope"];
+	        this.outcome = source["outcome"];
+	        this.totalDurationMs = source["totalDurationMs"];
+	        this.stages = this.convertValues(source["stages"], PerformanceStage);
+	        this.flow = this.convertValues(source["flow"], PerformanceFlow);
+	        this.candidateStages = this.convertValues(source["candidateStages"], PerformanceCandidates);
+	        this.routing = this.convertValues(source["routing"], PerformanceRouting);
+	        this.collisions = this.convertValues(source["collisions"], PerformanceCollision);
+	        this.unmeasured = source["unmeasured"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class LayoutMetrics {
 	    envelopeArea: number;
+	    envelopeAspectRatio: number;
+	    shapeObjective: number;
 	    footprintArea: number;
 	    blankRatio: number;
 	    internalBeltLength: number;
 	    routeCrossings: number;
 	    crossAreaConnections: number;
+	    crossLayerConnections: number;
 	    laneCount: number;
 	    externalInputCount: number;
 	    candidateBudget: number;
@@ -442,11 +585,14 @@ export namespace build {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.envelopeArea = source["envelopeArea"];
+	        this.envelopeAspectRatio = source["envelopeAspectRatio"];
+	        this.shapeObjective = source["shapeObjective"];
 	        this.footprintArea = source["footprintArea"];
 	        this.blankRatio = source["blankRatio"];
 	        this.internalBeltLength = source["internalBeltLength"];
 	        this.routeCrossings = source["routeCrossings"];
 	        this.crossAreaConnections = source["crossAreaConnections"];
+	        this.crossLayerConnections = source["crossLayerConnections"];
 	        this.laneCount = source["laneCount"];
 	        this.externalInputCount = source["externalInputCount"];
 	        this.candidateBudget = source["candidateBudget"];
@@ -468,6 +614,64 @@ export namespace build {
 	        this.ruleId = source["ruleId"];
 	        this.status = source["status"];
 	        this.message = source["message"];
+	    }
+	}
+	export class SearchCandidateDiagnostic {
+	    parentKey?: string;
+	    key: string;
+	    parameters: string;
+	    scope: string;
+	    stage: string;
+	    status: string;
+	    errorCode?: string;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SearchCandidateDiagnostic(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.parentKey = source["parentKey"];
+	        this.key = source["key"];
+	        this.parameters = source["parameters"];
+	        this.scope = source["scope"];
+	        this.stage = source["stage"];
+	        this.status = source["status"];
+	        this.errorCode = source["errorCode"];
+	        this.reason = source["reason"];
+	    }
+	}
+	export class ProductionRateAnnotation {
+	    productionIndex: number;
+	    recipeId: number;
+	    itemId: number;
+	    direction: string;
+	    machineCount: number;
+	    buildingIndex: number;
+	    plannedRatePerMinute: number;
+	    plannedNetRatePerMinute: number;
+	    configuredRatePerMinute: number;
+	    displayedRatePerMinute: number;
+	    basis: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductionRateAnnotation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.productionIndex = source["productionIndex"];
+	        this.recipeId = source["recipeId"];
+	        this.itemId = source["itemId"];
+	        this.direction = source["direction"];
+	        this.machineCount = source["machineCount"];
+	        this.buildingIndex = source["buildingIndex"];
+	        this.plannedRatePerMinute = source["plannedRatePerMinute"];
+	        this.plannedNetRatePerMinute = source["plannedNetRatePerMinute"];
+	        this.configuredRatePerMinute = source["configuredRatePerMinute"];
+	        this.displayedRatePerMinute = source["displayedRatePerMinute"];
+	        this.basis = source["basis"];
 	    }
 	}
 	export class TransportLane {
@@ -506,8 +710,10 @@ export namespace build {
 	    beltCapacityPerMinute: number;
 	    lanes: TransportLane[];
 	    externalPorts: BoundaryPort[];
+	    rateAnnotations?: ProductionRateAnnotation[];
 	    checks: LogisticsCheck[];
 	    metrics: LayoutMetrics;
+	    searchCandidates?: SearchCandidateDiagnostic[];
 	
 	    static createFrom(source: any = {}) {
 	        return new LogisticsSummary(source);
@@ -520,8 +726,10 @@ export namespace build {
 	        this.beltCapacityPerMinute = source["beltCapacityPerMinute"];
 	        this.lanes = this.convertValues(source["lanes"], TransportLane);
 	        this.externalPorts = this.convertValues(source["externalPorts"], BoundaryPort);
+	        this.rateAnnotations = this.convertValues(source["rateAnnotations"], ProductionRateAnnotation);
 	        this.checks = this.convertValues(source["checks"], LogisticsCheck);
 	        this.metrics = this.convertValues(source["metrics"], LayoutMetrics);
+	        this.searchCandidates = this.convertValues(source["searchCandidates"], SearchCandidateDiagnostic);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -542,6 +750,11 @@ export namespace build {
 		    return a;
 		}
 	}
+	
+	
+	
+	
+	
 	export class ProductionBinding {
 	    machineIndices?: number[];
 	    productionIndex: number;
@@ -558,6 +771,7 @@ export namespace build {
 	        this.buildingIndices = source["buildingIndices"];
 	    }
 	}
+	
 	export class SurfaceLayout {
 	    mode: string;
 	    gridSegment: number;
@@ -582,6 +796,7 @@ export namespace build {
 	    inserterLv: number;
 	    maxLays: number;
 	    needPower?: boolean;
+	    enableFlowMonitor: boolean;
 	    beltSpeed: number;
 	    smelterMaxCount: number;
 	    workbenchMaxCount: number;
@@ -613,6 +828,7 @@ export namespace build {
 	        this.inserterLv = source["inserterLv"];
 	        this.maxLays = source["maxLays"];
 	        this.needPower = source["needPower"];
+	        this.enableFlowMonitor = source["enableFlowMonitor"];
 	        this.beltSpeed = source["beltSpeed"];
 	        this.smelterMaxCount = source["smelterMaxCount"];
 	        this.workbenchMaxCount = source["workbenchMaxCount"];
@@ -637,6 +853,7 @@ export namespace build {
 	export class Request {
 	    requestId?: string;
 	    emitBlueprintProgress?: boolean;
+	    collectPerformance?: boolean;
 	    plan: quant.Result;
 	    mode: number;
 	    setting: Setting;
@@ -651,6 +868,7 @@ export namespace build {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.requestId = source["requestId"];
 	        this.emitBlueprintProgress = source["emitBlueprintProgress"];
+	        this.collectPerformance = source["collectPerformance"];
 	        this.plan = this.convertValues(source["plan"], quant.Result);
 	        this.mode = source["mode"];
 	        this.setting = this.convertValues(source["setting"], Setting);
@@ -862,6 +1080,7 @@ export namespace build {
 	    surfacePlan?: SurfacePlan;
 	    logisticsSummary?: LogisticsSummary;
 	    ruleAudit?: RuleAudit;
+	    performance?: GenerationPerformance;
 	
 	    static createFrom(source: any = {}) {
 	        return new Result(source);
@@ -882,6 +1101,7 @@ export namespace build {
 	        this.surfacePlan = this.convertValues(source["surfacePlan"], SurfacePlan);
 	        this.logisticsSummary = this.convertValues(source["logisticsSummary"], LogisticsSummary);
 	        this.ruleAudit = this.convertValues(source["ruleAudit"], RuleAudit);
+	        this.performance = this.convertValues(source["performance"], GenerationPerformance);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -902,6 +1122,7 @@ export namespace build {
 		    return a;
 		}
 	}
+	
 	
 	
 	
@@ -4765,12 +4986,6 @@ export namespace quant {
 	    miningSpeedHydrogen?: number;
 	    miningSpeedDeuterium?: number;
 	    miningSpeedGasHydrate?: number;
-	    miningSpeedHelium?: number;
-	    miningSpeedAmmonia?: number;
-	    miningSpeedNitrogen?: number;
-	    miningSpeedOxygen?: number;
-	    miningSpeedCarbonDioxide?: number;
-	    miningSpeedSulfurDioxide?: number;
 	    coveredVeinsSmall?: number;
 	    coveredVeinsLarge?: number;
 	    miningEfficiencyLarge?: number;
@@ -4796,12 +5011,6 @@ export namespace quant {
 	        this.miningSpeedHydrogen = source["miningSpeedHydrogen"];
 	        this.miningSpeedDeuterium = source["miningSpeedDeuterium"];
 	        this.miningSpeedGasHydrate = source["miningSpeedGasHydrate"];
-	        this.miningSpeedHelium = source["miningSpeedHelium"];
-	        this.miningSpeedAmmonia = source["miningSpeedAmmonia"];
-	        this.miningSpeedNitrogen = source["miningSpeedNitrogen"];
-	        this.miningSpeedOxygen = source["miningSpeedOxygen"];
-	        this.miningSpeedCarbonDioxide = source["miningSpeedCarbonDioxide"];
-	        this.miningSpeedSulfurDioxide = source["miningSpeedSulfurDioxide"];
 	        this.coveredVeinsSmall = source["coveredVeinsSmall"];
 	        this.coveredVeinsLarge = source["coveredVeinsLarge"];
 	        this.miningEfficiencyLarge = source["miningEfficiencyLarge"];

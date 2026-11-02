@@ -25,6 +25,8 @@ type transportRow struct {
 	inputStubs map[int][]*placed
 	// recycles 职责：登记本行独立物品的优先回流结构；使用：毛流容量、路由与机器出口追踪；边界：不属于规范净流边。
 	recycles []*machineRecycle
+	// selfSpray 职责：保存同一机器行的自产喷涂剂回流；使用：直连模式最终追踪和毛流核算；边界：不作为规范净流边或外供入口。
+	selfSpray *connectedSelfSpray
 }
 
 // transportRoute 职责：在重排期间保留规范 lane 与真实指针；使用：装配、路由和最终编号；边界：不以建筑位置反推物品。
@@ -184,6 +186,9 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 
 // validateProductionCapacity 职责：拒绝量化取整后机器总能力不足的陈旧方案；使用：mode1 端口规划前；边界：不修改量化机器数，浮点误差按统一容差处理。
 func validateProductionCapacity(p quant.Production, dataset *quant.Dataset, setting Setting) error {
+	if err := quant.VerifyProductionCapacity(dataset, p); err != nil {
+		return &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: err.Error()}
+	}
 	ri, ok := dataset.RecipeByID[p.RecipeID]
 	if !ok || p.MachineCount <= 0 {
 		return &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: fmt.Sprintf("产线配方 %d 或机器数量无效", p.RecipeID)}

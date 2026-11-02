@@ -49,6 +49,8 @@ func surfaceSpanDistanceSquared(a, b surfaceBeltSpan) float64 {
 
 // validateBeltCrossings 职责：拒绝无拓扑连接的同高度带段交叉；使用：球面出口；边界：共享节点的转弯与汇流合法，高架凭真实三维距离判断，不校验 addon 通道。
 func (encoding *surfaceEncoding) validateBeltCrossings(ctx context.Context, records []blueprint.Building) error {
+	var candidates, narrow uint64
+	defer func() { recordPerformanceCollision(ctx, "beltCrossings", candidates, narrow) }()
 	positions, err := encoding.surfaceWorldPositions(records)
 	if err != nil {
 		return err
@@ -91,10 +93,12 @@ func (encoding *surfaceEncoding) validateBeltCrossings(ctx context.Context, reco
 							continue
 						}
 						seen[index] = true
+						candidates++
 						other := spans[index]
 						if span.indices[0] == other.indices[0] || span.indices[0] == other.indices[1] || span.indices[1] == other.indices[0] || span.indices[1] == other.indices[1] {
 							continue
 						}
+						narrow++
 						if surfaceSpanDistanceSquared(span, other) < 4*radius*radius-1e-6 {
 							return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("无连接的传送带路线交叉：建筑 %d→%d 与 %d→%d，(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f)/(%.1f,%.1f,%.1f)->(%.1f,%.1f,%.1f)", other.indices[0], other.indices[1], span.indices[0], span.indices[1], other.ends[0][0], other.ends[0][1], other.ends[0][2], other.ends[1][0], other.ends[1][1], other.ends[1][2], span.ends[0][0], span.ends[0][1], span.ends[0][2], span.ends[1][0], span.ends[1][1], span.ends[1][2])}
 						}

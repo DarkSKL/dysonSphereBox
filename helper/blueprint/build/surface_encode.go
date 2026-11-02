@@ -41,6 +41,9 @@ func (b *builder) prepareSurfaceEncoding(layout *SurfaceLayout) (*surfaceEncodin
 
 // prepareSurfaceEncodingContext 职责：为完整矩形或多块布局选择原生区域；使用：生产收尾；边界：装箱及几何探测服从同一个生成取消信号。
 func (b *builder) prepareSurfaceEncodingContext(ctx context.Context, layout *SurfaceLayout) (*surfaceEncoding, error) {
+	if b.connectedPowerEncoding != nil {
+		return b.connectedPowerEncoding, nil
+	}
 	if b.surfaceBusEncoding != nil {
 		return b.surfaceBusEncoding, nil
 	}

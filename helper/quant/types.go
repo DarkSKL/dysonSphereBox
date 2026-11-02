@@ -142,18 +142,6 @@ type Settings struct {
 	MiningSpeedDeuterium float64 `json:"miningSpeedDeuterium,omitempty"`
 	// MiningSpeedGasHydrate 职责：保存可燃冰速率；使用：引擎传递；边界：不隐式改变单位。
 	MiningSpeedGasHydrate float64 `json:"miningSpeedGasHydrate,omitempty"`
-	// MiningSpeedHelium 职责：保存氦速率；使用：引擎传递；边界：不隐式改变单位。
-	MiningSpeedHelium float64 `json:"miningSpeedHelium,omitempty"`
-	// MiningSpeedAmmonia 职责：保存氨速率；使用：引擎传递；边界：不隐式改变单位。
-	MiningSpeedAmmonia float64 `json:"miningSpeedAmmonia,omitempty"`
-	// MiningSpeedNitrogen 职责：保存氮速率；使用：引擎传递；边界：不隐式改变单位。
-	MiningSpeedNitrogen float64 `json:"miningSpeedNitrogen,omitempty"`
-	// MiningSpeedOxygen 职责：保存氧速率；使用：引擎传递；边界：不隐式改变单位。
-	MiningSpeedOxygen float64 `json:"miningSpeedOxygen,omitempty"`
-	// MiningSpeedCarbonDioxide 职责：保存二氧化碳速率；使用：引擎传递；边界：不隐式改变单位。
-	MiningSpeedCarbonDioxide float64 `json:"miningSpeedCarbonDioxide,omitempty"`
-	// MiningSpeedSulfurDioxide 职责：保存二氧化硫速率；使用：引擎传递；边界：不隐式改变单位。
-	MiningSpeedSulfurDioxide float64 `json:"miningSpeedSulfurDioxide,omitempty"`
 	// CoveredVeinsSmall 职责：保存小矿机覆盖；使用：引擎传递；边界：不隐式改变单位。
 	CoveredVeinsSmall float64 `json:"coveredVeinsSmall,omitempty"`
 	// CoveredVeinsLarge 职责：保存大矿机覆盖；使用：引擎传递；边界：不隐式改变单位。
@@ -172,7 +160,7 @@ type Settings struct {
 	FixedNum *int `json:"fixedNum,omitempty"`
 	// StackResearchLab 职责：保存研究站堆叠；使用：引擎传递；边界：不隐式改变单位。
 	StackResearchLab float64 `json:"stackResearchLab,omitempty"`
-	// ProliferateItself 职责：保存自喷涂，缺省 true；使用：引擎传递；边界：不隐式改变单位。
+	// ProliferateItself 职责：兼容历史自喷请求，缺省 false；使用：true 时提示已忽略节省；边界：一律按未自喷消耗计算。
 	ProliferateItself *bool `json:"proliferateItself,omitempty"`
 	// AccRate 职责：保存加速修正；使用：引擎传递；边界：不隐式改变单位。
 	AccRate float64 `json:"accRate,omitempty"`

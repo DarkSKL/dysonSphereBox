@@ -11,6 +11,8 @@ export interface FlowNodeData {
   itemId: number
   title: string
   expectedRate: number
+  related?: boolean
+  dimmed?: boolean
   inputs: FlowPort[]
   outputs: FlowPort[]
   productionIndex?: number
@@ -21,6 +23,41 @@ export interface FlowNodeData {
 export interface FlowLayoutNode {id: string; position: {x: number; y: number}; data: FlowNodeData}
 export interface FlowLayoutEdge {id: string; source: string; target: string; sourceHandle: string; targetHandle: string; itemId: number; name: string; rate: number; cycle: boolean}
 export interface FlowLayout {nodes: FlowLayoutNode[]; edges: FlowLayoutEdge[]; notice: string}
+
+// relatedFlowElements 职责：返回所选节点的有向上游和下游闭包；使用：画布关联高亮；边界：不把下游节点的其它独立上游支路纳入。
+export const relatedFlowElements = (edges: FlowLayoutEdge[], selectedNode: string | null): {edgeIds: Set<string>; nodeIds: Set<string>} | null => {
+  if (!selectedNode) return null
+  const edgeIds = new Set<string>()
+  const nodeIds = new Set<string>([selectedNode])
+  const incoming = new Map<string, FlowLayoutEdge[]>()
+  const outgoing = new Map<string, FlowLayoutEdge[]>()
+  const addConnection = (map: Map<string, FlowLayoutEdge[]>, key: string, edge: FlowLayoutEdge): void => {
+    const connections = map.get(key)
+    if (connections) connections.push(edge)
+    else map.set(key, [edge])
+  }
+  for (const edge of edges) {
+    addConnection(incoming, edge.target, edge)
+    addConnection(outgoing, edge.source, edge)
+  }
+  for (const direction of ['upstream', 'downstream'] as const) {
+    const visited = new Set<string>([selectedNode])
+    const queue = [selectedNode]
+    while (queue.length) {
+      const node = queue.shift()!
+      const connections = direction === 'upstream' ? incoming.get(node) : outgoing.get(node)
+      for (const edge of connections ?? []) {
+        edgeIds.add(edge.id)
+        const next = direction === 'upstream' ? edge.source : edge.target
+        if (visited.has(next)) continue
+        visited.add(next)
+        nodeIds.add(next)
+        queue.push(next)
+      }
+    }
+  }
+  return {edgeIds, nodeIds}
+}
 
 const COLUMN_GAP = 300
 const ROW_GAP = 28

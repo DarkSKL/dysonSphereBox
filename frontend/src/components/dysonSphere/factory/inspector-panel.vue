@@ -71,7 +71,7 @@ const importedRows = computed(() => {
             <div><span>期望工作功耗</span><strong class="type-display">{{ w.number(production.powerMw) }}<small>MW</small></strong></div>
             <div><span>满负荷工作功耗</span><strong class="type-display">{{ capacity ? w.number(capacity.powerMw) : '—' }}<small v-if="capacity">MW</small></strong></div>
           </div>
-          <p v-if="capacity" class="capacity-hint">设备满负荷为配置条件下的理论产能，要求原料、增产剂和电力充足且出口畅通；物流是否支持满负荷及游戏实际产量尚未验证。等效配方循环用于换算当前配置的物料，不一定等于游戏面板次数；单次配方可能产出多件，循环次数不等于物品数量。</p>
+          <p v-if="capacity" class="capacity-hint">蓝图机器带按每行整数设备的配置满负荷毛流标注，拆行后合计对应当前配置；有本地回流时，机器带毛流与此处主产物净产能不同。外部边界与跨产线线路保留期望净流分配，不代表全厂可同时满负荷。满负荷要求原料、增产剂、电力和出货畅通，游戏实际产量仍需验证。等效配方循环不一定等于游戏面板次数，也不等于物品数量。</p>
           <p v-else class="capacity-hint">此方案未提供满负荷数据，请重新计算；不以期望产量代替。</p>
           <label class="field">配方<IconSelect size="small" :value="w.itemRecipeChoices[w.itemName(node.itemId)] ?? 1" :options="w.recipeOptions(node.itemId)" @update:value="value => w.updateRecipe(node!.itemId, Number(value))" /></label>
           <label class="field">设备<IconSelect size="small" :value="override.building" :options="w.buildingOptions(recipe)" @update:value="value => w.updateOverride(recipe, {building: Number(value)})" /></label>
@@ -144,7 +144,7 @@ const importedRows = computed(() => {
           <label class="field">电力权重<n-input-number v-model:value="w.powerCost" size="small" :min="0" /></label>
         </div>
         <label class="field">研究站堆叠<n-input-number v-model:value="w.researchStack" size="small" :min="1" :max="15" /></label>
-        <n-checkbox v-model:checked="w.sprayItself" size="small">增产剂自喷涂</n-checkbox>
+        <n-text depth="3">供剂按未自喷消耗计算，不假定蓝图具备增产剂自喷设施。</n-text>
         <template v-if="w.mineralized.length">
           <h3><PackageOpen :size="13" />外部供应<span class="count">{{ w.mineralized.length }}</span></h3>
           <div class="chip-list">
@@ -169,6 +169,7 @@ const importedRows = computed(() => {
         </div>
         <div class="flags">
           <n-checkbox v-model:checked="w.layout.needPower" size="small">生成供电设施</n-checkbox>
+          <n-checkbox v-model:checked="w.layout.enableFlowMonitor" size="small">生成流速监测器</n-checkbox>
         </div>
       </div>
     </template>

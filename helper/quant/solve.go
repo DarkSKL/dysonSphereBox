@@ -83,6 +83,7 @@ func Solve(parent context.Context, req Request) (Result, error) {
 	for _, name := range g.keys {
 		out.KeyItems = append(out.KeyItems, d.ByName[name].ID)
 	}
+	selfWarning := false
 	for _, name := range g.order {
 		amount := amounts.values[name]
 		if amount < -1e-7 {
@@ -92,6 +93,10 @@ func Solve(parent context.Context, req Request) (Result, error) {
 			continue
 		}
 		n := g.nodes[name]
+		if *g.settings.ProliferateItself && !n.raw && n.scheme.ProductionMode > 0 && n.scheme.IncreasePoints > 0 && !selfWarning {
+			out.Warnings = append(out.Warnings, "当前蓝图未生成增产剂自喷设施；已忽略自喷节省假设，内产与外供增产剂均按未自喷消耗计算，不要求预喷增产剂")
+			selfWarning = true
+		}
 		if n.invalid != "" {
 			return Result{}, qerror("Q_E_NO_RECIPE", n.invalid)
 		}
@@ -101,7 +106,7 @@ func Solve(parent context.Context, req Request) (Result, error) {
 			if n.raw {
 				out.ExternalInputItemIDs = append(out.ExternalInputItemIDs, d.ByName[name].ID)
 			}
-			if !n.raw && len(d.Recipes[n.recipe].Items) > 0 {
+			if n.unsupportedFactory {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("%s 的设施 %s 不在六类可生成制造设备中，需外部供应；其功耗未计入制造功耗", name, n.factory.Name))
 			}
 			continue

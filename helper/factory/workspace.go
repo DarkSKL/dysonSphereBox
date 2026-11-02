@@ -18,6 +18,9 @@ func MarshalWorkspace(req contract.WorkspaceRequest) (string, error) {
 	if !quant.IsVanillaDatasetKey(req.Request.Dataset) || !quant.IsVanillaDatasetKey(req.Plan.Dataset) {
 		return "", &blueprint.Error{Code: "Q_E_DATASET_MOD_UNSUPPORTED", Message: "蓝图方案仅支持原版游戏数据集"}
 	}
+	if req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "" && req.SurfaceLayout.Mode != "autoTropic" && req.SurfaceLayout.Mode != "planar" {
+		return "", &blueprint.Error{Code: "GEN_E_SURFACE", Message: "方案布局仅支持自动模式或旧平面兼容"}
+	}
 	req.Setting = NormalizeCurrentLayoutSetting(req.Setting)
 	plan, err := quant.Solve(context.Background(), req.Request)
 	if err != nil {

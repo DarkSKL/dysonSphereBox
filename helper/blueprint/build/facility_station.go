@@ -32,9 +32,13 @@ func (b *builder) validateStationTransport(ctx context.Context, mode int, record
 	for i, p := range b.all {
 		indices[p] = i
 	}
+	if err := b.validateStationLeftovers(ctx, indices, records); err != nil {
+		return err
+	}
 	nodeKinds := make(map[string]string, len(b.flowGraph.Nodes))
 	productionNodeIDs := make(map[int]string)
 	linksByNode := make(map[string][]*stationTransportLink)
+	sprayRows := map[*line]bool{}
 	for _, node := range b.flowGraph.Nodes {
 		nodeKinds[node.ID] = node.Kind
 		if node.Kind == "production" {
@@ -49,11 +53,21 @@ func (b *builder) validateStationTransport(ctx context.Context, mode int, record
 		if link.tower == nil || link.belt == nil || link.head == nil || len(link.path) == 0 {
 			return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: "物流塔路线缺少塔、产线端点或实体带"}
 		}
-		if link.item <= 0 || link.slot < 0 || link.slot >= 12 || !finitePositive(link.rate) {
-			return &blueprint.Error{Code: "GEN_E_STATION_PORT", Message: "物流塔路线物品、端口或计划流量无效"}
+		if link.item <= 0 || link.slot < 0 || link.slot >= 12 || !finitePositive(link.rate) && !(link.sprayRecycle != nil && link.rate == 0) {
+			return &blueprint.Error{Code: "GEN_E_STATION_PORT", Message: fmt.Sprintf("产线 %d 的物流塔路线物品 %d、端口 %d 或计划流量 %.9g/min 无效", link.owner, link.item, link.slot, link.rate)}
 		}
 		if err := validateStationLink(link, indices, records); err != nil {
 			return err
+		}
+		if link.sprayRecycle != nil {
+			if sprayRows[link.sprayRecycle] {
+				return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: "同一机器行存在重复的自产供剂路线"}
+			}
+			sprayRows[link.sprayRecycle] = true
+			if err := b.validateStationSprayRecycle(link); err != nil {
+				return err
+			}
+			continue
 		}
 		if link.rate > b.logistics.BeltCapacityPerMinute+1e-6 {
 			return &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("产线 %d 物品 %d 的物流塔端口带 %.6f/min，超过带容量 %.6f/min", link.owner, link.item, link.rate, b.logistics.BeltCapacityPerMinute)}
@@ -95,13 +109,18 @@ func (b *builder) validateStationTransport(ctx context.Context, mode int, record
 				return err
 			}
 		}
+		laneBegin, portBegin := len(b.logistics.Lanes), len(b.logistics.ExternalPorts)
 		if err := appendStationFlowLanes(b.logistics, edge, usedSources, usedTargets, indices); err != nil {
+			return err
+		}
+		if err := b.applyStationLeftoverLanes(edge, usedSources, laneBegin, portBegin, indices); err != nil {
 			return err
 		}
 	}
 	if err := validateStationFlowCoverage(b.flowGraph, b.stationLinks); err != nil {
 		return err
 	}
+	b.stationLeftoverCheck()
 	b.logistics.Checks = append(b.logistics.Checks,
 		LogisticsCheck{RuleID: "station-topology", Status: "passed", Message: "规范流边已绑定具体物流塔物品槽、方向、端口和相连传送带；副产物流边逐项检查"},
 		LogisticsCheck{RuleID: "station-fleet", Status: "unverified", Message: "物流塔站间机队吞吐、外界供货/取货和游戏内持续运行未验证"},
@@ -321,7 +340,11 @@ func validateStationLink(link *stationTransportLink, indices map[*placed]int, re
 		return &blueprint.Error{Code: "GEN_E_STATION_PORT", Message: "需求带未连接指定塔槽或物品标记不匹配"}
 	}
 	itemSlot := int(tower.Parameters[base+1])
-	if itemSlot <= 0 || itemSlot > 5 || tower.Parameters[(itemSlot-1)*6] != int32(link.item) || tower.Parameters[(itemSlot-1)*6+1] != 2 {
+	role := int32(2)
+	if link.sprayRecycle != nil {
+		role = 1
+	}
+	if itemSlot <= 0 || itemSlot > 5 || tower.Parameters[(itemSlot-1)*6] != int32(link.item) || tower.Parameters[(itemSlot-1)*6+1] != role {
 		return &blueprint.Error{Code: "GEN_E_STATION_PORT", Message: "需求塔槽未配置对应物品"}
 	}
 	for i := 0; i+1 < len(link.path); i++ {

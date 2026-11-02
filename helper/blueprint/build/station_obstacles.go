@@ -17,13 +17,14 @@ func stationBuildingObstacles(ctx context.Context, existing []*placed) (map[vect
 	if err != nil {
 		return nil, &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 	}
-	const grid, height, radius = 1.2, 1.3333333, .25
+	// 平面障碍仅用于筛选候选；球面曲率及切线旋转会吞掉建筑顶部附近的余隙。
+	const grid, height, radius = 1.2, 1.3333333, .35
 	blocked := map[vector]bool{}
 	for _, p := range existing {
 		if ctx.Err() != nil {
 			return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "物流塔三维障碍登记已取消或超时"}
 		}
-		if surfaceIsBelt(p.record.ItemID) || p.record.ItemID >= 2011 && p.record.ItemID <= 2014 || p.record.ItemID == 2313 {
+		if surfaceIsBelt(p.record.ItemID) || p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
 			continue
 		}
 		shapes, err := catalog.Shapes(p.record.ItemID, p.record.ModelIndex)

@@ -25,7 +25,17 @@ func GenerationContext(parent context.Context, requestID string) context.Context
 	if requestID == "" || runtimeContext == nil {
 		return parent
 	}
+	return generationProgressContext(parent, requestID, func(progress generationProgress) {
+		runtime.EventsEmit(runtimeContext, factoryConstant.GenerationProgressEvent, progress)
+	})
+}
+
+// generationProgressContext 职责：为引擎事件附加本次请求身份；使用：桌面桥接及离线契约测试；边界：不保存全局订阅，空ID或无发送器时不启用建筑预览。
+func generationProgressContext(parent context.Context, requestID string, emit func(generationProgress)) context.Context {
+	if requestID == "" || emit == nil {
+		return parent
+	}
 	return build.WithProgress(parent, func(progress build.Progress) {
-		runtime.EventsEmit(runtimeContext, factoryConstant.GenerationProgressEvent, generationProgress{RequestID: requestID, Progress: progress})
+		emit(generationProgress{RequestID: requestID, Progress: progress})
 	})
 }

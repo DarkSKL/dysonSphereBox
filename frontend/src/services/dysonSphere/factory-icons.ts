@@ -6,23 +6,27 @@ import {encyclopediaManifest, encyclopediaSpriteReady, loadLocalIconPack} from '
 
 // =============== 量化物品图标 ===============
 // 职责：按中文名把量化数据集物品映射到图鉴精灵坐标；使用：节点图与选择器。
-// 边界：量化与图鉴来自不同上游，ID 与 slug 不一致，只按名称匹配；Mod 物品或名称不一致时返回 null，由调用方使用通用图标。
-type IconEntry = {name?: {zh?: string}; icon?: {x: number; y: number}}
+// 边界：量化与图鉴来自不同上游，按名称或明确的原版图鉴 ID 匹配；未收录名称返回 null，由调用方使用通用图标。
+type IconEntry = {id: string; name?: {zh?: string}; icon?: {x: number; y: number}}
 const iconIndex = shallowRef<Map<string, {x: number; y: number}> | null>(null)
 const buildIndex = (): Map<string, {x: number; y: number}> => {
   const map = new Map<string, {x: number; y: number}>()
   for (const list of [itemData, buildingData, resourceData] as unknown as IconEntry[][]) {
-    for (const entry of list) if (entry.name?.zh && entry.icon && !map.has(entry.name.zh.replace(/\s/g, ' '))) map.set(entry.name.zh.replace(/\s/g, ' '), entry.icon)
+    for (const entry of list) {
+      if (!entry.icon) continue
+      map.set(entry.id, entry.icon)
+      if (entry.name?.zh && !map.has(entry.name.zh.replace(/\s/g, ' '))) map.set(entry.name.zh.replace(/\s/g, ' '), entry.icon)
+    }
   }
   return map
 }
 
-// 原版量化数据集与图鉴存在译名差异；缺少独立图鉴条目的原版物品用最接近的原版图标。
+// 原版译名差异通过别名对齐；机枪弹箱的图鉴中文名误标，按其稳定 ID 取本地铜色弹箱精灵。
 const nameAliases: Record<string, string> = {
   '极速分拣器': '急速分拣器',
   '极速传送带': '急速传送带',
   '钢材': '钢',
-  '机枪弹箱': '钛化弹箱',
+  '机枪弹箱': 'df-magnum-ammo-box',
   '电弧熔炉': '电磁熔炉',
   '蓄电器（满）': '蓄电器 (满)',
   '全息信标': '信号塔',

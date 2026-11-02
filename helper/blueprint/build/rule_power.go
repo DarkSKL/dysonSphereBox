@@ -14,10 +14,10 @@ import (
 
 // finalPowerConsumer 职责：识别本生成器支持且需要供电的实体；使用：覆盖检查；边界：带、箱、分流器和喷涂机不伪造耗电需求。
 func finalPowerConsumer(record blueprint.Building) bool {
-	return record.RecipeID > 0 || record.ItemID >= 2011 && record.ItemID <= 2014 || surfaceIsStation(record.ItemID) || record.ItemID == 2107 || record.ItemID == 2313
+	return record.RecipeID > 0 || record.ItemID >= 2011 && record.ItemID <= 2014 || surfaceIsStation(record.ItemID) || record.ItemID == 2030 || record.ItemID == 2107 || record.ItemID == 2313
 }
 
-// validateFinalPowerCoverage 职责：检查每个地面消费者在真实感应塔半径内，并统计塔网络；使用：NeedPower 请求；边界：研究站上层复用已连接底层的电力，不把未知供电半径当无限。
+// validateFinalPowerCoverage 职责：检查实际消费者接电位置的感应塔覆盖，并统计塔网络；使用：NeedPower 请求；边界：分拣器使用首端实体位置，研究站上层复用有效连接的底层，不以碰撞盒中点代替接电点。
 func validateFinalPowerCoverage(ctx context.Context, encoding *surfaceEncoding, records []blueprint.Building) (int, error) {
 	coverRadius, err := transport.TeslaPowerCoverRadius()
 	if err != nil {
@@ -31,15 +31,9 @@ func validateFinalPowerCoverage(ctx context.Context, encoding *surfaceEncoding, 
 	if err != nil {
 		return 0, err
 	}
-	secondary := append([]blueprint.Building(nil), records...)
 	byIndex := make(map[int32]int, len(records))
 	for i := range records {
-		secondary[i].LocalOffset = records[i].LocalOffset2
 		byIndex[records[i].Index] = i
-	}
-	second, err := encoding.surfaceWorldPositions(secondary)
-	if err != nil {
-		return 0, err
 	}
 	poles := []int{}
 	occupied := map[[3]int][]int{}
@@ -100,8 +94,6 @@ func validateFinalPowerCoverage(ctx context.Context, encoding *surfaceEncoding, 
 				current = j
 			}
 			point = positions[current]
-		} else if record.ItemID >= 2011 && record.ItemID <= 2014 {
-			point = vector{(point.x + second[i].x) * .5, (point.y + second[i].y) * .5, (point.z + second[i].z) * .5}
 		}
 		covered, cell := false, cellAt(point)
 		for x := -1; x <= 1 && !covered; x++ {

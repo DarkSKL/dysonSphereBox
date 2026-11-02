@@ -110,6 +110,7 @@ func (b *builder) addFlyPower(center vector, begin int) error {
 	if err := b.checkGeneration("配送供电补齐"); err != nil {
 		return err
 	}
+	// 当前行还可能在装箱中整体平移，因此只复用本行内的塔；跨行覆盖须等到坐标固定后才能安全折叠。
 	if b.setting.NeedPower == nil || !*b.setting.NeedPower || b.flyPowerCovered(center, b.all[begin:]) {
 		return nil
 	}
@@ -148,9 +149,6 @@ func (b *builder) completeFlyPower(begin int) error {
 			continue
 		}
 		center := p.a
-		if p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
-			center = vector{(p.a.x + p.b.x) / 2, (p.a.y + p.b.y) / 2, (p.a.z + p.b.z) / 2}
-		}
 		if err := b.addFlyPower(center, begin); err != nil {
 			return err
 		}

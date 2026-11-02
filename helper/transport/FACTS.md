@@ -37,6 +37,12 @@
 
 这些是固定原型的基础数值，不包含科技扩容、额外科技物流槽或 Mod 修改，不说明运行时电网是否供电、无人机是否配齐或星际运输是否有效。
 
+### 分拣器接电位置（2026-11-02 本机只读核对）
+
+同一指纹的 `Assembly-CSharp.dll` 已重新核对 `PlanetFactory.BuildFinally`、`PlanetFactory.CreateEntityLogicComponents`、`PowerSystem.NewConsumerComponent`、`PowerSystem.OnNodeAdded` 和 `PowerSystem.OnConsumerAdded`：建成实体的位置来自预建体的首端 `pos`，消费者 `plugPos` 初始取实体位置。分拣器的次端保存在独立的姿态记录中，并未用于重写消费者接电位置。因此 2011–2014 的供电判断必须使用蓝图首端 `LocalOffset`，不能使用两端中点。中点属于分拣器碰撞盒的几何语义，与接电位置不同。
+
+真实球面电网会将节点和消费者接电位置径向投影至 `realRadius + 0.2` 后比较距离。当前生成器保留既有三维距离约束作为保守预检；回归测试从严格解码结果独立重建球面、按首端投影复核分拣器，不能仅让生成器和验证器共享同一错误中点判断。研究站堆叠的底层供电链仍按原规则验证。上述运行时位置语义来自本机只读核对，不是 `extract-infrastructure-facts.py` 的资源字段提取结果；不分发反编译源码。
+
 ## 当前实现审计边界（非游戏验收）
 
 - 取整机器的 `MachineCount` 只表示可放置台数；`quant.Solve` 的计划 `Inputs`/`Outputs` 和 FlowGraph 仍以目标速率为准，不把额定余量自动变成额外物料。生成器可拒绝“取整台数低于精确需求”的陈旧快照，但不能据此声称多余产出已被游戏内消纳。

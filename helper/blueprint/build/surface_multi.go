@@ -53,6 +53,36 @@ func (b *builder) preparePackedSurfaceEncoding(ctx context.Context, layout *Surf
 		packLayout.ExpandAdjacent = true
 	}
 	gap := max(2, int(math.Ceil(b.setting.LocalStationHitRadius)))
+	if len(b.stationLinks) > 0 {
+		// 塔距由真实球面三维回调检查；半径配置不能再重复占用纬带两端的可用行。
+		gap = 2
+	}
+	if len(b.flyEndpoints) > 0 && len(b.stationLinks) == 0 {
+		// 配送闭合块没有物流塔，不能套用塔碰撞半径挤掉可用纬带。
+		// 普通块保留两格间距；箱体、电杆和全部带臂仍由最终球面几何硬检查。
+		gap = 2
+	}
+	// 塔组南侧含真实旋转行：仅复核机器盒会遗漏低层带擦过炼油厂的纬圈落点。
+	// 保留完整连接编号，用与最终终检一致的球面占用规则筛选，不能改动行内端点来躲检查。
+	stationRecords := make([][]blueprint.Building, len(sizes))
+	flyPower := len(b.flyEndpoints) > 0 && b.setting.NeedPower != nil && *b.setting.NeedPower
+	if len(b.stationLinks) > 0 || b.flySurfacePairs || flyPower {
+		allRecords, _, _, err := b.records()
+		if err != nil {
+			return nil, err
+		}
+		for i, block := range b.surfaceBlocks {
+			for j := block.begin; j < block.end; j++ {
+				r, p := allRecords[j], b.all[j]
+				r.AreaIndex = 0
+				r.LocalOffset = blueprint.Point{X: float32(p.a.x - minima[i].x), Y: float32(p.a.y - minima[i].y), Z: float32(p.a.z)}
+				r.LocalOffset2 = blueprint.Point{X: float32(p.b.x - minima[i].x), Y: float32(p.b.y - minima[i].y), Z: float32(p.b.z)}
+				stationRecords[i] = append(stationRecords[i], r)
+			}
+		}
+	}
+	// 单次装箱最多运行固定次数的全带占用探测；失败明确拒绝，生成取消仍在每个几何循环中响应。
+	stationOccupancy := stationSurfaceOccupancyProbe{}
 	// 仅矩形容量无法证明块内机器在该纬度不会因环向收缩重叠，装箱前按实际建造盒过滤落点。
 	cache := make(map[[2]int]bool)
 	var geometryError error
@@ -85,6 +115,15 @@ func (b *builder) preparePackedSurfaceEncoding(ctx context.Context, layout *Surf
 		}
 		probe := &surfaceEncoding{areas: []blueprint.Area{{ParentIndex: -1, AreaSegments: int16(band.segments)}}, plan: &SurfacePlan{GridSegment: packingSegment(layout), AnchorLatitudeGrid: row}}
 		err := probe.validateStaticColliders(ctx, records)
+		if err == nil && (len(b.stationLinks) > 0 || b.flySurfacePairs) && len(stationRecords[index]) > 0 {
+			var exhausted bool
+			err, exhausted = stationOccupancy.check(ctx, probe, stationRecords[index])
+			if exhausted {
+				geometryError = err
+				return false
+			}
+		}
+		// 电力按完整候选最终坐标补漏并桥接后统一审计；不能用补电前的局部覆盖拒绝本可合法补塔的落点。
 		if err != nil && !surfaceAnchorRetryable(err) {
 			geometryError = err
 		}
@@ -119,12 +158,27 @@ func (b *builder) preparePackedSurfaceEncoding(ctx context.Context, layout *Surf
 			return valid
 		}
 	}
-	packing, err := planSurfaceBlocksChecked(ctx, &packLayout, sizes, gap, accept, acceptPlacement)
+	var packing *surfacePacking
+	var err error
+	if len(b.stationLinks) > 0 {
+		packing, err = b.planStationSurfaceWidths(ctx, &packLayout, sizes, gap, stationRecords, accept, acceptPlacement, func() error { return geometryError })
+	} else if b.flySurfacePairs {
+		packing, err = b.planFlySurfaceWidths(ctx, &packLayout, sizes, gap, stationRecords, accept, func() error { return geometryError })
+	} else {
+		packing, err = planSurfaceBlocksChecked(ctx, &packLayout, sizes, gap, accept, acceptPlacement)
+	}
 	if geometryError != nil {
 		return nil, geometryError
 	}
 	if err != nil {
 		return nil, err
+	}
+	if stationOccupancy.probes > 0 && b.logistics != nil {
+		id, subject := "station-surface-block-occupancy", "塔组"
+		if b.flySurfacePairs {
+			id, subject = "fly-surface-block-occupancy", "配送组合块"
+		}
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: id, Status: "passed", Message: fmt.Sprintf("完整%s按最终球面带占位规则探测 %d/%d 个落点，拒绝 %d 个行内带碰撞候选；取消和预算耗尽直接失败", subject, stationOccupancy.probes, stationOccupancyProbeLimit, stationOccupancy.rejected)})
 	}
 	encoding, bands, err := newPackedSurfaceEncoding(layout, packing)
 	if err != nil {
