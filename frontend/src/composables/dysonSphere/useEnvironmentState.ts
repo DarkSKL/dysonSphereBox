@@ -48,7 +48,7 @@ import {
   setEnvironmentRootDirectory,
   unlinkEnvironmentSyncRecord,
   updateEnvironmentClientMirrorFromGame,
-} from '../../services/dysonSphere/environment'
+} from '../../pages/services/dysonSphere/environment'
 
 export type EnvironmentTabId = 'mods' | 'blueprints' | 'saves'
 

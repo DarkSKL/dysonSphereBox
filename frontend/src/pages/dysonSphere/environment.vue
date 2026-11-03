@@ -3,7 +3,7 @@ import {AlertCircle, Archive, ChevronRight, Clock, FolderOpen, Layers, Package, 
 import {useMessage} from 'naive-ui'
 import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
-import {consumeBlueprintLibraryRequest} from '../../services/dysonSphere/blueprint-navigation'
+import {consumeBlueprintLibraryRequest} from '../services/dysonSphere/blueprint-navigation'
 import {contract, environment} from '../../../wailsjs/go/models'
 import {OnFileDrop, OnFileDropOff} from '../../../wailsjs/runtime/runtime'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
@@ -13,7 +13,7 @@ import {useEnvironmentContextMenu} from '../../composables/dysonSphere/useEnviro
 import {useEnvironmentDialogs} from '../../composables/dysonSphere/useEnvironmentDialogs'
 import {useEnvironmentState} from '../../composables/dysonSphere/useEnvironmentState'
 import {useInstalledModState} from '../../composables/dysonSphere/useInstalledModState'
-import {getBepInExStatus} from '../../services/dysonSphere/game'
+import {getBepInExStatus} from '../services/dysonSphere/game'
 import {formatDate, formatFileSize} from '../../utils/format'
 
 definePage({ meta: { layout: 'main', title: '资源', keepAlive: true } })

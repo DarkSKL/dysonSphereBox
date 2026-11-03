@@ -23,8 +23,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check:types-ts4": "npx -y -p typescript@4.6.4 tsc -p tsconfig.consumer-ts4.json"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/three": "0.186.0",

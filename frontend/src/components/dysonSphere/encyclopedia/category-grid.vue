@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {Icon} from '@iconify/vue'
-import {encyclopediaCategories} from '../../../services/encyclopedia/categories'
-import {encyclopediaCategoryIconsReady} from '../../../services/encyclopedia/catalog'
+import {encyclopediaCategories} from '../../../pages/services/encyclopedia/categories'
+import {encyclopediaCategoryIconsReady} from '../../../pages/services/encyclopedia/catalog'
 import type {EncyclopediaCategory} from '../../../types/encyclopedia'
 
 defineProps<{active: EncyclopediaCategory; animate: boolean}>()

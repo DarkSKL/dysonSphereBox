@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import {Icon} from '@iconify/vue'
 import {computed} from 'vue'
-import {encyclopediaManifest, encyclopediaSpriteReady} from '../../../services/encyclopedia/catalog'
-import {encyclopediaKindIcons} from '../../../services/encyclopedia/categories'
+import {encyclopediaManifest, encyclopediaSpriteReady} from '../../../pages/services/encyclopedia/catalog'
+import {encyclopediaKindIcons} from '../../../pages/services/encyclopedia/categories'
 import type {EncyclopediaEntry} from '../../../types/encyclopedia'
 
 const props = withDefaults(defineProps<{entry: EncyclopediaEntry; size?: number}>(), {size: 52})

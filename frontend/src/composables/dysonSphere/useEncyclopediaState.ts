@@ -1,10 +1,10 @@
 import {computed, nextTick, onBeforeUnmount, onMounted, reactive, shallowRef, watch} from 'vue'
 import {useMessage} from 'naive-ui'
 import {useRoute, useRouter} from 'vue-router'
-import {cachedCatalog, encyclopediaGuides, encyclopediaManifest, loadAllCatalog, loadCatalogShard, loadLocalIconPack, resolveCatalogEntry} from '../../services/encyclopedia/catalog'
+import {cachedCatalog, encyclopediaGuides, encyclopediaManifest, loadAllCatalog, loadCatalogShard, loadLocalIconPack, resolveCatalogEntry} from '../../pages/services/encyclopedia/catalog'
 import {encyclopediaAchievementGroups, encyclopediaAchievements} from '../../data/encyclopedia/achievements'
-import {defaultEncyclopediaCategory, encyclopediaCategories} from '../../services/encyclopedia/categories'
-import {buildSearchIndex, EncyclopediaDataError, normalizeKeyword, searchCatalog} from '../../services/encyclopedia/catalog-core'
+import {defaultEncyclopediaCategory, encyclopediaCategories} from '../../pages/services/encyclopedia/categories'
+import {buildSearchIndex, EncyclopediaDataError, normalizeKeyword, searchCatalog} from '../../pages/services/encyclopedia/catalog-core'
 import type {EncyclopediaCategory, EncyclopediaEntry, EncyclopediaKey, EncyclopediaKind} from '../../types/encyclopedia'
 
 // =============== 页面会话状态 ===============

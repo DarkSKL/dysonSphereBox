@@ -9,8 +9,8 @@ import EntryDetail from '../../components/dysonSphere/encyclopedia/entry-detail.
 import EntrySection from '../../components/dysonSphere/encyclopedia/entry-section.vue'
 import {useEncyclopediaState} from '../../composables/dysonSphere/useEncyclopediaState'
 import {encyclopediaAchievements} from '../../data/encyclopedia/achievements'
-import {encyclopediaManifest} from '../../services/encyclopedia/catalog'
-import {encyclopediaCategories} from '../../services/encyclopedia/categories'
+import {encyclopediaManifest} from '../services/encyclopedia/catalog'
+import {encyclopediaCategories} from '../services/encyclopedia/categories'
 
 definePage({meta: {layout: 'main', title: '游戏图鉴'}})
 

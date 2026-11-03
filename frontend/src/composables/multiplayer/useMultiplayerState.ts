@@ -2,8 +2,8 @@
 // 说明：共享 Go 投影，编排页面激活、连接恢复与大厅请求；不在前端重建房间或持有账号 token。
 // 逻辑流：恢复投影 => 仅离线时自动连接 => 在线后同步大厅 => 停用时取消订阅，保留房间连接。
 import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch} from 'vue'
-import {accountIsAuthenticated} from '../../services/account'
-import * as api from '../../services/multiplayer'
+import {accountIsAuthenticated} from '../../pages/services/account'
+import * as api from '../../pages/services/multiplayer'
 import {codeText, type GamePortPreset, type LobbyQuery, type MultiplayerActionResult, type MultiplayerState, type RoomCreateForm, type RoomResolveResult} from '../../types/multiplayer'
 
 const state = ref<MultiplayerState | null>(null)

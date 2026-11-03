@@ -1,7 +1,7 @@
 package quant
 
 // 文件职责：前向历史足迹、成本和 LP 模型；使用：Solve；边界：变量仍是物品，不能改为每配方一个变量。
-// 模型行为对照 dsp-calc global_state.jsx，独立 Go 实现，见 NOTICE.md。
+// 模型行为对照 dsp-calc global_state.jsx，独立 Go 实现。
 
 import (
 	"context"

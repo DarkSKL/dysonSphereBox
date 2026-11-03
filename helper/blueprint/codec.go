@@ -1,7 +1,7 @@
 package blueprint
 
 // 文件职责：严格读取信封、四支建筑记录与地基；使用：factory 解码/写回自检；边界：只处理内存，不修改展示解析器。
-// 按协议独立实现；参考行为为 dsp-calc utils/parser.js，来源和差异见 NOTICE.md。
+// 按协议独立实现；参考行为为 dsp-calc utils/parser.js。
 
 import (
 	"bytes"

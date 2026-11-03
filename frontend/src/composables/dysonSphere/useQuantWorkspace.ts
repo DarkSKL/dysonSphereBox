@@ -3,11 +3,11 @@ import {useDialog, useMessage} from 'naive-ui'
 import {useRoute, useRouter} from 'vue-router'
 import {build, factorycontract, quant} from '../../../wailsjs/go/models'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
-import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, renameFactoryBlueprint, solveFactory} from '../../services/dysonSphere/factory'
-import {enableGeneratedEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../services/dysonSphere/environment'
-import {requestBlueprintLibrary} from '../../services/dysonSphere/blueprint-navigation'
-import {buildFactoryLayoutRequest} from '../../services/dysonSphere/factory-layout'
-import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../services/dysonSphere/blueprint-preview-host'
+import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, renameFactoryBlueprint, solveFactory} from '../../pages/services/dysonSphere/factory'
+import {enableGeneratedEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../pages/services/dysonSphere/environment'
+import {requestBlueprintLibrary} from '../../pages/services/dysonSphere/blueprint-navigation'
+import {buildFactoryLayoutRequest} from '../../pages/services/dysonSphere/factory-layout'
+import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../pages/services/dysonSphere/blueprint-preview-host'
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
 type WorkspaceTarget = {key: number; itemId: number | null; ratePerMinute: number | null}

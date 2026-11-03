@@ -9,10 +9,10 @@ import {
   markAnnouncementRead,
   type NoticeHistoryEntry,
   type NoticeItem,
-} from '../services/announcement'
+} from '../pages/services/announcement'
 import {renderAnnouncement} from '../utils/announcement-content'
-import {serverEffectiveAddress} from '../services/server'
-import {accountSessionKey, getAccountSessionRevision} from '../services/account'
+import {serverEffectiveAddress} from '../pages/services/server'
+import {accountSessionKey, getAccountSessionRevision} from '../pages/services/account'
 
 // =============== 共享公告状态 ===============
 // 说明：启动弹窗与历史入口共用账号作用域；查看和关闭只更新展示，用户按钮才提交已读。

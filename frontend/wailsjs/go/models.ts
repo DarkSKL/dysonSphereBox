@@ -851,11 +851,13 @@ export namespace build {
 	    }
 	}
 	export class Request {
-	    requestId?: string;
+	    emitPreviewDeltas?: boolean;
+	    taskId?: string;
 	    emitBlueprintProgress?: boolean;
 	    collectPerformance?: boolean;
 	    plan: quant.Result;
 	    mode: number;
+	    density?: string;
 	    setting: Setting;
 	    name: string;
 	    surfaceLayout?: SurfaceLayout;
@@ -866,11 +868,13 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.requestId = source["requestId"];
+	        this.emitPreviewDeltas = source["emitPreviewDeltas"];
+	        this.taskId = source["taskId"];
 	        this.emitBlueprintProgress = source["emitBlueprintProgress"];
 	        this.collectPerformance = source["collectPerformance"];
 	        this.plan = this.convertValues(source["plan"], quant.Result);
 	        this.mode = source["mode"];
+	        this.density = source["density"];
 	        this.setting = this.convertValues(source["setting"], Setting);
 	        this.name = source["name"];
 	        this.surfaceLayout = this.convertValues(source["surfaceLayout"], SurfaceLayout);

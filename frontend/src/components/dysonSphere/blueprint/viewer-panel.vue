@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import * as Vue from 'vue'
 import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
-import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview, shareBlueprintScriptLoad} from '../../../services/dysonSphere/blueprint-preview-host'
-import {enableBlueprintPreviewRotation} from '../../../services/dysonSphere/blueprint-preview-interaction'
+import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview, shareBlueprintScriptLoad} from '../../../pages/services/dysonSphere/blueprint-preview-host'
+import {enableBlueprintPreviewRotation} from '../../../pages/services/dysonSphere/blueprint-preview-interaction'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
 import blueprintEditorScriptUrl from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.js?url'
 

@@ -2,17 +2,40 @@ import type {blueprint} from '../../wailsjs/go/models'
 
 /** 职责：描述真实生成阶段；使用：桥接回调与工作区状态；边界：序号表示当前处理项，不是整体完成百分比。 */
 export interface FactoryGenerationProgress {
+  readonly taskId?: string
   readonly stage: string
   readonly message: string
   readonly current: number
   readonly total: number
   readonly protocolVersion?: number
-  readonly kind?: 'phase' | 'building-batch' | 'preview-complete'
+  readonly kind?: 'phase' | 'building-batch' | 'preview-delta' | 'preview-complete'
   readonly sequence?: number
-  readonly coordinateSystem?: 'blueprint-area-local-v1'
+  readonly coordinateSystem?: 'blueprint-area-local-v1' | 'layout-grid-v1'
   readonly previewBatch?: FactoryBuildingBatch
   readonly buildingCount?: number
   readonly batchCount?: number
+  readonly operations?: readonly FactoryPreviewOperation[]
+  readonly areas?: readonly blueprint.Area[]
+  readonly primaryAreaIndex?: number
+}
+
+/** 职责：提供动画所需的建筑姿态；使用：临时和最终场景共用；边界：不含蓝图串、参数大数组或算法失败原因。 */
+export interface FactoryPreviewBuilding extends Readonly<Pick<blueprint.Building,
+  'index' | 'itemId' | 'modelIndex' | 'areaIndex' | 'localOffset' | 'localOffset2'
+  | 'yaw' | 'yaw2' | 'tilt' | 'tilt2' | 'pitch' | 'pitch2' | 'inputFromSlot' | 'outputToSlot'>> {
+  readonly inputObjectId?: string
+  readonly outputObjectId?: string
+  readonly productionIndex: number
+}
+
+/** 职责：描述稳定对象的新增、替换或撤销；使用：渲染器按 type 应用；边界：remove 不重复发送建筑数据。 */
+export type FactoryPreviewOperation = {
+  readonly type: 'add' | 'replace'
+  readonly objectId: string
+  readonly building: FactoryPreviewBuilding
+} | {
+  readonly type: 'remove'
+  readonly objectId: string
 }
 
 /** 职责：描述被增量渲染的生产模块；使用：预览动画按模块归类建筑；边界：id 只在单次请求内稳定。 */
@@ -37,5 +60,5 @@ export interface FactoryBuildingBatch {
 
 /** 职责：关联运行时事件与请求；使用：过滤迟到消息；边界：同一方案每次生成也必须使用不同标识。 */
 export interface FactoryGenerationProgressEvent extends FactoryGenerationProgress {
-  readonly requestId: string
+  readonly taskId: string
 }

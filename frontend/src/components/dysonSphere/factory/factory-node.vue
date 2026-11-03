@@ -2,7 +2,7 @@
 import {Handle, Position} from '@vue-flow/core'
 import {PackageOpen} from '@lucide/vue'
 import {computed} from 'vue'
-import type {FlowNodeData} from '../../../services/dysonSphere/factory-graph'
+import type {FlowNodeData} from '../../../pages/services/dysonSphere/factory-graph'
 import IconSelect from './icon-select.vue'
 import ItemIcon from './item-icon.vue'
 

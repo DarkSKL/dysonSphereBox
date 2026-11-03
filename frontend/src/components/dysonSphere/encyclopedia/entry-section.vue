@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {Icon} from '@iconify/vue'
-import {encyclopediaKindIcons, encyclopediaKindLabels} from '../../../services/encyclopedia/categories'
+import {encyclopediaKindIcons, encyclopediaKindLabels} from '../../../pages/services/encyclopedia/categories'
 import type {EncyclopediaEntry, EncyclopediaKey, EncyclopediaKind} from '../../../types/encyclopedia'
 import EntryIcon from './entry-icon.vue'
 

@@ -96,7 +96,7 @@
 - 提供建筑、物品、科技、战斗和成就五个分类，支持全局搜索、分组筛选和条目详情。
 - 建筑、物品、配方、科技和资源详情包含配方、产出、消耗、科技前置和说明；成就支持按名称、条件、编号和分组检索。
 - 图鉴数据、中文文本和图标随程序打包，运行时从本地加载，无需联网。
-- 数据集固定对应游戏版本 `0.10.29.21950`，不包含存档加成或个人科技状态；数据来源与授权说明见 [图鉴 NOTICE](frontend/src/data/encyclopedia/NOTICE.md)。
+- 数据集固定对应游戏版本 `0.10.29.21950`，不包含存档加成或个人科技状态。
 
 ### 联机
 
@@ -111,10 +111,10 @@
 
 ### 账号与公告
 
-- 标题栏头像打开账号弹窗，支持验证码、注册、登录、会话恢复、强制改密、资料编辑、头像上传、修改密码和退出登录。
+- 应用启动时自动恢复已保存的账号会话并同步用户资料；标题栏头像打开账号弹窗，支持验证码、注册、登录、强制改密、资料编辑、头像上传、修改密码和退出登录。
 - 资料编辑可修改昵称、头像、手机和邮箱；登录 token 只保存在 Go 后端，不返回前端。
 - 全局设置可修改应用服务器地址，保存前可做只读连通性测试；地址变化会清除账号会话并要求重新登录。默认地址为 `https://dysonbox.cn:32888`。
-- 登录后接收服务端公告：启动时展示最新未读公告，标题栏公告入口可查看历史、有效期和当前账号的首次查阅时间。
+- 登录或恢复会话后接收服务端公告：启动时自动检查并展示最新未读公告，标题栏公告入口可查看历史、有效期和当前账号的首次查阅时间。
 - 公告正文按 Markdown 或 HTML 渲染并做安全清洗；“已查阅”需要用户主动确认，关闭弹窗不产生已读副作用。
 - 社区工作区、公告和模组简介翻译都依赖账号会话；离线或不登录仍可使用本地游戏环境、资源、量化、图鉴和日志功能。
 
@@ -367,12 +367,12 @@ Go 进度与状态事件 -> Wails runtime 监听 -> Vue 状态
 - 用户界面与代码注释以中文为主；Go 注释沿用文件职责、使用、边界等约定，前端保留现有分区注释风格。
 - 生成文件不要手改：`frontend/wailsjs/**`、`components.d.ts`、`typed-router.d.ts` 均由工具生成。
 
-量化与蓝图的方案和验证记录见 [戴森球球面纬圈布局生成方案](docs/蓝图生成修正/戴森球球面纬圈布局生成方案.md)；该文档中的历史测试入口和脚本路径已不代表当前仓库的可执行命令。
+蓝图生成架构与预览接口见 [蓝图预览方案](docs/蓝图架构优化方案/蓝图预览方案.md)。
 
 ## 数据与第三方资源
 
-- 图鉴元数据和中文名称来自 [FactorioLab](https://github.com/factoriolab/factoriolab) 的固定提交（MIT），分类、离线摘要和成就内容由本项目整理；图标从本地资源包加载，缺失时回退到 Game Icons 类别图标。详情见 [图鉴 NOTICE](frontend/src/data/encyclopedia/NOTICE.md)。
-- 量化内置 12 套数据集，行为基准为 dsp-calc（作者：神不在的黄昏）；数据集随程序分发，许可证全文、来源和差异说明见 [量化 NOTICE](helper/quant/NOTICE.md)。求解器、名称图和成本模型为本项目独立实现。
+- 图鉴元数据和中文名称来自 [FactorioLab](https://github.com/factoriolab/factoriolab) 的固定提交（MIT），分类、离线摘要和成就内容由本项目整理；图标从本地资源包加载，缺失时回退到 Game Icons 类别图标。许可证见 [LICENSE-FactorioLab.txt](frontend/src/data/encyclopedia/LICENSE-FactorioLab.txt)。
+- 量化内置 12 套数据集，行为基准为 dsp-calc（作者：神不在的黄昏）；数据集随程序分发，许可证见 [LICENSE-MulanPSL-2.0.txt](helper/quant/data/LICENSE-MulanPSL-2.0.txt)。求解器、名称图和成本模型为本项目独立实现。
 - 蓝图 3D 预览使用项目内置的 `dsp-blueprint-editor` UMD 资源，接口见 [lib-README](frontend/src/packages/dsp-blueprint-editor/lib-README.md)。
 - 本地 Game Icons 图标遵循 CC BY 3.0，署名见 [game-icons-license.txt](frontend/public/game-icons-license.txt)；游戏素材、名称和商标归原权利人所有。
 - 模组来源为 Thunderstore，前置框架为 BepInEx，联机框架为 Nebula Multiplayer；本项目与这些项目没有隶属关系。

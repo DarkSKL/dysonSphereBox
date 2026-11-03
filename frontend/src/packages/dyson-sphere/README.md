@@ -125,7 +125,7 @@ interface DysonAchievement {
 1. 把本目录复制到 `client/frontend/src/packages/dyson-sphere/`，前端安装 `three@0.186.1`
 2. 直接从源码导入：`import { createDysonSphere } from '@/packages/dyson-sphere/src'`（由应用的 Vite 编译 TS）
    - 前端 TS 4.6 解析源码会连带解析 `@types/three`，而 `@types/three@0.186` 需要 TS 5 以上。若前端要做 `vue-tsc` 类型检查，改用第 3 种方式
-3. 或者在本目录 `npm run build`，从 `dist/` 导入（公开 `.d.ts` 不含 three 类型，已用 TS 4.6.4 验证：`npm run check:types-ts4`）
+3. 或者在本目录 `npm run build`，从 `dist/` 导入（公开 `.d.ts` 不含 three 类型）
 4. 用 `useThemeMode().themeMode` 驱动 `setTheme`，用后端成就数据调用 `setAchievements`
 
 ## 目录
@@ -142,7 +142,6 @@ src/
   scene.ts          场景实现（内部）
   internal/         调色板、参数校验、覆盖层 DOM、着色器片段、工具
   layers/           背景 / 恒星 / 戴森壳 / 戴森云 / 成就节点 / 拖尾 / 后处理
-test/consumer-ts4.ts  TS 4.6 使用方类型检查
 ```
 
 ## 脚本
@@ -150,5 +149,4 @@ test/consumer-ts4.ts  TS 4.6 使用方类型检查
 ```bash
 npm run typecheck        # 严格模式类型检查
 npm run build            # 输出 dist/（JS + .d.ts）
-npm run check:types-ts4  # 用 TypeScript 4.6.4 检查 dist 公开类型（需先 build）
 ```

@@ -22,8 +22,8 @@ import {
   updateSelfInfo,
   uploadAccountAvatar,
   type CaptchaInfo,
-} from '../../services/account'
-import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../../services/server'
+} from '../../pages/services/account'
+import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../../pages/services/server'
 
 interface AccountModalProps {
   readonly open: boolean

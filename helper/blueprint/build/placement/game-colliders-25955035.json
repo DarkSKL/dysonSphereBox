@@ -28,7 +28,7 @@
    }
   ],
   "modelsInput": {
-   "path": "helper/blueprint/build/models.json",
+   "path": "helper/blueprint/build/algorithm/models.json",
    "sha256": "5517caef63c5e68072686601e2fd9d866f43cd65954968113867dd2a6cdc08fb",
    "items": 62,
    "models": 61

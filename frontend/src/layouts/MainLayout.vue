@@ -31,9 +31,9 @@ import {
   refreshAccountSession,
   resolveAvatarUrl,
   verifiedAccountSession,
-} from '../services/account'
+} from '../pages/services/account'
 import {useAnnouncements} from '../composables/useAnnouncements'
-import {serverAddressReady, serverEffectiveAddress} from '../services/server'
+import {serverAddressReady, serverEffectiveAddress} from '../pages/services/server'
 
 const route = useRoute()
 const message = useMessage()

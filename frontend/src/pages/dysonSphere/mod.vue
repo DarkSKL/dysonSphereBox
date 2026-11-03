@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {AlertCircle, CheckCircle2, Database, Languages, LoaderCircle, RefreshCw, Search} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
-import {verifiedAccountSession} from '../../services/account'
+import {verifiedAccountSession} from '../services/account'
 import ModPackCard from '../../components/dysonSphere/mod/pack-card.vue'
 import ModPackDialog from '../../components/dysonSphere/mod/pack-dialog.vue'
 import {useModPageState} from '../../composables/dysonSphere/useModPageState'

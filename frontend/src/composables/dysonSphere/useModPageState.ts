@@ -6,7 +6,7 @@ import { CancelRemotePackageInstall, ContinueRemotePackageInstall, InstallRemote
 import { GetRemotePackageList, RefreshRemotePackageList } from '../../../wailsjs/go/modDependence/MarketplaceService'
 import { contract, modDependence } from '../../../wailsjs/go/models'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
-import { gameDirectory, getBepInExStatus, installBepInEx, loadGameDirectory } from '../../services/dysonSphere/game'
+import { gameDirectory, getBepInExStatus, installBepInEx, loadGameDirectory } from '../../pages/services/dysonSphere/game'
 import type { InstallConflictAction, InstallProgressPayload } from '../../types/mod'
 import { formatDownloadSpeed, formatErrorMessage } from '../../utils/format'
 import { useModDescriptionTranslation } from './useModDescriptionTranslation'

@@ -10,7 +10,7 @@ import {
   loadGameDirectory,
   saveGameDirectory,
   selectGameDirectory,
-} from '../../../services/dysonSphere/game'
+} from '../../../pages/services/dysonSphere/game'
 import {formatErrorMessage} from '../../../utils/format'
 import SettingsSection, {type SettingsHintTone} from '../../system/settings/section.vue'
 

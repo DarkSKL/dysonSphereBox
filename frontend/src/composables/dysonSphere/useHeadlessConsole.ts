@@ -9,7 +9,7 @@ import {
   saveHeadlessSettings,
   startHeadlessEnvironment,
   stopHeadlessEnvironment,
-} from '../../services/dysonSphere/headless'
+} from '../../pages/services/dysonSphere/headless'
 import { contract } from '../../../wailsjs/go/models'
 import { formatErrorMessage } from '../../utils/format'
 

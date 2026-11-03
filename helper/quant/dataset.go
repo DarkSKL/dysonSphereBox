@@ -1,7 +1,7 @@
 package quant
 
 // 文件职责：加载授权内置数据并建立保序名称索引；使用：量化、检查与布局；边界：只读 go:embed，无运行时联网。
-// 数据原样来自 dsp-calc（神不在的黄昏提供，MulanPSL-2.0），见 NOTICE.md。
+// 数据原样来自 dsp-calc（神不在的黄昏提供，MulanPSL-2.0）。
 
 import (
 	"bytes"

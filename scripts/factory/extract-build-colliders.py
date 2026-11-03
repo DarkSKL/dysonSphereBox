@@ -5,7 +5,7 @@ Collider 组件，按游戏 PrefabDesc 规则推导每个模型的 buildCollider
 使用：
     python -I scripts/factory/extract-build-colliders.py \
         --game-dir "<Steam>/steamapps/common/Dyson Sphere Program" \
-        --models helper/blueprint/build/models.json \
+        --models helper/blueprint/build/algorithm/models.json \
         --out helper/blueprint/build/placement/game-colliders-<buildid>.json
 边界：
     - UnityPy 只是本脚本的开发依赖（pip install UnityPy），不是产品运行依赖；产品只消费输出的 JSON。

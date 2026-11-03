@@ -11,3 +11,4 @@ build
 !helper/blueprint/build/
 !helper/blueprint/build/**
 /runtime-shots
+.local

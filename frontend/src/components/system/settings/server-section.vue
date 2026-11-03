@@ -2,7 +2,7 @@
 import {PlugZap, RotateCcw, Save} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import {computed, onMounted, ref, watch} from 'vue'
-import {accountIsAuthenticated, resetAccountSession} from '../../../services/account'
+import {accountIsAuthenticated, resetAccountSession} from '../../../pages/services/account'
 import {
   DEFAULT_SERVER_ADDRESS,
   loadServerAddress,
@@ -12,7 +12,7 @@ import {
   serverAddress,
   serverEffectiveAddress,
   type ServerProbeResult,
-} from '../../../services/server'
+} from '../../../pages/services/server'
 import {formatErrorMessage} from '../../../utils/format'
 import SettingsSection, {type SettingsHintTone} from './section.vue'
 

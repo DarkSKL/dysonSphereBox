@@ -2,7 +2,7 @@
 import {Icon} from '@iconify/vue'
 import cargo from '@iconify-icons/game-icons/cargo-crate'
 import {computed} from 'vue'
-import {factoryIconStyle} from '../../../services/dysonSphere/factory-icons'
+import {factoryIconStyle} from '../../../pages/services/dysonSphere/factory-icons'
 
 const props = withDefaults(defineProps<{name: string; size?: number}>(), {size: 24})
 const style = computed(() => factoryIconStyle(props.name, props.size))

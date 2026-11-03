@@ -144,7 +144,7 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 	if ctx.Err() != nil {
 		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_CANCELED", Message: "已中止旧任务，改为执行新的生成请求"}}
 	}
-	data, err := build.Generate(factoryHelper.GenerationContext(ctx, req.RequestID), req)
+	data, err := build.Generate(factoryHelper.GenerationContext(ctx, req.TaskID), req)
 	if ctx.Err() != nil {
 		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_CANCELED", Message: "已中止旧任务，改为执行新的生成请求"}}
 	}

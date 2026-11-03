@@ -5,7 +5,7 @@ import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
 import {useQuantWorkspace, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
-import {buildFlowGraph} from '../../services/dysonSphere/factory-graph'
+import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
 
 definePage({meta: {layout: 'main', title: '量化与蓝图', keepAlive: true}})
 const w = reactive(useQuantWorkspace())

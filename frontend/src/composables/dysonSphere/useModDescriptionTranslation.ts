@@ -1,8 +1,8 @@
 import {computed, onActivated, onBeforeUnmount, onDeactivated, ref, watch, type Ref} from 'vue'
 import type {modDependence} from '../../../wailsjs/go/models'
-import {verifiedAccountSession} from '../../services/account'
-import {createDescriptionTranslationQueue} from '../../services/descriptionTranslationQueue'
-import {translateDescriptions, translationContextKey} from '../../services/modTranslation'
+import {verifiedAccountSession} from '../../pages/services/account'
+import {createDescriptionTranslationQueue} from '../../pages/services/descriptionTranslationQueue'
+import {translateDescriptions, translationContextKey} from '../../pages/services/modTranslation'
 import type {DescriptionTranslation, ModDescriptionTranslationState, TranslationStatus} from '../../types/translation'
 
 type RemotePack = modDependence.RemoteModPackageDTO

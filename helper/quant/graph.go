@@ -1,7 +1,7 @@
 package quant
 
 // 文件职责：建立保序名称图与剥离启发式；使用：量化成本和 LP；边界：不改共享数据，不用 map 迭代驱动算法。
-// 算法对照 dsp-calc global_state.jsx；独立 Go 实现，来源见 NOTICE.md。
+// 算法对照 dsp-calc global_state.jsx；独立 Go 实现。
 
 import (
 	"fmt"

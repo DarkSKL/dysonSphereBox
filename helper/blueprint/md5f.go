@@ -1,7 +1,7 @@
 package blueprint
 
 // 文件职责：实现游戏蓝图 MD5F；使用：信封校验与写出；边界：不是密码学认证，不使用标准 MD5 替代。
-// 按蓝图格式事实独立实现，常量核对 dsp-calc utils/md5.js（MulanPSL-2.0），来源见 NOTICE.md。
+// 按蓝图格式事实独立实现，常量核对 dsp-calc utils/md5.js（MulanPSL-2.0）。
 
 import (
 	"encoding/binary"

@@ -2,7 +2,7 @@
 import {ArrowRightLeft, Factory, PackageOpen, Settings2, Trash2, X} from '@lucide/vue'
 import {computed} from 'vue'
 import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
-import type {FlowNodeData} from '../../../services/dysonSphere/factory-graph'
+import type {FlowNodeData} from '../../../pages/services/dysonSphere/factory-graph'
 import IconSelect from './icon-select.vue'
 import ItemIcon from './item-icon.vue'
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ArrowRight, Clock3} from '@lucide/vue'
 import {computed} from 'vue'
-import {resolveCatalogEntry} from '../../../services/encyclopedia/catalog'
+import {resolveCatalogEntry} from '../../../pages/services/encyclopedia/catalog'
 import type {EncyclopediaEntry, EncyclopediaKey} from '../../../types/encyclopedia'
 import EntryIcon from './entry-icon.vue'
 

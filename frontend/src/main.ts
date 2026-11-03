@@ -2,9 +2,9 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import { router } from './router'
 import './style.scss'
-import { installDiagnostics } from './services/diagnostics'
-import { bootstrapAccountSession } from './services/account'
-import { installWebviewDropGuard } from './services/webview-drop'
+import { installDiagnostics } from './pages/services/diagnostics'
+import { bootstrapAccountSession } from './pages/services/account'
+import { installWebviewDropGuard } from './pages/services/webview-drop'
 
 // =============== 应用引导 ===============
 // 说明：创建 Vue 实例、挂载路由并立即启动账号会话引导；引导内部会等待 Go 后端 startup 完成。

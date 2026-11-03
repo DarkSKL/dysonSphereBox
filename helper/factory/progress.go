@@ -11,31 +11,27 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// generationProgress 职责：关联请求与引擎阶段；使用：运行时事件载荷；边界：请求 ID 仅作消息隔离，不用于认证方案。
-type generationProgress struct {
-	// RequestID 职责：区分同方案的多次生成；使用：前端过滤旧消息；边界：仅回传本次请求的标识。
-	RequestID string `json:"requestId"`
-	// Progress 职责：携带真实阶段信息；使用：状态栏展示；边界：不表示整体百分比。
-	build.Progress
-}
+// generationProgress 职责：沿用引擎的单一事件契约；使用：Wails 事件载荷；边界：不再额外包裹任务身份或重复渲染操作。
+type generationProgress = build.Progress
 
 // GenerationContext 职责：为本次生成接入桌面阶段通知；使用：服务完成方案校验后调用；边界：空 ID 或非桌面调用保持纯引擎行为。
-func GenerationContext(parent context.Context, requestID string) context.Context {
+func GenerationContext(parent context.Context, taskID string) context.Context {
 	runtimeContext := core.GLOBAL.RuntimeContext
-	if requestID == "" || runtimeContext == nil {
+	if taskID == "" || runtimeContext == nil {
 		return parent
 	}
-	return generationProgressContext(parent, requestID, func(progress generationProgress) {
+	return generationProgressContext(parent, taskID, func(progress generationProgress) {
 		runtime.EventsEmit(runtimeContext, factoryConstant.GenerationProgressEvent, progress)
 	})
 }
 
 // generationProgressContext 职责：为引擎事件附加本次请求身份；使用：桌面桥接及离线契约测试；边界：不保存全局订阅，空ID或无发送器时不启用建筑预览。
-func generationProgressContext(parent context.Context, requestID string, emit func(generationProgress)) context.Context {
-	if requestID == "" || emit == nil {
+func generationProgressContext(parent context.Context, taskID string, emit func(generationProgress)) context.Context {
+	if taskID == "" || emit == nil {
 		return parent
 	}
 	return build.WithProgress(parent, func(progress build.Progress) {
-		emit(generationProgress{RequestID: requestID, Progress: progress})
+		progress.TaskID = taskID
+		emit(progress)
 	})
 }

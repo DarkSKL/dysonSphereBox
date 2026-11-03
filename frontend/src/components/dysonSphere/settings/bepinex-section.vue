@@ -11,7 +11,7 @@ import {
   uninstallBepInEx,
   type BepInExPackage,
   type BepInExStatus,
-} from '../../../services/dysonSphere/game'
+} from '../../../pages/services/dysonSphere/game'
 import {formatErrorMessage} from '../../../utils/format'
 import SettingsSection, {type SettingsHintTone} from '../../system/settings/section.vue'
 import SettingsValueBox, {type SettingsValueTone} from '../../system/settings/value-box.vue'
