@@ -4,6 +4,7 @@ import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw,
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
+import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
 import {useQuantWorkspace, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
 import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
 
@@ -117,18 +118,24 @@ const resizeByKey = (event: KeyboardEvent): void => {
       </div>
     </section>
 
+    <!-- ~ 最右侧：生成事件时间流（调试） -->
+    <!-- * 说明：纵跨网格与预览两层，实时列出蓝图生成事件卡片，点击查看原始消息 -->
+    <!-- * 边界：只旁路观察事件，不影响生成、预览与任务过滤 -->
+    <div class="bench-timeline"><EventTimeline :can-generate="Boolean(w.plan && !w.quantStale && !w.solving && !w.importing)" :generating="w.generating" @generate="w.generate" /></div>
+
     <n-modal v-model:show="w.importVisible" preset="card" title="导入蓝图并反算" class="import-modal" style="width: min(680px, 92vw)"><p class="muted">只读识别建筑和理论产出，保留原始蓝图供预览与导出。</p><n-input v-model:value="w.importText" type="textarea" :rows="9" placeholder="粘贴 BLUEPRINT: 开头的蓝图串" class="type-mono" /><div class="import-actions"><input ref="fileInput" type="file" accept=".txt,.dspbp" hidden @change="onFile" /><n-button @click="fileInput?.click()">选择文本文件</n-button><n-button type="primary" :loading="w.importing" :disabled="!w.importText.trim()" @click="w.loadCode(w.importText, '导入的蓝图')">严格解析并预览</n-button></div><n-alert v-if="w.error" type="error">{{ w.error.message }}</n-alert></n-modal>
   </section>
 </template>
 
 <style scoped lang="scss">
 // 命名区域：提示条按需出现时不会挤占其它行；网格与预览按分隔比例分配剩余高度。
-.quant-workbench { display: grid; height: 100%; min-height: 600px; box-sizing: border-box; overflow: hidden; grid-template-areas: 'bar' 'alert' 'graph' 'split' 'preview'; grid-template-rows: auto auto minmax(240px, calc((100% - 120px) * var(--split-ratio))) 10px minmax(200px, 1fr); padding: 14px var(--ds-page-padding-x) 14px; color: var(--ds-text-primary); }
+.quant-workbench { display: grid; height: 100%; min-height: 600px; box-sizing: border-box; overflow: hidden; grid-template-areas: 'bar bar' 'alert alert' 'graph timeline' 'split timeline' 'preview timeline'; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; grid-template-rows: auto auto minmax(240px, calc((100% - 120px) * var(--split-ratio))) 10px minmax(200px, 1fr); padding: 14px var(--ds-page-padding-x) 14px; color: var(--ds-text-primary); }
 .bench-bar { position: relative; z-index: 2; grid-area: bar; }
 .bench-alert { grid-area: alert; }
 .bench-graph { grid-area: graph; }
 .bench-splitter { grid-area: split; }
 .bench-preview { grid-area: preview; }
+.bench-timeline { grid-area: timeline; }
 .bench-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .bench-title h1 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; }
 .bench-actions { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; }
@@ -136,9 +143,9 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .bar-divider { width: 1px; height: 18px; margin: 0 4px; background: var(--ds-border-default); }
 .bench-alert { margin-bottom: 8px; }
 // 两层面板共用切角外框，与图鉴等页面同一视觉语言。
-.bench-graph, .bench-preview { --chamfer: 12px; position: relative; display: flex; min-height: 0; overflow: hidden; isolation: isolate; }
-.bench-graph::before, .bench-preview::before { content: ''; position: absolute; inset: 0; z-index: -2; background: var(--ds-border-default); clip-path: polygon(0 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, var(--chamfer) 100%, 0 calc(100% - var(--chamfer))); }
-.bench-graph::after, .bench-preview::after { content: ''; position: absolute; inset: 1px; z-index: -1; background: var(--ds-bg-panel); clip-path: polygon(0 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, var(--chamfer) 100%, 0 calc(100% - var(--chamfer))); }
+.bench-graph, .bench-preview, .bench-timeline { --chamfer: 12px; position: relative; display: flex; min-height: 0; overflow: hidden; isolation: isolate; }
+.bench-graph::before, .bench-preview::before, .bench-timeline::before { content: ''; position: absolute; inset: 0; z-index: -2; background: var(--ds-border-default); clip-path: polygon(0 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, var(--chamfer) 100%, 0 calc(100% - var(--chamfer))); }
+.bench-graph::after, .bench-preview::after, .bench-timeline::after { content: ''; position: absolute; inset: 1px; z-index: -1; background: var(--ds-bg-panel); clip-path: polygon(0 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, var(--chamfer) 100%, 0 calc(100% - var(--chamfer))); }
 .graph-canvas { min-width: 0; flex: 1; }
 .bench-splitter { display: flex; align-items: center; justify-content: center; cursor: row-resize; touch-action: none; }
 .bench-splitter span { width: 48px; height: 3px; border-radius: 2px; background: var(--ds-border-default); transition: background-color 150ms, width 150ms; }

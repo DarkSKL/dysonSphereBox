@@ -8,6 +8,7 @@ import {enableGeneratedEnvironmentBlueprint, getEnvironmentBlueprintDetail, save
 import {requestBlueprintLibrary} from '../../pages/services/dysonSphere/blueprint-navigation'
 import {buildFactoryLayoutRequest} from '../../pages/services/dysonSphere/factory-layout'
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../pages/services/dysonSphere/blueprint-preview-host'
+import {generationDebugOptions} from './useGenerationTimeline'
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
 type WorkspaceTarget = {key: number; itemId: number | null; ratePerMinute: number | null}
@@ -210,7 +211,7 @@ export const useQuantWorkspace = () => {
     const observer = new AbortController()
     generationObserver = observer
     try {
-      const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value}), progress => {
+      const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas: generationDebugOptions.emitPreviewDeltas}), progress => {
         if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
         if (progress.kind === 'building-batch' && progress.previewBatch) {
           const moduleName = progress.previewBatch.module.name || '共享设施'

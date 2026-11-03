@@ -27,3 +27,10 @@ export const observeFactoryGeneration = (
   }
   return stop
 }
+
+/** 职责：旁路订阅全部生成事件原始载荷；使用：调试时间流在页面挂载时安装，卸载时调用返回值释放；边界：不按任务过滤、不做协议校验，不影响生成任务本身的观察者。 */
+export const observeRawFactoryGenerationEvents = (onEvent: (payload: unknown) => void): (() => void) => {
+  const runtime = (window as Window & {runtime?: {EventsOnMultiple?: unknown}}).runtime
+  if (typeof runtime?.EventsOnMultiple !== 'function') return () => undefined
+  return EventsOn(eventName, onEvent)
+}
