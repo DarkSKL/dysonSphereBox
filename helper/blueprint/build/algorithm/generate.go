@@ -108,6 +108,7 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 		return result, &blueprint.Error{Code: "GEN_E_MODE", Message: "策略必须为 1 到 6"}
 	}
 	req.Density = normalizeDensity(req.Density)
+	ctx = context.WithValue(ctx, denseCollisionKey{}, req.Density == densityDense)
 	adapter, err := resolveModeAdapter(req.Mode, req.Density)
 	if err != nil {
 		return result, err
@@ -117,6 +118,9 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 		return result, err
 	}
 	req.SurfaceLayout = surface
+	if surface != nil && surface.LatitudeZone != "" {
+		ctx = context.WithValue(ctx, densityLatitudeKey{}, surface.LatitudeZone)
+	}
 	prepared, err := prepareGeneration(ctx, req, adapter)
 	if err != nil {
 		return result, err
@@ -191,7 +195,7 @@ func prepareGeneration(ctx context.Context, request Request, adapter *modeAdapte
 			return prepared, recipeErr
 		}
 		if !adapter.supportsMachineRecycle && recipeHasMachineRecycle(recipe) {
-			return prepared, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 的机器内部回流当前只支持直连带与总线模式；配送/物流塔净流端点不能代替本地毛流回收", production.RecipeID)}
+			return prepared, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 的当前生成组合未提供本地毛流回收，请使用直连带、总线或超密度黑盒模式；净流物流端点不能代替实际回收链", production.RecipeID)}
 		}
 	}
 	return prepared, nil
@@ -310,15 +314,13 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "final-power-repair", Status: "passed", Message: fmt.Sprintf("按最终坐标补建 %d 座地面感应塔，消费者覆盖与内部单网随后共同终检", addedPoles)})
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "final-power-prune", Status: "passed", Message: fmt.Sprintf("按最终坐标去除 %d 座冗余感应塔，保留消费者覆盖和原电网连接", removedPoles)})
 	}
-	zones := []Zone{}
-	for _, r := range b.zoneRanges {
-		if r.end <= r.begin {
-			continue
-		}
-		zone := b.zones[r.zone]
-		minimum, maximum := bounds(b.all[r.begin:r.end])
-		zone.MinX, zone.MinY, zone.MaxX, zone.MaxY = minimum.x, minimum.y, maximum.x, maximum.y
-		zones = append(zones, zone)
+	surface, records, err = b.relocateDenseSurface(ctx, req, surface, records)
+	if err != nil {
+		return result, err
+	}
+	zones := b.finalProductionZones()
+	if surface != nil && surface.relocation != nil {
+		zones = b.relocatedProductionZones(records)
 	}
 	minimum, maximum := bounds(b.all)
 	width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
@@ -333,7 +335,19 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		primaryArea = int32(surfacePlan.PrimaryAreaIndex)
 		width, height = float64(surfacePlan.LayoutWidth), float64(surfacePlan.LayoutHeight)
 	}
+	if err := validateDensityLatitudePlan(req.SurfaceLayout, surfacePlan); err != nil {
+		return result, err
+	}
 	reportProgress(ctx, "rules", "正在核验最终建筑、路线、槽位和供电规则", 0, 0)
+	if err := b.rebindReferenceCargo(ctx, surface, records); err != nil {
+		return result, err
+	}
+	if err := b.finalizeDenseRelocationRange(ctx, req, surface, records); err != nil {
+		return result, err
+	}
+	if err := b.validateFinalMachineIntegrity(ctx, req, dataset); err != nil {
+		return result, err
+	}
 	ruleAudit, err := validateFinalPlanetRules(ctx, req, surface, records)
 	if err != nil {
 		return result, err
@@ -344,6 +358,12 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	}
 	logistics, err := finalizeModeLogistics(b, records, areas)
 	if err != nil {
+		return result, err
+	}
+	if err := b.validateFinalMonitorIntegrity(ctx, req, records); err != nil {
+		return result, err
+	}
+	if err := updateTotalBeltMetrics(ctx, surface, records, &logistics.Metrics); err != nil {
 		return result, err
 	}
 	if err := b.finalizeProductionRateAnnotations(records); err != nil {
@@ -361,6 +381,10 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		}
 	}
 	document := blueprint.Document{EnvelopeVersion: 1, BinaryVersion: 2, Patch: 1, Name: name, GameVersion: dataset.Info.GameVersion, Description: "戴森球盒子生成；需确认所有原料及副产物出口", DragBoxSize: blueprint.PointInt{X: dragWidth, Y: dragHeight}, PrimaryAreaIndex: primaryArea, CursorTargetArea: primaryArea, Areas: areas, Buildings: records}
+	if req.Density == densityDense {
+		document.Description += "；密铺按整图单次粘贴规则生成，已有场景接入和连续拖拽复制需另行验证"
+		document.Description += densityLatitudePlacementHint(surfacePlan)
+	}
 	reportProgress(ctx, "encode", "正在编码并校验蓝图", 0, 0)
 	encoded, err := blueprint.Encode(document, 1)
 	if err != nil {
@@ -369,7 +393,11 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if len(records) > 6000 {
 		b.warnings = append(b.warnings, "建筑超过 6000，预览可能较慢，可折叠预览后复制导出")
 	}
-	return Result{Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: len(areas), Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones, SurfacePlan: surfacePlan, LogisticsSummary: logistics, RuleAudit: ruleAudit, previewScene: b.finalPreviewSnapshot(records, areas, primaryArea)}, nil
+	density, err := b.densityReport(req, encoded.Blueprint, logistics.Metrics.EnvelopeArea)
+	if err != nil {
+		return result, err
+	}
+	return Result{DensityReport: density, Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: len(areas), Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones, SurfacePlan: surfacePlan, LogisticsSummary: logistics, RuleAudit: ruleAudit, previewScene: b.finalPreviewSnapshot(records, areas, primaryArea)}, nil
 }
 
 // surfaceAnchorRetryable 职责：判断球面锚点预检失败是否可以换到邻圈重试；使用：Generate 候选循环；边界：未知原型、超时和未验证错误不被软化。

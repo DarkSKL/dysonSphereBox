@@ -40,7 +40,8 @@ func assembleStationLayout(ctx context.Context, builder *builder, request Reques
 						return nil, err
 					}
 					minimum, maximum := bounds(line.all)
-					shift(line.all, -minimum.x, lineY-minimum.y, 0)
+					// 外围端口在塔接线前保持整数格；局部机器和分拣器仍保留原始小数姿态。
+					shift(line.all, -math.Floor(minimum.x), lineY-math.Floor(minimum.y), 0)
 					builder.previewCheckpoint("assembly")
 					lineY += math.Ceil(maximum.y-minimum.y) + 1
 					lines = append(lines, line)

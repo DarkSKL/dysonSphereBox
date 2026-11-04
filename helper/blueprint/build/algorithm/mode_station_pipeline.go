@@ -31,6 +31,9 @@ func generateStationMode(ctx context.Context, builder *builder, request Request,
 	if err := stationlayout.Validate(ctx, input, layout, stages.Config); err != nil {
 		return Result{}, err
 	}
+	if builder.adapter.density == densityDense {
+		return builder.generateDenseStationField(ctx, request, dataset, input, layout, stages.Config)
+	}
 	blocks, err := assembleStationLayout(ctx, builder, request, dataset, input, layout, stages.Config)
 	if err != nil {
 		return Result{}, err

@@ -32,6 +32,8 @@ type surfaceEncoding struct {
 	plan *SurfacePlan
 	// anchorCandidates 职责：保存按优先级排列的完整平面锚点候选；使用：最终碰撞预检失败时回退；边界：候选只改变粘贴纬圈，不改变建筑坐标。
 	anchorCandidates []int
+	// relocation 职责：保存最终记录的球面刚体重定位；使用：货物目标映射和有效锚点证明；边界：内部装配坐标和逻辑指针保持原视图。
+	relocation *denseSurfaceRelocation
 }
 
 // prepareSurfaceEncoding 职责：优先锚定完整矩形，容量不足时重排闭合产线块；使用：内部兼容入口；边界：不伪造根 Area 的绝对纬度。
@@ -63,8 +65,12 @@ func (b *builder) prepareSurfaceEncodingContext(ctx context.Context, layout *Sur
 	if layout.Mode == "autoTropic" {
 		preferred = 0
 	}
-	candidates := surfaceAnchorCandidates(layout.Mode, segment, preferred, layout.ExpandAdjacent, width, height)
+	candidates := surfaceLayoutAnchorCandidates(layout, width, height)
 	if len(candidates) == 0 {
+		if layout.LatitudeZone != "" {
+			_, label, _ := densityLatitudeBand(layout.LatitudeZone, segment)
+			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("%s无法容纳当前%dx%d的完整矩形，请降低产量或选择更宽的建造位置", label, width, height)}
+		}
 		// 自动模式不再把整块矩形锁死在一个纬圈；先尝试按设施安全切面跨相邻 Area，失败后再使用闭合产线块装箱。
 		if layout.Mode == "autoTropic" || layout.ExpandAdjacent {
 			if multi, multiErr := b.prepareMultiBandRectangleEncoding(ctx, layout, width, height, segment); multiErr == nil {

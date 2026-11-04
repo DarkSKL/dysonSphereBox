@@ -5,11 +5,19 @@ import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWork
 import type {FlowNodeData} from '../../../pages/services/dysonSphere/factory-graph'
 import IconSelect from './icon-select.vue'
 import ItemIcon from './item-icon.vue'
+import {generationDebugOptions} from '../../../composables/dysonSphere/useGenerationTimeline'
 
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
 const emit = defineEmits<{(event: 'clear'): void}>()
 
 const merges = [{label: '纵向单列', value: 1, icon: ''}, {label: '按宽度换列', value: 2, icon: ''}]
+const densityOptions: {label: string; value: 'standard' | 'dense'; code: string}[] = [{label: '普通', value: 'standard', code: 'STD'}, {label: '超密度', value: 'dense', code: 'DENSE'}]
+// 超密度经纬位置复用图标选择栏的括角外观；选项不显示图标，未提供选项时值为空以显示占位提示。
+const latitudeOptions = computed(() => props.w.denseLatitudeOptions.map(option => ({label: option.label, value: option.value, icon: ''})))
+const latitudeZone = computed({
+  get: () => latitudeOptions.value.length ? props.w.denseLatitudeZone : null,
+  set: (value: string | number | null) => { if (typeof value === 'string') props.w.denseLatitudeZone = value },
+})
 const surfaceModes = [{label: '自动模式', value: 'autoTropic', icon: ''}, {label: '旧平面兼容', value: 'planar', icon: ''}]
 // 旧工作区的指定纬圈值在界面上归一到自动策略；后端仍保留旧值读取兼容。
 const surfaceMode = computed({
@@ -151,17 +159,39 @@ const importedRows = computed(() => {
         </template>
 
         <h3><Factory :size="13" />蓝图布局</h3>
-        <div class="field-row">
-          <label class="field">球面策略<IconSelect v-model:value="surfaceMode" size="small" :options="surfaceModes" /></label>
+        <!-- ~ 密度切换 -->
+        <!-- * 说明：密度独立于运输模式；交互：左右二选一滑块，超密度下球面策略原位替换为经纬位置选择，沿用现有任务替代生成；依赖：工作区 density；边界：试验规则不承诺所有设备或游戏放置。 -->
+        <div class="field">布局密度
+          <!-- 滑块使用全局括角：常亮括线随选中项平移，底部品牌色光条标示当前通道。 -->
+          <div class="density-segment" :class="{'is-dense': w.density === 'dense'}" role="radiogroup" aria-label="布局密度">
+            <i class="density-thumb ds-bracket" aria-hidden="true" />
+            <button v-for="option in densityOptions" :key="option.value" type="button" role="radio" class="density-option" :class="{'is-active': w.density === option.value}" :aria-checked="w.density === option.value" @click="w.density = option.value">{{ option.label }}<small>{{ option.code }}</small></button>
+          </div>
         </div>
-        <n-checkbox v-if="w.automaticSurface" v-model:checked="w.surfaceLayout.expandAdjacent" size="small">容量不足时将后续产线扩展到邻圈</n-checkbox>
-        <p v-if="w.automaticSurface" class="surface-hint">适用于原版星球，按纬圈容量安排完整产线。</p>
-        <p v-else class="surface-hint">按平面网格排列产线，不进行纬圈适配。</p>
+        <template v-if="w.density === 'dense'">
+          <!-- 经纬位置来自后端能力目录；旧后端不提供伪造选项。 -->
+          <div class="field-row">
+            <label class="field">经纬位置<IconSelect v-model:value="latitudeZone" size="small" :options="latitudeOptions" :loading="w.loadingDataset" :disabled="w.loadingDataset || !latitudeOptions.length" :placeholder="w.loadingDataset ? '读取位置…' : '后端需更新'" aria-label="超密度建造位置" /></label>
+          </div>
+          <p v-if="w.denseLatitudeError && !w.loadingDataset" class="region-error" role="alert">{{ w.denseLatitudeError }}</p>
+          <p v-else-if="w.denseLatitudeOption" class="surface-hint">{{ w.denseLatitudeOption.description }}</p>
+        </template>
+        <template v-else>
+          <div class="field-row">
+            <label class="field">球面策略<IconSelect v-model:value="surfaceMode" size="small" :options="surfaceModes" /></label>
+          </div>
+          <n-checkbox v-if="w.automaticSurface" v-model:checked="w.surfaceLayout.expandAdjacent" size="small">容量不足时将后续产线扩展到邻圈</n-checkbox>
+          <p v-if="w.automaticSurface" class="surface-hint">适用于原版星球，按纬圈容量安排完整产线。</p>
+          <p v-else class="surface-hint">按平面网格排列产线，不进行纬圈适配。</p>
+        </template>
         <div class="field-row">
-          <label v-if="!w.automaticSurface" class="field">单列机器<n-input-number v-model:value="w.layout.maxMachineInALine" size="small" :min="1" :max="200" /></label>
+          <label v-if="w.density !== 'dense' && !w.automaticSurface" class="field">单列机器<n-input-number v-model:value="w.layout.maxMachineInALine" size="small" :min="1" :max="200" /></label>
           <label class="field">研究站层数<n-input-number v-model:value="w.layout.maxLays" size="small" :min="1" :max="15" /></label>
         </div>
-        <div v-if="!w.automaticSurface" class="field-row">
+        <!-- ~ 调试模式 -->
+        <!-- * 说明：开启后显示右侧生成事件时间流；关闭时隐藏时间流，并且不再请求预览差量事件。 -->
+        <div class="switch-row"><span>调试模式<small>显示生成事件</small></span><n-switch v-model:value="generationDebugOptions.debugMode" size="small" aria-label="调试模式" /></div>
+        <div v-if="w.density !== 'dense' && !w.automaticSurface" class="field-row">
           <label class="field">街区宽度<n-input-number v-model:value="w.layout.blockWidthLimit" size="small" :min="10" :max="500" /></label>
           <label class="field">排列<IconSelect v-model:value="w.layout.mergeType" size="small" :options="merges" /></label>
         </div>
@@ -186,8 +216,25 @@ h3 { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(-
 .field-row { display: flex; gap: 8px; }
 .surface-hint { margin: 0; color: var(--ds-text-muted); font-size: 10px; line-height: 1.45; }
 .capacity-hint { margin: 0; color: var(--ds-text-secondary); font-size: 10px; line-height: 1.6; }
+.region-error { margin: 0; color: var(--ds-warning); font-size: 11px; line-height: 1.6; }
 .capacity-details :deep(.n-collapse-item__header-main) { font-size: 11px; }
 .flags { display: grid; gap: 4px; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ds-text-secondary); font-size: 11px; }
+.switch-row small { margin-left: 6px; color: var(--ds-text-muted); font-size: 10px; }
+// 密度滑块：轨道只用底色与中缝刻线区分，滑块沿用括角卡片（与图标选择栏同尺寸），底部光条在暗色主题下带品牌辉光。
+.density-segment { position: relative; display: grid; height: 30px; grid-template-columns: 1fr 1fr; border-radius: 2px; background: var(--ds-hover-bg); }
+.density-segment::before { position: absolute; top: 9px; bottom: 9px; left: 50%; width: 1px; background: var(--ds-border-subtle); content: ''; }
+.density-thumb { --bracket-color: var(--ds-brand); --bracket-size: 8px; position: absolute; top: 0; bottom: 0; left: 0; width: 50%; border-radius: 2px; background: var(--ds-active-bg); box-shadow: var(--ds-active-glow); transition: transform 280ms cubic-bezier(.22, 1, .36, 1); }
+.density-thumb::before { position: absolute; right: 30%; bottom: 0; left: 30%; height: 1px; background: var(--ds-brand); box-shadow: 0 0 6px var(--ds-brand-glow); content: ''; }
+.density-segment.is-dense .density-thumb { transform: translateX(100%); }
+.density-option { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 0 6px; background: transparent; color: var(--ds-text-muted); font-size: 12px; line-height: 1; cursor: pointer; transition: color 150ms; }
+.density-option:hover { color: var(--ds-text-secondary); }
+.density-option.is-active { color: var(--ds-text-primary); font-weight: 600; }
+// 中文标签与英文代号字体度量不同，统一行高为 1 后按盒子居中，避免两段文字上下错位；代号末尾字距用负边距抵消以保持整体水平居中。
+.density-option small { margin-right: -.12em; font-family: var(--ds-font-display); font-size: 9px; font-weight: 400; line-height: 1; letter-spacing: .12em; opacity: .7; }
+.density-option.is-active small { color: var(--ds-brand); opacity: 1; }
+.density-option:focus-visible { outline: 1px solid var(--ds-brand); outline-offset: -1px; }
+@media (prefers-reduced-motion: reduce) { .density-thumb { transition: none; } }
 .count { margin-left: auto; color: var(--ds-text-muted); font-family: var(--ds-font-display); font-weight: 400; letter-spacing: 0; }
 .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--ds-border-subtle); }
 .metric-grid > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; padding: 6px 8px; background: var(--ds-bg-panel-elevated); }

@@ -61,6 +61,11 @@ func (encoding *surfaceEncoding) surfaceAddonBeltPass(belt, addon int, records [
 	direction, terminal := placement.Vector{}, false
 	input, hasInput := byIndex[records[belt].InputObjIdx]
 	output, hasOutput := byIndex[records[belt].OutputObjIdx]
+	// 原生首轮AddonPass前会清空belt→belt的input；回填仅供后续胶囊/恢复阶段使用。
+	// 因而同批只有上游、没有output的供剂端在首轮没有末端朝向限制，不能把后期指针提前套用。
+	if hasInput && surfaceIsBelt(records[input].ItemID) {
+		hasInput = false
+	}
 	if hasInput != hasOutput {
 		terminal = true
 		other := input

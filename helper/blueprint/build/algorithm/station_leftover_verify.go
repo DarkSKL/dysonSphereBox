@@ -100,7 +100,11 @@ func (b *builder) validateStationLeftovers(ctx context.Context, indices map[*pla
 			return stationLeftoverFailure(route, "开放回收终点未保留真实剩余物品与份额标记")
 		}
 		offset := vector{last.a.x - route.rawHead.a.x, last.a.y - route.rawHead.a.y, last.a.z - route.rawHead.a.z}
-		if !flySamePoint(offset, route.offset) || route.offset.x > -4 || route.offset.y < 2 || math.Abs(last.a.z) > 1e-6 {
+		positionMatches := route.offset.x <= -4 && route.offset.y >= 2
+		if b.denseSpatial {
+			positionMatches = math.Hypot(offset.x, offset.y) >= 2
+		}
+		if !flySamePoint(offset, route.offset) || !positionMatches || math.Abs(last.a.z) > 1e-6 {
 			return stationLeftoverFailure(route, "真实回收终点已离开本组原料接入侧的独立位置")
 		}
 		// 球面会刚性移动闭合块；塔、原料带和整条新链必须同块。

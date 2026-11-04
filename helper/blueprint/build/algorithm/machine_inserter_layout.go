@@ -11,7 +11,7 @@ import (
 )
 
 // buildMachineInserterPort 职责：将同一物料的每根并联臂连接到不同真实机器槽；使用：基础机器行；边界：所有臂使用用户选定等级和同一物料带，不复制流量或借用其它物料的槽。
-func (b *builder) buildMachineInserterPort(machine *placed, belt []*placed, port machineInserterPort, conf geometry, machineIndex int, spacing, pre float64, output bool, filter int) {
+func (b *builder) buildMachineInserterPort(machine *placed, belt []*placed, port machineInserterPort, conf geometry, machineIndex int, spacing, pre float64, output bool, filter int) error {
 	for _, slot := range port.slots {
 		arm := b.make(2010+b.setting.InserterLv, 0, 0, 0)
 		arm.record.InputFromSlot = -1
@@ -19,7 +19,10 @@ func (b *builder) buildMachineInserterPort(machine *placed, belt []*placed, port
 		arm.record.Parameters = []int32{int32(port.reach)}
 		arm.record.FilterID = int16(filter)
 		px := machine.a.x - conf.Left + float64(slot)*(1-conf.Outside) + conf.Outside
-		beltPoint := belt[machineIndex*int(spacing)+int(conf.Start)+slot+int(pre)]
+		beltPoint, err := b.machineBeltAnchor(belt, machineIndex, slot, spacing, conf.Start, pre)
+		if err != nil {
+			return err
+		}
 		machinePoint := vector{px, machine.a.y - conf.Bottom + conf.Lack, 0}
 		outsidePoint := vector{px, machine.a.y - conf.Bottom - float64(port.reach), 0}
 		machineSlot := slot
@@ -43,6 +46,7 @@ func (b *builder) buildMachineInserterPort(machine *placed, belt []*placed, port
 			}
 		}
 	}
+	return nil
 }
 
 // validateLineMachineInserters 职责：独立从已创建臂、实际机器堆叠和物料带重建容量；使用：装配收尾与测试；边界：不把纯规划结果当作实体证据，最终槽位姿态和动态碰撞仍由统一规则核验。
@@ -129,7 +133,8 @@ func validateLineMachineInserters(l *line, setting Setting) error {
 		occupied[machine][slot] = true
 		reach := int(arm.record.Parameters[0])
 		observedReach := int(math.Round(math.Hypot(arm.b.x-arm.a.x, arm.b.y-arm.a.y)))
-		if reach != observedReach || reach < 1 || reach > 3 || math.Abs(arm.a.z-arm.b.z) > 1e-6 {
+		heightAllowed := math.Abs(arm.a.z-arm.b.z) <= 1e-6 || l.referenceLowTracks && arm.densityPattern == "reference-low-arm" && math.Abs(arm.a.z-arm.b.z) <= .51
+		if reach != observedReach || reach < 1 || reach > 3 || !heightAllowed {
 			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "机器分拣器跨度参数与实际端点不一致"}
 		}
 		capacities[machine][port] += inserterCapacityPerMinute(setting.InserterLv, reach)

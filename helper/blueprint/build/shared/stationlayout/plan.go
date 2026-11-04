@@ -42,7 +42,7 @@ func Plan(ctx context.Context, input contract.StationLayoutInput, config contrac
 			prepared := input.Productions[index]
 			production := input.Plan.Productions[index]
 			routeCount := routeKinds(prepared)
-			counts, perGroup, err := GroupRows(prepared.Counts, routeCount, config.ItemSlots)
+			counts, perGroup, err := GroupRows(prepared.Counts, routeCount, config.ItemSlots, config.PreferredRows)
 			if err != nil {
 				return contract.StationLayoutPlan{}, err
 			}

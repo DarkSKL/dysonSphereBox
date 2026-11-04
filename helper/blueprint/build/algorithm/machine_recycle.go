@@ -173,10 +173,10 @@ func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map
 		if !finitePositive(want) || math.Abs(entry.rate-want) > math.Max(1e-6, want*1e-8) {
 			return &blueprint.Error{Code: "GEN_E_FLOW", Message: "机器回流份额与毛输入/输出的共同部分不守恒"}
 		}
-		if err := validateRecycleGate(entry.inputGate, 3, entry.item, indices); err != nil {
+		if err := validateRecycleGate(entry.inputGate, 3, entry.item, entry.row.quarterTurns, indices); err != nil {
 			return err
 		}
-		if err := validateRecycleGate(entry.outputGate, entry.outputSlot, entry.item, indices); err != nil {
+		if err := validateRecycleGate(entry.outputGate, entry.outputSlot, entry.item, entry.row.quarterTurns, indices); err != nil {
 			return err
 		}
 		route := entry.route
@@ -216,7 +216,9 @@ func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map
 			return err
 		}
 		surplusSlot := int8(1)
-		if entry.outputGate.a.y < entry.row.line.machines[0].a.y {
+		origin := entry.row.line.machines[0].a
+		localGate := denseRotateVector(vector{entry.outputGate.a.x - origin.x, entry.outputGate.a.y - origin.y, 0}, -entry.row.quarterTurns)
+		if localGate.y < 0 {
 			surplusSlot = 3
 		}
 		if entry.netOutput > 1e-8 && (len(entry.surplus) == 0 || entry.surplus[0].input != entry.outputGate || entry.surplus[0].record.InputFromSlot != surplusSlot) {
@@ -249,8 +251,9 @@ func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map
 }
 
 // validateRecycleGate 职责：逐参数确认分流器优先槽与预设没有被替换；使用：最终回流核验；边界：不接受仅有图标而缺少优先配置的普通分流器。
-func validateRecycleGate(gate *placed, priority int8, item int, indices map[*placed]int) error {
-	if gate == nil || gate.record.ItemID != 2020 || gate.record.ModelIndex != 38 || gate.record.Yaw != 90 || len(gate.record.Parameters) != 6 || int(gate.record.FilterID) != item {
+func validateRecycleGate(gate *placed, priority int8, item, quarterTurns int, indices map[*placed]int) error {
+	wantYaw := float32((90 + 90*quarterTurns) % 360)
+	if gate == nil || gate.record.ItemID != 2020 || gate.record.ModelIndex != 38 || gate.record.Yaw != wantYaw || len(gate.record.Parameters) != 6 || int(gate.record.FilterID) != item {
 		return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "机器回流优先门原型、模型、方向或过滤物品不符"}
 	}
 	if _, exists := indices[gate]; !exists {

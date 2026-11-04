@@ -87,6 +87,8 @@ type Request struct {
 // 使用：量化蓝图工作台传入 Generate；缺省模式由旧调用保留平面行为。
 // 边界：允许扩展时可生成多个原生 Area，但不截断单个设施或隐式断开连接；纬圈仍只是粘贴锚点建议，不替代游戏 Physics 碰撞检查。
 type SurfaceLayout struct {
+	// LatitudeZone 职责：保存面向玩家的放置区域选项；使用：密铺按选定原生纬带校验；边界：非空时不允许隐式跨到其它纬带。
+	LatitudeZone string `json:"latitudeZone,omitempty"`
 	// Mode 职责：选择 planar、autoTropic 或 explicitTropic；使用：生成流程决定是否运行纬圈网格预检；边界：未知值拒绝。
 	Mode string `json:"mode"`
 	// GridSegment 职责：保存目标行星纬向分段数；使用：复刻当前 PlanetGrid 的离散经纬网格；边界：必须位于支持范围。
@@ -115,6 +117,16 @@ type SurfaceBandPlan struct {
 // 职责：向前端解释目标纬圈容量和相对用户偏好调整量。
 // 使用：生成成功后展示建议放置圈；边界：不声称已通过建筑碰撞 Physics 检查。
 type SurfacePlan struct {
+	// LatitudeZone 职责：回传实际采用的放置区域键；使用：请求结果核对；边界：空值保留旧自动/精确索引语义。
+	LatitudeZone string `json:"latitudeZone,omitempty"`
+	// LatitudeZoneLabel 职责：显示所选区域的友好名称；使用：指导游戏落点；边界：具体粘贴锚点仍由AnchorLatitudeGrid给出。
+	LatitudeZoneLabel string `json:"latitudeZoneLabel,omitempty"`
+	// PlacementHint 职责：说明所选区域内中心或分界线的具体放置方向；使用：界面与蓝图说明共用；边界：只指导已验证姿态，不把整带名称当作可用范围。
+	PlacementHint string `json:"placementHint,omitempty"`
+	// SafeLatitudeMinDegrees 职责：公开默认方向下最终固定记录已验证的起点纬度下界；使用：实际粘贴提示；边界：缺省表示未计算连续范围，不能代表全选区可用。
+	SafeLatitudeMinDegrees *float64 `json:"safeLatitudeMinDegrees,omitempty"`
+	// SafeLatitudeMaxDegrees 职责：公开同一连续有效范围的上界；使用：与下界共同显示；边界：不覆盖旋转、镜像或已存在建筑。
+	SafeLatitudeMaxDegrees *float64 `json:"safeLatitudeMaxDegrees,omitempty"`
 	// AnchorLatitudeGrid 职责：记录根区域原点的建议纬度；使用：按当前游戏光标锚点验证；边界：不是绝对位置锁定。
 	AnchorLatitudeGrid int `json:"anchorLatitudeGrid"`
 	// PrimaryAreaIndex 职责：记录主粘贴区域；使用：父链和坐标核对；边界：多纬带时不一定为 0。
@@ -185,6 +197,8 @@ type ProductionBinding struct {
 
 // Result 职责：承载生成边界数据；使用：服务与预览联动；边界：不承诺游戏实际验收。
 type Result struct {
+	// DensityReport 职责：保存实际密度应用与验证范围；使用：前端结果说明；边界：不承诺游戏实测或普通对照收益。
+	DensityReport *DensityReport `json:"densityReport,omitempty"`
 	// previewScene 职责：为获选候选保存内部最终姿态；使用：统一出口提交增量预览；边界：未导出，不进入 Wails 或正式结果 JSON。
 	previewScene *generationPreviewSnapshot
 	// BlueprintRef 职责：大对象临时令牌；使用：分片读取；边界：不是任意文件路径。

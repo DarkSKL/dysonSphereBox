@@ -105,6 +105,17 @@ func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([
 		denominator = float64(p.MachineCount)
 	}
 	for _, rate := range p.Inputs {
+		if p.Capacity != nil && rate.ItemID == productionSprayItem(p) && productionRecipeInputCount(r, rate.ItemID) > 0 {
+			// 同物品的原料与供剂走两条真实带；已验证的配置毛流分别约束容量，不能重新合计到一条机器带。
+			for _, role := range []productionInputRole{recipeInputRole, sprayInputRole} {
+				configured, err := configuredRoleInputRate(p, r, rate.ItemID, role)
+				if err != nil {
+					return nil, err
+				}
+				perMachine = math.Max(perMachine, configured/float64(p.MachineCount))
+			}
+			continue
+		}
 		perMachine = math.Max(perMachine, rate.RatePerMinute/denominator)
 	}
 	for _, rate := range p.Outputs {

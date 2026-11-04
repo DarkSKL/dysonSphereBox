@@ -10,8 +10,8 @@ import (
 	"DysonSphereBox/helper/quant"
 )
 
-// GroupRows 职责：在十二口预算内把已验证机器行均衡分配到中央塔两侧；使用：物流塔布局；边界：不增加机器、不超过输入最大行长，无效拆列明确失败。
-func GroupRows(counts []int, itemKinds, slots int) ([]int, int, error) {
+// GroupRows 职责：在十二口预算内把已验证机器行均衡分配到中央塔四侧；使用：物流塔布局；边界：不增加机器、不超过输入最大行长，无效拆列明确失败。
+func GroupRows(counts []int, itemKinds, slots, preferredRows int) ([]int, int, error) {
 	if slots <= 0 || itemKinds < 0 {
 		return nil, 0, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "物流塔物品槽或路线种类无效"}
 	}
@@ -31,7 +31,11 @@ func GroupRows(counts []int, itemKinds, slots int) ([]int, int, error) {
 		total += count
 		longest = max(longest, count)
 	}
-	rows := max(len(counts), min(2, total))
+	minimumRows := perGroup
+	if preferredRows > 0 {
+		minimumRows = min(minimumRows, preferredRows)
+	}
+	rows := max(len(counts), min(minimumRows, total))
 	if rows > perGroup {
 		rows = min(total, ((rows+perGroup-1)/perGroup)*perGroup)
 	}

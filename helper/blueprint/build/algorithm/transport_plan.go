@@ -15,6 +15,8 @@ import (
 
 // transportRow 职责：保存一组机器与其明确物料端口；使用：流量分配和装配；边界：同一量化产线可以拆行但不复制机器。
 type transportRow struct {
+	// quarterTurns 职责：记录局部端口随全场排布的四分之一转；使用：路由入口方向；边界：普通布局为零。
+	quarterTurns int
 	owner, count int
 	info         quant.Production
 	recipe       quant.Recipe
@@ -23,6 +25,9 @@ type transportRow struct {
 	outputs      []*transportRoute
 	// inputStubs 职责：保留原料入口至机器带的真实链；使用：回流接入时保留上游预充口；边界：不能用零净流催化剂伪造外供边。
 	inputStubs map[int][]*placed
+	// sprayInput/sprayStub 职责：保留供剂用途的独立真实入口；使用：同item同时为配方原料和喷涂剂；边界：不能覆盖inputs中的机器原料头。
+	sprayInput *placed
+	sprayStub  []*placed
 	// recycles 职责：登记本行独立物品的优先回流结构；使用：毛流容量、路由与机器出口追踪；边界：不属于规范净流边。
 	recycles []*machineRecycle
 	// selfSpray 职责：保存同一机器行的自产喷涂剂回流；使用：直连模式最终追踪和毛流核算；边界：不作为规范净流边或外供入口。
@@ -31,12 +36,16 @@ type transportRow struct {
 
 // transportRoute 职责：在重排期间保留规范 lane 与真实指针；使用：装配、路由和最终编号；边界：不以建筑位置反推物品。
 type transportRoute struct {
-	edge     quant.FlowEdge
-	rate     float64
-	paired   bool
-	from, to *transportRow
-	filters  []*placed
-	path     []*placed
+	// entryDirection 职责：记录外供入口朝向工厂的第一步；使用：密铺四侧边界；边界：零值兼容原西侧入口。
+	entryDirection vector
+	// inputRole 职责：标识消费者实际用途；使用：同物品两路净流分配与最终连通证明；边界：不改变规范edge ID或总额。
+	inputRole productionInputRole
+	edge      quant.FlowEdge
+	rate      float64
+	paired    bool
+	from, to  *transportRow
+	filters   []*placed
+	path      []*placed
 	// sharedPath 职责：记录同一产物各份额在分支前共用的干线；使用：聚合共享带容量；边界：不同产物不共用机器输出带，也不作为单条lane的端到端路径。
 	sharedPath []*placed
 	start, end *placed
@@ -47,6 +56,7 @@ type transportRoute struct {
 type rowFlow struct {
 	row       *transportRow
 	remaining float64
+	role      productionInputRole
 }
 
 // newLogisticsSummary 职责：创建所有模式共用的诊断口径；使用：规范流图建立后；边界：带等级来自归一化设置而非旧 BeltSpeed。
@@ -100,9 +110,15 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 		if _, err := productionMaterialFlows(p, r); err != nil {
 			return nil, err
 		}
-		counts, err := lineCounts(p, r, b.setting, dataset.ByID[p.MachineID].Speed)
+		counts, err := layoutLineCounts(p, r, b.setting, dataset.ByID[p.MachineID].Speed, req.Density)
 		if err != nil {
 			return nil, err
+		}
+		if b.denseSpatial && b.denseMaxSpan > 0 {
+			counts, err = denseSpatialRowCounts(p, r, b.setting, counts, b.denseMaxSpan)
+			if err != nil {
+				return nil, err
+			}
 		}
 		// 分拣器在机器行内按真实空槽并联和堆叠高度规划，不能在实体方案形成前按旧单臂布局拒绝。
 		for _, count := range counts {
@@ -119,7 +135,19 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 				supplies[node][rate.ItemID] = append(supplies[node][rate.ItemID], &rowFlow{row: row, remaining: rate.RatePerMinute * share})
 			}
 			for _, rate := range row.info.Inputs {
-				demands[node][rate.ItemID] = append(demands[node][rate.ItemID], &rowFlow{row: row, remaining: rate.RatePerMinute * share})
+				if req.Mode != 1 && b.directBoundaryUnits == nil {
+					demands[node][rate.ItemID] = append(demands[node][rate.ItemID], &rowFlow{row: row, remaining: rate.RatePerMinute * share})
+					continue
+				}
+				for _, role := range []productionInputRole{recipeInputRole, sprayInputRole} {
+					part, err := productionRoleInputRate(row.info, row.recipe, rate.ItemID, role)
+					if err != nil {
+						return nil, err
+					}
+					if part > 0 {
+						demands[node][rate.ItemID] = append(demands[node][rate.ItemID], &rowFlow{row: row, remaining: part * share, role: role})
+					}
+				}
 			}
 		}
 	}
@@ -130,6 +158,9 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 		to, hasTo := demands[edge.TargetNodeID]
 		for left > max(1e-8, edge.RatePerMinute*1e-10) {
 			part := math.Min(left, capacity)
+			if (!hasFrom || !hasTo) && b.directBoundaryUnits != nil && b.directBoundaryLaneLimit > 0 {
+				part = math.Min(part, b.directBoundaryLaneLimit)
+			}
 			var source, target *rowFlow
 			if hasFrom {
 				source = nextRowFlow(from[edge.ItemID])
@@ -153,6 +184,7 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 			}
 			if target != nil {
 				route.to = target.row
+				route.inputRole = target.role
 				target.remaining = math.Max(0, target.remaining-part)
 			}
 			b.transportRoutes = append(b.transportRoutes, route)
@@ -160,19 +192,23 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 		}
 	}
 	for _, row := range rows {
-		inputRates := map[int]float64{}
+		type inputKey struct {
+			item int
+			role productionInputRole
+		}
+		inputRates := map[inputKey]float64{}
 		outputRates := map[int]float64{}
 		for _, route := range b.transportRoutes {
 			if route.to == row {
-				inputRates[route.edge.ItemID] += route.rate
+				inputRates[inputKey{route.edge.ItemID, route.inputRole}] += route.rate
 			}
 			if route.from == row {
 				outputRates[route.edge.ItemID] += route.rate
 			}
 		}
-		for item, rate := range inputRates {
+		for key, rate := range inputRates {
 			if rate > capacity+1e-6 {
-				return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行 %d 原料 %d 汇入 %.3f/min，超过单物品输入带容量 %.3f/min", row.owner, item, rate, capacity)}
+				return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行 %d 物品 %d 的独立输入用途汇入 %.3f/min，超过输入带容量 %.3f/min", row.owner, key.item, rate, capacity)}
 			}
 		}
 		for _, item := range row.recipe.Results {
@@ -180,6 +216,9 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 				return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行 %d 产物 %d 独立输出 %.3f/min，超过单带容量 %.3f/min", row.owner, item, rate, capacity)}
 			}
 		}
+	}
+	if err := b.planDenseMaterialNetworks(ctx, rows); err != nil {
+		return nil, err
 	}
 	return rows, nil
 }

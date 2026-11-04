@@ -83,15 +83,25 @@ func validateFinalPlanetRules(ctx context.Context, req Request, encoding *surfac
 		if err := encoding.validateDynamicFacilities(ctx, records); err != nil {
 			return nil, err
 		}
+		encoding.plan.CollisionCoverage = "staticBuildColliders+powerNodeSpacing+stationSpacing+beltCrossings+beltBuildingOccupancy+spraycoaterChannels+inserterSlotPoses+inserterBuildColliders"
 	}
 	if err := validateStationPorts(ctx, records); err != nil {
 		return nil, err
+	}
+	if usesDenseBeltCollisions(ctx) {
+		audit.Checks = append(audit.Checks, LogisticsCheck{RuleID: "dense-blueprint-belt-nodes", Status: "passed", Message: "密铺按原版整图单次粘贴处理同批带间豁免，并检查重叠节点合并；未将整段路径粗管或假想节点盒作为额外限制"})
+		audit.Unverified = append(audit.Unverified, "密铺整图单次粘贴以外的拖拽复制、既有线路合并与建造顺序；请在游戏中按完整蓝图验证")
+	}
+	beltCoverage := "带连接距离、无连接交叉、建筑占用与喷涂通道"
+	if usesDenseBeltCollisions(ctx) {
+		beltCoverage = "带连接距离、整图单次粘贴的带间豁免及节点合并检查、建筑占用与喷涂通道"
+		audit.Profile.Version += "-dense-single-paste"
 	}
 	for _, check := range []LogisticsCheck{
 		{RuleID: "final-references", Status: "passed", Message: "最终 float32 坐标、编号和引用闭合"},
 		{RuleID: "pasted-connection-slots", Status: "passed", Message: "按游戏粘贴顺序重放独占连接槽，所有声明的带、分拣器和设施连接在后续写入后仍存续"},
 		{RuleID: "static-build-colliders", Status: "passed", Message: "已核对原型 OBB 与三维空间索引，无未知静态模型"},
-		{RuleID: "belt-distance-occupancy", Status: "passed", Message: "带连接距离、无连接交叉、建筑占用与喷涂通道"},
+		{RuleID: "belt-distance-occupancy", Status: "passed", Message: beltCoverage},
 		{RuleID: "inserter-slot-geometry", Status: "passed", Message: "分拣器槽位修正、方向、长度、跨格和动态 OBB"},
 		{RuleID: "power-node-spacing", Status: "passed", Message: "按真实电力节点类型检查独立最小间距"},
 		{RuleID: "station-spacing-ports", Status: "passed", Message: "物流塔独立最小间距、物品槽、容量与唯一带端口"},

@@ -23,6 +23,15 @@ func (b *builder) completeConnectedSurfacePower(ctx context.Context, req Request
 	if req.SurfaceLayout == nil || req.SurfaceLayout.Mode == "planar" {
 		return &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "全局球面补电候选缺少球面布局参数"}
 	}
+	// 外供监测器可能扩大包络并改变可用锚点；直连候选只能在这些附件全部完成后比较固定Area目标。
+	if req.Mode == 1 {
+		if err := b.preflightDenseMachineSurface(ctx, req); err != nil {
+			return err
+		}
+		if err := b.rejectDominatedDenseEnvelope(req); err != nil {
+			return err
+		}
+	}
 	encoding, err := b.prepareSurfaceEncodingContext(ctx, req.SurfaceLayout)
 	if err != nil {
 		return err

@@ -152,6 +152,14 @@ func capacityMaterialFlows(p quant.Production, recipe quant.Recipe) (machineMate
 			return out, true, machineMaterialFlowError(recipe.ID, fmt.Sprintf("配置毛原料 %d 缺失", item))
 		}
 		out.inputs[index] = inputs[item]
+		if item == spray {
+			// 同物品的GrossInputs包含喷涂附加消耗；机器臂只承担按真实执行次数恢复的配方份额。
+			configured, roleErr := configuredRoleInputRate(p, recipe, item, recipeInputRole)
+			if roleErr != nil {
+				return out, true, roleErr
+			}
+			out.inputs[index] = configured * scale
+		}
 	}
 	for index, item := range recipe.Results {
 		if !finitePositive(outputs[item]) {
@@ -199,6 +207,9 @@ func productionMaterialFlows(p quant.Production, recipe quant.Recipe) (machineMa
 	for _, item := range recipe.Results {
 		outputItems[item] = true
 		cyclic = cyclic || inputItems[item]
+	}
+	if inputItems[productionSprayItem(p)] && (p.Capacity == nil || p.Capacity.Basis != quant.ProductionCapacityBasisConfiguredFullLoad || len(p.Capacity.GrossInputs) == 0) {
+		return out, machineMaterialFlowError(recipe.ID, "同物品兼作配方原料和供剂时缺少可信毛流，不能把聚合净输入全部当作机器需求")
 	}
 	if !cyclic {
 		if capacity, used, capacityErr := capacityMaterialFlows(p, recipe); used {

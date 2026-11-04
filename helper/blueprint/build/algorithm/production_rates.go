@@ -58,7 +58,18 @@ func (b *builder) annotateLineProductionRates(l *line) error {
 	}{{false, l.recipe.Items, l.inputs, flows.inputs, p.Capacity.GrossInputs, p.Inputs}, {true, l.recipe.Results, l.outputs, flows.outputs, p.Capacity.GrossOutputs, p.Outputs}} {
 		for index, item := range side.items {
 			// 额定值直接从原型重算的满负荷毛流拆行，避免期望流先缩放再除精确台数把225舍入成225.00000000000003。
-			configured := productionItemRate(side.configured, item) / float64(p.MachineCount) * float64(len(l.machines))
+			configuredTotal, plannedNet := productionItemRate(side.configured, item), productionItemRate(side.net, item)
+			if !side.output {
+				configuredTotal, err = configuredRoleInputRate(p, l.recipe, item, recipeInputRole)
+				if err != nil {
+					return err
+				}
+				plannedNet, err = productionRoleInputRate(p, l.recipe, item, recipeInputRole)
+				if err != nil {
+					return err
+				}
+			}
+			configured := configuredTotal / float64(p.MachineCount) * float64(len(l.machines))
 			if !finitePositive(configured) || configured > capacity+1e-6 || configured > math.MaxInt32 {
 				return &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("配方 %d 物品 %d 机器带配置满负荷 %.6f/min 超过等级 %d 单带能力 %.6f/min，不能仅缩小标注", p.RecipeID, item, configured, b.setting.BeltLv, capacity)}
 			}
@@ -73,7 +84,7 @@ func (b *builder) annotateLineProductionRates(l *line) error {
 			anchor.productionRate = &ProductionRateAnnotation{
 				ProductionIndex: anchor.owner, RecipeID: p.RecipeID, ItemID: item, Direction: direction,
 				MachineCount: len(l.machines), BuildingIndex: -1,
-				PlannedRatePerMinute: side.gross[index] * share, PlannedNetRatePerMinute: productionItemRate(side.net, item) * share,
+				PlannedRatePerMinute: side.gross[index] * share, PlannedNetRatePerMinute: plannedNet * share,
 				ConfiguredRatePerMinute: configured, DisplayedRatePerMinute: int(math.Ceil(configured)), Basis: quant.ProductionCapacityBasisConfiguredFullLoad,
 			}
 		}

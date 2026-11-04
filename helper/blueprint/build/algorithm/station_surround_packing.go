@@ -134,7 +134,7 @@ func (b *builder) finishSurroundStationLayouts(ctx context.Context, req Request,
 	best.LogisticsSummary.Metrics.EvaluatedCandidates = len(heights)
 	best.LogisticsSummary.Metrics.RejectedCandidates = rejected
 	best.LogisticsSummary.SearchCandidates = searchCandidates
-	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "station-surround-packing", Status: "passed", Message: fmt.Sprintf("中央塔组机器行分布南北两侧，闭合塔组按真实占地比较 %d 个有限装箱候选（拒绝 %d）；所有可行候选通过完整终检，按面积与过长惩罚选择，不是数学全局最优", len(heights), rejected)})
+	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "station-surround-packing", Status: "passed", Message: fmt.Sprintf("中央塔组机器行沿四侧环绕，闭合塔组按真实占地比较 %d 个有限装箱候选（拒绝 %d）；所有可行候选通过完整终检，按面积与过长惩罚选择，不是数学全局最优", len(heights), rejected)})
 	return *best, nil
 }
 

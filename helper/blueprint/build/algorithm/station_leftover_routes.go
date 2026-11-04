@@ -39,11 +39,17 @@ func (b *builder) addStationLeftover(ctx context.Context, use stationLeftoverUse
 		return stationLeftoverFailure(route, "源塔没有保留同物品的真实供货库存槽")
 	}
 	prefix := stationInner(tower.a, slot)
+	if b.denseSpatial {
+		prefix = denseStationInner(tower.a, slot)
+	}
 	for i, j := 0, len(prefix)-1; i < j; i, j = i+1, j-1 {
 		prefix[i], prefix[j] = prefix[j], prefix[i]
 	}
 	outer := slotOffset(slot)[0]
 	outer.x, outer.y = outer.x+tower.a.x, outer.y+tower.a.y
+	if b.denseSpatial {
+		outer = denseStationOuter(tower.a, slot)
+	}
 	prefix = append(prefix, outer)
 	existing := b.all[blockBegin:]
 	withoutTower := make([]*placed, 0, len(existing)-1)

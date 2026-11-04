@@ -18,6 +18,10 @@ type Status struct {
 
 // DatasetDetail 职责：承载桥接边界；使用：生成器服务；边界：具体验证由服务执行。
 type DatasetDetail struct {
+	// DensityLatitudeOptions 职责：提供后端支持的密铺放置区域；使用：简单位置选择；边界：前端不自行推测纬圈规则。
+	DensityLatitudeOptions []build.DensityLatitudeOption `json:"densityLatitudeOptions"`
+	// DensityProfileVersion 职责：提供当前规则版本；使用：前端几何结果失效；边界：客户端不决定版本。
+	DensityProfileVersion string `json:"densityProfileVersion"`
 	// Info 职责：保存数据集摘要；使用：类型化传递；边界：不隐式访问文件。
 	Info quant.DatasetInfo `json:"info"`
 	// Items 职责：保存物品列表；使用：类型化传递；边界：不隐式访问文件。
@@ -100,6 +104,10 @@ type ChunkResult struct {
 
 // WorkspaceRequest 职责：保存可复核的计算方案快照；使用：导出方案 JSON；边界：不包含账号、文件路径或实际资源库内容。
 type WorkspaceRequest struct {
+	// Density 职责：保存独立密度选项；使用：导出工作区；边界：缺省普通，未知枚举拒绝。
+	Density string `json:"density"`
+	// DensityProfileVersion 职责：记录后端规则版本；使用：离线复现提示；边界：导出时由后端覆盖，不作为验证证明。
+	DensityProfileVersion string `json:"densityProfileVersion"`
 	// Name 职责：保存用户标题；使用：默认文件名；边界：服务清理路径分隔符。
 	Name string `json:"name"`
 	// Request 职责：保存目标、人工配方和量化设置；使用：复核与离线记录；边界：导出前重新求解确认一致性。

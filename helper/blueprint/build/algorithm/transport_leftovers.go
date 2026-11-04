@@ -74,7 +74,7 @@ func transportLeftoverPositions(ctx context.Context, routes []*transportRoute, i
 
 // prepareLeftoverBoundaries 职责：建立与原料区同侧、但方向相反的真实副产物出口；使用：mode1 全图占位前；边界：仅创建端点，随后必须完成寻路及最终连接/容量核验，内部总线策略不在此改写。
 func (b *builder) prepareLeftoverBoundaries(ctx context.Context, inputPositions []vector) error {
-	if b.busFabric != nil {
+	if b.busFabric != nil || b.directBoundaryUnits != nil {
 		return nil
 	}
 	minimum, _ := bounds(b.all)

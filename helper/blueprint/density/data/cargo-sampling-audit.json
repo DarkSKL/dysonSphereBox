@@ -1,0 +1,165 @@
+{
+  "schema": "dsp-cargo-sampling-audit/v1",
+  "date": "2026-11-04",
+  "gameVersion": "0.10.35.29151",
+  "assemblySha256": "ef314425dade51f529f184f07be136cd3c2660a6a81515603c7226fbe7ab1d8c",
+  "referenceSourceSha256": "8f6ef87ef8eeef70e998b4e1f23d4b5259759a4b5e7b684717ef032bf1d94492",
+  "coordinateAssumption": "Primary area anchor 0; radial world positions from original Area-0 local offsets",
+  "facts": {
+    "sampleSpacingMeters": 0.06,
+    "cargoLiftMeters": 0.15,
+    "maximumSamplesPerHalf": 170,
+    "rounding": "nearest ties to even",
+    "headProtectionSamples": 4,
+    "tailProtectionSamples": 5
+  },
+  "method": "Independent float32 arithmetic probe versus Go float64 De Casteljau; not execution inside Unity",
+  "maximumObservedErrorMeters": 2.5541203488835884e-05,
+  "regressionToleranceMeters": 5e-05,
+  "samples": [
+    {
+      "machineItemId": 2317,
+      "armIndex": 4526,
+      "anchorIndex": 14110,
+      "offset": -9,
+      "float32Point": [
+        22.911426544189453,
+        0.8865998983383179,
+        -199.70144653320312
+      ],
+      "independentErrorMeters": 8.700932347921964e-06
+    },
+    {
+      "machineItemId": 2317,
+      "armIndex": 4556,
+      "anchorIndex": 14112,
+      "offset": -13,
+      "float32Point": [
+        18.57012367248535,
+        0.8866000175476074,
+        -200.15184020996094
+      ],
+      "independentErrorMeters": 2.5541203488835884e-05
+    },
+    {
+      "machineItemId": 2317,
+      "armIndex": 6586,
+      "anchorIndex": 14362,
+      "offset": -18,
+      "float32Point": [
+        20.685941696166992,
+        0.8843905329704285,
+        -199.4419708251953
+      ],
+      "independentErrorMeters": 1.3514328168704843e-05
+    },
+    {
+      "machineItemId": 2317,
+      "armIndex": 6604,
+      "anchorIndex": 14362,
+      "offset": -18,
+      "float32Point": [
+        20.685941696166992,
+        0.8843905329704285,
+        -199.4419708251953
+      ],
+      "independentErrorMeters": 1.3514328168704843e-05
+    },
+    {
+      "machineItemId": 2318,
+      "armIndex": 3993,
+      "anchorIndex": 17623,
+      "offset": 4,
+      "float32Point": [
+        9.90647029876709,
+        77.84541320800781,
+        -185.0634765625
+      ],
+      "independentErrorMeters": 1.815059237128983e-05
+    },
+    {
+      "machineItemId": 2318,
+      "armIndex": 4066,
+      "anchorIndex": 17624,
+      "offset": -2,
+      "float32Point": [
+        11.708541870117188,
+        77.84541320800781,
+        -184.9582061767578
+      ],
+      "independentErrorMeters": 1.822378501701381e-05
+    },
+    {
+      "machineItemId": 2318,
+      "armIndex": 6092,
+      "anchorIndex": 9773,
+      "offset": 0,
+      "float32Point": [
+        7.83469820022583,
+        77.65179443359375,
+        -184.70252990722656
+      ],
+      "independentErrorMeters": 1.5985060527228134e-05
+    },
+    {
+      "machineItemId": 2318,
+      "armIndex": 6115,
+      "anchorIndex": 9795,
+      "offset": 0,
+      "float32Point": [
+        9.87697696685791,
+        77.65179443359375,
+        -184.60385131835938
+      ],
+      "independentErrorMeters": 2.091750864600374e-05
+    },
+    {
+      "machineItemId": 2319,
+      "armIndex": 2690,
+      "anchorIndex": 17785,
+      "offset": 0,
+      "float32Point": [
+        8.570714950561523,
+        154.8837890625,
+        -127.84309387207031
+      ],
+      "independentErrorMeters": 9.408746115495346e-06
+    },
+    {
+      "machineItemId": 2319,
+      "armIndex": 2742,
+      "anchorIndex": 17784,
+      "offset": 12,
+      "float32Point": [
+        6.950340747833252,
+        154.8837890625,
+        -127.94142150878906
+      ],
+      "independentErrorMeters": 1.136357093689788e-05
+    },
+    {
+      "machineItemId": 2319,
+      "armIndex": 4967,
+      "anchorIndex": 17744,
+      "offset": 5,
+      "float32Point": [
+        6.922521591186523,
+        154.49853515625,
+        -127.623779296875
+      ],
+      "independentErrorMeters": 1.0540079569344166e-05
+    },
+    {
+      "machineItemId": 2319,
+      "armIndex": 5003,
+      "anchorIndex": 17743,
+      "offset": 17,
+      "float32Point": [
+        8.543380737304688,
+        154.49853515625,
+        -127.5255355834961
+      ],
+      "independentErrorMeters": 1.2100421379971354e-05
+    }
+  ]
+}

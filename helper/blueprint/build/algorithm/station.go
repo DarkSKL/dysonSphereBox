@@ -245,6 +245,16 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, config cont
 			}
 			centers[i] = vector{float64(i)*30 + offset, centerY, 0}
 		}
+		invalidCenter := false
+		for _, center := range centers {
+			if stationCenterBlocked(center, buildingObstacles) {
+				invalidCenter = true
+				break
+			}
+		}
+		if invalidCenter {
+			continue
+		}
 		blocked := map[vector]bool{}
 		for point := range buildingObstacles {
 			if point.z == 0 {
@@ -255,11 +265,11 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, config cont
 		// 外部物流路线不能穿过已经装配的产线带；混料 B 入口旁已有收集带，仅保留入口本身作为可出发点。
 		for _, l := range lines {
 			for _, p := range l.all {
-				if p.a.z != 0 {
+				if p.a.z > .25 {
 					continue
 				}
 				if p.record.ItemID > 2000 && p.record.ItemID < 2010 {
-					blocked[p.a] = true
+					blocked[beltCell(p.a)] = true
 					occupiedBelts[beltCell(p.a)] = true
 				}
 				if p.record.RecipeID > 0 {
@@ -323,7 +333,7 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, config cont
 				target.x += center.x
 				target.y += center.y
 				// 寻路器允许进入被屏蔽的终点，因此必须另核对端口及追加的塔内带，不能侵占其他产线入口。
-				occupied := occupiedBelts[beltCell(target)]
+				occupied := occupiedBelts[beltCell(target)] || stationPortBlocked(center, slot, buildingObstacles)
 				for _, point := range stationInner(center, slot) {
 					occupied = occupied || occupiedBelts[beltCell(point)]
 				}
@@ -372,6 +382,13 @@ func (b *builder) attachStations(ctx context.Context, lines []*line, config cont
 		for i := range routes {
 			r := &routes[i]
 			available := stationUnreservedSlots(priority, reserved[r.tower])
+			clear := make([]int, 0, len(available))
+			for _, slot := range available {
+				if !stationPortBlocked(centers[r.tower], slot, buildingObstacles) {
+					clear = append(clear, slot)
+				}
+			}
+			available = clear
 			if usedSlots[r.tower] >= len(available) {
 				return &blueprint.Error{Code: "GEN_E_STATION_PORT", Message: "预留副产物真实出带口后普通塔端口不足"}
 			}

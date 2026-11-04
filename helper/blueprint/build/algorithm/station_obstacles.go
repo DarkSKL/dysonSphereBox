@@ -56,3 +56,30 @@ func stationBuildingObstacles(ctx context.Context, existing []*placed) (map[vect
 	}
 	return blocked, nil
 }
+
+// stationPortBlocked 职责：复核塔口固定尾段是否侵占已有建筑；使用：平面和三维接驳选择端口；边界：A* 允许进入目标不代表附加的塔内带可穿过电杆或机器。
+func stationPortBlocked(center vector, slot int, obstacles map[vector]bool) bool {
+	outer := slotOffset(slot)[0]
+	outer.x += center.x
+	outer.y += center.y
+	for _, point := range append(stationInner(center, slot), outer) {
+		if obstacles[beltCell(point)] {
+			return true
+		}
+	}
+	return false
+}
+
+// stationCenterBlocked 职责：在接线前排除会侵占既有机器的塔中心候选；使用：中央塔有限平移搜索；边界：保守局部格预筛选，真实塔型OBB仍由最终规则确认。
+func stationCenterBlocked(center vector, obstacles map[vector]bool) bool {
+	for x := -3.; x <= 3; x++ {
+		for y := -3.; y <= 3; y++ {
+			for z := 0.; z <= 6; z++ {
+				if obstacles[beltCell(vector{center.x + x, center.y + y, z})] {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}

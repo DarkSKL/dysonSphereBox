@@ -19,6 +19,9 @@ type flyLayoutVariant = mode2common.LayoutVariant
 
 // generateFlyLayout 职责：只从通过完整最终规则的配送候选中选择最小包络；使用：mode2/5 主链；边界：有界启发式不宣称数学全局最优，也不将机队能力标为已验证。
 func (b *builder) generateFlyLayout(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
+	if req.Mode == 2 && req.Density == densityDense {
+		return b.generateDenseFlyLayout(ctx, req, dataset)
+	}
 	limits, err := b.layoutHeightCandidates(ctx, req, dataset, false)
 	if err != nil {
 		return Result{}, err
@@ -118,7 +121,7 @@ func (b *builder) assembleFlyLayout(ctx context.Context, req Request, dataset *q
 			if err != nil {
 				return err
 			}
-			counts, err := lineCounts(production, recipe, b.setting, dataset.ByID[production.MachineID].Speed)
+			counts, err := layoutLineCounts(production, recipe, b.setting, dataset.ByID[production.MachineID].Speed, req.Density)
 			if err != nil {
 				return err
 			}

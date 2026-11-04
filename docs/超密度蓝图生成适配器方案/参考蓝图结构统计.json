@@ -1,0 +1,395 @@
+{
+  "sourceFile": "73125增产剂v1.3（本地版）.txt",
+  "sourceBytes": 456540,
+  "sha256": "8f6ef87ef8eeef70e998b4e1f23d4b5259759a4b5e7b684717ef032bf1d94492",
+  "buildingCount": 18069,
+  "areaCount": 4,
+  "gameVersion": "0.10.35.29151",
+  "binaryVersion": 2,
+  "areas": [
+    {
+      "index": 0,
+      "parentIndex": -1,
+      "tropicAnchor": 0,
+      "areaSegments": 200,
+      "anchorLocalOffsetX": 0,
+      "anchorLocalOffsetY": 0,
+      "width": 200,
+      "height": 78
+    },
+    {
+      "index": 1,
+      "parentIndex": 0,
+      "tropicAnchor": 0,
+      "areaSegments": 160,
+      "anchorLocalOffsetX": 0,
+      "anchorLocalOffsetY": 78,
+      "width": 160,
+      "height": 50
+    },
+    {
+      "index": 2,
+      "parentIndex": 1,
+      "tropicAnchor": 0,
+      "areaSegments": 120,
+      "anchorLocalOffsetX": 0,
+      "anchorLocalOffsetY": 50,
+      "width": 120,
+      "height": 25
+    },
+    {
+      "index": 3,
+      "parentIndex": 2,
+      "tropicAnchor": 0,
+      "areaSegments": 100,
+      "anchorLocalOffsetX": 0,
+      "anchorLocalOffsetY": 25,
+      "width": 101,
+      "height": 20
+    }
+  ],
+  "items": {
+    "2002": 43,
+    "2003": 11173,
+    "2012": 43,
+    "2013": 2380,
+    "2014": 2059,
+    "2103": 4,
+    "2104": 12,
+    "2201": 90,
+    "2212": 16,
+    "2313": 136,
+    "2317": 488,
+    "2318": 1430,
+    "2319": 195
+  },
+  "recipes": {
+    "35": 488,
+    "61": 195,
+    "106": 260,
+    "107": 520,
+    "108": 650
+  },
+  "recordLayouts": {
+    "v2": 18069
+  },
+  "duplicateIndices": 0,
+  "danglingReferences": 0,
+  "crossAreaReferences": 0,
+  "perArea": [
+    {
+      "area": 0,
+      "count": 18069,
+      "firstEndpointBounds": {
+        "x": [
+          0.2918573,
+          199.68205
+        ],
+        "y": [
+          -0.77003235,
+          171.96791
+        ],
+        "z": [
+          -0.005037692,
+          5.7521877
+        ]
+      }
+    },
+    {
+      "area": 1,
+      "count": 0,
+      "firstEndpointBounds": null
+    },
+    {
+      "area": 2,
+      "count": 0,
+      "firstEndpointBounds": null
+    },
+    {
+      "area": 3,
+      "count": 0,
+      "firstEndpointBounds": null
+    }
+  ],
+  "itemSpatial": [
+    {
+      "item": 2002,
+      "count": 43,
+      "modelCounts": {
+        "36": 43
+      },
+      "zRange": [
+        3.9999826,
+        4.000017
+      ],
+      "nonIntegerXY": 38,
+      "yawDistinctRoundedTo3Decimals": 7
+    },
+    {
+      "item": 2003,
+      "count": 11173,
+      "modelCounts": {
+        "37": 11173
+      },
+      "zRange": [
+        -5.9511516e-05,
+        5.7521877
+      ],
+      "nonIntegerXY": 10681,
+      "yawDistinctRoundedTo3Decimals": 1673
+    },
+    {
+      "item": 2012,
+      "count": 43,
+      "modelCounts": {
+        "42": 43
+      },
+      "zRange": [
+        3.9999826,
+        4.0000286
+      ],
+      "nonIntegerXY": 38,
+      "yawDistinctRoundedTo3Decimals": 5
+    },
+    {
+      "item": 2013,
+      "count": 2380,
+      "modelCounts": {
+        "43": 2380
+      },
+      "zRange": [
+        -0.0049690274,
+        5.2128963
+      ],
+      "nonIntegerXY": 2374,
+      "yawDistinctRoundedTo3Decimals": 76
+    },
+    {
+      "item": 2014,
+      "count": 2059,
+      "modelCounts": {
+        "483": 2059
+      },
+      "zRange": [
+        -0.005037692,
+        4.9999905
+      ],
+      "nonIntegerXY": 2034,
+      "yawDistinctRoundedTo3Decimals": 105
+    },
+    {
+      "item": 2103,
+      "count": 4,
+      "modelCounts": {
+        "49": 4
+      },
+      "zRange": [
+        -3.6623333e-05,
+        -1.3735146e-05
+      ],
+      "nonIntegerXY": 4,
+      "yawDistinctRoundedTo3Decimals": 1
+    },
+    {
+      "item": 2104,
+      "count": 12,
+      "modelCounts": {
+        "50": 12
+      },
+      "zRange": [
+        -5.9511516e-05,
+        9.153039e-06
+      ],
+      "nonIntegerXY": 12,
+      "yawDistinctRoundedTo3Decimals": 1
+    },
+    {
+      "item": 2201,
+      "count": 90,
+      "modelCounts": {
+        "44": 90
+      },
+      "zRange": [
+        -3.6623333e-05,
+        7.7817596e-05
+      ],
+      "nonIntegerXY": 90,
+      "yawDistinctRoundedTo3Decimals": 1
+    },
+    {
+      "item": 2212,
+      "count": 16,
+      "modelCounts": {
+        "68": 16
+      },
+      "zRange": [
+        -2.5179239e-05,
+        2.0597132e-05
+      ],
+      "nonIntegerXY": 16,
+      "yawDistinctRoundedTo3Decimals": 2
+    },
+    {
+      "item": 2313,
+      "count": 136,
+      "modelCounts": {
+        "120": 136
+      },
+      "zRange": [
+        2.999231,
+        4.7493763
+      ],
+      "nonIntegerXY": 84,
+      "yawDistinctRoundedTo3Decimals": 17
+    },
+    {
+      "item": 2317,
+      "count": 488,
+      "modelCounts": {
+        "376": 488
+      },
+      "zRange": [
+        -0.000242617,
+        0.0002609231
+      ],
+      "nonIntegerXY": 488,
+      "yawDistinctRoundedTo3Decimals": 2
+    },
+    {
+      "item": 2318,
+      "count": 1430,
+      "modelCounts": {
+        "456": 1430
+      },
+      "zRange": [
+        -9.3843795e-05,
+        7.7817596e-05
+      ],
+      "nonIntegerXY": 1430,
+      "yawDistinctRoundedTo3Decimals": 4
+    },
+    {
+      "item": 2319,
+      "count": 195,
+      "modelCounts": {
+        "457": 195
+      },
+      "zRange": [
+        -1.3735146e-05,
+        9.153039e-06
+      ],
+      "nonIntegerXY": 195,
+      "yawDistinctRoundedTo3Decimals": 2
+    }
+  ],
+  "nearestSameTypeLocalXYExamples": [
+    {
+      "itemId": 2317,
+      "localXYDistance": 3.4979710000005713,
+      "buildings": [
+        {
+          "index": 428,
+          "itemId": 2317,
+          "modelIndex": 376,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 16.842545,
+            "y": 14.019942,
+            "z": 0.00023803489
+          },
+          "yaw": 180,
+          "recipeId": 35
+        },
+        {
+          "index": 458,
+          "itemId": 2317,
+          "modelIndex": 376,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 16.842543,
+            "y": 10.521971,
+            "z": -2.5179239e-05
+          },
+          "yaw": 180,
+          "recipeId": 35
+        }
+      ]
+    },
+    {
+      "itemId": 2318,
+      "localXYDistance": 3.0419800000000237,
+      "buildings": [
+        {
+          "index": 1969,
+          "itemId": 2318,
+          "modelIndex": 456,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 197.30397,
+            "y": 142.842,
+            "z": -2.2910538e-06
+          },
+          "yaw": 90,
+          "recipeId": 106
+        },
+        {
+          "index": 1971,
+          "itemId": 2318,
+          "modelIndex": 456,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 197.30397,
+            "y": 139.80002,
+            "z": -2.2910538e-06
+          },
+          "yaw": 90,
+          "recipeId": 106
+        }
+      ]
+    },
+    {
+      "itemId": 2319,
+      "localXYDistance": 2.319905792916448,
+      "buildings": [
+        {
+          "index": 2075,
+          "itemId": 2319,
+          "modelIndex": 457,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 2.0500057,
+            "y": 143.7158,
+            "z": -2.2910538e-06
+          },
+          "yaw": 180,
+          "recipeId": 61
+        },
+        {
+          "index": 2124,
+          "itemId": 2319,
+          "modelIndex": 457,
+          "areaIndex": 0,
+          "localOffset": {
+            "x": 1.930003,
+            "y": 141.399,
+            "z": -2.2910538e-06
+          },
+          "yaw": 0,
+          "recipeId": 61
+        }
+      ]
+    }
+  ],
+  "analysis": {
+    "date": "2026-11-02",
+    "sourceRevision": "b1b1e769a9c54a48f3690bedaa5c9996d5a289c2",
+    "checksumValid": true,
+    "redecodedAreaRecordsEqual": true,
+    "redecodedBuildingRecordsEqual": true,
+    "reencodeWithoutOriginalGzipVerified": true,
+    "strictDecode": true,
+    "gamePlacementTestedByThisAnalysis": false,
+    "fullGeometryRulesExecuted": false,
+    "coordinateNote": "原始 Area 局部坐标；非整数容差 1e-4；范围仅统计首端；引用检查仅覆盖显式输入输出。"
+  }
+}

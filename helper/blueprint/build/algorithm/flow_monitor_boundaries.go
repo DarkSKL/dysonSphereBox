@@ -14,7 +14,7 @@ import (
 // completeBoundaryFlowMonitors 职责：保证每条独立外供 lane 的合流前原料带存在一个合法监测器；使用：直连候选全部落位后调用；边界：其它模式复用本地机器带监测，不创建额外外部带；失败撤回本函数新增设施。
 // 逻辑流：1. 核对真实入口和独立带链 => 2. 复用已有监测器或按入口向内选点 => 3. 用全布局补电 => 4. 执行全局碰撞和供电复核；任一路无解即拒绝候选。
 func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (err error) {
-	if !b.setting.EnableFlowMonitor || mode != 1 {
+	if !b.setting.EnableFlowMonitor || mode != 1 && b.directBoundaryUnits == nil {
 		return nil
 	}
 	if ctx == nil {
@@ -46,6 +46,7 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 	incoming := make(map[*placed]int, len(b.all))
 	existing := map[vector][]*placed{}
 	items := map[*placed]map[int]bool{}
+	routes := b.denseBoundaryMonitorRoutes()
 	for index, entity := range b.all {
 		if index%64 == 0 {
 			if err = b.checkGeneration("原料入口监测占位索引"); err != nil {
@@ -60,7 +61,7 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 			existing[entity.a] = append(existing[entity.a], entity)
 		}
 	}
-	for _, route := range b.transportRoutes {
+	for _, route := range routes {
 		if route == nil {
 			return boundaryFlowMonitorError(nil, "物料路线为空，无法证明独立原料入口")
 		}
@@ -81,7 +82,7 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 	}
 	lanes := 0
 	claimed := map[*placed]bool{}
-	for _, route := range b.transportRoutes {
+	for _, route := range routes {
 		if err = b.checkGeneration("原料入口流速监测"); err != nil {
 			return err
 		}

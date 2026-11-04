@@ -1,0 +1,28 @@
+{
+  "schema": "dsp-blueprint-preview-interaction-audit/v1",
+  "date": "2026-11-04",
+  "gameVersion": "0.10.35.29151",
+  "assemblySha256": "ef314425dade51f529f184f07be136cd3c2660a6a81515603c7226fbe7ab1d8c",
+  "source": "Local BuildTool_BlueprintPaste.ActiveColliders and CheckBuildConditions",
+  "scope": "Entities in the same single blueprint paste preview, layer18 BuildPreviewModel",
+  "facts": [
+    {
+      "rule": "preview-inserter-versus-non-inserter",
+      "result": "Collision candidate is skipped when exactly one preview is an inserter",
+      "sourceRegion": "CheckBuildConditions first collision loop; independently repeated in inserter repair and belt capsule checks"
+    },
+    {
+      "rule": "single-paste-belt-preview",
+      "result": "Preview models are activated for needModel; belts without needModel are separately added only for multiple drag dots",
+      "sourceRegion": "ActiveColliders"
+    },
+    {
+      "rule": "dense-routing-consequence",
+      "result": "Blocking every XY grid cell inside an inserter two-endpoint rectangle is stricter than the verified same-preview belt/inserter interaction; remove that coarse mask only in the applicable dense pipeline while retaining actual building, node and final inserter-inserter checks"
+    }
+  ],
+  "unproven": [
+    "Interactions with existing scene colliders follow a different branch; no general ignore-all claim",
+    "Terrain, game construction order and runtime throughput are not tested by this audit"
+  ]
+}
