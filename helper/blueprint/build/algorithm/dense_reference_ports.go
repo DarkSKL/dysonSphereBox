@@ -110,6 +110,7 @@ func (b *builder) appendReferenceThirdPort(l *line, anchors []float64, bandY, le
 			}
 		}
 		arm := b.make(int(template.record.ItemID), 0, 0, 0)
+		arm.densityThirdInput = input
 		arm.record = template.record
 		arm.record.Parameters = append([]int32(nil), template.record.Parameters...)
 		arm.a, arm.b = template.a, template.b

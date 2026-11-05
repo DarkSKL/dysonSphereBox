@@ -24,6 +24,8 @@ type vector struct{ x, y, z float64 }
 type placed struct {
 	// densityCargo 职责：保存参考臂实际取放目标与独立物料轨道；使用：最终货物采样重绑；边界：值类型元数据及只读轨道切片可随候选快照安全复制。
 	densityCargo denseCargoTarget
+	// densityThirdInput 职责：标识参考单元派生的第三输入臂；使用：目标纬度局部端口适配；边界：仅内部装配元数据，不写入蓝图。
+	densityThirdInput bool
 	// densityPattern 职责：记录实际机器局部布局来源；使用：获选候选的密度报告；边界：仅生成器写入，不能由请求自证。
 	densityPattern string
 	// previewID 职责：保存可选任务内对象身份；使用：临时预览增量；边界：不参与记录编号、连接或几何判断。
