@@ -228,7 +228,7 @@ func (encoding *surfaceEncoding) surfaceInserterBoxesMeasured(ctx context.Contex
 			trace += poses[0].axes[axis].Dot(poses[1].axes[axis])
 		}
 		backwards := !belt[0] && forward.Dot(poses[0].axes[2]) < 0 || !belt[1] && forward.Dot(poses[1].axes[2]) < 0
-		if backwards || (trace-1)*.5 < math.Cos(30*math.Pi/180)-1e-4 || math.Abs(forward.Dot(poses[0].axes[2])) < math.Cos(24*math.Pi/180)-1e-4 || math.Abs(forward.Dot(poses[1].axes[2])) < math.Cos(24*math.Pi/180)-1e-4 {
+		if backwards || surfaceInserterAngleLimitExceeded(forward.Dot(poses[0].axes[2]), forward.Dot(poses[1].axes[2]), (trace-1)*.5) {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("分拣器 %d 修正后的端点偏斜超过游戏限制（端点夹角%.2f°/%.2f°，姿态差%.2f°）", record.Index, math.Acos(math.Min(1, math.Abs(forward.Dot(poses[0].axes[2]))))*180/math.Pi, math.Acos(math.Min(1, math.Abs(forward.Dot(poses[1].axes[2]))))*180/math.Pi, math.Acos(math.Max(-1, math.Min(1, (trace-1)*.5)))*180/math.Pi)}
 		}
 		if encoding.inserterBuried(poses) {
@@ -265,4 +265,9 @@ func (encoding *surfaceEncoding) surfaceInserterBoxesMeasured(ctx context.Contex
 		}
 	}
 	return boxes, nil
+}
+
+// surfaceInserterAngleLimitExceeded 职责：对齐原生24度端点偏角及30度姿态差上限；使用：完整分拣器校验；边界：不在余弦阈值上减容差，以免把实际超过角度上限的记录放行。
+func surfaceInserterAngleLimitExceeded(firstDot, secondDot, relativeCos float64) bool {
+	return math.Abs(firstDot) < math.Cos(24*math.Pi/180) || math.Abs(secondDot) < math.Cos(24*math.Pi/180) || relativeCos < math.Cos(30*math.Pi/180)
 }

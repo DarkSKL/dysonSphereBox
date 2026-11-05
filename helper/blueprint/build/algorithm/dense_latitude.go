@@ -5,11 +5,34 @@ package build
 
 import (
 	"DysonSphereBox/helper/blueprint"
+	"cmp"
 	"context"
 	"fmt"
 	"math"
 	"sort"
 )
+
+// compareDenseLatitudeEdge 职责：第3档选边缘时优先比较实际可建包络距边界的格数；使用：已通过完整规则的直连候选择优；边界：不让更小面积覆盖用户的放置位置选择。
+func compareDenseLatitudeEdge(layout *SurfaceLayout, a, b *SurfacePlan) int {
+	if layout == nil || a == nil || b == nil {
+		return 0
+	}
+	selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone)
+	if !ok || selection.tier != 3 || selection.position == "center" {
+		return 0
+	}
+	band, _, err := densityLatitudeBand(layout.LatitudeZone, layout.GridSegment)
+	if err != nil {
+		return 0
+	}
+	gap := func(plan *SurfacePlan) int {
+		if selection.position == "south" {
+			return plan.AnchorLatitudeGrid - band.low
+		}
+		return band.high - plan.AnchorLatitudeGrid - plan.LayoutHeight + 1
+	}
+	return cmp.Compare(gap(a), gap(b))
+}
 
 // DensityLatitudeOption 职责：提供简单放置区域选项；使用：数据集元信息与界面下拉；边界：选项不承诺任意产量均可放置。
 type DensityLatitudeOption struct {
@@ -87,6 +110,12 @@ func surfaceLayoutAnchorCandidates(layout *SurfaceLayout, width, height int) []i
 	if selection.tier == 3 {
 		// 狭窄原生带可使用全部格行；完整碰撞检查决定落点，不能再重复扣除装箱已预留的线路余量。
 		margin = 0
+		if selection.position == "south" {
+			preferred = band.low
+		}
+		if selection.position == "north" {
+			preferred = band.high - height + 1
+		}
 	}
 	for anchor := band.low + margin; anchor+height-1 <= band.high-margin; anchor++ {
 		if candidateFitsRing(anchor, 0, height-1, width, layout.GridSegment) {
@@ -167,7 +196,7 @@ func densityLatitudePlacementHint(plan *SurfacePlan) string {
 		}
 		latitude = fmt.Sprintf("%s%.2f°", direction, math.Abs(plan.LatitudeDegrees))
 	}
-	hint := fmt.Sprintf("；建造位置：%s，建议放置起点：%s，请以默认方向整张粘贴", plan.LatitudeZoneLabel, latitude)
+	hint := fmt.Sprintf("；建造位置：%s，蓝图光标建议位置：%s，请以默认方向整张粘贴", plan.LatitudeZoneLabel, latitude)
 	if plan.SafeLatitudeMinDegrees != nil && plan.SafeLatitudeMaxDegrees != nil {
 		low, high := *plan.SafeLatitudeMinDegrees, *plan.SafeLatitudeMaxDegrees
 		format := func(degrees float64) string {
@@ -186,7 +215,7 @@ func densityLatitudePlacementHint(plan *SurfacePlan) string {
 		if placement == "" {
 			placement = densityLatitudePositionHint(plan.LatitudeZone)
 		}
-		hint += fmt.Sprintf("；默认方向已验证起点范围：%s至%s；%s，整图保持在同一纬带内", format(low), format(high), placement)
+		hint += fmt.Sprintf("；默认方向已验证光标范围：%s至%s；%s，整图保持在同一纬带内", format(low), format(high), placement)
 	}
 	return hint
 }

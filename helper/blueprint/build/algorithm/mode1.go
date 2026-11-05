@@ -184,6 +184,11 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 			better = betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics)
 			if candidate.denseSpatial {
 				better = betterDenseCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics)
+				if req.Density == densityDense {
+					if edgeOrder := compareDenseLatitudeEdge(req.SurfaceLayout, out.SurfacePlan, best.SurfacePlan); edgeOrder != 0 {
+						better = edgeOrder < 0
+					}
+				}
 			}
 		}
 		if better {
@@ -208,6 +213,11 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 	searchMessage := fmt.Sprintf("最多 %d 个候选：先比较 %d 个就近入口矩形/轮廓布局，仅在全部不可行时独立重建兼容入口布局；评估 %d、拒绝 %d，按面积和内部带长选择可行方案，不代表数学全局最优", budget, layouts, evaluated, rejected)
 	if req.Density == densityDense {
 		searchMessage = fmt.Sprintf("全场密铺评估 %d 个候选，拒绝 %d 个；比较四向排布、容量组内短行和小数位置微调。优先完整紧凑矩形，再减小包络与真实带成本，不奖励铺带填空；不代表数学全局最优", evaluated, rejected)
+		if req.SurfaceLayout != nil {
+			if selected, ok := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone); ok && selected.tier == 3 && selected.position != "center" {
+				searchMessage += "；第3档指定边缘优先选择实际靠边且通过完整校验的候选，再比较空间与线路"
+			}
+		}
 	}
 	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: searchMessage})
 	return *best, nil

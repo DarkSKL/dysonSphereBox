@@ -19,7 +19,7 @@ func TestDenseEquatorEdgeOrientation(t *testing.T) {
 }
 
 // testDenseMatrixRegions 职责：复用矩阵的产能、朝向、塔数、占地与导出落点检查；使用：分档验收；边界：导出仅在显式设置环境变量时发生。
-func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes []int) {
+func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes []int, settings ...Setting) {
 	t.Helper()
 	for _, rate := range rates {
 		plan, err := quant.Solve(context.Background(), quant.Request{Dataset: "Vanilla", Targets: []quant.Target{{ItemID: 6001, RatePerMinute: rate}}})
@@ -29,7 +29,11 @@ func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes
 		for _, zone := range zones {
 			for _, mode := range modes {
 				t.Run(fmt.Sprintf("%.0f/%s/mode%d", rate, zone, mode), func(t *testing.T) {
-					req := Request{Plan: plan, Mode: mode, Density: densityDense, Setting: Setting{BeltLv: 3, InserterLv: 4}, SurfaceLayout: &SurfaceLayout{Mode: "autoTropic", GridSegment: 200, LatitudeZone: zone}, Name: "矩阵纬带分区回归"}
+					setting := Setting{BeltLv: 3, InserterLv: 4}
+					if len(settings) > 0 {
+						setting = settings[0]
+					}
+					req := Request{Plan: plan, Mode: mode, Density: densityDense, Setting: setting, SurfaceLayout: &SurfaceLayout{Mode: "autoTropic", GridSegment: 200, LatitudeZone: zone}, Name: "矩阵纬带分区回归"}
 					result, err := Generate(context.Background(), req)
 					if err != nil {
 						t.Fatal(err)

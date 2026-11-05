@@ -125,6 +125,13 @@ func (b *builder) appendReferenceThirdPort(l *line, anchors []float64, bandY, le
 				if machine.a.y > bandY {
 					tipRaise = .29
 				}
+				// 第3档第三输入臂的抬头姿态会逼近24度端点限制；降低动画端点，带高及真实货物采样点保持独立校验。
+				if b.generationCtx != nil {
+					zone, _ := b.generationCtx.Value(densityLatitudeKey{}).(string)
+					if selection, ok := densityLatitudeSelectionFor(zone); ok && selection.tier == 3 {
+						tipRaise -= .01
+					}
+				}
 			}
 			// 带端动画姿态与真实cargo高度分开：制造变体调整臂盒净空，采样目标仍只按实际带高差变化。
 			arm.a.z += tipRaise
