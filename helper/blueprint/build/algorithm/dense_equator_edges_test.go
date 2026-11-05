@@ -29,7 +29,7 @@ func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes
 		for _, zone := range zones {
 			for _, mode := range modes {
 				t.Run(fmt.Sprintf("%.0f/%s/mode%d", rate, zone, mode), func(t *testing.T) {
-					req := Request{Plan: plan, Mode: mode, Density: densityDense, Setting: Setting{BeltLv: 3, InserterLv: 4}, SurfaceLayout: &SurfaceLayout{Mode: "autoTropic", GridSegment: 200, LatitudeZone: zone}, Name: "赤道边缘朝向回归"}
+					req := Request{Plan: plan, Mode: mode, Density: densityDense, Setting: Setting{BeltLv: 3, InserterLv: 4}, SurfaceLayout: &SurfaceLayout{Mode: "autoTropic", GridSegment: 200, LatitudeZone: zone}, Name: "矩阵纬带分区回归"}
 					result, err := Generate(context.Background(), req)
 					if err != nil {
 						t.Fatal(err)
@@ -38,8 +38,11 @@ func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes
 					if err != nil || !document.ChecksumValid {
 						t.Fatalf("严格解码失败：%v", err)
 					}
-					deviation, towers, machines := 0., 0, 0
+					deviation, towers, machines, distributors := 0., 0, 0, 0
 					for _, record := range document.Buildings {
+						if record.ItemID == 2107 {
+							distributors++
+						}
 						if record.RecipeID > 0 {
 							machines++
 						}
@@ -59,7 +62,7 @@ func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes
 							}
 						}
 					}
-					t.Logf("footprint=%dx%d towers=%d yawDeviation=%.3f anchor=%d", result.SurfacePlan.LayoutWidth, result.SurfacePlan.LayoutHeight, towers, deviation, result.SurfacePlan.AnchorLatitudeGrid)
+					t.Logf("footprint=%dx%d towers=%d distributors=%d yawDeviation=%.3f anchor=%d", result.SurfacePlan.LayoutWidth, result.SurfacePlan.LayoutHeight, towers, distributors, deviation, result.SurfacePlan.AnchorLatitudeGrid)
 					if deviation > .001 {
 						t.Errorf("建筑偏转%.3f度，仍未保持正交朝向", deviation)
 					}
@@ -69,6 +72,9 @@ func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes
 					if mode >= 3 && towers != 1 {
 						t.Errorf("一塔外部物流被回退为%d塔", towers)
 					}
+					if mode == 2 && distributors != 3 {
+						t.Errorf("铁矿、铜矿和矩阵外部物流应使用3个配送器，实际%d个", distributors)
+					}
 					metrics := result.LogisticsSummary.Metrics
 					selection, _ := densityLatitudeSelectionFor(zone)
 					aspectLimit := 2.
@@ -76,7 +82,17 @@ func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes
 					if selection.tier == 2 {
 						aspectLimit = 2.2
 					}
-					if result.SurfacePlan.LayoutWidth > 55 || result.SurfacePlan.LayoutHeight > 55 || metrics.EnvelopeArea > 1800 || metrics.EnvelopeAspectRatio > aspectLimit {
+					widthLimit, heightLimit := 55, 55
+					if selection.tier == 3 {
+						// 窄环允许经向延伸，以真实环宽和占地约束代替赤道长宽比，仍防止空白占地失控。
+						bands := densityLatitudeTierBands(3, selection.hemisphere, 200)
+						widthLimit, heightLimit = bands[0].segments*5, bands[0].high-bands[0].low+1
+						aspectLimit = math.Inf(1)
+						if metrics.BlankRatio > .55 {
+							t.Errorf("窄环占地存在过多空白：%.3f", metrics.BlankRatio)
+						}
+					}
+					if result.SurfacePlan.LayoutWidth > widthLimit || result.SurfacePlan.LayoutHeight > heightLimit || metrics.EnvelopeArea > 1800 || metrics.EnvelopeAspectRatio > aspectLimit {
 						t.Errorf("边缘适配失去紧凑矩形：%+v", metrics)
 					}
 					if !result.SurfacePlan.StaticCollidersChecked || !result.SurfacePlan.BeltConnectionsChecked {

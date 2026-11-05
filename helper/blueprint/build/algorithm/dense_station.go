@@ -35,13 +35,13 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		fieldBudget = 0
 	}
 	blackboxBudget := 4
-	secondTier := false
+	narrowTier := false
 	if req.SurfaceLayout != nil {
 		selection, ok := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
-		secondTier = ok && selection.tier == 2
+		narrowTier = ok && selection.tier >= 2 && selection.tier <= 3
 	}
 	// 窄纬中的中等规模厂也需要低纬向高度候选，避免仅按机器数量决定候选集合而回退到多塔转发。
-	if req.Plan.MachineCount >= 80 || secondTier {
+	if req.Plan.MachineCount >= 80 || narrowTier {
 		blackboxBudget = 7
 	}
 	budget = fieldBudget + blackboxBudget

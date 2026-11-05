@@ -59,6 +59,12 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
 		scale := math.Max(1, math.Sqrt(float64(req.Plan.MachineCount)/96))
 		candidate.denseLatitudeSpan = math.Ceil([]float64{24, 32, 40}[choice]*scale/4) * 4
 		candidate.denseLatitudeSpan = denseLatitudeHeightLimit(ctx, candidate.denseLatitudeSpan)
+		zone, _ := ctx.Value(densityLatitudeKey{}).(string)
+		selection, selected := densityLatitudeSelectionFor(zone)
+		// 保留17格窄候选，与可使用21格的候选比较，避免扩大内部空间后丢失原本可建的线路。
+		if selected && selection.tier == 3 && choice == 0 {
+			candidate.denseLatitudeSpan = math.Min(candidate.denseLatitudeSpan, 17)
+		}
 		candidate.denseSpatialOrder = 3
 		candidate.denseMaxSpan = []float64{12, 18, 32}[choice]
 		if scale > 1 {

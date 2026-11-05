@@ -224,8 +224,20 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 	heightLimit = denseLatitudeHeightLimit(ctx, heightLimit)
 	widthLimit := heightLimit
 	strictHeight := b.denseLatitudeSpan > 0
+	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
+	selection, selected := densityLatitudeSelectionFor(zone)
+	// 窄纬只限制纬向容量，经向预算按实体总占地估算；普通共享布局保留原策略。
+	if selected && selection.tier == 3 && (b.adapter == nil || b.adapter.density == densityDense) {
+		strictHeight = true
+		// 直连原料入口和配送边界需要更多纬向接线余量；避免较宽核心挤掉内部直连而退回逐物料配送。
+		if b.adapter != nil && b.adapter.mode <= 2 {
+			heightLimit = math.Min(heightLimit, 17)
+		}
+	}
 	if strictHeight {
-		heightLimit = math.Min(heightLimit, b.denseLatitudeSpan)
+		if b.denseLatitudeSpan > 0 {
+			heightLimit = math.Min(heightLimit, b.denseLatitudeSpan)
+		}
 		area, maximumWidth := 0., 0.
 		for _, unit := range units {
 			low, high := bounds(unit.entities)

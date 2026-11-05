@@ -1,6 +1,9 @@
 package build
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // TestDenseLatitudeFiveTiers 职责：验证五档完整覆盖原生纬带且不把极区压成一圈；使用：区域规则回归；边界：分类测试不代表高纬生成已经接入。
 func TestDenseLatitudeFiveTiers(t *testing.T) {
@@ -67,14 +70,46 @@ func TestDenseLatitudeOptionContracts(t *testing.T) {
 			t.Fatalf("选区%s被隐式换区", option.Value)
 		}
 	}
-	for _, zone := range []string{"ring3-north-center", "ring4-south-north", "ring5-north-center"} {
+	for _, zone := range []string{"ring4-south-north", "ring5-north-center"} {
 		if _, err := normalizeSurfaceLayout(&SurfaceLayout{Mode: "autoTropic", LatitudeZone: zone}); err == nil {
 			t.Fatalf("未接入的档位%s被作为单纬带接受", zone)
 		}
 	}
-	for _, zone := range []string{"ring1-center", "ring1-north", "ring1-south", "ring2-north-north", "ring2-south-south"} {
+	for _, zone := range []string{"ring1-center", "ring1-north", "ring1-south", "ring2-north-north", "ring2-south-south", "ring3-north-center", "ring3-south-south"} {
 		if _, err := normalizeSurfaceLayout(&SurfaceLayout{Mode: "autoTropic", LatitudeZone: zone}); err != nil {
 			t.Fatalf("规范选项%s被拒绝：%v", zone, err)
+		}
+	}
+}
+
+// TestDenseThirdTierMatrix 职责：验证25格环宽内的第3档矩阵；使用：逐档交付；边界：只限制纬向环宽，经向按实际产能展开。
+func TestDenseThirdTierMatrix(t *testing.T) {
+	testDenseMatrixRegions(t, []float64{240, 480}, []string{"ring3-north-center", "ring3-north-south", "ring3-north-north", "ring3-south-center", "ring3-south-south", "ring3-south-north"}, []int{1, 2, 3, 4})
+}
+
+// TestDenseThirdTierAnchorBudget 职责：允许窄环合法长矩形，同时拒绝纬向超出25格或绕满整圈；使用：容量边界回归；边界：容量通过不代表碰撞通过。
+func TestDenseThirdTierAnchorBudget(t *testing.T) {
+	ctx := context.WithValue(context.Background(), densityLatitudeKey{}, "ring3-north-center")
+	if denseLatitudeHeightLimit(ctx, 100) != 17 {
+		t.Fatal("普通模式的原接线预算被密铺调整改变")
+	}
+	if denseLatitudeHeightLimit(context.WithValue(ctx, denseCollisionKey{}, true), 100) != 21 {
+		t.Fatal("密铺没有获得25格环宽内的21格工作预算")
+	}
+	for _, sample := range []struct {
+		zone   string
+		anchor int
+	}{{"ring3-north-center", 131}, {"ring3-south-center", -155}} {
+		layout := &SurfaceLayout{Mode: "explicitTropic", GridSegment: 200, LatitudeZone: sample.zone}
+		anchors := surfaceLayoutAnchorCandidates(layout, 90, 25)
+		if len(anchors) != 1 || anchors[0] != sample.anchor {
+			t.Fatalf("25格完整窄环被额外扣除容量：%s %v", sample.zone, anchors)
+		}
+		if len(surfaceLayoutAnchorCandidates(layout, 90, 26)) != 0 {
+			t.Fatal("纬向26格超出第3档却被接受")
+		}
+		if len(surfaceLayoutAnchorCandidates(layout, 601, 25)) != 0 {
+			t.Fatal("经向超出原生整圈却被接受")
 		}
 	}
 }
