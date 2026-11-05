@@ -1,15 +1,23 @@
 """按严格解码的实体坐标绘制布局诊断图；矩形是示意轮廓，不代替游戏碰撞检测。"""
 import argparse
 import json
+import math
 from pathlib import Path
 from PIL import Image, ImageDraw
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("directory", type=Path, help="DSBOX_BLUEPRINT_TEST_OUTPUT 指定的导出目录")
-root = parser.parse_args().directory
+parser.add_argument("--pattern", default="matrix480-mode[134].json", help="导出JSON文件匹配规则")
+parser.add_argument("--columns", type=int, default=3, help="每行图片数量")
+parser.add_argument("--output", default="matrix480-baseline.png", help="对照图文件名")
+args = parser.parse_args()
+root = args.directory
+sources = sorted(root.glob(args.pattern))
+if not sources or args.columns < 1:
+    parser.error("未找到JSON样例，或每行图片数量小于1")
 panels = []
-for mode in (1, 3, 4):
-    source = json.loads((root / f"matrix480-mode{mode}.json").read_text(encoding="utf8"))
+for path in sources:
+    source = json.loads(path.read_text(encoding="utf8"))
     buildings = source["document"]["buildings"]
     records = {b["index"]: b for b in buildings}
     xs = [b["localOffset"]["x"] for b in buildings]
@@ -27,10 +35,13 @@ for mode in (1, 3, 4):
         draw.line((margin,header+margin+y*scale,width-margin,header+margin+y*scale),fill="#253343")
     for b in buildings:
         x,y=point(b["localOffset"])
-        if b["itemId"] in (2302,2303,2901):
-            size,color={2302:(1.8,"#5098b0"),2303:(2.1,"#768de6"),2901:(2.5,"#d7e5ef")}[b["itemId"]]
+        if b["itemId"] in (2302,2303,2901,2101,2102,2107):
+            size,color={2302:(1.8,"#5098b0"),2303:(2.1,"#768de6"),2901:(2.5,"#d7e5ef"),2101:(1.5,"#6db695"),2102:(2,"#6db695"),2107:(.8,"#b0f5cb")}[b["itemId"]]
             half=size*scale/2
-            draw.rectangle((x-half,y-half,x+half,y+half),fill=color,outline="#f5fafc")
+            angle=math.radians(b["yaw"])
+            corners=[(x+dx*math.cos(angle)+dy*math.sin(angle),y+dx*math.sin(angle)-dy*math.cos(angle)) for dx,dy in ((-half,-half),(half,-half),(half,half),(-half,half))]
+            draw.polygon(corners,fill=color,outline="#f5fafc")
+            draw.line((x,y,x+half*math.sin(angle),y-half*math.cos(angle)),fill="#273d50",width=2)
         elif b["itemId"] in (2103,2104):
             radius=4.5*scale
             draw.ellipse((x-radius,y-radius,x+radius,y+radius),outline="#f0a965",width=3)
@@ -45,15 +56,15 @@ for mode in (1, 3, 4):
             draw.line((*point(b["localOffset"]),*point(b["localOffset2"])),fill="#a0adb9")
     belts=sum(2001<=b["itemId"]<=2003 for b in buildings)
     towers=sum(b["itemId"] in (2103,2104) for b in buildings)
-    draw.text((20,12),f"480/min matrix | mode {mode} | equator",fill="#f2f6fa")
+    draw.text((20,12),path.stem,fill="#f2f6fa")
     draw.text((20,33),f"{source['surfacePlan']['layoutWidth']} x {source['surfacePlan']['layoutHeight']} | {belts} belts | {towers} towers",fill="#b0c0d0")
-    draw.text((20,52),"Decoded coordinates / schematic footprints",fill="#b0c0d0")
-    panel.save(root/f"matrix480-mode{mode}.png")
+    draw.text((20,52),"Decoded position + yaw / schematic footprints",fill="#b0c0d0")
+    panel.save(path.with_suffix(".png"))
     panels.append(panel)
-combined=Image.new("RGB",(sum(p.width for p in panels),max(p.height for p in panels)),"#101824")
-offset=0
-for panel in panels:
-    combined.paste(panel,(offset,0))
-    offset+=panel.width
-combined.save(root/"matrix480-baseline.png")
-print(root/"matrix480-baseline.png")
+cell_width,cell_height=max(p.width for p in panels),max(p.height for p in panels)
+columns=min(args.columns,len(panels))
+combined=Image.new("RGB",(columns*cell_width,math.ceil(len(panels)/columns)*cell_height),"#101824")
+for i,panel in enumerate(panels):
+    combined.paste(panel,((i%columns)*cell_width,(i//columns)*cell_height))
+combined.save(root/args.output)
+print(root/args.output)

@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：把已完成线路和供电的密铺几何刚体迁移到所选中部或南北边缘。
+// 文件职责：把已完成线路和供电的密铺几何迁移到所选区域，赤道边缘保持建筑朝向。
 // 使用：最终记录生成后、货物重绑前；边界：只改编码坐标，不扭曲内部装配视图，不放宽任一建造或能力阈值。
 
 import (
@@ -14,18 +14,26 @@ import (
 	"DysonSphereBox/helper/blueprint/density"
 )
 
-// denseSurfaceRelocation 职责：记录球面旋转及整数原点变换；使用：编码实体和真实cargo目标采用同一映射；边界：仅原版200分段的单Area，内部指针与物料身份不变。
+// denseSurfaceRelocation 职责：记录球面位置及整数原点变换；使用：编码实体和真实cargo目标采用同一映射；边界：仅原版200分段的单Area，内部指针与物料身份不变。
 type denseSurfaceRelocation struct {
 	sourceRecords                  []blueprint.Building
 	sourceAnchor, targetAnchor     int
 	sourceSegments, targetSegments int
 	shiftX, shiftY                 float64
 	safeAnchors                    []int
+	// orthogonal 职责：沿纬线补偿横向格距而不旋转建筑；使用：赤道边缘；边界：变形后必须重新通过全部几何和能力校验。
+	orthogonal bool
+	centerX    float64
+	height     float64
+	halfTurn   bool
 }
 
-// mapPoint 职责：刚体旋转一个径向位置并补偿局部经线朝向；使用：两端姿态及cargo目标；边界：高度独立于XY，确保堆叠和箱顶附件保持同轴，不把pitch/tilt当作平面角修改。
+// mapPoint 职责：将位置转换到目标纬度，赤道边缘按行补偿格距并保持正交朝向；使用：两端姿态及cargo目标；边界：高度独立于XY，堆叠和箱顶附件保持同轴，不修改pitch/tilt。
 func (move *denseSurfaceRelocation) mapPoint(point blueprint.Point, yaw float32) (blueprint.Point, float32) {
 	step := float32(2*float32(math.Pi)) / 1000
+	if move.orthogonal {
+		return move.mapOrthogonalPoint(point, yaw)
+	}
 	oldLongitude := point.X * (float32(2*float32(math.Pi)) / float32(move.sourceSegments*5))
 	oldLatitude := float32(move.sourceAnchor)*step + point.Y*step
 	cosLatitude := float32(math.Cos(float64(oldLatitude)))
@@ -47,12 +55,14 @@ func (move *denseSurfaceRelocation) mapPoint(point blueprint.Point, yaw float32)
 	return blueprint.Point{X: float32(longitude/newLongitudeStep - move.shiftX), Y: float32(latitude/float64(step) - float64(move.targetAnchor) - move.shiftY), Z: point.Z}, float32(math.Mod(float64(yaw)+yawShift+360, 360))
 }
 
-// relocatedSurfaceRecords 职责：生成保留真实三维几何的新记录和Area；使用：高纬侧候选；边界：不修改source或records，整数原点平移与建议纬度同步，未知多Area拒绝。
-func relocatedSurfaceRecords(source *surfaceEncoding, records []blueprint.Building, target int) (*surfaceEncoding, []blueprint.Building, error) {
+// relocatedSurfaceRecords 职责：生成目标纬度的新记录和Area；使用：边缘与高纬候选；边界：不修改source或records，整数原点平移与建议纬度同步，变形后的几何须重新校验。
+func relocatedSurfaceRecords(source *surfaceEncoding, records []blueprint.Building, target int, orthogonal, halfTurn bool) (*surfaceEncoding, []blueprint.Building, error) {
 	if source == nil || source.planar || source.plan == nil || source.plan.GridSegment != 200 || len(source.areas) != 1 || source.plan.PrimaryAreaIndex != 0 || source.relocation != nil {
-		return nil, nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "球面刚体重定位只支持已核对的原版单Area"}
+		return nil, nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "球面位置适配只支持已核对的原版单Area"}
 	}
 	move := &denseSurfaceRelocation{sourceRecords: append([]blueprint.Building(nil), records...), sourceAnchor: source.plan.AnchorLatitudeGrid, targetAnchor: target, sourceSegments: longitudeSegmentCount(source.plan.AnchorLatitudeGrid, 200), targetSegments: longitudeSegmentCount(target, 200)}
+	move.orthogonal, move.centerX = orthogonal, float64(source.areas[0].Width-1)/2
+	move.halfTurn, move.height = halfTurn, float64(source.areas[0].Height)
 	transformed := append([]blueprint.Building(nil), records...)
 	view := make([]*placed, len(records))
 	for i := range transformed {
@@ -69,7 +79,7 @@ func relocatedSurfaceRecords(source *surfaceEncoding, records []blueprint.Buildi
 	width, height := int(math.Ceil(high.x-move.shiftX))+1, int(math.Ceil(high.y-move.shiftY))+1
 	anchor := target + int(move.shiftY)
 	if width < 1 || height < 1 || width > 32767 || height > 32767 || longitudeSegmentCount(anchor, 200) != move.targetSegments || !candidateFitsRing(anchor, 0, height-1, width, 200) {
-		return nil, nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "刚体重定位后的完整几何无法放入同一原生纬带"}
+		return nil, nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "球面位置适配后的完整几何无法放入同一原生纬带"}
 	}
 	for i := range transformed {
 		transformed[i].LocalOffset.X -= float32(move.shiftX)
@@ -138,13 +148,21 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source 
 	}
 	target, direction := band.high-int(source.areas[0].Height)+1, -1
 	center := req.SurfaceLayout.LatitudeZone == "equator"
+	orthogonal := req.SurfaceLayout.LatitudeZone == "equator-north" || req.SurfaceLayout.LatitudeZone == "equator-south"
+	orientations := []bool{false}
+	if orthogonal && req.Mode != 1 {
+		// 塔与配送器没有固定左侧原料接口，可比较两个正交排向；北侧优先采用南侧布局的半周对称排向。
+		preferHalfTurn := req.SurfaceLayout.LatitudeZone == "equator-north"
+		orientations = []bool{preferHalfTurn, !preferHalfTurn}
+	}
 	if center {
 		target = -(int(source.areas[0].Height) - 1) / 2
 	} else if band.high < 0 || req.SurfaceLayout.LatitudeZone == "equator-south" {
 		target, direction = band.low, 1
 	}
 	var last error
-	for adjustment := 0; adjustment <= 4; adjustment++ {
+	for attempt := 0; attempt < 5*len(orientations); attempt++ {
+		adjustment, halfTurn := attempt/len(orientations), orientations[attempt%len(orientations)]
 		if ctx.Err() != nil {
 			return nil, nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "球面重定位已取消或超时"}
 		}
@@ -152,7 +170,7 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source 
 		if center {
 			candidateTarget = target + []int{0, -1, 1, -2, 2}[adjustment]
 		}
-		encoding, result, err := relocatedSurfaceRecords(source, records, candidateTarget)
+		encoding, result, err := relocatedSurfaceRecords(source, records, candidateTarget, orthogonal, halfTurn)
 		if err != nil {
 			last = err
 			continue
@@ -168,7 +186,7 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source 
 				gap = encoding.plan.AnchorLatitudeGrid - band.low
 			}
 			if gap > 0 {
-				aligned, alignedRecords, alignErr := relocatedSurfaceRecords(source, records, candidateTarget-direction*gap)
+				aligned, alignedRecords, alignErr := relocatedSurfaceRecords(source, records, candidateTarget-direction*gap, orthogonal, halfTurn)
 				if alignErr == nil && validateDensityLatitudePlan(req.SurfaceLayout, aligned.plan) == nil {
 					if alignErr = validateRelocatedSurface(ctx, req, aligned, alignedRecords); alignErr == nil {
 						return aligned, alignedRecords, nil
@@ -315,7 +333,11 @@ func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request,
 		if err != nil {
 			return err
 		}
-		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-surface-rigid-relocation", Status: "passed", Message: fmt.Sprintf("球面几何从纬圈%d刚体迁移到%d；保留机器、带臂、塔距和真实线路；%d个带侧端点的固定offset及完整取货窗口、跨度能力和供电已核验连续起点%d..%d，范围外不承诺可用", encoding.relocation.sourceAnchor, anchor, len(scopes), safe[0], safe[len(safe)-1])})
+		rule, method := "dense-surface-rigid-relocation", "刚体迁移"
+		if encoding.relocation.orthogonal {
+			rule, method = "dense-surface-orthogonal", "保持建筑朝向并补偿横向格距"
+		}
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: rule, Status: "passed", Message: fmt.Sprintf("球面几何从纬圈%d到%d，%s；机器、带臂、塔距和真实线路重新校验；%d个带侧端点的固定offset及完整取货窗口、跨度能力和供电已核验连续起点%d..%d，范围外不承诺可用", encoding.relocation.sourceAnchor, anchor, method, len(scopes), safe[0], safe[len(safe)-1])})
 	}
 	return nil
 }
