@@ -71,8 +71,17 @@ export const useQuantWorkspace = () => {
   }
 
   const narrow = ref(false)
-  const selectedBuilding = ref<number | null>(null)
+  // 选中建筑支持多个下标：节点点击时点亮该产线全部机器，预览点击时只点亮单台。
+  const selectedBuildings = ref<number[]>([])
   const selectedProductions = ref<number[]>([])
+  // 聚焦请求只由上半部分触发；用 revision 区分「同一栋建筑再次聚焦」。
+  const focusIndex = ref<number | null>(null)
+  const focusRevision = ref(0)
+  const requestFocus = (index: number | undefined): void => {
+    if (index === undefined || index < 0) return
+    focusIndex.value = index
+    focusRevision.value++
+  }
   const importVisible = ref(false)
   const importText = ref('')
   const sourceName = ref('导入的蓝图')
@@ -186,7 +195,7 @@ export const useQuantWorkspace = () => {
       solvedSignature.value = signature
       replay.value = false
       inspection.value = null
-      selectedBuilding.value = null
+      selectedBuildings.value = []
       selectedProductions.value = []
     } catch (caught) { if (version === solveVersion) report(caught) } finally { if (version === solveVersion) solving.value = false }
   }
@@ -230,7 +239,7 @@ export const useQuantWorkspace = () => {
       code.value = result.blueprint
       previewRevision.value++
       replay.value = false
-      selectedBuilding.value = null
+      selectedBuildings.value = []
       selectedProductions.value = []
       resetPreviewState(result.buildingCount)
     } catch (caught) {
@@ -268,7 +277,7 @@ export const useQuantWorkspace = () => {
       sourceName.value = title
       customName.value = title
       resetPreviewState(value.summary.buildingCount)
-      selectedBuilding.value = null
+      selectedBuildings.value = []
       selectedProductions.value = []
       importVisible.value = false
     } catch (caught) { if (version === importVersion) report(caught) } finally { if (version === importVersion) importing.value = false }
@@ -295,11 +304,13 @@ export const useQuantWorkspace = () => {
   const selectProduction = (index: number): void => {
     if (previewStale.value || quantStale.value) return
     selectedProductions.value = [index]
-    selectedBuilding.value = generated.value?.bindings?.find(binding => binding.productionIndex === index)?.machineIndices?.[0] ?? null
+    const binding = generated.value?.bindings?.find(value => value.productionIndex === index)
+    selectedBuildings.value = [...(binding?.machineIndices ?? [])]
+    requestFocus(selectedBuildings.value[0])
   }
   const onBuildingSelect = ({index}: {index: number | null}): void => {
     if (previewStale.value || quantStale.value) return
-    selectedBuilding.value = index
+    selectedBuildings.value = index === null ? [] : [index]
     selectedProductions.value = index === null ? [] : (generated.value?.bindings ?? []).filter(binding => binding.buildingIndices.includes(index)).map(binding => binding.productionIndex)
   }
   const onPreviewReady = ({buildingCount}: {buildingCount: number}): void => {
@@ -394,13 +405,14 @@ export const useQuantWorkspace = () => {
     for (const zone of zones.value) for (const index of zone.productionIndices) map.set(index, zone)
     return map
   })
-  const focusZone = (key: string | null): void => {
+  const focusZone = (key: string | null, focus = false): void => {
     activeZone.value = activeZone.value === key ? null : key
     const zone = zones.value.find(value => value.key === activeZone.value)
     if (!zone || previewStale.value || quantStale.value) return
     const binding = generated.value?.bindings?.find(value => zone.productionIndices.includes(value.productionIndex))
     selectedProductions.value = [...zone.productionIndices]
-    selectedBuilding.value = binding?.machineIndices?.[0] ?? null
+    selectedBuildings.value = binding?.machineIndices?.length ? [binding.machineIndices[0]] : []
+    if (focus) requestFocus(selectedBuildings.value[0])
   }
   const targetFor = (id: number): WorkspaceTarget | undefined => targets.value.find(target => target.itemId === id)
   const setTargetRate = (id: number, rate: number): void => { const target = targetFor(id); if (target) target.ratePerMinute = rate }
@@ -435,7 +447,7 @@ export const useQuantWorkspace = () => {
   watch(() => [plan.value?.planId, generationSignature.value], () => scheduleGenerate())
   watch(autoRun, value => { if (value) { scheduleSolve(); scheduleGenerate(0) } else { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer) } })
   watch(mode, value => { if (![1, 2, 3, 4].includes(value)) mode.value = 1 })
-  watch(generationSignature, () => { if (generating.value) generationProgress.value = '参数已变化，等待重新生成'; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
+  watch(generationSignature, () => { if (generating.value) generationProgress.value = '参数已变化，等待重新生成'; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuildings.value = []; selectedProductions.value = [] } })
   watch(datasetKey, () => { if (initialized) void loadDataset() })
   watch(() => route.query.itemId, value => { if (initialized && typeof value === 'string' && value) void loadLibraryItem(value) })
   onMounted(async () => {
@@ -445,7 +457,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

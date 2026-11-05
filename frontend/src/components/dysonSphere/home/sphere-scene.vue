@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, watch} from 'vue'
-import {useThemeMode} from '../../../composables/useThemeMode'
+import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
 import {
   createDysonSphere,
   DEFAULT_PARAMS,
   QUALITY_PRESETS,
   type DysonSphereController,
+  type DysonTheme,
 } from '../../../packages/dyson-sphere/src'
 
 interface SphereSceneProps {
@@ -17,6 +18,9 @@ const props = defineProps<SphereSceneProps>()
 const containerRef = ref<HTMLDivElement | null>(null)
 const {themeMode, loadThemeMode} = useThemeMode()
 let controller: DysonSphereController | null = null
+
+// 应用主题含蓝图编辑器专用的 'editor' 值，戴森球场景只识别明暗两种，传入前收敛。
+const toDysonTheme = (mode: ThemeMode): DysonTheme => (mode === 'dark' ? 'dark' : 'light')
 
 // =============== 太阳帆粒子 ===============
 // 说明：首页只保留 2 道太阳帆轨道；粒子数随建造进度在画质档位上限的 10%~100% 之间变化。
@@ -41,7 +45,7 @@ onMounted(async () => {
     return
   }
   controller = createDysonSphere(containerRef.value, {
-    theme: themeMode.value,
+    theme: toDysonTheme(themeMode.value),
     params: {
       progress: props.progress,
       orbitLayers: ORBIT_LAYERS,
@@ -59,7 +63,7 @@ onBeforeUnmount(() => {
 // 说明：只读应用主题驱动场景配色，不反向修改全局主题；进度变化时场景播放壳板落位动画并同步粒子数。
 // 主题切换立即生效：应用自身已有圆形揭示动画，场景再做 400ms 渐变会在揭示圈内出现新旧配色混杂。
 watch(themeMode, (mode) => {
-  controller?.setTheme(mode, true)
+  controller?.setTheme(toDysonTheme(mode), true)
 })
 
 watch(() => props.progress, (progress) => {
