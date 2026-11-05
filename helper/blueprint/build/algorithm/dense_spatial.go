@@ -129,17 +129,20 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 	if err != nil {
 		return contour, err
 	}
+	ordinarySpacing := b.adapter != nil && b.adapter.density == densityStandard
 	world := func(p vector) placement.Vector {
 		return placement.Vector{p.x * planarGridLength, p.z*1.3333333 + .4, p.y * planarGridLength}
 	}
-	for _, entity := range unit.entities {
-		if !surfaceIsBelt(entity.record.ItemID) {
-			continue
+	if !ordinarySpacing {
+		for _, entity := range unit.entities {
+			if !surfaceIsBelt(entity.record.ItemID) {
+				continue
+			}
+			point := world(entity.a)
+			contour.shapes = append(contour.shapes, connectedPackingShape{kind: "dense-node", span: surfaceBeltSpan{ends: [2]placement.Vector{point, point}}, low: point.Sub(placement.Vector{.35, .35, .35}), high: point.Add(placement.Vector{.35, .35, .35})})
 		}
-		point := world(entity.a)
-		contour.shapes = append(contour.shapes, connectedPackingShape{kind: "dense-node", span: surfaceBeltSpan{ends: [2]placement.Vector{point, point}}, low: point.Sub(placement.Vector{.35, .35, .35}), high: point.Add(placement.Vector{.35, .35, .35})})
 	}
-	if b.setting.EnableFlowMonitor {
+	if !ordinarySpacing && b.setting.EnableFlowMonitor {
 		catalog, err := placement.LoadCatalog()
 		if err != nil {
 			return contour, err
@@ -192,8 +195,8 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 		}
 	}
 	for _, port := range unit.ports {
-		// 端口只保留真实向外半格的局部接驳净空；跨高度路径交给portal判断，不让整列占位吞掉密铺层间空间。
 		direction := port.outward()
+		// 仅保留真实向外半格，跨高度路径由portal及普通带段避碰共同判定。
 		a := world(port.head.a)
 		c := world(vector{port.head.a.x + direction.x*.5, port.head.a.y + direction.y*.5, port.head.a.z})
 		contour.shapes = append(contour.shapes, connectedBeltShape(a, c))
@@ -241,7 +244,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 			return (c.x-a.x)*(c.y-a.y) > (e.x-d.x)*(e.y-d.y)
 		})
 	}
-	packing := &connectedPacking{dense: true, cells: map[[3]int][]int{}}
+	packing := &connectedPacking{dense: b.adapter == nil || b.adapter.density == densityDense, cells: map[[3]int][]int{}}
 	placedEntities := map[*placed]bool{}
 	for number, unit := range ordered {
 		wires := b.denseSpatialUnitWires(unit, placedEntities)

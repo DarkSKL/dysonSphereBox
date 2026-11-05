@@ -382,7 +382,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			}
 			return &blueprint.Error{Code: "GEN_E_ROUTE", Message: fmt.Sprintf("物品 %d、边 %s、%.3f/min %s；端口 (%.0f,%.0f,%.0f)→(%.0f,%.0f,%.0f)，单次最高展开 %d/%d、本路 %d 次共 %d、全图累计 %d、高度上限 %d，端点占位 %t/%t，可达邻格 %d/%d，边界 %.0f..%.0f/%.0f..%.0f，目标邻格 %v", route.edge.ItemID, route.edge.ID, route.rate, reason, route.start.a.x, route.start.a.y, route.start.a.z, route.end.a.x, route.end.a.y, route.end.a.z, maxSearchExpanded, transportSearchLimit, searches, steps, env.totalExpanded, transportMaxHeight, env.blocked[beltCell(start)], env.blocked[beltCell(end)], freeNeighbors(start), freeNeighbors(end), env.minimum.x, env.maximum.x, env.minimum.y, env.maximum.y, targetCells)}
 		}
-		if b.denseSpatial {
+		if b.denseSpatial && b.adapter != nil && b.adapter.density == densityDense {
 			target := route.end
 			if merge != nil {
 				target = merge
@@ -435,6 +435,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			env.beltCorridors[beltColumn(point)] = true
 		}
 		if env.densePorts != nil {
+			env.densePorts.addNode(route.start)
 			for _, point := range path {
 				env.densePorts.addNode(point)
 			}

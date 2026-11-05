@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：将密铺原料接口放到最近的实际外边界，减少统一西侧入口形成的长尾。
+// 文件职责：将密铺传送带原料接口统一放在工厂左侧，并尽量对齐消费者。
 // 使用：全场密铺布线前；边界：仍保持真实外部入口与独立物料，现有副产物归集契约单独保留。
 
 import "math"
@@ -13,7 +13,7 @@ func denseExternalStep(route *transportRoute) vector {
 	return route.entryDirection
 }
 
-// denseInputPositions 职责：在四侧边界搜索最近的独立输入口；使用：密铺空间固定后；边界：有副产物时保留已验证的同侧回收接口，端口至少相距两格。
+// denseInputPositions 职责：在西侧边界搜索与消费者齐平的独立输入口；使用：密铺空间固定后；边界：有副产物时保留已验证的同侧回收接口，端口至少相距两格。
 func (b *builder) denseInputPositions(low, high vector) []vector {
 	fallback := func() []vector {
 		for _, route := range b.transportRoutes {
@@ -27,40 +27,39 @@ func (b *builder) denseInputPositions(low, high vector) []vector {
 		}
 	}
 	positions := []vector{}
-	left, right, bottom, top := math.Floor(low.x)-2, math.Ceil(high.x)+2, math.Floor(low.y)-2, math.Ceil(high.y)+2
+	left, bottom, top := math.Floor(low.x)-2, math.Floor(low.y)-2, math.Ceil(high.y)+2
 	for _, route := range b.transportRoutes {
 		if route.from != nil {
 			continue
 		}
 		point := route.end.a
-		best := math.Inf(1)
-		chosen, direction := vector{}, vector{}
-		consider := func(candidate, step vector) {
-			for _, old := range positions {
-				if math.Abs(old.x-candidate.x)+math.Abs(old.y-candidate.y) < 2 {
-					return
-				}
-			}
-			cost := math.Abs(candidate.x-point.x) + math.Abs(candidate.y-point.y)
-			if cost < best {
-				best, chosen, direction = cost, candidate, step
-			}
-		}
-		// 先查与端口齐平的位置，再查有限侧向槽；边界方向始终从外部指向工厂。
+		chosen := vector{}
+		found := false
 		for offset := 0; offset <= len(b.transportRoutes)*2+2; offset++ {
 			for _, sign := range []float64{1, -1} {
-				x := math.Max(left+1, math.Min(right-1, math.Round(point.x)+sign*float64(offset)))
-				y := math.Max(bottom+1, math.Min(top-1, math.Round(point.y)+sign*float64(offset)))
-				consider(vector{left, y, 0}, vector{x: 1})
-				consider(vector{right, y, 0}, vector{x: -1})
-				consider(vector{x, bottom, 0}, vector{y: 1})
-				consider(vector{x, top, 0}, vector{y: -1})
+				y := math.Max(bottom, math.Min(top, math.Round(point.y)+sign*float64(offset)))
+				candidate := vector{left, y, 0}
+				free := true
+				for _, old := range positions {
+					if math.Abs(old.y-candidate.y) < 2 {
+						free = false
+						break
+					}
+				}
+				if free {
+					chosen = candidate
+					found = true
+					break
+				}
+			}
+			if found {
+				break
 			}
 		}
-		if math.IsInf(best, 1) {
+		if !found {
 			return fallback()
 		}
-		route.entryDirection = direction
+		route.entryDirection = vector{x: 1}
 		positions = append(positions, chosen)
 	}
 	return positions

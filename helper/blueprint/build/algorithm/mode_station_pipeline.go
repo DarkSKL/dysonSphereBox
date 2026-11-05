@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：编排物流塔模式的布局、装配和候选收尾阶段。
+// 文件职责：编排共享物流塔全场布局及候选收尾阶段。
 // 使用：mode 3/4 适配器调用；边界：不承担公共请求准备和最终结果发布。
 
 import (
@@ -11,7 +11,7 @@ import (
 	"DysonSphereBox/helper/quant"
 )
 
-// generateStationMode 职责：执行当前目录组合提供的布局阶段；使用：所有物流塔组合的统一编排；边界：不再决定模式配置或布局算法，旧实体装配逐步迁移。
+// generateStationMode 职责：校验塔模式布局计划并生成共享设施全场候选；使用：行星塔和星际塔的普通/超密度组合；边界：失败直接返回，不退回旧中央庭院布局。
 func generateStationMode(ctx context.Context, builder *builder, request Request, dataset *quant.Dataset) (Result, error) {
 	if builder.adapter == nil || builder.adapter.station == nil || builder.adapter.station.Layout == nil {
 		return Result{}, &blueprint.Error{Code: "GEN_E_MODE", Message: "物流塔组合缺少布局适配器"}
@@ -34,12 +34,5 @@ func generateStationMode(ctx context.Context, builder *builder, request Request,
 	if builder.adapter.density == densityDense {
 		return builder.generateDenseStationField(ctx, request, dataset, input, layout, stages.Config)
 	}
-	blocks, err := assembleStationLayout(ctx, builder, request, dataset, input, layout, stages.Config)
-	if err != nil {
-		return Result{}, err
-	}
-	if err := ctx.Err(); err != nil {
-		return Result{}, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "物流塔生成已取消或超时"}
-	}
-	return builder.finishSurroundStationLayouts(ctx, request, dataset, blocks)
+	return builder.generateStandardStationField(ctx, request, dataset, stages.Config)
 }

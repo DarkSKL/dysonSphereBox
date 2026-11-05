@@ -274,6 +274,9 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 		}
 		return nil
 	}
+	if req.SurfaceLayout == nil || req.SurfaceLayout.Mode == "planar" {
+		return b.completeConnectedPower(ctx)
+	}
 	return b.completeConnectedSurfacePower(ctx, req)
 }
 

@@ -139,7 +139,7 @@ type builder struct {
 	previewActive bool
 	// adapter 职责：保存当前生成组合的阶段实现；使用：统一收尾调用模式钩子；边界：每个 builder 生命周期只绑定一个适配器。
 	adapter *modeAdapter
-	// denseSpatial 职责：启用全场实体占位搜索；使用：超密度候选；边界：不使用产线矩形独占区或固定区间空白。
+	// denseSpatial 职责：启用全场实体占位搜索；使用：超密度及普通模式共享设施候选；边界：具体碰撞与间距仍按适配器密度决定。
 	denseSpatial bool
 	// denseSpatialOrder 职责：选择全场装配顺序；使用：有界密铺比较；边界：只改变空间顺序，不改变物料份额。
 	denseSpatialOrder int

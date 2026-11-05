@@ -17,9 +17,14 @@ const denseRouteNodeClearance = .35
 // denseRouteMaximumSpan 职责：限制相邻真实带段的米制长度；使用：分数端口升降和整数搜索；边界：不允许用长跳绕过中间静态盒。
 const denseRouteMaximumSpan = 2.15
 
-// denseRoutePortIndex 职责：索引当前真实静态盒和带节点；使用：分数接驳及整数边检查；边界：同批带段交叉不作为额外禁行条件。
+// denseRoutePortIndex 职责：索引当前真实静态盒和带节点；使用：分数接驳及整数边检查；边界：普通模式额外检查带段交叉，超密度保留原路由规则。
 type denseRoutePortIndex struct {
 	boxes []connectedPackingShape
+	// strictBelts 职责：普通布局寻路时禁止与已提交的独立带段相交；使用：共享塔/配送全场候选；边界：超密度保留原带段规则，最终仍统一验收。
+	strictBelts bool
+	belts       []surfaceBeltSpan
+	beltCells   map[[3]int][]int
+	beltEdges   map[[2]*placed]bool
 	// origins 职责：保存每个静态盒所属建筑的切平面原点；使用：临界高架顶部的局部球面投影；边界：不修改模型盒尺寸。
 	origins  []placement.Vector
 	owners   []*placed
@@ -38,7 +43,7 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 	if err != nil {
 		return nil, err
 	}
-	index := &denseRoutePortIndex{cells: map[[3]int][]int{}, nodes: map[[3]int][]*placed{}, previous: map[*placed][]*placed{}, edges: map[[2]vector]bool{}, registered: map[*placed]bool{}}
+	index := &denseRoutePortIndex{strictBelts: b.adapter != nil && b.adapter.density == densityStandard, cells: map[[3]int][]int{}, nodes: map[[3]int][]*placed{}, previous: map[*placed][]*placed{}, edges: map[[2]vector]bool{}, registered: map[*placed]bool{}, beltCells: map[[3]int][]int{}, beltEdges: map[[2]*placed]bool{}}
 	encoding := newPlanarRuleEncoding()
 	for _, entity := range b.all {
 		if err := ctx.Err(); err != nil {
@@ -89,12 +94,63 @@ func denseRouteNodeCell(p placement.Vector) [3]int {
 
 // addNode 职责：登记已提交真实带节点；使用：增量接线；边界：同一实体仅登记一次。
 func (index *denseRoutePortIndex) addNode(p *placed) {
-	if !surfaceIsBelt(p.record.ItemID) || index.registered[p] {
+	if !surfaceIsBelt(p.record.ItemID) {
+		return
+	}
+	index.addBeltSpan(p)
+	if index.registered[p] {
 		return
 	}
 	index.registered[p] = true
 	cell := denseRouteNodeCell(denseRouteWorld(p.a))
 	index.nodes[cell] = append(index.nodes[cell], p)
+}
+
+// addBeltSpan 职责：增量登记真实有向带段；使用：普通全场候选每次提交路线后；边界：仅供寻路避碰，不改变实体连接或密铺模式。
+func (index *denseRoutePortIndex) addBeltSpan(p *placed) {
+	if !index.strictBelts || p.output == nil || !surfaceIsBelt(p.output.record.ItemID) {
+		return
+	}
+	key := [2]*placed{p, p.output}
+	if index.beltEdges[key] {
+		return
+	}
+	index.beltEdges[key] = true
+	first, second := denseRouteWorld(p.a), denseRouteWorld(p.output.a)
+	span := connectedBeltShape(first, second)
+	index.belts = append(index.belts, span.span)
+	number := len(index.belts) - 1
+	connectedShapeCells(span, func(cell [3]int) bool {
+		index.beltCells[cell] = append(index.beltCells[cell], number)
+		return true
+	})
+}
+
+// beltSpanClear 职责：普通模式拒绝穿越已存在带段的新增边；使用：低轨接驳及整数寻路；边界：共同端点由连通性检查处理，静态净空另行检查。
+func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
+	if !index.strictBelts {
+		return true
+	}
+	a, c := denseRouteWorld(first), denseRouteWorld(second)
+	candidate := connectedBeltShape(a, c)
+	seen := map[int]bool{}
+	clear := connectedShapeCells(candidate, func(cell [3]int) bool {
+		for _, number := range index.beltCells[cell] {
+			if seen[number] {
+				continue
+			}
+			seen[number] = true
+			existing := index.belts[number]
+			if a == existing.ends[0] || a == existing.ends[1] || c == existing.ends[0] || c == existing.ends[1] {
+				continue
+			}
+			if surfaceSpanDistanceSquared(candidate.span, existing) < .46*.46-1e-6 {
+				return false
+			}
+		}
+		return true
+	})
+	return clear
 }
 
 // nodeClear 职责：检查新节点不会被现有带自动合并；使用：分数接驳；边界：只豁免明确复用的已有端点自身，不豁免其它同物料节点。
@@ -132,7 +188,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 		slot, shift = index.integerEdges.slot(first, second)
 		if slot >= 0 {
 			if state := index.integerEdges.states[slot] >> shift & 3; state != 0 {
-				return state == 2
+				return state == 2 && index.beltSpanClear(first, second)
 			}
 		}
 	}
@@ -143,7 +199,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 			key[0], key[1] = second, first
 		}
 		if clear, known := index.edges[key]; known && len(links) == 0 {
-			return clear
+			return clear && index.beltSpanClear(first, second)
 		}
 	}
 	a, c := denseRouteWorld(first), denseRouteWorld(second)
@@ -191,7 +247,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 			index.edges[key] = clear
 		}
 	}
-	return clear
+	return clear && index.beltSpanClear(first, second)
 }
 
 // denseRouteCurvedPoint 职责：把候选点投影到建筑原点的200米局部球面切平面；使用：高架擦顶复核；边界：保留真实径向高度和横向展开，最终选区坐标仍由球面终检决定，低轨不走此附加分支。

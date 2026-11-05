@@ -1,7 +1,7 @@
 package build
 
-// 文件职责：为密铺配送构造只在工厂边界使用配送器的完整黑盒候选。
-// 使用：与原独立配送设施候选共同比较；边界：内部真实带路替代机队运输，外部仍保留单物料配送设施，不修改公开模式或普通生成。
+// 文件职责：构造只在工厂边界使用配送器的完整黑盒候选。
+// 使用：普通与超密度的全场布局；边界：内部真实带路替代机队运输，外部仍保留单物料配送设施，不修改公开模式。
 
 import (
 	"context"
@@ -41,8 +41,8 @@ type denseFlyBoundaryFacility struct {
 
 // configureDenseFlyBlackbox 职责：给当前配送候选组合内部直连能力与外部箱体证明；使用：装配前；边界：复制适配器值，不修改注册表或把结果标为mode1。
 func (b *builder) configureDenseFlyBlackbox() error {
-	if b.adapter == nil || b.adapter.mode != 2 || b.adapter.density != densityDense {
-		return &blueprint.Error{Code: "GEN_E_MODE", Message: "配送黑盒只适用于模式2超密度候选"}
+	if b.adapter == nil || b.adapter.mode != 2 {
+		return &blueprint.Error{Code: "GEN_E_MODE", Message: "配送黑盒只适用于模式2候选"}
 	}
 	adapter := *b.adapter
 	adapter.lineAssembly = lineAssemblyCapabilities{reverseOutputRows: true, writeInputParameters: true}
@@ -68,6 +68,13 @@ func (b *builder) assembleDenseFlyBlackbox(ctx context.Context, req Request, dat
 	b.denseMaxSpan = 12
 	if b.denseSpatialOrder%2 == 1 {
 		b.denseMaxSpan = 18
+	}
+	if b.adapter.density == densityStandard {
+		// 普通模式保持机器/臂几何，只把默认短机器行合并为较长的完整布局单元。
+		b.denseMaxSpan = 24
+		if b.denseSpatialOrder%2 == 1 {
+			b.denseMaxSpan = 32
+		}
 	}
 	// 机器数只给有限搜索边长，输入短轨、过滤臂及真实箱体同样需要进入该空间；评分仍按最终实际包络收紧。
 	limit := math.Max(24, math.Ceil(math.Sqrt(float64(req.Plan.MachineCount)*32)*scale))
