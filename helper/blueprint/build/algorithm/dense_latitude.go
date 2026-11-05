@@ -24,11 +24,15 @@ type DensityLatitudeOption struct {
 // DensityLatitudeOptions 职责：返回支持的原版建造区域；使用：界面发现能力；边界：每次返回独立切片。
 func DensityLatitudeOptions() []DensityLatitudeOption {
 	return []DensityLatitudeOption{
-		{Value: "equator", Label: "赤道中部（最宽）", Description: "以赤道中部为目标生成；按最终已验证起点范围放置。"},
-		{Value: "equator-north", Label: "赤道区域北侧边缘", Description: "靠赤道连续区域的北侧纬带分界线放置；保持默认方向。"},
-		{Value: "equator-south", Label: "赤道区域南侧边缘", Description: "靠赤道连续区域的南侧纬带分界线放置；保持默认方向。"},
-		{Value: "north-mid", Label: "北半球中部", Description: "约北纬30°–45°，选择游戏中赤道以北的中部区域。"},
-		{Value: "south-mid", Label: "南半球中部", Description: "约南纬30°–45°，选择游戏中赤道以南的中部区域。"},
+		{Value: "equator", Label: "第1档 · 赤道环 · 中心", Description: "最宽的赤道环中心；按最终已验证起点范围放置。"},
+		{Value: "equator-south", Label: "第1档 · 赤道环 · 南边缘", Description: "靠赤道环南侧分界线放置；保持默认方向。"},
+		{Value: "equator-north", Label: "第1档 · 赤道环 · 北边缘", Description: "靠赤道环北侧分界线放置；保持默认方向。"},
+		{Value: "ring2-north-center", Label: "第2档 · 北半球 · 中心", Description: "赤道以北的下一圈，环宽50格；蓝图保持在本圈内。"},
+		{Value: "ring2-north-south", Label: "第2档 · 北半球 · 南边缘", Description: "第2档靠近赤道的一侧；按已验证起点放置。"},
+		{Value: "north-mid", Label: "第2档 · 北半球 · 北边缘", Description: "第2档远离赤道的一侧；兼容原北半球中部选项。"},
+		{Value: "ring2-south-center", Label: "第2档 · 南半球 · 中心", Description: "赤道以南的下一圈，环宽50格；蓝图保持在本圈内。"},
+		{Value: "south-mid", Label: "第2档 · 南半球 · 南边缘", Description: "第2档远离赤道的一侧；兼容原南半球中部选项。"},
+		{Value: "ring2-south-north", Label: "第2档 · 南半球 · 北边缘", Description: "第2档靠近赤道的一侧；按已验证起点放置。"},
 		{Value: "north-high", Label: "北半球高纬", Description: "约北纬48°–55°，可用范围更窄，适合规模较小的工厂。"},
 		{Value: "south-high", Label: "南半球高纬", Description: "约南纬48°–55°，可用范围更窄，适合规模较小的工厂。"},
 	}
@@ -36,10 +40,13 @@ func DensityLatitudeOptions() []DensityLatitudeOption {
 
 // densityLatitudeBand 职责：通过当前网格表解析选区；使用：请求与候选核验；边界：不硬编码纬带边界，不支持任意字符串或其它网格。
 func densityLatitudeBand(zone string, segment int) (surfacePackedBand, string, error) {
-	anchors := map[string]int{"equator": 0, "equator-north": 0, "equator-south": 0, "north-mid": 105, "south-mid": -105, "north-high": 145, "south-high": -145}
-	anchor, ok := anchors[zone]
+	selection, ok := densityLatitudeSelectionFor(zone)
 	if !ok || segment != defaultSurfaceGridSegment {
 		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE", Message: "未知密铺建造区域或不支持的星球网格"}
+	}
+	// 逐档接入生成：保留原高纬选项，尚未接入的规范高纬/极区键不能误当作单Area生成。
+	if selection.tier > 2 && zone != "north-high" && zone != "south-high" {
+		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "该档位尚未接入对应的纬带生成方案"}
 	}
 	label := ""
 	for _, option := range DensityLatitudeOptions() {
@@ -47,10 +54,12 @@ func densityLatitudeBand(zone string, segment int) (surfacePackedBand, string, e
 			label = option.Label
 		}
 	}
-	for _, band := range surfaceLatitudeBands(segment) {
-		if anchor >= band.low && anchor <= band.high {
-			return band, label, nil
-		}
+	if label == "" {
+		label = selection.label()
+	}
+	bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, segment)
+	if len(bands) == 1 {
+		return bands[0], label, nil
 	}
 	return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE", Message: "所选建造区域没有对应的原生纬带"}
 }
@@ -115,15 +124,16 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 
 // densityLatitudePositionHint 职责：统一中心与南北边缘的真实放置语义；使用：结果UI和导出蓝图共同复用；边界：位置名称不替代最终已验证起点区间。
 func densityLatitudePositionHint(zone string) string {
-	switch zone {
-	case "equator":
-		return "以赤道中部为目标，按已验证起点范围放置"
-	case "equator-north":
-		return "靠近赤道区域北侧的纬带分界线放置"
-	case "equator-south":
-		return "靠近赤道区域南侧的纬带分界线放置"
+	selection, _ := densityLatitudeSelectionFor(zone)
+	switch selection.position {
+	case "center":
+		return "以本环中心为目标，按已验证起点范围放置"
+	case "north":
+		return "靠近本环北侧分界线放置"
+	case "south":
+		return "靠近本环南侧分界线放置"
 	default:
-		return "靠近本纬带的高纬分界线放置"
+		return "按已验证起点范围放置"
 	}
 }
 

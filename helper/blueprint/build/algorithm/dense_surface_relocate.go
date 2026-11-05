@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：把已完成线路和供电的密铺几何迁移到所选区域，赤道边缘保持建筑朝向。
+// 文件职责：把已完成线路和供电的密铺几何迁移到所选区域，前两档保持建筑正交朝向。
 // 使用：最终记录生成后、货物重绑前；边界：只改编码坐标，不扭曲内部装配视图，不放宽任一建造或能力阈值。
 
 import (
@@ -21,14 +21,14 @@ type denseSurfaceRelocation struct {
 	sourceSegments, targetSegments int
 	shiftX, shiftY                 float64
 	safeAnchors                    []int
-	// orthogonal 职责：沿纬线补偿横向格距而不旋转建筑；使用：赤道边缘；边界：变形后必须重新通过全部几何和能力校验。
+	// orthogonal 职责：沿纬线补偿横向格距并保持正交排向；使用：前两档；边界：变形后必须重新通过全部几何和能力校验。
 	orthogonal bool
 	centerX    float64
 	height     float64
 	halfTurn   bool
 }
 
-// mapPoint 职责：将位置转换到目标纬度，赤道边缘按行补偿格距并保持正交朝向；使用：两端姿态及cargo目标；边界：高度独立于XY，堆叠和箱顶附件保持同轴，不修改pitch/tilt。
+// mapPoint 职责：将位置转换到目标纬度，前两档按行补偿格距并保持正交朝向；使用：两端姿态及cargo目标；边界：高度独立于XY，堆叠和箱顶附件保持同轴，不修改pitch/tilt。
 func (move *denseSurfaceRelocation) mapPoint(point blueprint.Point, yaw float32) (blueprint.Point, float32) {
 	step := float32(2*float32(math.Pi)) / 1000
 	if move.orthogonal {
@@ -147,17 +147,21 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source 
 		return nil, nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "所选密铺纬带缺少完整单Area几何"}
 	}
 	target, direction := band.high-int(source.areas[0].Height)+1, -1
-	center := req.SurfaceLayout.LatitudeZone == "equator"
-	orthogonal := req.SurfaceLayout.LatitudeZone == "equator-north" || req.SurfaceLayout.LatitudeZone == "equator-south"
+	selection, _ := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
+	center := selection.position == "center"
+	orthogonal := selection.tier <= 2 && (selection.tier > 1 || !center)
 	orientations := []bool{false}
 	if orthogonal && req.Mode != 1 {
 		// 塔与配送器没有固定左侧原料接口，可比较两个正交排向；北侧优先采用南侧布局的半周对称排向。
-		preferHalfTurn := req.SurfaceLayout.LatitudeZone == "equator-north"
+		preferHalfTurn := selection.position == "north"
+		if selection.tier == 2 && selection.hemisphere < 0 {
+			preferHalfTurn = selection.position != "south"
+		}
 		orientations = []bool{preferHalfTurn, !preferHalfTurn}
 	}
 	if center {
-		target = -(int(source.areas[0].Height) - 1) / 2
-	} else if band.high < 0 || req.SurfaceLayout.LatitudeZone == "equator-south" {
+		target = bandCenter(band) - (int(source.areas[0].Height)-1)/2
+	} else if selection.position == "south" {
 		target, direction = band.low, 1
 	}
 	var last error

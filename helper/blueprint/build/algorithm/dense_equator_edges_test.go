@@ -15,13 +15,19 @@ import (
 
 // TestDenseEquatorEdgeOrientation 职责：验证赤道两侧的建筑朝向、真实物流与紧凑包络；使用：边缘适配阶段回归；边界：完整生成和离线碰撞校验不等价于游戏拍建。
 func TestDenseEquatorEdgeOrientation(t *testing.T) {
-	for _, rate := range []float64{240, 480} {
+	testDenseMatrixRegions(t, []float64{240, 480}, []string{"equator-north", "equator-south"}, []int{1, 2, 3, 4})
+}
+
+// testDenseMatrixRegions 职责：复用矩阵的产能、朝向、塔数、占地与导出落点检查；使用：分档验收；边界：导出仅在显式设置环境变量时发生。
+func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes []int) {
+	t.Helper()
+	for _, rate := range rates {
 		plan, err := quant.Solve(context.Background(), quant.Request{Dataset: "Vanilla", Targets: []quant.Target{{ItemID: 6001, RatePerMinute: rate}}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, zone := range []string{"equator-north", "equator-south"} {
-			for _, mode := range []int{1, 2, 3, 4} {
+		for _, zone := range zones {
+			for _, mode := range modes {
 				t.Run(fmt.Sprintf("%.0f/%s/mode%d", rate, zone, mode), func(t *testing.T) {
 					req := Request{Plan: plan, Mode: mode, Density: densityDense, Setting: Setting{BeltLv: 3, InserterLv: 4}, SurfaceLayout: &SurfaceLayout{Mode: "autoTropic", GridSegment: 200, LatitudeZone: zone}, Name: "赤道边缘朝向回归"}
 					result, err := Generate(context.Background(), req)
@@ -64,7 +70,13 @@ func TestDenseEquatorEdgeOrientation(t *testing.T) {
 						t.Errorf("一塔外部物流被回退为%d塔", towers)
 					}
 					metrics := result.LogisticsSummary.Metrics
-					if result.SurfacePlan.LayoutWidth > 55 || result.SurfacePlan.LayoutHeight > 55 || metrics.EnvelopeArea > 1800 || metrics.EnvelopeAspectRatio > 2 {
+					selection, _ := densityLatitudeSelectionFor(zone)
+					aspectLimit := 2.
+					// 第2档的极侧格距补偿会增加横向格数；保留小幅比例余量，面积和最长边限制不放宽。
+					if selection.tier == 2 {
+						aspectLimit = 2.2
+					}
+					if result.SurfacePlan.LayoutWidth > 55 || result.SurfacePlan.LayoutHeight > 55 || metrics.EnvelopeArea > 1800 || metrics.EnvelopeAspectRatio > aspectLimit {
 						t.Errorf("边缘适配失去紧凑矩形：%+v", metrics)
 					}
 					if !result.SurfacePlan.StaticCollidersChecked || !result.SurfacePlan.BeltConnectionsChecked {
@@ -75,8 +87,11 @@ func TestDenseEquatorEdgeOrientation(t *testing.T) {
 						t.Fatal(err)
 					}
 					gap := result.SurfacePlan.AnchorLatitudeGrid - band.low
-					if zone == "equator-north" {
+					if selection.position == "north" {
 						gap = band.high - result.SurfacePlan.AnchorLatitudeGrid - result.SurfacePlan.LayoutHeight + 1
+					}
+					if selection.position == "center" {
+						gap = absInt(result.SurfacePlan.AnchorLatitudeGrid - (bandCenter(band) - (result.SurfacePlan.LayoutHeight-1)/2))
 					}
 					if gap < 0 || gap > 4 {
 						t.Errorf("结果没有落在所选边缘：距边界%d格", gap)
