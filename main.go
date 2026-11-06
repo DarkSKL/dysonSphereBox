@@ -11,6 +11,10 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"DysonSphereBox/service"
 
@@ -41,6 +45,31 @@ var databaseTemplate []byte
 // 使用：由 Go 程序入口自动调用。
 // 边界：不执行业务初始化；数据库和恢复任务由 App.startup 生命周期处理。
 func main() {
+	// 获取当前可执行文件路径
+	exePath, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+	exeDir := filepath.Dir(exePath)
+	// 处理模型资源请求
+	assetHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 如果请求的是外置模型或资源目录
+		if strings.HasPrefix(r.URL.Path, "/models/") {
+			// 将 URL 路径转为本地磁盘路径
+
+			filePath := filepath.Join(exeDir, filepath.Clean(r.URL.Path))
+
+			// 处理 CORS 头（确保 WebView 允许 fetch）
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+
+			// 使用 http.ServeFile 提供文件
+			http.ServeFile(w, r, filePath)
+			return
+		}
+
+		http.NotFound(w, r)
+	})
+
 	if err := diagnostics.Initialize(core.Version); err != nil {
 		fmt.Println("初始化日志失败:", err)
 	}
@@ -51,7 +80,7 @@ func main() {
 	app := NewApp()
 	services := append([]interface{}{app}, service.RegisterServices()...)
 
-	err := wails.Run(&options.App{
+	err = wails.Run(&options.App{
 		Logger:    diagnostics.RuntimeLogger{},
 		Title:     "戴森球盒子",
 		Width:     1024,
@@ -60,7 +89,8 @@ func main() {
 		MinHeight: 768,
 		Frameless: true,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:  assets,
+			Handler: assetHandler,
 		},
 		Windows: &windows.Options{
 			IsZoomControlEnabled: false,
