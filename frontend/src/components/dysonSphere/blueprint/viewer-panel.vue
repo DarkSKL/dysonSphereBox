@@ -125,8 +125,26 @@ const focusRequestedBuilding = (): void => {
 const setRenderSettings = (showRealModels: boolean, maxInstancesPerModel: number): void => {
   withAppThemeIsolation(() => viewer.value?.setRenderSettings({showRealModels, maxInstancesPerModel}))
 }
+// =============== 增量预览 API ===============
+// 说明：对接后端 preview-delta 事件流；所有调用走主题隔离，避免第三方库写入 html[data-theme]。
+// 边界：调用顺序由上层协调层负责（beginPreview → 提交生成 → applyPreviewDelta → commitPreview/discardPreview）。
+const beginPreview = (): void => {
+  withAppThemeIsolation(() => viewer.value?.beginPreview())
+}
+const applyPreviewDelta = (event: unknown): boolean => {
+  // 后端 FactoryGenerationProgress 与库 PreviewDeltaEvent 结构兼容，协议层已校验 kind/protocolVersion/operations，这里直接透传。
+  return withAppThemeIsolation(() => viewer.value?.applyPreviewDelta(event as Parameters<typeof viewer.value.applyPreviewDelta>[0]) ?? false)
+}
+const commitPreview = (blueprint: string): unknown => {
+  return withAppThemeIsolation(() => viewer.value?.commitPreview(blueprint))
+}
+const discardPreview = (): void => {
+  withAppThemeIsolation(() => viewer.value?.discardPreview())
+}
+const getPreviewing = (): boolean => viewer.value?.previewing ?? false
+const getPreviewStats = () => withAppThemeIsolation(() => viewer.value?.previewStats() ?? null)
 // 暴露 API
-defineExpose({selectBuildings, focusBuilding, resetCamera, captureImage, setRenderSettings})
+defineExpose({selectBuildings, focusBuilding, resetCamera, captureImage, setRenderSettings, beginPreview, applyPreviewDelta, commitPreview, discardPreview, getPreviewing, getPreviewStats})
 
 // 释放预览器实例
 const releaseViewerInstance = (): void => {

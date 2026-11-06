@@ -9,6 +9,15 @@ import {requestBlueprintLibrary} from '../../pages/services/dysonSphere/blueprin
 import {buildFactoryLayoutRequest} from '../../pages/services/dysonSphere/factory-layout'
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../pages/services/dysonSphere/blueprint-preview-host'
 import {generationDebugOptions} from './useGenerationTimeline'
+import type {FactoryGenerationProgress} from '../../types/factory-progress'
+
+// 职责：预览库六动作契约；使用：页面把 BlueprintViewerPanel 暴露的方法注册进来；边界：只描述协调层需要的最小集合。
+export interface FactoryPreviewApi {
+  beginPreview(): void
+  applyPreviewDelta(event: FactoryGenerationProgress): boolean
+  commitPreview(blueprint: string): unknown
+  discardPreview(): void
+}
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
 type WorkspaceTarget = {key: number; itemId: number | null; ratePerMinute: number | null}
@@ -113,6 +122,25 @@ export const useQuantWorkspace = () => {
   let solveTimer: number | undefined
   let generateTimer: number | undefined
   let generationObserver: AbortController | undefined
+  // =============== 增量预览协调 ===============
+  // previewApi：页面注册的 Viewer 预览六动作；未注册时走旧的静态预览链路。
+  let previewApi: FactoryPreviewApi | undefined
+  // 当前任务 token：每个 generate 分配唯一 token，旧任务回调发现不匹配直接返回，不覆盖新画面。
+  let currentTaskToken = 0
+  // 页面卸载 / 切换任务时丢弃预览层的公共出口；页面侧也要自行清理（组件卸载），这里只兜底。
+  const discardActivePreview = (): void => {
+    if (previewApi) {
+      try { previewApi.discardPreview() } catch { /* 预览层已释放 */ }
+    }
+  }
+  // =============== 预览 API 注册 ===============
+  const registerPreviewApi = (api: FactoryPreviewApi | undefined): void => {
+    previewApi = api
+    // 注册时若已有进行中的生成任务，立即丢弃旧预览（beginPreview 会在下一次 generate 调用时重新触发）。
+    if (api && generating.value) {
+      try { api.discardPreview() } catch { /* 忽略 */ }
+    }
+  }
   // 入库后的启用确认随工作区关闭，防止缓存页离开后仍接受启用操作或悬挂保存状态。
   let activationPrompt: {cancel: () => void; destroy: () => void} | undefined
   const closeActivationPrompt = (): void => {
@@ -210,7 +238,10 @@ export const useQuantWorkspace = () => {
   }
   const generate = async (): Promise<void> => {
     if (!plan.value || quantStale.value) return
+    // 中止旧任务：前端立即停止观察，不等后端 Go 结束；旧任务的迟到回调因 token 不匹配直接返回。
     generationObserver?.abort()
+    // 每个任务分配独立 token，旧回调发现自己不是当前任务就什么都不做。
+    const taskToken = ++currentTaskToken
     error.value = null
     const signature = generationSignature.value
     const sourcePlan = plan.value
@@ -219,19 +250,45 @@ export const useQuantWorkspace = () => {
     generationProgress.value = '正在校验生成参数'
     const observer = new AbortController()
     generationObserver = observer
+    // =============== 第一步：先开预览，再提交请求 ===============
+    // 顺序不能颠倒——后端会在生成过程中陆续推 preview-delta，请求发出后开头的差量会在 beginPreview 前到达，漏掉会导致画面缺一块。
+    const useLivePreview = Boolean(previewApi && generationDebugOptions.emitPreviewDeltas)
+    if (useLivePreview) {
+      try { previewApi!.beginPreview() } catch { /* Viewer 未就绪或已释放：继续走旧链路 */ }
+    }
     try {
       const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas: generationDebugOptions.emitPreviewDeltas}), progress => {
-        if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
-        if (progress.kind === 'building-batch' && progress.previewBatch) {
+        // 竞态防护：旧任务回调发现 token 不是当前任务直接返回，不覆盖新画面。
+        if (disposed || currentTaskToken !== taskToken || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
+        // =============== 第二步：按 kind 分流 ===============
+        // 只有 preview-delta 进几何层；phase/building-batch 更新 UI；preview-complete 只记录，不动画面。
+        if (progress.kind === 'preview-delta' && useLivePreview) {
+          try { previewApi!.applyPreviewDelta(progress) } catch { /* 预览层异常不影响生成流程 */ }
+          generationProgress.value = progress.message
+        } else if (progress.kind === 'building-batch' && progress.previewBatch) {
           const moduleName = progress.previewBatch.module.name || '共享设施'
           generationProgress.value = `${progress.message} · ${moduleName} ${progress.current}/${progress.total}`
         } else {
           generationProgress.value = progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
         }
       }, observer.signal)
-      if (disposed || generationObserver !== observer) return
-      if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) { if (active.value && !autoRun.value) message.warning('参数已变化，本次结果未替换预览，请重新量化或生成'); return }
-      if (result.logisticsSummary && sourcePlan.flowGraph && result.logisticsSummary.flowGraphDigest !== sourcePlan.flowGraph.digest) throw new FactoryError('GEN_E_FLOW_MISMATCH', '生成物流摘要与量化物料图不一致，本次结果未替换预览。')
+      // 竞态防护：调用返回后仍要检查当前 token 和 observer，防止旧任务结果覆盖新画面。
+      if (disposed || currentTaskToken !== taskToken || generationObserver !== observer) return
+      if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) {
+        // 参数已变：丢弃本次预览（如果有），提示用户；不覆盖旧结果。
+        if (useLivePreview && previewApi) { try { previewApi.discardPreview() } catch { /* 忽略 */ } }
+        if (active.value && !autoRun.value) message.warning('参数已变化，本次结果未替换预览，请重新量化或生成')
+        return
+      }
+      if (result.logisticsSummary && sourcePlan.flowGraph && result.logisticsSummary.flowGraphDigest !== sourcePlan.flowGraph.digest) {
+        if (useLivePreview && previewApi) { try { previewApi.discardPreview() } catch { /* 忽略 */ } }
+        throw new FactoryError('GEN_E_FLOW_MISMATCH', '生成物流摘要与量化物料图不一致，本次结果未替换预览。')
+      }
+      // =============== 第三步：成功收尾 ===============
+      if (useLivePreview && previewApi) {
+        // commitPreview 内部先建后换，不会闪白。commit 成功后预览层自动切换为正式场景，旧 temp 层被清掉。
+        try { previewApi.commitPreview(result.blueprint) } catch { /* commit 失败不影响数据，只是画面回退到临时层 */ }
+      }
       generated.value = result
       generatedFlowGraph.value = sourcePlan.flowGraph ?? null
       generationFailed.value = false
@@ -243,6 +300,10 @@ export const useQuantWorkspace = () => {
       selectedProductions.value = []
       resetPreviewState(result.buildingCount)
     } catch (caught) {
+      // =============== 第四步：失败 / 中止 → 丢弃预览层，保留上次成功画面 ===============
+      if (useLivePreview && previewApi && currentTaskToken === taskToken) {
+        try { previewApi.discardPreview() } catch { /* 忽略 */ }
+      }
       if (caught instanceof FactoryError && caught.code === 'GEN_E_CANCELED') {
         if (generationObserver === observer && signature === generationSignature.value && !observer.signal.aborted) generationFailed.value = true
         return
@@ -456,8 +517,8 @@ export const useQuantWorkspace = () => {
   })
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
-  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); discardActivePreview(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
+  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal, registerPreviewApi, discardActivePreview}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

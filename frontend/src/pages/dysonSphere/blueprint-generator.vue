@@ -1,17 +1,49 @@
 <script setup lang="ts">
-import {computed, reactive, ref} from 'vue'
+import {computed, reactive, ref, watch} from 'vue'
 import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw, Save, Sparkles} from '@lucide/vue'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
 import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
-import {useQuantWorkspace, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
+import {useQuantWorkspace, type FactoryPreviewApi, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
 import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
+
+// 说明：BlueprintViewerPanel defineExpose 暴露的完整方法签名；页面只需要 resetCamera 和预览四动作，其余为类型完整性。
+interface ViewerPanelExpose {
+  resetCamera(): void
+  selectBuildings(indices: number[]): void
+  focusBuilding(index: number | null): void
+  captureImage(): string | null
+  setRenderSettings(showRealModels: boolean, maxInstancesPerModel: number): void
+  beginPreview(): void
+  applyPreviewDelta(event: unknown): boolean
+  commitPreview(blueprint: string): unknown
+  discardPreview(): void
+  getPreviewing(): boolean
+  getPreviewStats(): unknown | null
+}
 
 definePage({meta: {layout: 'main', title: '量化与蓝图', keepAlive: true}})
 const w = reactive(useQuantWorkspace())
 const fileInput = ref<HTMLInputElement | null>(null)
-const viewer = ref<{resetCamera: () => void} | null>(null)
+const viewer = ref<ViewerPanelExpose | null>(null)
+// =============== 预览协调 ===============
+// 说明：把 Viewer 暴露的 beginPreview/applyPreviewDelta/commitPreview/discardPreview 注册给 workspace，
+// workspace 在生成时自动编排四步生命周期（begin → 提交生成 → 边收边 apply → commit / discard）。
+// 边界：viewer 未挂载时 workspace 自动走旧的静态预览链路，不阻塞生成。
+watch(viewer, (panel) => {
+  if (panel) {
+    const api: FactoryPreviewApi = {
+      beginPreview: () => panel.beginPreview(),
+      applyPreviewDelta: (event) => panel.applyPreviewDelta(event),
+      commitPreview: (blueprint) => panel.commitPreview(blueprint),
+      discardPreview: () => panel.discardPreview(),
+    }
+    w.registerPreviewApi(api)
+  } else {
+    w.registerPreviewApi(undefined)
+  }
+}, {immediate: true})
 const previewLabels: Record<PreviewState, string> = {idle: '等待生成', loading: '正在加载预览模型', ready: '实时预览', stale: '等待刷新', error: '预览不可用', empty: '没有建筑'}
 const previewStatus = computed(() => {
   if (w.generating) return {state: 'loading', text: w.generationProgress || '正在准备生成'}

@@ -134,19 +134,19 @@
 
 ## 页面说明
 
-| 页面 | 路由 | 说明 |
-| --- | --- | --- |
-| 首页 | `/dysonSphere` | 戴森球 3D 场景、欢迎信息和按本地时间变化的建造进度。 |
-| 开服 | `/dysonSphere/headless` | Nebula 环境检测、准备、端口与存档配置、启动停止、网络趋势和日志控制台。 |
-| 模组 | `/dysonSphere/mod` | Thunderstore 模组列表、搜索、刷新、分页、安装、卸载和冲突处理。 |
-| 资源 | `/dysonSphere/environment` | 客户端模组、蓝图和真实存档的纳管、同步、迁移、导入导出与预览。 |
-| 量化与蓝图 | `/dysonSphere/blueprint-generator` | 多目标产线量化、节点图、蓝图生成/导入反算、3D 预览和蓝图库。 |
-| 图鉴 | `/dysonSphere/encyclopedia` | 建筑、物品、科技、战斗和成就的离线查阅。 |
-| 游戏设置 | `/dysonSphere/settings` | 游戏目录与 BepInEx 前置框架。 |
-| 联机 | `/community/multiplayer` | 公开大厅、房间管理、P2P 连接和网络诊断；需要登录。 |
-| 系统日志 | `/system/log` | 日志检索、详情、删除、健康状态和诊断导出。 |
-| 全局设置 | `/system/settings` | 应用服务器地址与应用更新。 |
-| 关于我们 | `/system/about` | 版本、项目地址、反馈入口、联系方式、鸣谢与免责声明。 |
+| 页面    | 路由                                 | 说明                                      |
+| ----- | ---------------------------------- | --------------------------------------- |
+| 首页    | `/dysonSphere`                     | 戴森球 3D 场景、欢迎信息和按本地时间变化的建造进度。            |
+| 开服    | `/dysonSphere/headless`            | Nebula 环境检测、准备、端口与存档配置、启动停止、网络趋势和日志控制台。 |
+| 模组    | `/dysonSphere/mod`                 | Thunderstore 模组列表、搜索、刷新、分页、安装、卸载和冲突处理。  |
+| 资源    | `/dysonSphere/environment`         | 客户端模组、蓝图和真实存档的纳管、同步、迁移、导入导出与预览。         |
+| 量化与蓝图 | `/dysonSphere/blueprint-generator` | 多目标产线量化、节点图、蓝图生成/导入反算、3D 预览和蓝图库。        |
+| 图鉴    | `/dysonSphere/encyclopedia`        | 建筑、物品、科技、战斗和成就的离线查阅。                    |
+| 游戏设置  | `/dysonSphere/settings`            | 游戏目录与 BepInEx 前置框架。                     |
+| 联机    | `/community/multiplayer`           | 公开大厅、房间管理、P2P 连接和网络诊断；需要登录。             |
+| 系统日志  | `/system/log`                      | 日志检索、详情、删除、健康状态和诊断导出。                   |
+| 全局设置  | `/system/settings`                 | 应用服务器地址与应用更新。                           |
+| 关于我们  | `/system/about`                    | 版本、项目地址、反馈入口、联系方式、鸣谢与免责声明。              |
 
 路由使用 Hash 模式。访问 `/` 会跳转到 `/dysonSphere`，`/community` 会跳转到 `/community/multiplayer`；旧的 `/dysonSphere/multiplayer` 也重定向到联机页。
 
@@ -286,15 +286,15 @@ deploy\build.bat v2.0.1
 
 应用采用便携式数据布局，实时数据放在可执行文件旁边，不使用 Windows `%APPDATA%`：
 
-| 路径 | 内容 |
-| --- | --- |
-| `<exe>/dyson-sphere-box.db` | 实时 SQLite 数据库；首次启动时从内嵌模板创建。 |
-| `<exe>/logs/` | JSONL 运行日志和会话标记文件。 |
-| `<exe>/appData/plugins/` | 客户端模组资源库。 |
-| `<exe>/appData/blueprints/` | 客户端蓝图资源库。 |
-| `<exe>/appData/environment/` | 导入临时目录、存档快照等环境管理数据。 |
-| `<游戏目录>/BepInEx/plugins/` | 启用模组的同步目标。 |
-| 真实蓝图目录、真实存档目录 | 由配置或自动探测解析，蓝图启用、存档导入导出直接作用于这些目录。 |
+| 路径                           | 内容                               |
+| ---------------------------- | -------------------------------- |
+| `<exe>/dyson-sphere-box.db`  | 实时 SQLite 数据库；首次启动时从内嵌模板创建。      |
+| `<exe>/logs/`                | JSONL 运行日志和会话标记文件。               |
+| `<exe>/appData/plugins/`     | 客户端模组资源库。                        |
+| `<exe>/appData/blueprints/`  | 客户端蓝图资源库。                        |
+| `<exe>/appData/environment/` | 导入临时目录、存档快照等环境管理数据。              |
+| `<游戏目录>/BepInEx/plugins/`    | 启用模组的同步目标。                       |
+| 真实蓝图目录、真实存档目录                | 由配置或自动探测解析，蓝图启用、存档导入导出直接作用于这些目录。 |
 
 仓库根目录的 `app.db` 是首次启动使用的**模板数据库**，不是运行期数据库。开发模式下，实际数据库和日志位于构建出的可执行文件旁边。
 
@@ -430,7 +430,8 @@ npm run build
 
 DarkSKL
 
-- Email: 18214780622@163.com
+- Email: <18214780622@163.com>
 - 项目主页：<https://gitee.com/Dark-Skl/dyson-sphere-box>
 - QQ 群：779182569
 - 微信：DarkSKL
+

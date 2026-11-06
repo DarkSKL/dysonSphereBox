@@ -18,12 +18,17 @@ const emit = defineEmits<{generate: []}>()
 // 说明：为当前方案发起一次明确启用 preview-delta 的生成，避免仅打开开关却没有新请求。
 // 边界：没有可用量化方案或正在生成时禁用；暂停的记录先恢复，确保测试事件可见。
 const generateWithDeltas = (): void => {
+  // 禁用差量采集开关，避免重复请求
   if (!props.canGenerate || props.generating) return
+  // 启用差量采集开关
   generationDebugOptions.emitPreviewDeltas = true
+  // 恢复暂停记录，确保测试事件可见
   paused.value = false
   previewOnly.value = true
   testActive.value = true
+  // 清空时间线，确保新请求可见
   clear()
+  // 触发生成事件，确保新请求可见
   emit('generate')
 }
 
