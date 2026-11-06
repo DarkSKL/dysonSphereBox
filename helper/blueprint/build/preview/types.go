@@ -8,8 +8,8 @@ import "DysonSphereBox/helper/blueprint"
 
 // 预览协议常量限定渲染操作与坐标语义；使用：后端事件及前端分派；边界：不表示生成任务已成功。
 const (
-	// ProtocolVersion 职责：标识对象增量协议；使用：与旧最终建筑分块区分；边界：不改变旧阶段协议。
-	ProtocolVersion = 2
+	// ProtocolVersion 职责：标识含嵌套区域与临时对象标记的预览协议；使用：差量、最终分块及完成事件；边界：不改变 v1 阶段协议。
+	ProtocolVersion = 3
 	// Kind 职责：标识场景差量事件；使用：进度通道分派；边界：不是完整蓝图替换事件。
 	Kind = "preview-delta"
 	// Add 职责：标识创建可见对象；使用：渲染器入场；边界：对象 ID 在同一任务中稳定。
@@ -26,10 +26,36 @@ const (
 	BatchSize = 128
 )
 
+// Area 职责：提供实时预览专用的嵌套区域元数据；使用：解释最终 Area 局部坐标；边界：不替代蓝图编解码使用的扁平 Area 记录。
+type Area struct {
+	// Index 职责：保存区域记录下标；使用：与建筑 AreaIndex 关联；边界：保持蓝图原始下标。
+	Index int8 `json:"index"`
+	// ParentIndex 职责：保存父区域下标；使用：区域层级展示；边界：-1 表示无父区域。
+	ParentIndex int8 `json:"parentIndex"`
+	// TropicAnchor 职责：保存纬线锚点；使用：区域展示元数据；边界：不在预览端执行球面映射。
+	TropicAnchor int16 `json:"tropicAnchor"`
+	// AreaSegments 职责：保存区域分段数；使用：区域展示元数据；边界：不改变建筑坐标。
+	AreaSegments int16 `json:"areaSegments"`
+	// AnchorLocalOffset 职责：保存二维本地锚点；使用：区域坐标解释；边界：不含高度分量。
+	AnchorLocalOffset Point2 `json:"anchorLocalOffset"`
+	// Size 职责：保存区域宽高；使用：区域边界展示；边界：沿用整数尺寸单位。
+	Size Point2 `json:"size"`
+}
+
+// Point2 职责：承载预览区域中的二维整数值；使用：锚点和尺寸字段；边界：不用于三维建筑姿态。
+type Point2 struct {
+	// X 职责：保存横向分量；使用：区域元数据；边界：保持原始整数单位。
+	X int16 `json:"x"`
+	// Y 职责：保存纵向分量；使用：区域元数据；边界：保持原始整数单位。
+	Y int16 `json:"y"`
+}
+
 // Building 职责：提供渲染所需的值类型建筑姿态；使用：差量比较与动画；边界：不含参数大数组或未通过校验的导出数据。
 type Building struct {
 	// Index 职责：附带最终记录索引；使用：成功后建立选择映射；边界：临时对象为 -1，不能用作 objectId。
 	Index int32 `json:"index"`
+	// IsTemporary 职责：明确建筑是否仍处于布局网格临时场景；使用：渲染器区分中间对象和正式 Area 对象；边界：不替代 Index 的记录索引含义。
+	IsTemporary bool `json:"isTemporary"`
 	// ItemID 职责：标识建筑原型；使用：模型选择；边界：不参与任务或对象身份。
 	ItemID int16 `json:"itemId"`
 	// ModelIndex 职责：标识原型模型；使用：建筑外观选择；边界：不加载游戏资源。
@@ -87,7 +113,7 @@ type Frame struct {
 	// CoordinateSystem 职责：标识坐标语义；使用：选择平面或 Area 投影；边界：不能静默混用。
 	CoordinateSystem string
 	// Areas 职责：保存最终区域定义；使用：Area 坐标解释；边界：临时平面坐标不需要区域数组。
-	Areas []blueprint.Area
+	Areas []Area
 	// PrimaryAreaIndex 职责：保存主区域编号；使用：最终场景投影；边界：不是对象 ID。
 	PrimaryAreaIndex int32
 }

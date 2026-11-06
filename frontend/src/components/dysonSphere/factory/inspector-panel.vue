@@ -10,6 +10,15 @@ import {generationDebugOptions} from '../../../composables/dysonSphere/useGenera
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
 const emit = defineEmits<{(event: 'clear'): void}>()
 
+// 设备类型方块组：每组单选；传送带与分拣器写入布局等级，熔炉与工作台写入对应类型配方的设备选择。
+const beltTiles = [{label: '传送带', value: 1, icon: '传送带'}, {label: '高速传送带', value: 2, icon: '高速传送带'}, {label: '极速传送带', value: 3, icon: '急速传送带'}]
+const inserterTiles = [{label: '分拣器', value: 1, icon: '分拣器'}, {label: '高速分拣器', value: 2, icon: '高速分拣器'}, {label: '极速分拣器', value: 3, icon: '极速分拣器'}, {label: '集装分拣器', value: 4, icon: '集装分拣器'}]
+const equipmentGroups = computed(() => [
+  {key: 'belt', label: '传送带', tiles: beltTiles, selected: props.w.layout.beltLv as number | null, pick: (value: number) => { props.w.layout.beltLv = value }},
+  {key: 'inserter', label: '分拣器', tiles: inserterTiles, selected: props.w.layout.inserterLv as number | null, pick: (value: number) => { props.w.layout.inserterLv = value }},
+  {key: 'smelter', label: '熔炉', tiles: props.w.machineChoices(1), selected: props.w.selectedMachine(1), pick: (value: number) => props.w.selectMachine(1, value)},
+  {key: 'assembler', label: '工作台', tiles: props.w.machineChoices(4), selected: props.w.selectedMachine(4), pick: (value: number) => props.w.selectMachine(4, value)}
+].filter(group => group.tiles.length > 0))
 const merges = [{label: '纵向单列', value: 1, icon: ''}, {label: '按宽度换列', value: 2, icon: ''}]
 const densityOptions: {label: string; value: 'standard' | 'dense'; code: string}[] = [{label: '普通', value: 'standard', code: 'STD'}, {label: '超密度', value: 'dense', code: 'DENSE'}]
 // 超密度经纬位置复用图标选择栏的括角外观；选项不显示图标，未提供选项时值为空以显示占位提示。
@@ -150,7 +159,6 @@ const importedRows = computed(() => {
           <label class="field">占地权重<n-input-number v-model:value="w.spaceCost" size="small" :min="0" /></label>
           <label class="field">电力权重<n-input-number v-model:value="w.powerCost" size="small" :min="0" /></label>
         </div>
-        <label class="field">研究站堆叠<n-input-number v-model:value="w.researchStack" size="small" :min="1" :max="15" /></label>
         <template v-if="w.mineralized.length">
           <h3><PackageOpen :size="13" />外部供应<span class="count">{{ w.mineralized.length }}</span></h3>
           <div class="chip-list">
@@ -166,6 +174,13 @@ const importedRows = computed(() => {
           <div class="density-segment" :class="{'is-dense': w.density === 'dense'}" role="radiogroup" aria-label="布局密度">
             <i class="density-thumb ds-bracket" aria-hidden="true" />
             <button v-for="option in densityOptions" :key="option.value" type="button" role="radio" class="density-option" :class="{'is-active': w.density === option.value}" :aria-checked="w.density === option.value" @click="w.density = option.value">{{ option.label }}<small>{{ option.code }}</small></button>
+          </div>
+        </div>
+        <!-- ~ 设备类型 -->
+        <!-- * 说明：每种设备一行小方块，行内单选；选中值写入蓝图参数（带/分拣器等级与熔炉、工作台设备）。 -->
+        <div v-for="group in equipmentGroups" :key="group.key" class="field equip-field">{{ group.label }}
+          <div class="tile-group" role="radiogroup" :aria-label="group.label">
+            <button v-for="tile in group.tiles" :key="tile.value" type="button" role="radio" class="tile" :class="{'is-active': group.selected === tile.value}" :aria-checked="group.selected === tile.value" :title="tile.label" :aria-label="tile.label" @click="group.pick(tile.value)"><ItemIcon :name="tile.icon" :size="22" /></button>
           </div>
         </div>
         <template v-if="w.density === 'dense'">
@@ -227,6 +242,11 @@ h3 { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(-
 .density-thumb { --bracket-color: var(--ds-brand); --bracket-size: 8px; position: absolute; top: 0; bottom: 0; left: 0; width: 50%; border-radius: 2px; background: var(--ds-active-bg); box-shadow: var(--ds-active-glow); transition: transform 280ms cubic-bezier(.22, 1, .36, 1); }
 .density-thumb::before { position: absolute; right: 30%; bottom: 0; left: 30%; height: 1px; background: var(--ds-brand); box-shadow: 0 0 6px var(--ds-brand-glow); content: ''; }
 .density-segment.is-dense .density-thumb { transform: translateX(100%); }
+.equip-field { flex: none; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+.tile-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.tile { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--ds-border-subtle); border-radius: 2px; padding: 0; background: var(--ds-hover-bg); cursor: pointer; transition: border-color 150ms, background 150ms; }
+.tile:hover { border-color: var(--ds-text-muted); }
+.tile.is-active { border-color: var(--ds-brand); background: var(--ds-active-bg); box-shadow: var(--ds-active-glow); }
 .density-option { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 0 6px; background: transparent; color: var(--ds-text-muted); font-size: 12px; line-height: 1; cursor: pointer; transition: color 150ms; }
 .density-option:hover { color: var(--ds-text-secondary); }
 .density-option.is-active { color: var(--ds-text-primary); font-weight: 600; }

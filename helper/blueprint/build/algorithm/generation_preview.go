@@ -88,7 +88,7 @@ func (b *builder) previewCheckpoint(stage string) {
 		record.Index, record.AreaIndex = -1, 0
 		record.LocalOffset = blueprint.Point{X: float32(entity.a.x), Y: float32(entity.a.y), Z: float32(entity.a.z)}
 		record.LocalOffset2 = blueprint.Point{X: float32(entity.b.x), Y: float32(entity.b.y), Z: float32(entity.b.z)}
-		building := renderPreviewBuilding(record, entity.owner)
+		building := renderPreviewBuilding(record, entity.owner, true)
 		building.InputObjectID, building.OutputObjectID = ids[entity.input], ids[entity.output]
 		objects = append(objects, preview.Object{ID: ids[entity], Building: building})
 	}
@@ -107,8 +107,22 @@ func (b *builder) rollbackPreview() {
 }
 
 // renderPreviewBuilding 职责：从建筑记录摘取渲染值；使用：临时及最终姿态共用；边界：不复制参数和原始编码尾部，连接身份由调用方填写。
-func renderPreviewBuilding(record blueprint.Building, owner int) preview.Building {
-	return preview.Building{Index: record.Index, ItemID: record.ItemID, ModelIndex: record.ModelIndex, AreaIndex: record.AreaIndex, LocalOffset: record.LocalOffset, LocalOffset2: record.LocalOffset2, Yaw: record.Yaw, Yaw2: record.Yaw2, Tilt: record.Tilt, Tilt2: record.Tilt2, Pitch: record.Pitch, Pitch2: record.Pitch2, InputFromSlot: record.InputFromSlot, OutputToSlot: record.OutputToSlot, ProductionIndex: owner}
+func renderPreviewBuilding(record blueprint.Building, owner int, isTemporary bool) preview.Building {
+	return preview.Building{Index: record.Index, IsTemporary: isTemporary, ItemID: record.ItemID, ModelIndex: record.ModelIndex, AreaIndex: record.AreaIndex, LocalOffset: record.LocalOffset, LocalOffset2: record.LocalOffset2, Yaw: record.Yaw, Yaw2: record.Yaw2, Tilt: record.Tilt, Tilt2: record.Tilt2, Pitch: record.Pitch, Pitch2: record.Pitch2, InputFromSlot: record.InputFromSlot, OutputToSlot: record.OutputToSlot, ProductionIndex: owner}
+}
+
+// previewAreas 职责：把蓝图区域转换为实时预览契约；使用：候选最终提交；边界：原始 Area 记录继续保持扁平结构。
+func previewAreas(areas []blueprint.Area) []preview.Area {
+	converted := make([]preview.Area, len(areas))
+	for index, area := range areas {
+		converted[index] = preview.Area{
+			Index: area.Index, ParentIndex: area.ParentIndex, TropicAnchor: area.TropicAnchor,
+			AreaSegments:      area.AreaSegments,
+			AnchorLocalOffset: preview.Point2{X: area.AnchorLocalOffsetX, Y: area.AnchorLocalOffsetY},
+			Size:              preview.Point2{X: area.Width, Y: area.Height},
+		}
+	}
+	return converted
 }
 
 // finalPreviewSnapshot 职责：为通过严格编码的候选保留最终坐标与稳定身份；使用：候选结果择优；边界：不解码蓝图串，也不把尚未获选候选标为任务完成。
@@ -122,11 +136,11 @@ func (b *builder) finalPreviewSnapshot(records []blueprint.Building, areas []blu
 	}
 	objects := make([]preview.Object, 0, len(records))
 	for index, record := range records {
-		building := renderPreviewBuilding(record, b.all[index].owner)
+		building := renderPreviewBuilding(record, b.all[index].owner, false)
 		building.InputObjectID, building.OutputObjectID = ids[record.InputObjIdx], ids[record.OutputObjIdx]
 		objects = append(objects, preview.Object{ID: ids[record.Index], Building: building})
 	}
-	return &generationPreviewSnapshot{scene: preview.Scene{Objects: objects, Frame: preview.Frame{CoordinateSystem: preview.AreaCoordinates, Areas: append([]blueprint.Area(nil), areas...), PrimaryAreaIndex: primary}}}
+	return &generationPreviewSnapshot{scene: preview.Scene{Objects: objects, Frame: preview.Frame{CoordinateSystem: preview.AreaCoordinates, Areas: previewAreas(areas), PrimaryAreaIndex: primary}}}
 }
 
 // commitGenerationPreview 职责：把真正获选的正式候选差量提交并标记流结束；使用：Generate 成功返回前；边界：完成不取代正式调用结果，取消时不返回预览成功。

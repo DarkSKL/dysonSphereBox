@@ -109,7 +109,6 @@ interface DysonAchievement {
 }
 ```
 
-后端接入前可用 `createMockAchievements(count, unlockRatio)` 生成模拟数据。
 
 ## 交互
 
@@ -137,7 +136,6 @@ src/
   types.ts          公开类型
   defaults.ts       DEFAULT_PARAMS / QUALITY_PRESETS / DEFAULT_INTERACTION
   achievement.ts    isAchievementUnlocked / TIER_LABELS
-  mock.ts           模拟成就数据
   styles.ts         场景 CSS 与注入
   scene.ts          场景实现（内部）
   internal/         调色板、参数校验、覆盖层 DOM、着色器片段、工具

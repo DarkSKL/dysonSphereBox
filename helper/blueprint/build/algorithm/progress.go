@@ -6,7 +6,6 @@ import (
 	"context"
 	"sync/atomic"
 
-	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build/preview"
 )
 
@@ -30,7 +29,7 @@ type Progress struct {
 	Total int `json:"total"`
 	// CoordinateSystem 职责：说明预览建筑坐标语义；使用：动画定位建筑；边界：阶段事件不携带坐标系。
 	CoordinateSystem string `json:"coordinateSystem,omitempty"`
-	// PreviewBatch 职责：承载一个模块的最终建筑记录分块；使用：增量预览渲染；边界：仅在严格编码成功后发布。
+	// PreviewBatch 职责：承载一个模块的最终建筑记录分块；使用：增量预览渲染；边界：仅在严格编码成功后发布，载荷使用实时预览协议版本。
 	PreviewBatch *BuildingBatch `json:"previewBatch,omitempty"`
 	// BuildingCount 职责：保存预览所含建筑数；使用：完整事件收尾及数量核对；边界：不表示有效放置证明。
 	BuildingCount int `json:"buildingCount,omitempty"`
@@ -39,7 +38,7 @@ type Progress struct {
 	// Operations 职责：提供实时对象变化；使用：preview-delta 事件；边界：不携带全量场景或蓝图串。
 	Operations []preview.Operation `json:"operations,omitempty"`
 	// PreviewAreas 职责：解释最终对象的 Area 坐标；使用：坐标系切换；边界：不是建筑全量快照。
-	PreviewAreas []blueprint.Area `json:"areas,omitempty"`
+	PreviewAreas []preview.Area `json:"areas,omitempty"`
 	// PreviewPrimaryAreaIndex 职责：标识最终主区域；使用：增量投影；边界：临时布局为零。
 	PreviewPrimaryAreaIndex int32 `json:"primaryAreaIndex,omitempty"`
 }

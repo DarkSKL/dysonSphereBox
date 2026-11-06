@@ -3,11 +3,7 @@ package preview
 // 文件职责：把前后可见场景转换为有界的新增、撤销与替换操作。
 // 使用：单任务生成协程在实体提交或真实回退边界调用；边界：不依赖 Builder、Wails、候选选择或蓝图编码，不发送场景全量。
 
-import (
-	"slices"
-
-	"DysonSphereBox/helper/blueprint"
-)
+import "slices"
 
 // Notifier 职责：保存当前已发布场景并输出最小对象变化；使用：单个生成任务；边界：调用方串行使用，回调不得重入同一通知器。
 type Notifier struct {
@@ -55,7 +51,7 @@ func (n *Notifier) Sync(scene Scene) {
 			return
 		}
 		frame := scene.Frame
-		frame.Areas = append([]blueprint.Area(nil), frame.Areas...)
+		frame.Areas = append([]Area(nil), frame.Areas...)
 		n.emit(frame, batch)
 		n.batches++
 		batch = make([]Operation, 0, BatchSize)
@@ -87,7 +83,7 @@ func (n *Notifier) Sync(scene Scene) {
 	flush()
 	n.current, n.order = next, order
 	n.frame = scene.Frame
-	n.frame.Areas = append([]blueprint.Area(nil), scene.Frame.Areas...)
+	n.frame.Areas = append([]Area(nil), scene.Frame.Areas...)
 }
 
 // BatchCount 职责：返回实际输出批次数；使用：任务级完成标记；边界：空通知器返回零。

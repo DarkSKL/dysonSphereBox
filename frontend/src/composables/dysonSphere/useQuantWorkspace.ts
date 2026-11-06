@@ -33,7 +33,6 @@ export const useQuantWorkspace = () => {
   const mineralized = ref<string[]>([])
   const miningSpeed = ref<number | null>(1)
   const fixedNum = ref<number | null>(2)
-  const researchStack = ref<number | null>(15)
   const sprayItself = ref(false)
   const spaceCost = ref<number | null>(1)
   const powerCost = ref<number | null>(0)
@@ -89,7 +88,7 @@ export const useQuantWorkspace = () => {
   // 自动球面布局固定使用默认量化精度与成本，不暴露平面优化参数；平面兼容模式仍可调节。
   const automaticSurface = computed(() => surfaceLayout.mode !== 'planar')
   const effectiveFixedNum = computed(() => automaticSurface.value ? 2 : fixedNum.value ?? 2)
-  const requestSettings = computed(() => ({miningSpeedMultiple: miningSpeed.value ?? 1, fixedNum: effectiveFixedNum.value, stackResearchLab: researchStack.value ?? 15, proliferateItself: sprayItself.value, mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true]))}))
+  const requestSettings = computed(() => ({miningSpeedMultiple: miningSpeed.value ?? 1, fixedNum: effectiveFixedNum.value, stackResearchLab: layout.maxLays || 3, proliferateItself: sprayItself.value, mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true]))}))
   const requestScheme = computed(() => ({itemRecipeChoices: {...itemRecipeChoices}, schemeForRecipe: (detail.value?.recipes ?? []).map((_recipe, index) => recipeOverrides[index] ?? {building: 0, productionMode: 0, increasePoints: 0}), costWeight: automaticSurface.value ? {space: 1, power: 0} : {space: spaceCost.value ?? 1, power: powerCost.value ?? 0}}))
   // 混带与旧供剂网络开关不再由工作台控制；请求保留 DTO 字段但固定为 false。
   const requestLayout = computed(() => buildFactoryLayoutRequest(layout, density.value === 'dense' || automaticSurface.value))
@@ -164,6 +163,21 @@ export const useQuantWorkspace = () => {
     if (index >= 0) recipeOverrides[index] = {...overrideFor(recipe), ...patch}
   }
   const buildingOptions = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => (recipe?.factories ?? []).map((id, index) => ({label: itemName(id), value: index, icon: itemName(id)}))
+  // 设备类型偏好：按配方类型（1 熔炼、4 制造）汇总可选设施，选中后写入该类型全部配方的设备序号；缺少该设施的配方保持原选择。
+  const machinePreference = reactive<Record<number, number>>({})
+  const machineChoices = (recipeType: number): {label: string; value: number; icon: string}[] => {
+    const ids: number[] = []
+    for (const recipe of detail.value?.recipes ?? []) if (recipe.type === recipeType) for (const id of recipe.factories) if (!ids.includes(id)) ids.push(id)
+    return ids.map(id => ({label: itemName(id), value: id, icon: itemName(id)}))
+  }
+  const selectedMachine = (recipeType: number): number | null => machinePreference[recipeType] ?? machineChoices(recipeType)[0]?.value ?? null
+  const selectMachine = (recipeType: number, factoryId: number): void => {
+    machinePreference[recipeType] = factoryId
+    detail.value?.recipes.forEach((recipe, index) => {
+      const building = recipe.factories.indexOf(factoryId)
+      if (recipe.type === recipeType && building >= 0) recipeOverrides[index] = {...(recipeOverrides[index] ?? {productionMode: 0, increasePoints: 0}), building}
+    })
+  }
   const sprayModes = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => [{label: '不喷涂', value: 0, icon: ''}, ...[{label: '加速', value: 1, icon: '增产剂 Mk.III'}, {label: '额外产出', value: 2, icon: '增产剂 Mk.III'}, {label: '透镜', value: 3, icon: '引力透镜'}, {label: '分馏', value: 4, icon: '分馏塔'}].filter(value => Boolean((recipe?.proliferator ?? 0) & (1 << (value.value - 1))))]
   const pointOptions = computed(() => [{label: '默认', value: 0, icon: ''}, {label: '1 点', value: 1, icon: '增产剂 Mk.I'}, {label: '2 点', value: 2, icon: '增产剂 Mk.II'}, {label: '4 点', value: 4, icon: '增产剂 Mk.III'}])
 
@@ -180,6 +194,7 @@ export const useQuantWorkspace = () => {
       detail.value = value
       Object.keys(itemRecipeChoices).forEach(key => delete itemRecipeChoices[key])
       Object.keys(recipeOverrides).forEach(key => delete recipeOverrides[Number(key)])
+      Object.keys(machinePreference).forEach(key => delete machinePreference[Number(key)])
       value.recipes.forEach((_recipe, index) => { recipeOverrides[index] = {building: 0, productionMode: 0, increasePoints: 0} })
       mineralized.value = []
       plan.value = null
@@ -465,7 +480,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, researchStack, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  return {machineChoices, selectedMachine, selectMachine, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

@@ -8,12 +8,13 @@ import (
 	"fmt"
 
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build/preview"
 	"DysonSphereBox/helper/quant"
 )
 
 // 预览协议常量描述事件版本、类型和蓝图局部坐标语义；调用方应忽略未知版本和未知事件类型。
 const (
-	// ProgressProtocolVersion 职责：标记生成事件契约版本；使用：前端按版本解读载荷；边界：协议变化时递增。
+	// ProgressProtocolVersion 职责：标记生成阶段事件契约版本；使用：前端按版本解读载荷；边界：旧事件仍可按自身协议版本发布。
 	ProgressProtocolVersion = 1
 	// ProgressKindPhase 职责：标记普通阶段事件；使用：生成状态提示；边界：不含建筑记录。
 	ProgressKindPhase = "phase"
@@ -54,9 +55,17 @@ type BuildingBatch struct {
 	// BatchCount 职责：记录当前模块总分块数；使用：模块完成检测；边界：全局总数由外层事件提供。
 	BatchCount int `json:"batchCount"`
 	// Buildings 职责：承载最终建筑记录；使用：增量渲染与连接；边界：Index、AreaIndex 和连接下标保持编码值。
-	Buildings []blueprint.Building `json:"buildings"`
+	Buildings []PreviewBuildingRecord `json:"buildings"`
 	// Areas 职责：提供局部坐标的 Area 元数据；使用：解释建筑坐标；边界：不会把局部偏移换算成行星世界坐标。
-	Areas []blueprint.Area `json:"areas"`
+	Areas []preview.Area `json:"areas"`
+}
+
+// PreviewBuildingRecord 职责：为最终蓝图记录附加预览生命周期标记；使用：最终建筑分块事件；边界：不参与正式蓝图编码。
+type PreviewBuildingRecord struct {
+	// Building 职责：保留完整正式建筑记录；使用：按原字段输出最终分块；边界：仅嵌入副本，不修改蓝图编码契约。
+	blueprint.Building
+	// IsTemporary 职责：标识该分块建筑已处于正式 Area 坐标；使用：预览消费者统一判断生命周期；边界：该路径始终为 false。
+	IsTemporary bool `json:"isTemporary"`
 }
 
 // previewGroup 职责：保存一个预览模块及其最终建筑数组下标；使用：按模块拆分事件；边界：下标来自编码前的稳定记录表。
@@ -98,15 +107,16 @@ func emitBlueprintProgress(ctx context.Context, request Request, result Result, 
 				return previewContextError(err)
 			}
 			end := min(start+previewBuildingBatchSize, len(group.buildingIndices))
-			buildings := make([]blueprint.Building, 0, end-start)
+			buildings := make([]PreviewBuildingRecord, 0, end-start)
 			for _, index := range group.buildingIndices[start:end] {
 				building := document.Buildings[index]
 				building.Parameters = append([]int32(nil), building.Parameters...)
 				building.RawTail = append([]byte(nil), building.RawTail...)
-				buildings = append(buildings, building)
+				buildings = append(buildings, PreviewBuildingRecord{Building: building, IsTemporary: false})
 			}
 			currentBatch++
 			publishProgress(ctx, Progress{
+				ProtocolVersion:  preview.ProtocolVersion,
 				Kind:             ProgressKindBuildingBatch,
 				Stage:            "preview",
 				Message:          "正在输出蓝图模块预览",
@@ -118,7 +128,7 @@ func emitBlueprintProgress(ctx context.Context, request Request, result Result, 
 					BatchIndex: batchIndex,
 					BatchCount: batchCount,
 					Buildings:  buildings,
-					Areas:      append([]blueprint.Area(nil), document.Areas...),
+					Areas:      previewAreas(document.Areas),
 				},
 			})
 		}
@@ -127,6 +137,7 @@ func emitBlueprintProgress(ctx context.Context, request Request, result Result, 
 		return previewContextError(err)
 	}
 	publishProgress(ctx, Progress{
+		ProtocolVersion:  preview.ProtocolVersion,
 		Kind:             ProgressKindPreviewComplete,
 		Stage:            "preview",
 		Message:          "蓝图预览分块已完整输出",
