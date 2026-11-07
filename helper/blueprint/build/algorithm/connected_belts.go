@@ -16,6 +16,14 @@ func (b *builder) trimConnectedTails() error {
 	seen := map[*line]bool{}
 	lines := []*line{}
 	required, removed := map[*placed]bool{}, map[*placed]bool{}
+	preserveDenseCargoNeighborhoods(b.all, required)
+	b.preserveDenseMaterialNetworkTracks(required)
+	for _, route := range b.denseStreetRoutes {
+		required[route.start], required[route.end] = true, true
+		for _, node := range route.path {
+			required[node] = true
+		}
+	}
 	for _, entity := range b.all {
 		required[entity.input] = true
 		if !surfaceIsBelt(entity.record.ItemID) {
@@ -90,6 +98,12 @@ func (b *builder) trimConnectedTails() error {
 	for _, route := range b.transportRoutes {
 		if route.from == nil || len(route.filters) == 0 {
 			continue
+		}
+		if b.denseMaterialNetworks != nil && b.denseMaterialNetworks.committed {
+			if _, shared := b.denseMaterialNetworks.bindings[route]; shared {
+				// 聚合源过滤尾已在共享模块创建前裁短；末端过滤位于另一真实主干，不能按原source行误删下游消费者。
+				continue
+			}
 		}
 		lastForItem := true
 		found := false

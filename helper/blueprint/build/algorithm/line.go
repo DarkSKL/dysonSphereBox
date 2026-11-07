@@ -44,6 +44,10 @@ type geometry struct {
 
 // line 职责：保留一条产线的入口/机器引用；使用：配送和总线装配；边界：归属由 builder 登记。
 type line struct {
+	// referenceLowTracks 职责：标识参考图的低双层带单元；使用：局部容量与供电；边界：不跳过最终规则。
+	referenceLowTracks bool
+	// densePaired 职责：标识不可拆分的相向双排单元；使用：设施周边放置；边界：不能按独立机器行再次拆开。
+	densePaired bool
 	// all 职责：块建筑；使用：移动；边界：与 builder 指针共享。
 	all []*placed
 	// inputs 职责：每种原料一条带；使用：配送；边界：保持配方顺序。
@@ -116,6 +120,9 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	if _, err := productionMaterialFlows(p, r); err != nil {
 		return nil, err
 	}
+	if b.referenceLowTrackEligible(p, r) {
+		return b.buildReferenceLowLine(p, r, count, mode, lineIndex, last)
+	}
 	start := len(b.all)
 	gmap := map[int]geometry{}
 	if err := json.Unmarshal(geometryData, &gmap); err != nil {
@@ -133,11 +140,27 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		pre = 4
 	}
 	ground := count
+	pairCount := 0
+	if b.canPairDenseLine(p, r, count) {
+		pairCount = count / 2
+		ground = count - pairCount
+	}
 	if p.MachineType == 6 {
 		ground = int(math.Ceil(float64(count) / float64(ports.layers)))
 	}
 	spacing := machineSpacing(p.MachineType, conf, b.setting.extraSpace(p.MachineType))
+	if b.adapter != nil && b.adapter.density == densityDense {
+		var err error
+		spacing, err = denseLineSpacing(p.MachineType, b.setting.extraSpace(p.MachineType))
+		if err != nil {
+			return nil, err
+		}
+	}
 	beltLen := int(float64(ground)*spacing + conf.Start + pre)
+	var densePositions []float64
+	if b.adapter != nil && b.adapter.density == densityDense {
+		densePositions = denseTrackPositions(ground, spacing, float64(int(conf.Start))+pre, float64(beltLen-1))
+	}
 	machineX := math.Floor(conf.Left + conf.Start + pre)
 	machineY := float64(bottom) + conf.Bottom
 	belts := make([][]*placed, 0, len(r.Items)+len(r.Results))
@@ -149,7 +172,12 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		if i >= bottom {
 			y += conf.LineSpacing
 		}
-		row := b.straight(0, y, beltLen, 2)
+		var row []*placed
+		if densePositions != nil {
+			row = b.denseTrack(densePositions, y)
+		} else {
+			row = b.straight(0, y, beltLen, 2)
+		}
 		belts = append(belts, row)
 	}
 	for _, port := range ports.inputs {
@@ -176,6 +204,14 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		}
 		m := b.make(p.MachineID, machineX+float64(i)*spacing, machineY, 0)
 		m.record.RecipeID = int16(p.RecipeID)
+		if b.adapter != nil && b.adapter.density == densityDense {
+			m.densityPattern = "single-row"
+			if pairCount > 0 {
+				m.densityPattern = "paired-rows"
+			} else if ground == 1 {
+				m.densityPattern = "single-machine"
+			}
+		}
 		m.record.Yaw = conf.Yaw
 		m.record.Yaw2 = conf.Yaw
 		m.record.InputToSlot = 0
@@ -209,6 +245,7 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			for z := 1; z < layers; z++ {
 				m := b.make(p.MachineID, base.a.x, base.a.y, float64(z)*3)
 				m.record = base.record
+				m.densityPattern = base.densityPattern
 				m.record.Parameters = append([]int32{}, base.record.Parameters...)
 				m.input = previous
 				previous = m
@@ -223,14 +260,23 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			}
 		}
 		for index, port := range ports.inputs {
-			b.buildMachineInserterPort(m, l.inputs[index], port, conf, machineIndex, spacing, pre, false, 0)
+			if err := b.buildMachineInserterPort(m, l.inputs[index], port, conf, machineIndex, spacing, pre, false, 0); err != nil {
+				return nil, err
+			}
 		}
 		for index, port := range ports.outputs {
 			filter := 0
 			if len(r.Results) > 1 {
 				filter = r.Results[index]
 			}
-			b.buildMachineInserterPort(m, l.outputs[index], port, conf, machineIndex, spacing, pre, true, filter)
+			if err := b.buildMachineInserterPort(m, l.outputs[index], port, conf, machineIndex, spacing, pre, true, filter); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if pairCount > 0 {
+		if err := b.completeDensePair(l, pairCount, conf, ports, spacing, pre); err != nil {
+			return nil, err
 		}
 	}
 	if pre > 0 {
@@ -261,8 +307,16 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			return nil, err
 		}
 	}
+	return b.finishLocalLine(l, conf, p, mode, lineIndex, last, start)
+}
+
+// finishLocalLine 职责：为已装配机器单元补齐设施、供电与容量证据；使用：普通和参考密铺共同出口；边界：不重新排列机器或改写参考臂姿态。
+func (b *builder) finishLocalLine(l *line, conf geometry, p quant.Production, mode, lineIndex int, last bool, start int) (*line, error) {
 	b.previewCheckpoint("assembly")
 	if b.adapter != nil && b.adapter.lineAssembly.useFlyTransport {
+		if err := b.prepareFlyInletCoaters(l); err != nil {
+			return nil, err
+		}
 		if err := b.coatSupply([]*line{l}); err != nil {
 			return nil, err
 		}
@@ -271,7 +325,7 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		}
 	}
 	if *b.setting.NeedPower {
-		if b.adapter == nil || b.adapter.lineAssembly.useLocalLinePower {
+		if !l.referenceLowTracks && (b.adapter == nil || b.adapter.lineAssembly.useLocalLinePower) {
 			// 固定规则只提供低成本的基线杆；随后统一按最终机器和分拣器端点补齐。
 			if err := b.linePower(l, conf, p.MachineType, mode, lineIndex, last, start); err != nil {
 				return nil, err
@@ -283,12 +337,16 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		}
 	}
 	l.all = b.all[start:]
+	if err := validateLineSprayOrder(l); err != nil {
+		return nil, err
+	}
 	if err := b.checkLineMachineInserters(l); err != nil {
 		return nil, err
 	}
 	if err := b.annotateLineProductionRates(l); err != nil {
 		return nil, err
 	}
+	b.machineLines = append(b.machineLines, l)
 	b.previewCheckpoint("assembly")
 	return l, nil
 }
@@ -335,6 +393,22 @@ func (b *builder) flowMonitorNodeClear(belt *placed) bool {
 
 // flowMonitorNodeClearAmong 职责：在同一坐标阶段的实体集合内审计监测器选点；使用：本地移块前及全局路由后；边界：调用方不能混用尚未独立平移的块，最终完整碰撞审计仍保留。
 func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bool {
+	incoming := map[*placed]*placed{}
+	for _, entity := range existing {
+		if surfaceIsBelt(entity.record.ItemID) && entity.output != nil && surfaceIsBelt(entity.output.record.ItemID) {
+			incoming[entity.output] = entity
+		}
+	}
+	if b.adapter != nil && b.adapter.density == densityDense {
+		before, after := incoming[belt], belt.output
+		if before == nil || after == nil || !surfaceIsBelt(after.record.ItemID) || math.Abs(before.a.z-belt.a.z) > 1e-6 || math.Abs(after.a.z-belt.a.z) > 1e-6 {
+			return false
+		}
+		a, c := vector{belt.a.x - before.a.x, belt.a.y - before.a.y, 0}, vector{after.a.x - belt.a.x, after.a.y - belt.a.y, 0}
+		if math.Abs(a.x*c.y-a.y*c.x) > 1e-6 || a.x*c.x+a.y*c.y <= 0 {
+			return false
+		}
+	}
 	catalog, err := placement.LoadCatalog()
 	if err != nil {
 		return false
@@ -364,10 +438,18 @@ func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bo
 			continue
 		}
 		if surfaceIsBelt(other.record.ItemID) {
-			// 监测器仅允许压在指定宿主带上；其它带节点仍按球面最终占用审计的胶囊半径排除。
+			// 与终检使用相同的0.2米节点抬升及缩短胶囊，低层轨道不能只测未抬升的节点中心。
 			point := toWorld(other.a)
+			center := point.Add(placement.Vector{0, .2, 0})
+			first, second := center, center
+			if before, after := incoming[other], other.output; before != nil && after != nil && surfaceIsBelt(after.record.ItemID) {
+				first = point.Add(toWorld(before.a).Sub(point).Scale(.65))
+				second = point.Add(toWorld(after.a).Sub(point).Scale(.65))
+				delta := second.Sub(first).Scale(.45)
+				first, second = first.Add(delta).Add(placement.Vector{0, .2, 0}), second.Sub(delta).Add(placement.Vector{0, .2, 0})
+			}
 			for _, box := range monitorBoxes {
-				if box.SegmentDistanceSquared(point, point) < .23*.23 {
+				if box.SegmentDistanceSquared(center, center) < .23*.23 && box.SegmentDistanceSquared(first, second) < .23*.23 {
 					return false
 				}
 			}

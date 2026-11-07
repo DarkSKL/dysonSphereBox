@@ -52,9 +52,10 @@ func (encoding *surfaceEncoding) surfaceWorldPositions(records []blueprint.Build
 			if err := resolve(parent); err != nil {
 				return err
 			}
-			parentStep := float32(2*float32(math.Pi)) / float32(int(encoding.areas[parent].AreaSegments)*5)
-			childStep := float32(2*float32(math.Pi)) / float32(int(area.AreaSegments)*5)
-			origins[index] = surfaceAreaOrigin{longitude: origins[parent].longitude + float32(area.TropicAnchor)*parentStep - float32(area.AnchorLocalOffsetX)*childStep, latitude: origins[parent].latitude + float32(area.AnchorLocalOffsetY)*latitudeStep}
+			latitude := origins[parent].latitude + float32(area.AnchorLocalOffsetY)*latitudeStep
+			parentStep := surfacePasteLongitudeStep(origins[parent].latitude)
+			childStep := surfacePasteLongitudeStep(latitude)
+			origins[index] = surfaceAreaOrigin{longitude: origins[parent].longitude + float32(area.TropicAnchor)*parentStep - float32(area.AnchorLocalOffsetX)*childStep, latitude: latitude}
 		}
 		resolved[index] = true
 		return nil
@@ -70,7 +71,7 @@ func (encoding *surfaceEncoding) surfaceWorldPositions(records []blueprint.Build
 		if area < 0 || area >= len(origins) {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "建筑区域索引无效"}
 		}
-		longitudeStep := float32(2*float32(math.Pi)) / float32(int(encoding.areas[area].AreaSegments)*5)
+		longitudeStep := surfacePasteLongitudeStep(origins[area].latitude)
 		longitude := origins[area].longitude + record.LocalOffset.X*longitudeStep
 		latitude := origins[area].latitude + record.LocalOffset.Y*latitudeStep
 		radius := record.LocalOffset.Z*float32(1.3333333) + float32(0.2) + 200

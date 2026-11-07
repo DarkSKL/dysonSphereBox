@@ -43,7 +43,7 @@ func prepareStationLayoutInput(ctx context.Context, request Request, dataset *qu
 		if !validMachine {
 			return contract.StationLayoutInput{}, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "设施与配方不匹配"}
 		}
-		counts, err := lineCounts(production, recipe, setting, dataset.ByID[production.MachineID].Speed)
+		counts, err := layoutLineCounts(production, recipe, setting, dataset.ByID[production.MachineID].Speed, request.Density)
 		if err != nil {
 			return contract.StationLayoutInput{}, err
 		}

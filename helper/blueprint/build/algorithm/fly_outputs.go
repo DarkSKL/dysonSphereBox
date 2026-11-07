@@ -16,6 +16,8 @@ type flyIndependentPort struct {
 	item  int
 	input bool
 	link  *placed
+	// role 职责：保留配方原料与喷涂剂的真实入口身份；使用：同物品双用途份额；边界：默认配方角色，不合并两个实体带头。
+	role productionInputRole
 }
 
 // flyIndependentOutputBlocks 职责：按真实轨位给所有原料和产物分配有限阶梯通道；使用：多产物行末配送；边界：不假设出货带都在机器上方，禁止不同物品共享实体带。
@@ -68,7 +70,7 @@ func (b *builder) flyIndependentOutputBlocks(l *line, mode, begin int) error {
 		path := b.byPath(points[1:])
 		reverse(path)
 		connect(path[0], entry)
-		ports = append(ports, flyIndependentPort{item: productionSprayItem(l.info), input: true, link: path[len(path)-1]})
+		ports = append(ports, flyIndependentPort{item: productionSprayItem(l.info), input: true, link: path[len(path)-1], role: sprayInputRole})
 	}
 	if len(ports) > 7 {
 		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "多产物配送超过六种机器物料加一个供剂入口的有限通道预算"}
@@ -84,7 +86,10 @@ func (b *builder) flyIndependentOutputBlocks(l *line, mode, begin int) error {
 		}
 		x := right + baseOffset + step*float64(index)
 		y := highY + clearance + 3*float64(len(ports)-1-index)
-		rate := flyLineRate(l.info, port.item, port.input, len(l.machines))
+		rate, err := flyPortRate(l.info, l.recipe, port, len(l.machines))
+		if err != nil {
+			return err
+		}
 		// 从高到低的物料口逐一向更远的竖轨展开，设施高度反向递减；
 		// 横段只经过尚未开始的低轨，竖段不会穿过已装配的高轨设施。
 		endpoint, err := b.flyAtRateApproach(port.item, port.link, port.input, x, y, mode, begin, rate, true)

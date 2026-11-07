@@ -16,6 +16,9 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 		return nil, &blueprint.Error{Code: "GEN_E_FLOW", Message: "缺少统一物流规划"}
 	}
 	summary := b.logistics
+	if err := b.validateDenseMaterialNetworks(); err != nil {
+		return nil, err
+	}
 	indices := make(map[*placed]int, len(b.all))
 	for i, p := range b.all {
 		indices[p] = i
@@ -66,7 +69,9 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 			}
 			if route.from != nil {
 				if len(route.filters) == 0 {
-					return nil, transportAllocationError(route.edge, route.rate, "没有明确的输出过滤结构")
+					if err := b.validateDenseDirectOutput(route); err != nil {
+						return nil, err
+					}
 				}
 				for _, arm := range route.filters {
 					if arm.input == nil || arm.output == nil || int(arm.record.FilterID) != route.edge.ItemID {
@@ -76,6 +81,11 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 			}
 			if route.to != nil && route.path[len(route.path)-1] != route.end {
 				return nil, transportAllocationError(route.edge, route.rate, "路线没有抵达指定消费者端口")
+			}
+			if route.to != nil && route.inputRole == sprayInputRole {
+				if route.to.line == nil || route.to.line.coaterInput == nil || !flyBeltReaches(route.end, route.to.line.coaterInput) {
+					return nil, transportAllocationError(route.edge, route.rate, "供剂用途路线未真实抵达本行喷涂入口")
+				}
 			}
 			lane.InternalConnected = route.edge.FlowKind == "internal"
 		}
@@ -128,16 +138,10 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 		summary.Metrics.EnvelopeArea += float64(area.Width) * float64(area.Height)
 	}
 	updateLayoutShapeMetrics(summary, areas)
-	footprint := map[[2]int]bool{}
-	for _, p := range b.all {
-		low, high := footprintForMetrics(p)
-		for x := int(math.Floor(low.x)); x <= int(math.Floor(high.x)); x++ {
-			for y := int(math.Floor(low.y)); y <= int(math.Floor(high.y)); y++ {
-				footprint[[2]int{x, y}] = true
-			}
-		}
+	if b.adapter != nil && b.adapter.density == densityDense {
+		summary.Metrics.ShapeObjective = denseLayoutShapeObjective(summary.Metrics)
 	}
-	summary.Metrics.FootprintArea = float64(len(footprint))
+	summary.Metrics.FootprintArea = finalRecordFootprintArea(records)
 	if summary.Metrics.EnvelopeArea > 0 {
 		summary.Metrics.BlankRatio = math.Max(0, 1-summary.Metrics.FootprintArea/summary.Metrics.EnvelopeArea)
 	}
@@ -168,6 +172,21 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 func footprintForMetrics(p *placed) (vector, vector) {
 	low, high := footprint(p.record.ItemID)
 	return vector{math.Min(p.a.x+low.x, p.b.x), math.Min(p.a.y+low.y, p.b.y), p.a.z}, vector{math.Max(p.a.x+high.x, p.b.x), math.Max(p.a.y+high.y, p.b.y), p.a.z}
+}
+
+// finalRecordFootprintArea 职责：按最终编码坐标及区域身份度量格网足迹；使用：球面重定位和多区域结果；边界：沿用保守轮廓估计，不作为真实碰撞或地表面积证明。
+func finalRecordFootprintArea(records []blueprint.Building) float64 {
+	cells := map[[3]int]bool{}
+	for _, record := range records {
+		p := placed{record: record, a: vector{float64(record.LocalOffset.X), float64(record.LocalOffset.Y), float64(record.LocalOffset.Z)}, b: vector{float64(record.LocalOffset2.X), float64(record.LocalOffset2.Y), float64(record.LocalOffset2.Z)}}
+		low, high := footprintForMetrics(&p)
+		for x := int(math.Floor(low.x)); x <= int(math.Floor(high.x)); x++ {
+			for y := int(math.Floor(low.y)); y <= int(math.Floor(high.y)); y++ {
+				cells[[3]int{int(record.AreaIndex), x, y}] = true
+			}
+		}
+	}
+	return float64(len(cells))
 }
 
 // validateFlyTransport 职责：核对配送器/四向分流模式的实体端点覆盖；使用：完成局部装配后；边界：不把箱体存在等同于配送成功，无法绑定的边必须失败。

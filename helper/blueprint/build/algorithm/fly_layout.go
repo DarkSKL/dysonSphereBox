@@ -1,7 +1,7 @@
 package build
 
-// 文件职责：在有限候选内按真实单行轮廓压缩配送布局，避免整配方巨块制造跨行留白。
-// 使用：mode2/5 在物料图和设备参数核验后调用；边界：只整体平移连接闭合的机器行，不改变物料份额、机器数量或最终几何校验。
+// 文件职责：分派普通/超密度配送全场布局，保留内部 mode5 的独立布局入口。
+// 使用：配送模式在物料图和设备参数核验后调用；边界：公开 mode2 不退回旧逐行配送布局。
 
 import (
 	"context"
@@ -17,8 +17,14 @@ import (
 // flyLayoutVariant 职责：兼容旧装配器字段名；使用：mode2/5 生成流程；边界：候选规则由 mode2/common 所有。
 type flyLayoutVariant = mode2common.LayoutVariant
 
-// generateFlyLayout 职责：只从通过完整最终规则的配送候选中选择最小包络；使用：mode2/5 主链；边界：有界启发式不宣称数学全局最优，也不将机队能力标为已验证。
+// generateFlyLayout 职责：将公开配送模式交给全场共享设施候选；使用：mode2/5 主链；边界：mode2 失败直接报错，内部 mode5 保留独立候选。
 func (b *builder) generateFlyLayout(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
+	if req.Mode == 2 {
+		if req.Density == densityDense {
+			return b.generateDenseFlyLayout(ctx, req, dataset)
+		}
+		return b.generateStandardFlyField(ctx, req, dataset)
+	}
 	limits, err := b.layoutHeightCandidates(ctx, req, dataset, false)
 	if err != nil {
 		return Result{}, err
@@ -118,7 +124,7 @@ func (b *builder) assembleFlyLayout(ctx context.Context, req Request, dataset *q
 			if err != nil {
 				return err
 			}
-			counts, err := lineCounts(production, recipe, b.setting, dataset.ByID[production.MachineID].Speed)
+			counts, err := layoutLineCounts(production, recipe, b.setting, dataset.ByID[production.MachineID].Speed, req.Density)
 			if err != nil {
 				return err
 			}

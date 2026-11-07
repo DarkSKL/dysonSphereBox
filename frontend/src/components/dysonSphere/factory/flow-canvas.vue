@@ -143,8 +143,6 @@ watch(paletteView, value => { try { localStorage.setItem(paletteViewKey, value) 
 // 说明：最常改的数据集、生成模式、传送带与分拣器放在画布顶部，其余参数留在格式面板。
 // icon 为图鉴中文名：生成模式取该模式的核心物流设施，传送带与分拣器取对应等级；数据集不显示物品图标。
 const modeOptions = [{label: '机器直连带', value: 1, icon: '传送带'}, {label: '物流配送器', value: 2, icon: '物流配送器'}, {label: '行星内物流塔', value: 3, icon: '行星内物流运输站'}, {label: '星际物流塔', value: 4, icon: '星际物流运输站'}]
-const beltOptions = [{label: '传送带', value: 1, icon: '传送带'}, {label: '高速带', value: 2, icon: '高速传送带'}, {label: '极速带', value: 3, icon: '急速传送带'}]
-const inserterOptions = [{label: '分拣器', value: 1, icon: '分拣器'}, {label: '高速分拣', value: 2, icon: '高速分拣器'}, {label: '极速分拣', value: 3, icon: '极速分拣器'}, {label: '集装分拣', value: 4, icon: '集装分拣器'}]
 const datasetOptions = computed(() => props.w.datasets.map(item => ({label: item.name, value: item.key, icon: ''})))
 const paletteItems = computed(() => {
   const query = paletteQuery.value.trim().toLowerCase()
@@ -189,8 +187,6 @@ const targetIds = computed(() => new Set(props.w.targets.map(target => target.it
         <div class="tool-group">
           <IconSelect v-model:value="w.datasetKey" class="tool-select dataset" :options="datasetOptions" :loading="w.loadingDataset" :disabled="w.solving || w.generating" aria-label="数据集" />
           <IconSelect v-model:value="w.mode" class="tool-select" :options="modeOptions" aria-label="生成模式" />
-          <IconSelect v-model:value="w.layout.beltLv" class="tool-select short" :options="beltOptions" aria-label="传送带" />
-          <IconSelect v-model:value="w.layout.inserterLv" class="tool-select short" :options="inserterOptions" aria-label="分拣器" />
         </div>
         <span v-if="w.plan && !w.replay" class="flow-stats"><span><strong class="type-display">{{ w.plan.machineCount }}</strong> 台</span><span title="按期望速率折算的制造设备工作功耗">期望功耗 <strong class="type-display">{{ w.number(w.plan.powerMw) }}</strong> MW</span><span><strong class="type-display">{{ w.plan.productions.length }}</strong> 线</span></span>
         <span class="flow-state" :class="{'is-busy': w.solving}">{{ w.solving ? '计算中…' : w.quantStale ? '等待计算' : w.plan ? '已同步' : '' }}</span>

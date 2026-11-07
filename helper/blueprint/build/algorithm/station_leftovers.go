@@ -163,13 +163,18 @@ func (b *builder) prepareStationLeftovers(ctx context.Context, enabled bool, blo
 			seen[slot] = true
 			outer := slotOffset(slot)[0]
 			outer.x, outer.y = outer.x+towers[towerIndex].a.x, outer.y+towers[towerIndex].a.y
+			inner := stationInner(towers[towerIndex].a, slot)
+			if b.denseSpatial {
+				outer = denseStationOuter(towers[towerIndex].a, slot)
+				inner = denseStationInner(towers[towerIndex].a, slot)
+			}
 			direction := stationApproach(slot)
-			for _, point := range append(stationInner(towers[towerIndex].a, slot), outer, vector{outer.x + direction.x, outer.y + direction.y, 0}) {
+			for _, point := range append(inner, outer, vector{outer.x + direction.x, outer.y + direction.y, 0}) {
 				future[beltCell(point)] = true
 			}
 		}
 	}
-	minimum, _ := bounds(b.all[blockBegin:])
+	minimum, maximum := bounds(b.all[blockBegin:])
 	for index, use := range uses {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "副产物塔出带装配已取消"}
@@ -187,10 +192,25 @@ func (b *builder) prepareStationLeftovers(ctx context.Context, enabled bool, blo
 		selectedRawHead, matched := b.stationLeftoverInputHead(linkBegin, use)
 		if selectedRawHead == nil {
 			selectedRawHead = rawHead
+			if b.denseSpatial {
+				// 全场共享塔不再隐含“当前组只有一个 owner”；非同物品回收也必须关联本生产的真实原料入口。
+				selectedRawHead = nil
+				for _, candidate := range b.stationLinks[linkBegin:] {
+					if !candidate.output && candidate.owner == link.owner && (selectedRawHead == nil || candidate.head.a.x < selectedRawHead.a.x) {
+						selectedRawHead = candidate.head
+					}
+				}
+				if selectedRawHead == nil {
+					return stationEdgeError(use.edge, "共享塔副产物没有本生产的真实原料入口")
+				}
+			}
 		}
 		slot := reserved[towerIndex][used[towerIndex]]
 		used[towerIndex]++
 		target := vector{math.Floor(minimum.x) - 5, math.Ceil(selectedRawHead.a.y) + 2 + 3*float64(index), 0}
+		if b.denseSpatial {
+			target = b.denseStationLeftoverTarget(selectedRawHead, minimum, maximum)
+		}
 		b.owner = link.owner
 		if err = b.addStationLeftover(ctx, use, selectedRawHead, matched, slot, target, blockBegin, future); err != nil {
 			return err

@@ -43,7 +43,7 @@ func (s *Service) DescribeDataset(key string) contract.DatasetDetailResponse {
 	if err != nil {
 		return contract.DatasetDetailResponse{Status: factoryHelper.Status(err)}
 	}
-	return contract.DatasetDetailResponse{Status: factoryHelper.Status(nil), Data: &contract.DatasetDetail{Info: d.Info, Items: d.Items, Recipes: d.Recipes}}
+	return contract.DatasetDetailResponse{Status: factoryHelper.Status(nil), Data: &contract.DatasetDetail{DensityLatitudeOptions: build.DensityLatitudeOptions(), DensityProfileVersion: build.DensityProfileVersion, Info: d.Info, Items: d.Items, Recipes: d.Recipes}}
 }
 
 // Solve 职责：校验并执行量化，保存可信快照；使用：工作区量化按钮；边界：失败不缓存部分结果，不修改数据集。
@@ -115,6 +115,11 @@ func (s *Service) Encode(req contract.EncodeRequest) contract.EncodeResponse {
 
 // Generate 职责：复核方案后取消旧生成并串行接替、自检；使用：生成按钮；边界：只接受可信方案，被替代任务不返回成功结果。
 func (s *Service) Generate(req build.Request) contract.GenerateResponse {
+	density, densityErr := build.NormalizeDensity(req.Density)
+	if densityErr != nil {
+		return contract.GenerateResponse{Status: factoryHelper.Status(densityErr)}
+	}
+	req.Density = density
 	if !quant.IsVanillaDatasetKey(req.Plan.Dataset) {
 		err := &blueprint.Error{Code: "GEN_E_DATASET_MOD_UNSUPPORTED", Message: "蓝图生成仅支持原版游戏数据集"}
 		return contract.GenerateResponse{Status: factoryHelper.Status(err)}
@@ -123,8 +128,8 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 		err := &blueprint.Error{Code: "GEN_E_MODE", Message: "当前只支持机器直连带、物流配送器、行星物流塔和星际物流塔模式"}
 		return contract.GenerateResponse{Status: factoryHelper.Status(err)}
 	}
-	if req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "" && req.SurfaceLayout.Mode != "autoTropic" && req.SurfaceLayout.Mode != "planar" {
-		err := &blueprint.Error{Code: "GEN_E_SURFACE", Message: "当前只支持球面自动模式与旧平面兼容模式"}
+	// 与生成器和工作区导出共用校验，避免服务入口拦截已经支持的密铺建造区域。
+	if _, err := build.NormalizeSurfaceLayout(req.SurfaceLayout); err != nil {
 		return contract.GenerateResponse{Status: factoryHelper.Status(err)}
 	}
 	req.Setting = factoryHelper.NormalizeCurrentLayoutSetting(req.Setting)

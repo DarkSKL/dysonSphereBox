@@ -42,11 +42,15 @@ export const useQuantWorkspace = () => {
   const mineralized = ref<string[]>([])
   const miningSpeed = ref<number | null>(1)
   const fixedNum = ref<number | null>(2)
-  const researchStack = ref<number | null>(15)
   const sprayItself = ref(false)
   const spaceCost = ref<number | null>(1)
   const powerCost = ref<number | null>(0)
   const mode = ref(1)
+  // =============== 密度与规则版本 ===============
+  // 密度只使几何结果失效，不重新量化；规则版本来自后端，切换模式保留密度选项。
+  const density = ref<'standard' | 'dense'>('standard')
+  // 建造地区由后端提供合法选项；只影响几何请求，保留普通模式原有球面和量化设置。
+  const denseLatitudeZone = ref('equator')
   // 蓝图名称：默认按目标自动生成（如「电磁矩阵 60 + 能量矩阵 60」）；用户手动修改后保持手动值，清空即恢复自动。
   const customName = ref('')
   const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, enableFlowMonitor: false, useMixed: false, mix2: false, needCoaterNet: false})
@@ -102,13 +106,24 @@ export const useQuantWorkspace = () => {
   // 自动球面布局固定使用默认量化精度与成本，不暴露平面优化参数；平面兼容模式仍可调节。
   const automaticSurface = computed(() => surfaceLayout.mode !== 'planar')
   const effectiveFixedNum = computed(() => automaticSurface.value ? 2 : fixedNum.value ?? 2)
-  const requestSettings = computed(() => ({miningSpeedMultiple: miningSpeed.value ?? 1, fixedNum: effectiveFixedNum.value, stackResearchLab: researchStack.value ?? 15, proliferateItself: sprayItself.value, mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true]))}))
+  const requestSettings = computed(() => ({miningSpeedMultiple: miningSpeed.value ?? 1, fixedNum: effectiveFixedNum.value, stackResearchLab: layout.maxLays || 3, proliferateItself: sprayItself.value, mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true]))}))
   const requestScheme = computed(() => ({itemRecipeChoices: {...itemRecipeChoices}, schemeForRecipe: (detail.value?.recipes ?? []).map((_recipe, index) => recipeOverrides[index] ?? {building: 0, productionMode: 0, increasePoints: 0}), costWeight: automaticSurface.value ? {space: 1, power: 0} : {space: spaceCost.value ?? 1, power: powerCost.value ?? 0}}))
   // 混带与旧供剂网络开关不再由工作台控制；请求保留 DTO 字段但固定为 false。
-  const requestLayout = computed(() => buildFactoryLayoutRequest(layout, automaticSurface.value))
-  const requestSurfaceLayout = computed(() => ({...surfaceLayout, mode: surfaceLayout.mode === 'explicitTropic' ? 'autoTropic' : surfaceLayout.mode}))
+  const requestLayout = computed(() => buildFactoryLayoutRequest(layout, density.value === 'dense' || automaticSurface.value))
+  const denseLatitudeOptions = computed(() => detail.value?.densityLatitudeOptions ?? [])
+  const denseLatitudeOption = computed(() => denseLatitudeOptions.value.find(option => option.value === denseLatitudeZone.value))
+  const denseLatitudeError = computed(() => {
+    if (density.value !== 'dense') return ''
+    if (loadingDataset.value) return '正在读取建造位置，请等待数据集加载完成。'
+    if (!detail.value) return '请先加载数据集，再选择超密度建造位置。'
+    if (!denseLatitudeOptions.value.length) return '当前后端尚未提供建造位置选项。请重启应用或开发服务，再刷新页面。'
+    return denseLatitudeOption.value ? '' : '当前建造位置不可用，请重新选择。'
+  })
+  const requestSurfaceLayout = computed(() => density.value === 'dense'
+    ? {mode: 'explicitTropic', gridSegment: 200, latitudeGridIndex: 0, expandAdjacent: false, latitudeZone: denseLatitudeZone.value}
+    : {...surfaceLayout, mode: surfaceLayout.mode === 'explicitTropic' ? 'autoTropic' : surfaceLayout.mode})
   const querySignature = computed(() => JSON.stringify([datasetKey.value, targets.value.map(({itemId, ratePerMinute}) => ({itemId, ratePerMinute})), requestSettings.value, requestScheme.value]))
-  const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, requestLayout.value, requestSurfaceLayout.value]))
+  const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, density.value, detail.value?.densityProfileVersion, requestLayout.value, requestSurfaceLayout.value]))
   const quantStale = computed(() => Boolean(plan.value && solvedSignature.value !== querySignature.value))
   const previewStale = computed(() => Boolean(code.value && !replay.value && (generatedSignature.value !== generationSignature.value || generating.value || generationFailed.value)))
   const expectedBuildings = computed(() => replay.value ? inspection.value?.summary.buildingCount ?? 0 : generated.value?.buildingCount ?? 0)
@@ -185,6 +200,21 @@ export const useQuantWorkspace = () => {
     if (index >= 0) recipeOverrides[index] = {...overrideFor(recipe), ...patch}
   }
   const buildingOptions = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => (recipe?.factories ?? []).map((id, index) => ({label: itemName(id), value: index, icon: itemName(id)}))
+  // 设备类型偏好：按配方类型（1 熔炼、4 制造）汇总可选设施，选中后写入该类型全部配方的设备序号；缺少该设施的配方保持原选择。
+  const machinePreference = reactive<Record<number, number>>({})
+  const machineChoices = (recipeType: number): {label: string; value: number; icon: string}[] => {
+    const ids: number[] = []
+    for (const recipe of detail.value?.recipes ?? []) if (recipe.type === recipeType) for (const id of recipe.factories) if (!ids.includes(id)) ids.push(id)
+    return ids.map(id => ({label: itemName(id), value: id, icon: itemName(id)}))
+  }
+  const selectedMachine = (recipeType: number): number | null => machinePreference[recipeType] ?? machineChoices(recipeType)[0]?.value ?? null
+  const selectMachine = (recipeType: number, factoryId: number): void => {
+    machinePreference[recipeType] = factoryId
+    detail.value?.recipes.forEach((recipe, index) => {
+      const building = recipe.factories.indexOf(factoryId)
+      if (recipe.type === recipeType && building >= 0) recipeOverrides[index] = {...(recipeOverrides[index] ?? {productionMode: 0, increasePoints: 0}), building}
+    })
+  }
   const sprayModes = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => [{label: '不喷涂', value: 0, icon: ''}, ...[{label: '加速', value: 1, icon: '增产剂 Mk.III'}, {label: '额外产出', value: 2, icon: '增产剂 Mk.III'}, {label: '透镜', value: 3, icon: '引力透镜'}, {label: '分馏', value: 4, icon: '分馏塔'}].filter(value => Boolean((recipe?.proliferator ?? 0) & (1 << (value.value - 1))))]
   const pointOptions = computed(() => [{label: '默认', value: 0, icon: ''}, {label: '1 点', value: 1, icon: '增产剂 Mk.I'}, {label: '2 点', value: 2, icon: '增产剂 Mk.II'}, {label: '4 点', value: 4, icon: '增产剂 Mk.III'}])
 
@@ -201,6 +231,7 @@ export const useQuantWorkspace = () => {
       detail.value = value
       Object.keys(itemRecipeChoices).forEach(key => delete itemRecipeChoices[key])
       Object.keys(recipeOverrides).forEach(key => delete recipeOverrides[Number(key)])
+      Object.keys(machinePreference).forEach(key => delete machinePreference[Number(key)])
       value.recipes.forEach((_recipe, index) => { recipeOverrides[index] = {building: 0, productionMode: 0, increasePoints: 0} })
       mineralized.value = []
       plan.value = null
@@ -231,8 +262,9 @@ export const useQuantWorkspace = () => {
     if (!plan.value || quantStale.value || solving.value || generating.value) return
     saving.value = true
     try {
+      if (denseLatitudeError.value) throw new FactoryError('GEN_E_DENSITY_REGION', denseLatitudeError.value)
       const request = new quant.Request({dataset: datasetKey.value, targets: targets.value.map(target => ({itemId: target.itemId, ratePerMinute: target.ratePerMinute})), scheme: requestScheme.value, settings: requestSettings.value})
-      const path = await exportFactoryWorkspace(new factorycontract.WorkspaceRequest({name: name.value, request, plan: plan.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, mode: mode.value}))
+      const path = await exportFactoryWorkspace(new factorycontract.WorkspaceRequest({name: name.value, request, plan: plan.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, mode: mode.value, density: density.value}))
       if (path) message.success('计算方案与结果已导出为 JSON')
     } catch (caught) { report(caught) } finally { saving.value = false }
   }
@@ -252,12 +284,15 @@ export const useQuantWorkspace = () => {
     generationObserver = observer
     // =============== 第一步：先开预览，再提交请求 ===============
     // 顺序不能颠倒——后端会在生成过程中陆续推 preview-delta，请求发出后开头的差量会在 beginPreview 前到达，漏掉会导致画面缺一块。
-    const useLivePreview = Boolean(previewApi && generationDebugOptions.emitPreviewDeltas)
+    // emitDeltas 是请求字段与预览层开关的唯一有效值：调试模式开启且允许差量时才发送/接收，避免请求不发差量而预览层空开。
+    const emitDeltas = generationDebugOptions.debugMode && generationDebugOptions.emitPreviewDeltas
+    const useLivePreview = Boolean(previewApi && emitDeltas)
     if (useLivePreview) {
       try { previewApi!.beginPreview() } catch { /* Viewer 未就绪或已释放：继续走旧链路 */ }
     }
     try {
-      const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas: generationDebugOptions.emitPreviewDeltas}), progress => {
+      if (denseLatitudeError.value) throw new FactoryError('GEN_E_DENSITY_REGION', denseLatitudeError.value)
+      const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, density: density.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas: emitDeltas}), progress => {
         // 竞态防护：旧任务回调发现 token 不是当前任务直接返回，不覆盖新画面。
         if (disposed || currentTaskToken !== taskToken || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
         // =============== 第二步：按 kind 分流 ===============
@@ -284,6 +319,9 @@ export const useQuantWorkspace = () => {
         if (useLivePreview && previewApi) { try { previewApi.discardPreview() } catch { /* 忽略 */ } }
         throw new FactoryError('GEN_E_FLOW_MISMATCH', '生成物流摘要与量化物料图不一致，本次结果未替换预览。')
       }
+      // 超密度规则校验：规则版本、密度档位与建造地区必须与当前工作区一致，异常抛出由 catch 统一丢弃预览层。
+      if (result.densityReport?.requested !== density.value || result.densityReport?.profileVersion !== detail.value?.densityProfileVersion) throw new FactoryError('GEN_E_DENSITY_PROFILE', '生成规则或密度与当前工作区不一致，请刷新数据集后重新生成。')
+      if (density.value === 'dense' && result.surfacePlan?.latitudeZone !== denseLatitudeZone.value) throw new FactoryError('GEN_E_DENSITY_REGION', '生成结果的建造地区与所选位置不一致，本次结果未替换预览。请重启应用或开发服务后重新生成。')
       // =============== 第三步：成功收尾 ===============
       if (useLivePreview && previewApi) {
         // commitPreview 内部先建后换，不会闪白。commit 成功后预览层自动切换为正式场景，旧 temp 层被清掉。
@@ -500,7 +538,7 @@ export const useQuantWorkspace = () => {
   }
   const scheduleGenerate = (delay = 700): void => {
     window.clearTimeout(generateTimer)
-    if (!autoRun.value || replay.value || !plan.value || quantStale.value || !plan.value.productions.length) return
+    if (!autoRun.value || replay.value || loadingDataset.value || denseLatitudeError.value || !plan.value || quantStale.value || !plan.value.productions.length) return
     if (code.value && !previewStale.value) return
     generateTimer = window.setTimeout(() => { if (!quantStale.value && (!code.value || previewStale.value)) void generate() }, delay)
   }
@@ -518,7 +556,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); discardActivePreview(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, researchStack, sprayItself, spaceCost, powerCost, mode, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal, registerPreviewApi, discardActivePreview}
+  return {machineChoices, selectedMachine, selectMachine, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal, registerPreviewApi, discardActivePreview}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

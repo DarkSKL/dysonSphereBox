@@ -91,6 +91,11 @@ func surfaceInserterBuried(poses [2]surfacePose) bool {
 
 // surfaceInserterBoxes 职责：修正连接非带端口的两端，检查数据方向与距离并生成拉伸盒；使用：动态碰撞入口；边界：不改写蓝图原始端点，不冒充完整 CalcSegmentsAcross 与科技验证。
 func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, records []blueprint.Building) ([]placement.OwnedBox, error) {
+	return encoding.surfaceInserterBoxesMeasured(ctx, records, nil)
+}
+
+// surfaceInserterBoxesMeasured 职责：在同一端口修正流程中记录游戏实际跨格参数；使用：球面重定位后的能力一致性复核；边界：任一规则失败时调用方不得使用部分结果。
+func (encoding *surfaceEncoding) surfaceInserterBoxesMeasured(ctx context.Context, records []blueprint.Building, spans map[int32]int32) ([]placement.OwnedBox, error) {
 	catalog, err := placement.LoadCatalog()
 	if err != nil {
 		return nil, err
@@ -223,11 +228,19 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 			trace += poses[0].axes[axis].Dot(poses[1].axes[axis])
 		}
 		backwards := !belt[0] && forward.Dot(poses[0].axes[2]) < 0 || !belt[1] && forward.Dot(poses[1].axes[2]) < 0
-		if backwards || (trace-1)*.5 < math.Cos(30*math.Pi/180)-1e-4 || math.Abs(forward.Dot(poses[0].axes[2])) < math.Cos(24*math.Pi/180)-1e-4 || math.Abs(forward.Dot(poses[1].axes[2])) < math.Cos(24*math.Pi/180)-1e-4 {
-			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("分拣器 %d 修正后的端点偏斜超过游戏限制", record.Index)}
+		if backwards || surfaceInserterAngleLimitExceeded(forward.Dot(poses[0].axes[2]), forward.Dot(poses[1].axes[2]), (trace-1)*.5) {
+			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("分拣器 %d 修正后的端点偏斜超过游戏限制（端点夹角%.2f°/%.2f°，姿态差%.2f°）", record.Index, math.Acos(math.Min(1, math.Abs(forward.Dot(poses[0].axes[2]))))*180/math.Pi, math.Acos(math.Min(1, math.Abs(forward.Dot(poses[1].axes[2]))))*180/math.Pi, math.Acos(math.Max(-1, math.Min(1, (trace-1)*.5)))*180/math.Pi)}
 		}
 		if encoding.inserterBuried(poses) {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_ROUTING", Message: fmt.Sprintf("分拣器 %d 修正后的两端埋入行星基准球面", record.Index)}
+		}
+		if spans != nil {
+			// 游戏在最终姿态上取跨格值，双建筑端先减0.3，再用Mathf的偶数舍入写参数。
+			reach := float32(across)
+			if !belt[0] && !belt[1] {
+				reach -= .3
+			}
+			spans[record.Index] = int32(math.RoundToEven(float64(max(float32(1), min(float32(3), reach)))))
 		}
 		right := surfaceUnit(poses[0].axes[1].Add(poses[1].axes[1]).Cross(forward))
 		frame := surfacePose{position: poses[0].position.Add(poses[1].position).Scale(.5), axes: [3]placement.Vector{right, forward.Cross(right), forward}}
@@ -252,4 +265,9 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 		}
 	}
 	return boxes, nil
+}
+
+// surfaceInserterAngleLimitExceeded 职责：对齐原生24度端点偏角及30度姿态差上限；使用：完整分拣器校验；边界：不在余弦阈值上减容差，以免把实际超过角度上限的记录放行。
+func surfaceInserterAngleLimitExceeded(firstDot, secondDot, relativeCos float64) bool {
+	return math.Abs(firstDot) < math.Cos(24*math.Pi/180) || math.Abs(secondDot) < math.Cos(24*math.Pi/180) || relativeCos < math.Cos(30*math.Pi/180)
 }

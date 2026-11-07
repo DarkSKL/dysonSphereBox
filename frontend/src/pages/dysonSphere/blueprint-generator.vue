@@ -6,6 +6,7 @@ import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
 import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
 import {useQuantWorkspace, type FactoryPreviewApi, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
+import {generationDebugOptions} from '../../composables/dysonSphere/useGenerationTimeline'
 import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
 
 // 说明：BlueprintViewerPanel defineExpose 暴露的完整方法签名；页面只需要 resetCamera 和预览四动作，其余为类型完整性。
@@ -94,7 +95,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
   <!-- * 交互：节点或面板中改参数 => 自动量化 => 自动生成并刷新预览；可暂停实时模式改为手动生成 -->
   <!-- * 依赖：useQuantWorkspace 统一编排 Go 量化、生成、导入与导出；预览复用唯一的 BlueprintViewerPanel -->
   <!-- * 边界：生成串行执行，过程中的修改只保留最新一次；预览超过 10000 建筑时折叠，不影响导出 -->
-  <section ref="host" class="quant-workbench" :style="{'--split-ratio': split / 100}">
+  <section ref="host" class="quant-workbench" :class="{'is-debug': generationDebugOptions.debugMode}" :style="{'--split-ratio': split / 100}">
     <header class="bench-bar">
       <div class="bench-title"><h1>量化与蓝图</h1></div>
       <div class="bench-actions">
@@ -152,8 +153,8 @@ const resizeByKey = (event: KeyboardEvent): void => {
 
     <!-- ~ 最右侧：生成事件时间流（调试） -->
     <!-- * 说明：纵跨网格与预览两层，实时列出蓝图生成事件卡片，点击查看原始消息 -->
-    <!-- * 边界：只旁路观察事件，不影响生成、预览与任务过滤 -->
-    <div class="bench-timeline"><EventTimeline :can-generate="Boolean(w.plan && !w.quantStale && !w.solving && !w.importing)" :generating="w.generating" @generate="w.generate" /></div>
+    <!-- * 边界：只旁路观察事件，不影响生成、预览与任务过滤；仅在检查面板开启调试模式时挂载，关闭后记录随之清空 -->
+    <div v-if="generationDebugOptions.debugMode" class="bench-timeline"><EventTimeline :can-generate="Boolean(w.plan && !w.quantStale && !w.solving && !w.importing)" :generating="w.generating" @generate="w.generate" /></div>
 
     <n-modal v-model:show="w.importVisible" preset="card" title="导入蓝图并反算" class="import-modal" style="width: min(680px, 92vw)"><p class="muted">只读识别建筑和理论产出，保留原始蓝图供预览与导出。</p><n-input v-model:value="w.importText" type="textarea" :rows="9" placeholder="粘贴 BLUEPRINT: 开头的蓝图串" class="type-mono" /><div class="import-actions"><input ref="fileInput" type="file" accept=".txt,.dspbp" hidden @change="onFile" /><n-button @click="fileInput?.click()">选择文本文件</n-button><n-button type="primary" :loading="w.importing" :disabled="!w.importText.trim()" @click="w.loadCode(w.importText, '导入的蓝图')">严格解析并预览</n-button></div><n-alert v-if="w.error" type="error">{{ w.error.message }}</n-alert></n-modal>
   </section>
@@ -168,6 +169,8 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .bench-splitter { grid-area: split; }
 .bench-preview { grid-area: preview; }
 .bench-timeline { grid-area: timeline; }
+// 非调试模式不挂载时间流：去掉右侧列与列间距，网格与预览占满宽度。
+.quant-workbench:not(.is-debug) { grid-template-areas: 'bar' 'alert' 'graph' 'split' 'preview'; grid-template-columns: minmax(0, 1fr); column-gap: 0; }
 .bench-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .bench-title h1 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; }
 .bench-actions { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; }

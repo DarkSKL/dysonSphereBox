@@ -1,0 +1,339 @@
+diff --git a/helper/blueprint/build/algorithm/dense_equator_edges_test.go b/helper/blueprint/build/algorithm/dense_equator_edges_test.go
+index bb4f66e..dc0b1b2 100644
+--- a/helper/blueprint/build/algorithm/dense_equator_edges_test.go
++++ b/helper/blueprint/build/algorithm/dense_equator_edges_test.go
+@@ -83,9 +83,9 @@ func testDenseMatrixRegions(t *testing.T, rates []float64, zones []string, modes
+ 						aspectLimit = 2.2
+ 					}
+ 					widthLimit, heightLimit := 55, 55
+-					if selection.tier == 3 {
++					if selection.tier >= 3 && selection.tier <= 4 {
+ 						// 窄环允许经向延伸，以真实环宽和占地约束代替赤道长宽比，仍防止空白占地失控。
+-						bands := densityLatitudeTierBands(3, selection.hemisphere, 200)
++						bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, 200)
+ 						widthLimit, heightLimit = bands[0].segments*5, bands[0].high-bands[0].low+1
+ 						aspectLimit = math.Inf(1)
+ 						if metrics.BlankRatio > .55 {
+diff --git a/helper/blueprint/build/algorithm/dense_latitude.go b/helper/blueprint/build/algorithm/dense_latitude.go
+index 50ef896..d1f17b2 100644
+--- a/helper/blueprint/build/algorithm/dense_latitude.go
++++ b/helper/blueprint/build/algorithm/dense_latitude.go
+@@ -39,6 +39,12 @@ func DensityLatitudeOptions() []DensityLatitudeOption {
+ 		{Value: "ring3-south-center", Label: "第3档 · 南半球 · 中心", Description: "第3档环宽25格；按最终已验证起点范围放置。"},
+ 		{Value: "south-high", Label: "第3档 · 南半球 · 南边缘", Description: "第3档远离赤道的一侧；兼容原南半球高纬选项。"},
+ 		{Value: "ring3-south-north", Label: "第3档 · 南半球 · 北边缘", Description: "第3档靠近赤道的一侧；整图保持在本圈内。"},
++		{Value: "ring4-north-center", Label: "第4档 · 北半球 · 中心", Description: "靠近极区的25格环；按最终已验证起点范围放置。"},
++		{Value: "ring4-north-south", Label: "第4档 · 北半球 · 南边缘", Description: "第4档靠近赤道的一侧；整图保持在本圈内。"},
++		{Value: "ring4-north-north", Label: "第4档 · 北半球 · 北边缘", Description: "第4档靠近北极的一侧；按已验证起点放置。"},
++		{Value: "ring4-south-center", Label: "第4档 · 南半球 · 中心", Description: "靠近极区的25格环；按最终已验证起点范围放置。"},
++		{Value: "ring4-south-south", Label: "第4档 · 南半球 · 南边缘", Description: "第4档靠近南极的一侧；按已验证起点放置。"},
++		{Value: "ring4-south-north", Label: "第4档 · 南半球 · 北边缘", Description: "第4档靠近赤道的一侧；整图保持在本圈内。"},
+ 	}
+ }
+ 
+@@ -48,8 +54,8 @@ func densityLatitudeBand(zone string, segment int) (surfacePackedBand, string, e
+ 	if !ok || segment != defaultSurfaceGridSegment {
+ 		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE", Message: "未知密铺建造区域或不支持的星球网格"}
+ 	}
+-	// 逐档接入生成：尚未接入的第4档及极区键不能误当作已验证单Area生成。
+-	if selection.tier > 3 {
++	// 逐档接入生成：极区键不能误当作已验证单Area生成。
++	if selection.tier > 4 {
+ 		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "该档位尚未接入对应的纬带生成方案"}
+ 	}
+ 	label := ""
+@@ -84,7 +90,7 @@ func surfaceLayoutAnchorCandidates(layout *SurfaceLayout, width, height int) []i
+ 	anchors := []int{}
+ 	margin := 2
+ 	selection, _ := densityLatitudeSelectionFor(layout.LatitudeZone)
+-	if selection.tier == 3 {
++	if selection.tier >= 3 && selection.tier <= 4 {
+ 		// 狭窄原生带可使用全部格行；完整碰撞检查决定落点，不能再重复扣除装箱已预留的线路余量。
+ 		margin = 0
+ 	}
+@@ -110,9 +116,12 @@ func denseLatitudeHeightLimit(ctx context.Context, limit float64) float64 {
+ 	margin := 8
+ 	selection, _ := densityLatitudeSelectionFor(zone)
+ 	dense, _ := ctx.Value(denseCollisionKey{}).(bool)
+-	if selection.tier == 3 && dense {
++	if selection.tier >= 3 && selection.tier <= 4 && dense {
+ 		// 塔可利用21格内部空间；直连、配送器及保守塔候选在装箱时另保留更长接头的余量。
+ 		margin = 4
++		if selection.tier == 4 {
++			margin = 8
++		}
+ 	}
+ 	return math.Min(limit, math.Max(1, float64(band.high-band.low+1-margin)))
+ }
+diff --git a/helper/blueprint/build/algorithm/dense_latitude_tiers.go b/helper/blueprint/build/algorithm/dense_latitude_tiers.go
+index 4ceaab1..49b3dbe 100644
+--- a/helper/blueprint/build/algorithm/dense_latitude_tiers.go
++++ b/helper/blueprint/build/algorithm/dense_latitude_tiers.go
+@@ -92,17 +92,42 @@ func densityLatitudeTierBands(tier, hemisphere, segment int) []surfacePackedBand
+ 	return result
+ }
+ 
+-// denseLatitudeAssemblyLayout 职责：让第2、3档设施候选共用北侧原生格距预检，再显式映射回所选半球；使用：装配和补电阶段；边界：目标环宽、请求和最终放置半球不改变，南侧仍须完整复验。
++// denseLatitudeAssemblyLayout 职责：选择已适配的装配坐标基准，再映射到所选半球和档位；使用：装配和补电阶段；边界：不改变请求、目标环宽或最终地区，目标区域必须完整复验。
+ func (b *builder) denseLatitudeAssemblyLayout(layout *SurfaceLayout) *SurfaceLayout {
+-	// 直连模式保留左侧入口，不能使用依赖半周旋转的对称装配。普通模式不参与密铺映射。
+-	if b.adapter == nil || b.adapter.density != densityDense || b.adapter.mode < 2 || b.adapter.mode > 4 || layout == nil || layout.Mode == "planar" {
++	if b.adapter == nil || b.adapter.density != densityDense || b.adapter.mode < 1 || b.adapter.mode > 4 || layout == nil || layout.Mode == "planar" {
+ 		return layout
+ 	}
+ 	selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone)
+-	if !ok || selection.tier < 2 || selection.tier > 3 || selection.hemisphere >= 0 {
++	if !ok || selection.tier < 2 || selection.tier > 4 {
+ 		return layout
+ 	}
+ 	working := *layout
++	if selection.tier == 4 {
++		// 第4档不能在补偿横向格距前套用原参考尺寸；用同宽第3档装配，最终仍迁移到第4档。
++		hemisphere := "north"
++		if b.adapter.mode == 1 && selection.hemisphere < 0 {
++			hemisphere = "south"
++		}
++		working.LatitudeZone = fmt.Sprintf("ring3-%s-center", hemisphere)
++		return &working
++	}
++	// 直连模式保留左侧入口，不使用依赖半周旋转的对称装配。
++	if b.adapter.mode == 1 || selection.hemisphere >= 0 {
++		return layout
++	}
+ 	working.LatitudeZone = fmt.Sprintf("ring%d-north-center", selection.tier)
+ 	return &working
+ }
++
++// denseLatitudeLocalSpacing 职责：给第4档参考单元增加实际机器间距；使用：重复节距和双排净距；边界：不改变碰撞体、设备等级或用户全局配置。
++func (b *builder) denseLatitudeLocalSpacing() float64 {
++	if b.adapter == nil || b.adapter.density != densityDense || b.generationCtx == nil {
++		return 0
++	}
++	zone, _ := b.generationCtx.Value(densityLatitudeKey{}).(string)
++	selection, ok := densityLatitudeSelectionFor(zone)
++	if ok && selection.tier == 4 {
++		return .25
++	}
++	return 0
++}
+diff --git a/helper/blueprint/build/algorithm/dense_latitude_tiers_test.go b/helper/blueprint/build/algorithm/dense_latitude_tiers_test.go
+index 62815ff..c7af136 100644
+--- a/helper/blueprint/build/algorithm/dense_latitude_tiers_test.go
++++ b/helper/blueprint/build/algorithm/dense_latitude_tiers_test.go
+@@ -70,18 +70,23 @@ func TestDenseLatitudeOptionContracts(t *testing.T) {
+ 			t.Fatalf("选区%s被隐式换区", option.Value)
+ 		}
+ 	}
+-	for _, zone := range []string{"ring4-south-north", "ring5-north-center"} {
++	for _, zone := range []string{"ring5-north-center", "ring5-south-north"} {
+ 		if _, err := normalizeSurfaceLayout(&SurfaceLayout{Mode: "autoTropic", LatitudeZone: zone}); err == nil {
+ 			t.Fatalf("未接入的档位%s被作为单纬带接受", zone)
+ 		}
+ 	}
+-	for _, zone := range []string{"ring1-center", "ring1-north", "ring1-south", "ring2-north-north", "ring2-south-south", "ring3-north-center", "ring3-south-south"} {
++	for _, zone := range []string{"ring1-center", "ring1-north", "ring1-south", "ring2-north-north", "ring2-south-south", "ring3-north-center", "ring3-south-south", "ring4-north-center", "ring4-south-north"} {
+ 		if _, err := normalizeSurfaceLayout(&SurfaceLayout{Mode: "autoTropic", LatitudeZone: zone}); err != nil {
+ 			t.Fatalf("规范选项%s被拒绝：%v", zone, err)
+ 		}
+ 	}
+ }
+ 
++// TestDenseFourthTierMatrix 职责：验证靠近极区的第4档矩阵；使用：逐档交付；边界：与前3档共用产能、设施数、朝向及实际落点检查。
++func TestDenseFourthTierMatrix(t *testing.T) {
++	testDenseMatrixRegions(t, []float64{240, 480}, []string{"ring4-north-center", "ring4-north-south", "ring4-north-north", "ring4-south-center", "ring4-south-south", "ring4-south-north"}, []int{1, 2, 3, 4})
++}
++
+ // TestDenseThirdTierMatrix 职责：验证25格环宽内的第3档矩阵；使用：逐档交付；边界：只限制纬向环宽，经向按实际产能展开。
+ func TestDenseThirdTierMatrix(t *testing.T) {
+ 	testDenseMatrixRegions(t, []float64{240, 480}, []string{"ring3-north-center", "ring3-north-south", "ring3-north-north", "ring3-south-center", "ring3-south-south", "ring3-south-north"}, []int{1, 2, 3, 4})
+diff --git a/helper/blueprint/build/algorithm/dense_reference_line.go b/helper/blueprint/build/algorithm/dense_reference_line.go
+index 6487818..36d576a 100644
+--- a/helper/blueprint/build/algorithm/dense_reference_line.go
++++ b/helper/blueprint/build/algorithm/dense_reference_line.go
+@@ -116,6 +116,7 @@ func (b *builder) buildReferenceLowLine(p quant.Production, r quant.Recipe, coun
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	pitch += b.denseLatitudeLocalSpacing()
+ 	rowMargin, secondRowX := .04, 0.
+ 	if len(r.Items)+len(r.Results) == 3 {
+ 		rowMargin = 1.2
+@@ -128,6 +129,7 @@ func (b *builder) buildReferenceLowLine(p quant.Production, r quant.Recipe, coun
+ 		}
+ 	}
+ 	columns := (count + 1) / 2
++	rowMargin += 2 * b.denseLatitudeLocalSpacing()
+ 	anchors := [2][]float64{}
+ 	bandY := 0.
+ 	bandCount := 0
+diff --git a/helper/blueprint/build/algorithm/dense_spatial.go b/helper/blueprint/build/algorithm/dense_spatial.go
+index 53ede94..dac4f89 100644
+--- a/helper/blueprint/build/algorithm/dense_spatial.go
++++ b/helper/blueprint/build/algorithm/dense_spatial.go
+@@ -227,7 +227,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
+ 	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
+ 	selection, selected := densityLatitudeSelectionFor(zone)
+ 	// 窄纬只限制纬向容量，经向预算按实体总占地估算；普通共享布局保留原策略。
+-	if selected && selection.tier == 3 && (b.adapter == nil || b.adapter.density == densityDense) {
++	if selected && selection.tier >= 3 && selection.tier <= 4 && (b.adapter == nil || b.adapter.density == densityDense) {
+ 		strictHeight = true
+ 		// 直连原料入口和配送边界需要更多纬向接线余量；避免较宽核心挤掉内部直连而退回逐物料配送。
+ 		if b.adapter != nil && b.adapter.mode <= 2 {
+diff --git a/helper/blueprint/build/algorithm/dense_static_preflight.go b/helper/blueprint/build/algorithm/dense_static_preflight.go
+index 748aeed..4c0db63 100644
+--- a/helper/blueprint/build/algorithm/dense_static_preflight.go
++++ b/helper/blueprint/build/algorithm/dense_static_preflight.go
+@@ -16,7 +16,7 @@ func (b *builder) preflightDenseMachineSurface(ctx context.Context, req Request)
+ 	if !b.denseSpatial || !b.connectedGlobalPower || req.SurfaceLayout == nil || req.SurfaceLayout.Mode == "planar" {
+ 		return nil
+ 	}
+-	layout := req.SurfaceLayout
++	layout := b.denseLatitudeAssemblyLayout(req.SurfaceLayout)
+ 	if layout.Mode == "explicitTropic" && layout.LatitudeZone == "" {
+ 		return nil
+ 	}
+diff --git a/helper/blueprint/build/algorithm/dense_station.go b/helper/blueprint/build/algorithm/dense_station.go
+index b62a24a..fc9e198 100644
+--- a/helper/blueprint/build/algorithm/dense_station.go
++++ b/helper/blueprint/build/algorithm/dense_station.go
+@@ -38,7 +38,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
+ 	narrowTier := false
+ 	if req.SurfaceLayout != nil {
+ 		selection, ok := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
+-		narrowTier = ok && selection.tier >= 2 && selection.tier <= 3
++		narrowTier = ok && selection.tier >= 2 && selection.tier <= 4
+ 	}
+ 	// 窄纬中的中等规模厂也需要低纬向高度候选，避免仅按机器数量决定候选集合而回退到多塔转发。
+ 	if req.Plan.MachineCount >= 80 || narrowTier {
+diff --git a/helper/blueprint/build/algorithm/dense_station_blackbox.go b/helper/blueprint/build/algorithm/dense_station_blackbox.go
+index 8c61e38..bde8779 100644
+--- a/helper/blueprint/build/algorithm/dense_station_blackbox.go
++++ b/helper/blueprint/build/algorithm/dense_station_blackbox.go
+@@ -62,7 +62,7 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
+ 		zone, _ := ctx.Value(densityLatitudeKey{}).(string)
+ 		selection, selected := densityLatitudeSelectionFor(zone)
+ 		// 保留17格窄候选，与可使用21格的候选比较，避免扩大内部空间后丢失原本可建的线路。
+-		if selected && selection.tier == 3 && choice == 0 {
++		if selected && selection.tier >= 3 && selection.tier <= 4 && choice == 0 {
+ 			candidate.denseLatitudeSpan = math.Min(candidate.denseLatitudeSpan, 17)
+ 		}
+ 		candidate.denseSpatialOrder = 3
+diff --git a/helper/blueprint/build/algorithm/dense_street.go b/helper/blueprint/build/algorithm/dense_street.go
+index 35f77c4..d58d425 100644
+--- a/helper/blueprint/build/algorithm/dense_street.go
++++ b/helper/blueprint/build/algorithm/dense_street.go
+@@ -188,6 +188,7 @@ func (b *builder) buildDenseStreetRows(ctx context.Context, p quant.Production,
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	pitch += b.denseLatitudeLocalSpacing()
+ 	// 两台只读形状探针给出当前模板的两排相位，不把探针实体加入返回库存。
+ 	probe, err := work.newCandidateBuilder()
+ 	if err != nil {
+diff --git a/helper/blueprint/build/algorithm/dense_surface_orthogonal.go b/helper/blueprint/build/algorithm/dense_surface_orthogonal.go
+index bbce9a9..40fa452 100644
+--- a/helper/blueprint/build/algorithm/dense_surface_orthogonal.go
++++ b/helper/blueprint/build/algorithm/dense_surface_orthogonal.go
+@@ -18,9 +18,12 @@ func (move *denseSurfaceRelocation) mapOrthogonalPoint(point blueprint.Point, ya
+ 		x, y = 2*move.centerX-x, move.height-1-y
+ 		yaw = float32(math.Mod(float64(yaw)+180, 360))
+ 	}
++	spacing := math.Max(1, move.spacing)
++	centerY := (move.height - 1) / 2
++	y = centerY + (y-centerY)*spacing
+ 	newLatitude := (float64(move.targetAnchor) + y) * step
+ 	// 横向物理格长正比于cos(纬度)/经度段数；围绕中心缩放，减小纵向线路的侧向偏移。
+ 	scale := math.Cos(oldLatitude) / math.Cos(newLatitude) * float64(move.targetSegments) / float64(move.sourceSegments)
+-	x = move.centerX + (x-move.centerX)*scale - move.shiftX
++	x = move.centerX + (x-move.centerX)*scale*spacing - move.shiftX
+ 	return blueprint.Point{X: float32(x), Y: float32(y - move.shiftY), Z: point.Z}, yaw
+ }
+diff --git a/helper/blueprint/build/algorithm/dense_surface_relocate.go b/helper/blueprint/build/algorithm/dense_surface_relocate.go
+index 1c9af6a..4bb2522 100644
+--- a/helper/blueprint/build/algorithm/dense_surface_relocate.go
++++ b/helper/blueprint/build/algorithm/dense_surface_relocate.go
+@@ -26,6 +26,8 @@ type denseSurfaceRelocation struct {
+ 	centerX    float64
+ 	height     float64
+ 	halfTurn   bool
++	// spacing 职责：记录高纬候选的平面间距补偿；使用：实体和货物点同步转换；边界：仅扩大间距，不改变原型碰撞体或校验阈值。
++	spacing float64
+ }
+ 
+ // mapPoint 职责：将位置转换到目标纬度，前三档按行补偿格距并保持正交朝向；使用：两端姿态及cargo目标；边界：高度独立于XY，堆叠和箱顶附件保持同轴，不修改pitch/tilt。
+@@ -56,13 +58,14 @@ func (move *denseSurfaceRelocation) mapPoint(point blueprint.Point, yaw float32)
+ }
+ 
+ // relocatedSurfaceRecords 职责：生成目标纬度的新记录和Area；使用：边缘与高纬候选；边界：不修改source或records，整数原点平移与建议纬度同步，变形后的几何须重新校验。
+-func relocatedSurfaceRecords(source *surfaceEncoding, records []blueprint.Building, target int, orthogonal, halfTurn bool) (*surfaceEncoding, []blueprint.Building, error) {
++func relocatedSurfaceRecords(source *surfaceEncoding, records []blueprint.Building, target int, orthogonal, halfTurn bool, spacing float64) (*surfaceEncoding, []blueprint.Building, error) {
+ 	if source == nil || source.planar || source.plan == nil || source.plan.GridSegment != 200 || len(source.areas) != 1 || source.plan.PrimaryAreaIndex != 0 || source.relocation != nil {
+ 		return nil, nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "球面位置适配只支持已核对的原版单Area"}
+ 	}
+ 	move := &denseSurfaceRelocation{sourceRecords: append([]blueprint.Building(nil), records...), sourceAnchor: source.plan.AnchorLatitudeGrid, targetAnchor: target, sourceSegments: longitudeSegmentCount(source.plan.AnchorLatitudeGrid, 200), targetSegments: longitudeSegmentCount(target, 200)}
+ 	move.orthogonal, move.centerX = orthogonal, float64(source.areas[0].Width-1)/2
+ 	move.halfTurn, move.height = halfTurn, float64(source.areas[0].Height)
++	move.spacing = spacing
+ 	transformed := append([]blueprint.Building(nil), records...)
+ 	view := make([]*placed, len(records))
+ 	for i := range transformed {
+@@ -149,12 +152,12 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source
+ 	target, direction := band.high-int(source.areas[0].Height)+1, -1
+ 	selection, _ := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
+ 	center := selection.position == "center"
+-	orthogonal := selection.tier <= 3 && (selection.tier > 1 || !center)
++	orthogonal := selection.tier <= 4 && (selection.tier > 1 || !center)
+ 	orientations := []bool{false}
+ 	if orthogonal && req.Mode != 1 {
+ 		// 塔与配送器没有固定左侧原料接口，可比较两个正交排向；北侧优先采用南侧布局的半周对称排向。
+ 		preferHalfTurn := selection.position == "north"
+-		if selection.tier >= 2 && selection.tier <= 3 && selection.hemisphere < 0 {
++		if selection.tier >= 2 && selection.tier <= 4 && selection.hemisphere < 0 {
+ 			preferHalfTurn = selection.position != "south"
+ 		}
+ 		orientations = []bool{preferHalfTurn, !preferHalfTurn}
+@@ -165,8 +168,14 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source
+ 		target, direction = band.low, 1
+ 	}
+ 	var last error
+-	for attempt := 0; attempt < 5*len(orientations); attempt++ {
+-		adjustment, halfTurn := attempt/len(orientations), orientations[attempt%len(orientations)]
++	spacings := []float64{1}
++	if selection.tier == 4 {
++		spacings = []float64{1, 1.02, 1.04}
++	}
++	perAnchor := len(orientations) * len(spacings)
++	for attempt := 0; attempt < 5*perAnchor; attempt++ {
++		adjustment, halfTurn := attempt/perAnchor, orientations[attempt%len(orientations)]
++		spacing := spacings[(attempt/len(orientations))%len(spacings)]
+ 		if ctx.Err() != nil {
+ 			return nil, nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "球面重定位已取消或超时"}
+ 		}
+@@ -174,7 +183,7 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source
+ 		if center {
+ 			candidateTarget = target + []int{0, -1, 1, -2, 2}[adjustment]
+ 		}
+-		encoding, result, err := relocatedSurfaceRecords(source, records, candidateTarget, orthogonal, halfTurn)
++		encoding, result, err := relocatedSurfaceRecords(source, records, candidateTarget, orthogonal, halfTurn, spacing)
+ 		if err != nil {
+ 			last = err
+ 			continue
+@@ -190,7 +199,7 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source
+ 				gap = encoding.plan.AnchorLatitudeGrid - band.low
+ 			}
+ 			if gap > 0 {
+-				aligned, alignedRecords, alignErr := relocatedSurfaceRecords(source, records, candidateTarget-direction*gap, orthogonal, halfTurn)
++				aligned, alignedRecords, alignErr := relocatedSurfaceRecords(source, records, candidateTarget-direction*gap, orthogonal, halfTurn, spacing)
+ 				if alignErr == nil && validateDensityLatitudePlan(req.SurfaceLayout, aligned.plan) == nil {
+ 					if alignErr = validateRelocatedSurface(ctx, req, aligned, alignedRecords); alignErr == nil {
+ 						return aligned, alignedRecords, nil
+@@ -340,6 +349,9 @@ func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request,
+ 		rule, method := "dense-surface-rigid-relocation", "刚体迁移"
+ 		if encoding.relocation.orthogonal {
+ 			rule, method = "dense-surface-orthogonal", "保持建筑朝向并补偿横向格距"
++			if encoding.relocation.spacing > 1 {
++				method += fmt.Sprintf("，平面间距扩大%.0f%%", (encoding.relocation.spacing-1)*100)
++			}
+ 		}
+ 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: rule, Status: "passed", Message: fmt.Sprintf("球面几何从纬圈%d到%d，%s；机器、带臂、塔距和真实线路重新校验；%d个带侧端点的固定offset及完整取货窗口、跨度能力和供电已核验连续起点%d..%d，范围外不承诺可用", encoding.relocation.sourceAnchor, anchor, method, len(scopes), safe[0], safe[len(safe)-1])})
+ 	}

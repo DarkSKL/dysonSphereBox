@@ -4,6 +4,7 @@ package factory
 
 import (
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build"
 	contract "DysonSphereBox/helper/factory/contract"
 	"DysonSphereBox/helper/quant"
 	"context"
@@ -18,9 +19,19 @@ func MarshalWorkspace(req contract.WorkspaceRequest) (string, error) {
 	if !quant.IsVanillaDatasetKey(req.Request.Dataset) || !quant.IsVanillaDatasetKey(req.Plan.Dataset) {
 		return "", &blueprint.Error{Code: "Q_E_DATASET_MOD_UNSUPPORTED", Message: "蓝图方案仅支持原版游戏数据集"}
 	}
-	if req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "" && req.SurfaceLayout.Mode != "autoTropic" && req.SurfaceLayout.Mode != "planar" {
-		return "", &blueprint.Error{Code: "GEN_E_SURFACE", Message: "方案布局仅支持自动模式或旧平面兼容"}
+	surface, err := build.NormalizeSurfaceLayout(req.SurfaceLayout)
+	if err != nil {
+		return "", err
 	}
+	if surface != nil {
+		req.SurfaceLayout = surface
+	}
+	density, err := build.NormalizeDensity(req.Density)
+	if err != nil {
+		return "", err
+	}
+	req.Density = density
+	req.DensityProfileVersion = build.DensityProfileVersion
 	req.Setting = NormalizeCurrentLayoutSetting(req.Setting)
 	plan, err := quant.Solve(context.Background(), req.Request)
 	if err != nil {
@@ -36,7 +47,7 @@ func MarshalWorkspace(req contract.WorkspaceRequest) (string, error) {
 		FormatVersion int `json:"formatVersion"`
 		// WorkspaceRequest 职责：携带经复核的方案；使用：离线审阅；边界：不包含蓝图串和外部路径。
 		contract.WorkspaceRequest
-	}{FormatVersion: 1, WorkspaceRequest: req}, "", "  ")
+	}{FormatVersion: 2, WorkspaceRequest: req}, "", "  ")
 	if err != nil {
 		return "", err
 	}

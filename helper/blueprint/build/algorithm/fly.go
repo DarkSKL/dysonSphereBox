@@ -12,9 +12,14 @@ import (
 	"DysonSphereBox/helper/quant"
 )
 
-// storageSlotPoint 职责：把 2101 小型储物仓的已核对槽位方向映射为局部整数格锚点；使用：配送箱体分拣器候选；边界：仅覆盖东西侧已核对槽位，最终端口以版本化slotPoses修正，未知槽位拒绝。
+// storageSlotPoint 职责：把2101经版本化slotPoses核对的侧槽映射为局部格锚点；使用：配送箱体分拣器候选；边界：普通仍只选择原西侧槽，最终端口由真实slotPoses修正，库存格不等于物流物料槽。
 func storageSlotPoint(center vector, yaw float32, slot int) (vector, bool) {
-	offset, ok := map[int]vector{4: {x: 1}, 9: {x: -1, y: -1}, 10: {x: -1}, 11: {x: -1, y: 1}}[slot]
+	offset, ok := map[int]vector{
+		0: {x: -1, y: 1}, 1: {y: 1}, 2: {x: 1, y: 1},
+		3: {x: 1, y: 1}, 4: {x: 1}, 5: {x: 1, y: -1},
+		6: {x: 1, y: -1}, 7: {y: -1}, 8: {x: -1, y: -1},
+		9: {x: -1, y: -1}, 10: {x: -1}, 11: {x: -1, y: 1},
+	}[slot]
 	if !ok {
 		return center, false
 	}
@@ -113,6 +118,9 @@ func (b *builder) flyBlocks(l *line, mode, begin int) (err error) {
 			err = b.syncFlyFlowMonitorHosts(monitors, begin)
 		}
 	}()
+	if mode == 2 && (b.flyCompact || b.adapter != nil && b.adapter.density == densityDense) && !(l.coaterInput != nil && flyLineRate(l.info, productionSprayItem(l.info), true, len(l.machines)) == 0) {
+		return b.flyPeripheralBlocks(l, begin)
+	}
 	if len(l.recipe.Results) > 1 {
 		return b.flyIndependentOutputBlocks(l, mode, begin)
 	}
@@ -121,16 +129,20 @@ func (b *builder) flyBlocks(l *line, mode, begin int) (err error) {
 	type inlet struct {
 		item int
 		link *placed
+		role productionInputRole
 	}
 	inlets := make([]inlet, 0, len(l.inputs)+1)
 	for i, row := range l.inputs {
 		reverse(row)
-		inlets = append(inlets, inlet{l.recipe.Items[i], row[len(row)-1]})
+		inlets = append(inlets, inlet{item: l.recipe.Items[i], link: row[len(row)-1]})
 	}
 	selfSpray := mode == 2 && l.coaterInput != nil && flyLineRate(l.info, productionSprayItem(l.info), true, len(l.machines)) == 0
 	if l.coaterInput != nil && !selfSpray {
 		entry := l.coaterInput
 		right := l.output[len(l.output)-1].a.x
+		for _, inlet := range inlets {
+			right = math.Max(right, inlet.link.a.x)
+		}
 		points := manhattan(entry.a, vector{entry.a.x - 1, entry.a.y, 0}, true)
 		points = append(points, manhattan(points[len(points)-1], vector{entry.a.x - 1, entry.a.y - 2, 0}, false)[1:]...)
 		points = append(points, manhattan(points[len(points)-1], vector{right, entry.a.y - 2, 0}, true)[1:]...)
@@ -140,7 +152,7 @@ func (b *builder) flyBlocks(l *line, mode, begin int) (err error) {
 		path := b.byPath(points[1:])
 		reverse(path)
 		connect(path[0], entry)
-		inlets = append(inlets, inlet{productionSprayItem(l.info), path[len(path)-1]})
+		inlets = append(inlets, inlet{item: productionSprayItem(l.info), link: path[len(path)-1], role: sprayInputRole})
 	}
 	// 输入/输出配送端点使用独立的纵向轨位，避开机器输出干线和
 	// 相邻箱体建造盒；每个端点仍由自身的分拣器接回机器带。
@@ -174,7 +186,10 @@ func (b *builder) flyBlocks(l *line, mode, begin int) (err error) {
 		// 端点横坐标只相对本行带尾局部偏移，避免按整条产线的
 		// 全局 beginX 累加造成超宽蓝图；不同物料仍保持独立 lane。
 		linkX := row.link.a.x
-		rate := flyLineRate(l.info, row.item, true, len(l.machines))
+		rate, err := flyPortRate(l.info, l.recipe, flyIndependentPort{item: row.item, input: true, link: row.link, role: row.role}, len(l.machines))
+		if err != nil {
+			return err
+		}
 		inputY := beginY + 3*float64(depth)
 		if b.flyCompact && mode == 2 {
 			// 输入竖轨已按箱体宽度分列，共用同一纬向接口行仍保持五格净距；
@@ -183,6 +198,9 @@ func (b *builder) flyBlocks(l *line, mode, begin int) (err error) {
 		}
 		endpoint, err := b.flyAtRate(row.item, row.link, true, linkX+inputOffset+inputStep*float64(depth), inputY, mode, begin, rate)
 		if err != nil {
+			if failure, ok := err.(*blueprint.Error); ok {
+				failure.Message = fmt.Sprintf("配送进料 %d：%s", row.item, failure.Message)
+			}
 			return err
 		}
 		b.flyEndpoints = append(b.flyEndpoints, endpoint)
@@ -206,7 +224,12 @@ func (b *builder) flyBlocks(l *line, mode, begin int) (err error) {
 			return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 产物 %d 缺少独立机器出货带", l.recipe.ID, item)}
 		}
 		trunk := row[len(row)-1]
-		trunkPoints := manhattan(trunk.a, vector{trunk.a.x + 6, trunk.a.y, trunk.a.z}, true)
+		// 进料尾段可能为喷涂向外延伸；出货过滤干线也越过该边界，避免穿过输入箱体。
+		trunkEndX := trunk.a.x + 6
+		for _, inlet := range inlets {
+			trunkEndX = math.Max(trunkEndX, inlet.link.a.x+6)
+		}
+		trunkPoints := manhattan(trunk.a, vector{trunkEndX, trunk.a.y, trunk.a.z}, true)
 		trunkPath := b.byPath(trunkPoints[1:])
 		if len(trunkPath) == 0 {
 			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "配送输出干线没有可用带节点"}
@@ -236,6 +259,9 @@ func (b *builder) flyBlocks(l *line, mode, begin int) (err error) {
 		}
 		endpoint, err := b.flyAtRate(item, branch, false, outputX, outputBaseY+3*float64(len(l.recipe.Results)-1-outputIndex), mode, begin, localRate)
 		if err != nil {
+			if failure, ok := err.(*blueprint.Error); ok {
+				failure.Message = fmt.Sprintf("配送出货 %d：%s", item, failure.Message)
+			}
 			return err
 		}
 		endpoint.filters = append(endpoint.filters, filters...)
@@ -267,6 +293,12 @@ func (b *builder) flyAtRateApproach(item int, link *placed, input bool, x, y flo
 	minOffset := 16.
 	if b.flyCompact {
 		minOffset = 10
+		if mode == 2 {
+			minOffset = 4
+		}
+	}
+	if mode == 2 && b.adapter != nil && b.adapter.density == densityDense {
+		minOffset = 4
 	}
 	offset := math.Max(minOffset, math.Min(64, x-link.a.x))
 	facilityX := link.a.x + offset
@@ -353,6 +385,13 @@ func (b *builder) flyAtRateApproach(item int, link *placed, input bool, x, y flo
 	// 西侧9/10/11是真实独立槽位，纵向接驳尾带逐一经过每根臂；
 	// 两格离箱中心仍在真实建造盒之外，槽外一格提高单臂能力。
 	tail := storage.beltPoints(box.a)
+	// 南侧设施从北向南进入尾带，槽位顺序同步反转，避免折返覆盖自身带节点。
+	if firstX && link.a.y > tail[len(tail)-1].y {
+		for left, right := 0, len(tail)-1; left < right; left, right = left+1, right-1 {
+			tail[left], tail[right] = tail[right], tail[left]
+			storage.slots[left], storage.slots[right] = storage.slots[right], storage.slots[left]
+		}
+	}
 	// 输入先横向到独立竖轨；输出先上行到所有输入设施之外再横向。
 	// 多产物输出的纬向轨位逆序，后续竖轨不会截断已生成的横向支路。
 	points := manhattan(link.a, tail[0], firstX)

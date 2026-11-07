@@ -16,7 +16,22 @@ import (
 )
 
 // connectedLayoutVariant 职责：兼容旧生成函数的候选类型别名；使用：mode1 生成流程；边界：候选规则由 mode1/common 所有。
-type connectedLayoutVariant = mode1common.LayoutVariant
+type connectedLayoutVariant struct {
+	// LayoutVariant 职责：保留普通候选参数；使用：共同编排；边界：不改变普通模式策略。
+	mode1common.LayoutVariant
+	// denseOrder 职责：选择密铺排序与距离代价；使用：独立候选；边界：不改变规范物料图。
+	denseOrder int
+	// denseSpan 职责：约束本候选机器行跨度；使用：容量组内细分；边界：不增加单带容量。
+	denseSpan float64
+	// refine 职责：启用小数位姿搜索；使用：额外可行候选；边界：不取消整数候选或最终校验。
+	refine bool
+	// street/streetRotation 职责：选择连续容量段街道并比较整场朝向；使用：独立完整候选；边界：不代替旧全场密铺候选。
+	street           bool
+	streetRotation   int
+	streetGroupLimit int
+	// pairedOutputs 职责：标识真实双侧过滤布局；使用：有限多去向候选；边界：旧单侧可行候选继续独立保留。
+	pairedOutputs bool
+}
 
 // connectedLayoutVariants 职责：生成有限的矩形/轮廓排版候选；使用：布局测试与生成器扩展；边界：不扩大候选预算，不绕过碰撞和路线规则。
 func connectedLayoutVariants(req Request, limits []float64) []connectedLayoutVariant {
@@ -26,8 +41,24 @@ func connectedLayoutVariants(req Request, limits []float64) []connectedLayoutVar
 	}
 	planned := mode1common.Variants(surfaceMode, limits)
 	variants := make([]connectedLayoutVariant, 0, len(planned))
-	for _, variant := range planned {
-		variants = append(variants, variant)
+	for index, variant := range planned {
+		variants = append(variants, connectedLayoutVariant{LayoutVariant: variant, denseOrder: index % 4, denseSpan: []float64{12, 18, 24, 32}[(index/2)%4]})
+	}
+	if req.Density == densityDense {
+		for index := range planned {
+			if index%4 >= 2 {
+				refined := variants[index]
+				refined.refine = true
+				variants = append(variants, refined)
+			}
+		}
+		if denseConnectedStreetRequestEligible(req) && len(limits) > 0 {
+			for _, groupLimit := range []int{0, 2, -1} {
+				for turns := 0; turns < 4; turns++ {
+					variants = append(variants, connectedLayoutVariant{LayoutVariant: mode1common.LayoutVariant{Limit: limits[0], Compact: true, GlobalPower: true}, street: true, streetRotation: turns, streetGroupLimit: groupLimit})
+				}
+			}
+		}
 	}
 	return variants
 }
@@ -39,6 +70,36 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 		return Result{}, err
 	}
 	variants := connectedLayoutVariants(req, limits)
+	removed := 0
+	if req.Density == densityDense {
+		keys, err := b.denseConnectedStreetPlanKeys(ctx, req, dataset)
+		if err != nil {
+			return Result{}, err
+		}
+		variants, removed = deduplicateDenseStreetVariants(variants, keys)
+		paired, err := b.hasDensePairedOutputGroups(ctx, req, dataset)
+		if err != nil {
+			return Result{}, err
+		}
+		if paired {
+			original := append([]connectedLayoutVariant{}, variants...)
+			for _, variant := range original {
+				if variant.street && variant.streetGroupLimit == 0 {
+					variant.pairedOutputs = true
+					variants = append(variants, variant)
+				}
+			}
+		}
+	}
+	result, err := b.generateConnectedVariants(ctx, req, dataset, variants)
+	if err == nil && removed > 0 {
+		result.LogisticsSummary.Checks = append(result.LogisticsSummary.Checks, LogisticsCheck{RuleID: "dense-equivalent-plan-dedup", Status: "passed", Message: fmt.Sprintf("按实际容量组和相同朝向/布局参数去除%d个完全等价街道候选；保留所有不同计划，不减少真实校验或复用失败证明", removed)})
+	}
+	return result, err
+}
+
+// generateConnectedVariants 职责：用同一完整流水线比较显式候选集合；使用：公开候选及同条件回归；边界：每个候选独立完成装配与终检，不复用其它候选的实体。
+func (b *builder) generateConnectedVariants(ctx context.Context, req Request, dataset *quant.Dataset, variants []connectedLayoutVariant) (Result, error) {
 	layouts := len(variants)
 	budget := layouts * 2
 	var best *Result
@@ -68,15 +129,34 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 			return Result{}, err
 		}
 		candidate.flowGraph = b.flowGraph
+		if best != nil {
+			objective := best.LogisticsSummary.Metrics
+			candidate.connectedBestObjective = &objective
+		}
 		candidate.connectedCompactBelts = true
 		candidate.connectedLegacyInputs = legacyInputs
 		candidate.connectedHorizontalPacking = variants[layoutIndex].Horizontal
 		candidate.connectedGlobalPower = variants[layoutIndex].GlobalPower
+		if req.Density == densityDense {
+			candidate.denseSpatial, candidate.denseSpatialOrder = true, variants[layoutIndex].denseOrder
+			candidate.denseMaxSpan, candidate.denseRefine = variants[layoutIndex].denseSpan, variants[layoutIndex].refine
+			candidate.denseStreetCandidate, candidate.denseStreetRotation = variants[layoutIndex].street, variants[layoutIndex].streetRotation
+			candidate.denseStreetGroupLimit = variants[layoutIndex].streetGroupLimit
+			candidate.densePairedOutputs = variants[layoutIndex].pairedOutputs
+			candidate.connectedGlobalPower = req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "planar"
+		}
 		candidate.generationCtx = ctx
 		candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 		candidate.logistics.Metrics.CandidateBudget = budget
 		candidate.beginPreview()
 		parameters := fmt.Sprintf("heightLimit=%g;compact=%t;horizontal=%t;globalPower=%t;legacyInputs=%t", limit, compact, variants[layoutIndex].Horizontal, variants[layoutIndex].GlobalPower, legacyInputs)
+		if candidate.denseSpatial {
+			parameters = fmt.Sprintf("globalDense=true;extent=%g;maxSpan=%g;order=%d;refine=%t;globalPower=%t;legacyInputs=%t", limit, candidate.denseMaxSpan, candidate.denseSpatialOrder, candidate.denseRefine, candidate.connectedGlobalPower, legacyInputs)
+			if candidate.denseStreetCandidate {
+				parameters += fmt.Sprintf(";continuousStreet=true;streetRotation=%d;streetGroupLimit=%d", candidate.denseStreetRotation, candidate.denseStreetGroupLimit)
+			}
+			parameters += fmt.Sprintf(";pairedOutputs=%t", candidate.densePairedOutputs)
+		}
 		if err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, compact); err != nil {
 			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "assembly", err), candidate.logistics)
 			lastError, rejected = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err), rejected+1
@@ -99,7 +179,19 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 			continue
 		}
 		searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", nil), out.LogisticsSummary)
-		if best == nil || betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
+		better := best == nil
+		if best != nil {
+			better = betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics)
+			if candidate.denseSpatial {
+				better = betterDenseCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics)
+				if req.Density == densityDense {
+					if edgeOrder := compareDenseLatitudeEdge(req.SurfaceLayout, out.SurfacePlan, best.SurfacePlan); edgeOrder != 0 {
+						better = edgeOrder < 0
+					}
+				}
+			}
+		}
+		if better {
 			best = &out
 		}
 	}
@@ -118,7 +210,16 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 	best.LogisticsSummary.Metrics.EvaluatedCandidates = evaluated
 	best.LogisticsSummary.Metrics.RejectedCandidates = rejected
 	best.LogisticsSummary.SearchCandidates = searchCandidates
-	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: fmt.Sprintf("最多 %d 个候选：先比较 %d 个就近入口矩形/轮廓布局，仅在全部不可行时独立重建兼容入口布局；评估 %d、拒绝 %d，按面积和内部带长选择可行方案，不代表数学全局最优", budget, layouts, evaluated, rejected)})
+	searchMessage := fmt.Sprintf("最多 %d 个候选：先比较 %d 个就近入口矩形/轮廓布局，仅在全部不可行时独立重建兼容入口布局；评估 %d、拒绝 %d，按面积和内部带长选择可行方案，不代表数学全局最优", budget, layouts, evaluated, rejected)
+	if req.Density == densityDense {
+		searchMessage = fmt.Sprintf("全场密铺评估 %d 个候选，拒绝 %d 个；比较四向排布、容量组内短行和小数位置微调。优先完整紧凑矩形，再减小包络与真实带成本，不奖励铺带填空；不代表数学全局最优", evaluated, rejected)
+		if req.SurfaceLayout != nil {
+			if selected, ok := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone); ok && selected.tier == 3 && selected.position != "center" {
+				searchMessage += "；第3档指定边缘优先选择实际靠边且通过完整校验的候选，再比较空间与线路"
+			}
+		}
+	}
+	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: searchMessage})
 	return *best, nil
 }
 
@@ -160,6 +261,9 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 	if err := b.routeTransport(ctx); err != nil {
 		return err
 	}
+	if err := b.commitDenseConnectedStreets(); err != nil {
+		return err
+	}
 	if b.connectedCompactBelts {
 		if err := b.trimConnectedTails(); err != nil {
 			return err
@@ -167,7 +271,21 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 	}
 	b.previewCheckpoint("routing")
 	if !b.connectedGlobalPower {
-		return b.completeBoundaryFlowMonitors(ctx, req.Mode)
+		if err := b.completeBoundaryFlowMonitors(ctx, req.Mode); err != nil {
+			return err
+		}
+		if b.denseStreetCandidate {
+			// 与球面出口一致，先归一到最终局部原点再搜索供电格点，避免小数整体平移改变可用电塔候选。
+			low, _ := bounds(b.all)
+			shift(b.all, -low.x, -low.y, 0)
+			b.connectedGlobalPower = true
+			defer func() { b.connectedGlobalPower = false }()
+			return b.completeConnectedPower(ctx)
+		}
+		return nil
+	}
+	if req.SurfaceLayout == nil || req.SurfaceLayout.Mode == "planar" {
+		return b.completeConnectedPower(ctx)
 	}
 	return b.completeConnectedSurfacePower(ctx, req)
 }
@@ -188,7 +306,18 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 	x, y, columnWidth := 0., 0., 0.
 	horizontal := req.SurfaceLayout != nil && req.SurfaceLayout.Mode == "autoTropic" && (!compact || b.connectedHorizontalPacking)
 	packing := &connectedPacking{cells: map[[3]int][]int{}}
+	var denseUnits []denseSpatialUnit
+	streetOwners := map[int]bool{}
+	if b.denseStreetCandidate {
+		denseUnits, streetOwners, err = b.prepareDenseConnectedStreets(ctx, rows, req.Setting.NeedPower == nil || *req.Setting.NeedPower)
+		if err != nil {
+			return err
+		}
+	}
 	for i, row := range rows {
+		if streetOwners[row.owner] {
+			continue
+		}
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "机器行装配已取消或超时"}
 		}
@@ -209,7 +338,11 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			item := []int{0, 1141, 1142, 1143}[row.info.IncreaseLv]
 			links := b.coaterLinks[item]
 			if len(links) > 0 {
-				row.inputs[item] = links[len(links)-1]
+				if req.Mode == 1 || b.directBoundaryUnits != nil {
+					row.bindSprayInput(item, links[len(links)-1])
+				} else {
+					row.inputs[item] = links[len(links)-1]
+				}
 			}
 		}
 		// 同一生产行的过滤分支按内部消费者优先，再接目标交付和剩余副产物；
@@ -238,35 +371,20 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 		sort.Ints(items)
 		for _, item := range items {
 			endpoint := row.inputs[item]
-			stubLength := 5
-			if b.adapter != nil && b.adapter.connectedRows.reservePerRouteInputStubs {
-				// 混带环路的远端接驳为每份供给保留独立汇入格，避免后续供给借用上一条长路线的源头。
-				count := 0
-				for _, route := range b.transportRoutes {
-					if route.to == row && route.edge.ItemID == item {
-						count++
-					}
-				}
-				stubLength = max(stubLength, count*3+2)
+			role := recipeInputRole
+			if (req.Mode == 1 || b.directBoundaryUnits != nil) && item == productionSprayItem(row.info) && productionRecipeInputCount(row.recipe, item) == 0 {
+				role = sprayInputRole
 			}
-			points := []vector{}
-			for x := endpoint.a.x - float64(stubLength); x < endpoint.a.x; x++ {
-				points = append(points, vector{x, endpoint.a.y, endpoint.a.z})
-			}
-			stub := b.byPath(points)
-			connect(stub[len(stub)-1], endpoint)
+			stub := b.prepareConnectedInputStub(row, item, role, endpoint)
 			row.inputStubs[item] = stub
 			row.inputs[item] = stub[0]
-			inputIndex := 0
-			for _, route := range b.transportRoutes {
-				if route.to == row && route.edge.ItemID == item {
-					route.end = stub[0]
-					if b.adapter != nil && b.adapter.connectedRows.reservePerRouteInputStubs {
-						route.end = stub[inputIndex*3+1]
-						inputIndex++
-					}
-				}
+			if role == sprayInputRole {
+				row.sprayInput, row.sprayStub = stub[0], stub
 			}
+		}
+		if (req.Mode == 1 || b.directBoundaryUnits != nil) && row.sprayInput != nil && productionRecipeInputCount(row.recipe, productionSprayItem(row.info)) > 0 {
+			row.sprayStub = b.prepareConnectedInputStub(row, productionSprayItem(row.info), sprayInputRole, row.sprayInput)
+			row.sprayInput = row.sprayStub[0]
 		}
 		if err := b.prepareMachineRecycles(row); err != nil {
 			return err
@@ -295,6 +413,10 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 		}
 		// 接入干线属于机器行真实占地，必须在装箱前生成，否则后补的西侧带会侵入上一列。
 		block := b.all[begin:]
+		if b.denseSpatial {
+			denseUnits = append(denseUnits, denseSpatialUnit{entities: block, row: row})
+			continue
+		}
 		minimum, maximum := bounds(block)
 		width, height := math.Ceil(maximum.x-minimum.x)+1, math.Ceil(maximum.y-minimum.y)+1
 		// 机器行的带端已在块内预留，块间只保留一格最小走廊；
@@ -337,6 +459,86 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "机器和过滤端口超过 20 万建筑，请拆分目标"}
 		}
 	}
+	if b.denseMaterialNetworks != nil {
+		denseUnits, err = b.prepareDenseMaterialNetworkGeometry(ctx, denseUnits)
+		if err != nil {
+			return err
+		}
+	}
+	if b.directBoundaryUnits != nil {
+		if !b.denseSpatial {
+			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "黑盒边界设施必须参与全场密铺占位"}
+		}
+		for _, route := range b.transportRoutes {
+			if route.to != nil {
+				route.end = route.to.inputEndpoint(route.edge.ItemID, route.inputRole)
+			}
+		}
+		boundaryUnits, err := b.directBoundaryUnits(ctx, rows)
+		if err != nil {
+			return err
+		}
+		denseUnits = append(denseUnits, boundaryUnits...)
+	}
+	if b.directBoundaryAttach != nil {
+		denseUnits, err = b.directBoundaryAttach(denseUnits)
+		if err != nil {
+			return err
+		}
+	}
+	if b.denseSpatial {
+		// 先删除不被机器、分支或入口使用的尾带，防止不存在于最终产物的长尾参与全场占位。
+		if err := b.trimConnectedTails(); err != nil {
+			return err
+		}
+		retained := map[*placed]bool{}
+		for _, entity := range b.all {
+			retained[entity] = true
+		}
+		for i := range denseUnits {
+			entities := make([]*placed, 0, len(denseUnits[i].entities))
+			for _, entity := range denseUnits[i].entities {
+				if retained[entity] {
+					entities = append(entities, entity)
+				}
+			}
+			denseUnits[i].entities = entities
+		}
+		if b.directBoundaryUnits != nil && b.directBoundaryExtentScale > 0 {
+			// 包络只用于估算有限搜索空间；实际摆放仍允许这些独立实体轮廓交错，不占据整块矩形。
+			area, shortest := 0., 0.
+			for _, unit := range denseUnits {
+				lo, hi := bounds(unit.entities)
+				width, height := math.Ceil(hi.x)-math.Floor(lo.x)+1, math.Ceil(hi.y)-math.Floor(lo.y)+1
+				area += width * height
+				shortest = math.Max(shortest, math.Min(width, height))
+			}
+			heightLimit = math.Max(heightLimit, math.Max(shortest+4, math.Ceil(math.Sqrt(area)*b.directBoundaryExtentScale)))
+		}
+		if b.denseStreetCandidate && len(b.denseStreetRoutes) > 0 {
+			heightLimit, err = b.denseConnectedStreetExtent(ctx, denseUnits, heightLimit)
+			if err != nil {
+				return err
+			}
+		}
+		if b.denseUnitOrder != nil {
+			denseUnits, err = b.denseUnitOrder(ctx, denseUnits)
+			if err != nil {
+				return err
+			}
+		}
+		if err := b.placeDenseSpatialUnits(ctx, denseUnits, heightLimit); err != nil {
+			return err
+		}
+		if b.denseStreetCandidate && b.denseStreetRotation != 0 {
+			rotatePlacedQuarter(b.all, b.denseStreetRotation)
+			for _, row := range rows {
+				row.quarterTurns = (row.quarterTurns + b.denseStreetRotation) % 4
+			}
+			low, _ := bounds(b.all)
+			shift(b.all, -math.Floor(low.x), -math.Floor(low.y), 0)
+		}
+	}
 	// 规范边全部接好后已成为整体物理图，不能再由旧的逐产线块装箱移动并拉断跨块路线。
 	b.surfaceBlocks = nil
 	b.zones = planZones(req.Plan)
@@ -345,7 +547,7 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			if b.adapter != nil && b.adapter.connectedRows.keepAssignedRouteEnd && route.end != nil {
 				continue
 			}
-			route.end = route.to.inputs[route.edge.ItemID]
+			route.end = route.to.inputEndpoint(route.edge.ItemID, route.inputRole)
 			if route.end == nil {
 				return transportAllocationError(route.edge, route.rate, "配方输入或增产剂没有已验证实体端口")
 			}
@@ -415,6 +617,24 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 			cursor = math.Min(cursor, trunk.a.x-1)
 			recycled = true
 		}
+		if b.denseSpatial && !recycled && len(group.routes) == 1 && productionSprayItem(row.info) != group.routes[0].edge.ItemID {
+			route := group.routes[0]
+			route.start, route.path = trunk, []*placed{trunk}
+			route.sharedPath = append([]*placed(nil), group.belts[1:]...)
+			trunk.record.Parameters = []int32{int32(route.edge.ItemID), int32(math.Ceil(route.rate))}
+			if route.to == nil {
+				route.boundary = trunk
+			}
+			continue
+		}
+		if b.densePairedOutputs && !recycled && densePairedOutputEligible(row) {
+			var err error
+			cursor, err = b.attachDensePairedOutputs(row, group.belts, group.routes, cursor)
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		direction := 1.
 		if trunk.a.y < machineY {
 			direction = -1
@@ -433,7 +653,7 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 				}
 			}
 		}
-		for _, input := range row.inputs {
+		for _, input := range row.allInputEndpoints() {
 			if direction*(input.a.y-trunk.a.y) > 0 {
 				// 产物位于同侧原料内轨时，先在原料接驳西端外留一格净空再分支；
 				// 不能把(-1,y±1)过滤带放到之后才延伸的原料带末格上。
@@ -501,6 +721,8 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 
 // connectedPackingShape 职责：保存候选机器行的真实静态盒、修正分拣器盒、带段和端口通道；使用：轮廓靠拢宽窄相位；边界：不裁小游戏碰撞体，不把包围盒重叠直接当作实体冲突。
 type connectedPackingShape struct {
+	// gridPort 职责：把连续位姿下的路由出口柱对齐到真正整数接驳点；使用：密铺微调；边界：不移动实际端口或偷改机器坐标。
+	gridPort bool
 	// kind 职责：区分静态、分拣器、带、供电间距和端口净空；使用：应用不同碰撞规则；边界：未知类别不被当作安全。
 	kind string
 	// box 职责：保存静态/动态盒或端口预留柱；使用：窄相位；边界：带段使用 span。
@@ -520,10 +742,20 @@ type connectedBlockContour struct {
 
 // connectedPacking 职责：维护已放置产线的真实几何空间哈希；使用：有界轮廓靠拢；边界：最终物流路由和球面规则仍由统一出口验证。
 type connectedPacking struct {
+	// dense 职责：使用同次密铺带间规则及节点净距；使用：全场密铺索引；边界：普通轮廓检查不改变。
+	dense  bool
 	shapes []connectedPackingShape
 	cells  map[[3]int][]int
 	high   vector
 	ready  bool
+	// queryMarks 职责：复用宽相位去重标记，避免每个形状查询分配map；使用：本候选单线程查询；边界：不跨候选/协程共享。
+	queryMarks []uint32
+	// querySerial 职责：区分本次形状查询；使用：O(1)去重；边界：回绕时清空标记，不跳过真实冲突。
+	querySerial uint32
+	// kindCells 职责：按碰撞规则类别索引密铺形状，避免查询必定互略的类型；使用：增量只读候选筛选；边界：未知类别保留保守检查。
+	kindCells map[string]map[[3]int][]int
+	// kindCount 职责：记录已进入分类索引的形状数；使用：新增实体后补齐；边界：shapes仅追加。
+	kindCount int
 	// infillAnchors 职责：保存已落位块的有限边缘候选；使用：水平行架回填旧空槽；边界：只尝试不扩展既有包络的全局落点。
 	infillAnchors []vector
 }
@@ -585,15 +817,7 @@ func (b *builder) connectedBlockShape(ctx context.Context, row *transportRow, bl
 	for _, box := range boxes {
 		out.shapes = append(out.shapes, connectedBoxShape("inserter", box.Geometry))
 	}
-	ports := []*placed{}
-	items := make([]int, 0, len(row.inputs))
-	for item := range row.inputs {
-		items = append(items, item)
-	}
-	sort.Ints(items)
-	for _, item := range items {
-		ports = append(ports, row.inputs[item])
-	}
+	ports := row.allInputEndpoints()
 	for _, route := range row.outputs {
 		if route.to != nil {
 			ports = append(ports, route.start)
@@ -633,11 +857,16 @@ func shiftedConnectedShape(shape connectedPackingShape, dx, dy float64) connecte
 	shape.span.ends[0] = shape.span.ends[0].Add(delta)
 	shape.span.ends[1] = shape.span.ends[1].Add(delta)
 	shape.low, shape.high = shape.low.Add(delta), shape.high.Add(delta)
+	if shape.gridPort {
+		shape.box.Center[0] = math.Round(shape.box.Center[0]/planarGridLength) * planarGridLength
+		shape.box.Center[2] = math.Round(shape.box.Center[2]/planarGridLength) * planarGridLength
+		shape.low, shape.high = shape.box.Bounds()
+	}
 	return shape
 }
 
 // connectedShapesConflict 职责：按静态/动态/带/电力规则区分轮廓冲突；使用：空间哈希窄相位；边界：最终检查的连接豁免只用于块内，跨块不允许借用别的物品端点。
-func connectedShapesConflict(a, c connectedPackingShape) bool {
+func connectedShapesConflict(a, c *connectedPackingShape) bool {
 	known := func(kind string) bool {
 		return kind == "static" || kind == "inserter" || kind == "belt" || kind == "power" || kind == "port"
 	}
@@ -693,18 +922,42 @@ func connectedShapeCells(shape connectedPackingShape, visit func([3]int) bool) b
 
 // fits 职责：查询一条轮廓是否可平移到指定位置；使用：有界候选选择；边界：不把失败候选写入占位索引。
 func (packing *connectedPacking) fits(ctx context.Context, contour connectedBlockContour, dx, dy float64) bool {
+	if len(packing.queryMarks) < len(packing.shapes) {
+		packing.queryMarks = append(packing.queryMarks, make([]uint32, len(packing.shapes)-len(packing.queryMarks))...)
+	}
+	if packing.dense {
+		packing.indexDenseKinds()
+	}
 	for _, source := range contour.shapes {
 		if ctx.Err() != nil {
 			return false
 		}
 		shape := shiftedConnectedShape(source, dx, dy)
-		seen := map[int]bool{}
+		packing.querySerial++
+		if packing.querySerial == 0 {
+			clear(packing.queryMarks)
+			packing.querySerial = 1
+		}
+		serial := packing.querySerial
+		buckets, bucketCount := [5]map[[3]int][]int{packing.cells}, 1
+		if packing.dense {
+			buckets, bucketCount = packing.denseQueryBuckets(shape.kind)
+		}
 		if !connectedShapeCells(shape, func(cell [3]int) bool {
-			for _, index := range packing.cells[cell] {
-				if !seen[index] {
-					seen[index] = true
-					if connectedShapesConflict(shape, packing.shapes[index]) {
-						return false
+			for bucketIndex := 0; bucketIndex < bucketCount; bucketIndex++ {
+				bucket := buckets[bucketIndex]
+				for _, index := range bucket[cell] {
+					if packing.queryMarks[index] != serial {
+						packing.queryMarks[index] = serial
+						var conflict bool
+						if packing.dense {
+							conflict = denseSpatialConflict(&shape, &packing.shapes[index])
+						} else {
+							conflict = connectedShapesConflict(&shape, &packing.shapes[index])
+						}
+						if conflict {
+							return false
+						}
 					}
 				}
 			}

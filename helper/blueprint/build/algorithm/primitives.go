@@ -22,6 +22,12 @@ type vector struct{ x, y, z float64 }
 
 // placed 职责：以指针维护建筑连接；使用：合并重排；边界：最终 index 与数组映射独立赋值。
 type placed struct {
+	// densityCargo 职责：保存参考臂实际取放目标与独立物料轨道；使用：最终货物采样重绑；边界：值类型元数据及只读轨道切片可随候选快照安全复制。
+	densityCargo denseCargoTarget
+	// densityThirdInput 职责：标识参考单元派生的第三输入臂；使用：目标纬度局部端口适配；边界：仅内部装配元数据，不写入蓝图。
+	densityThirdInput bool
+	// densityPattern 职责：记录实际机器局部布局来源；使用：获选候选的密度报告；边界：仅生成器写入，不能由请求自证。
+	densityPattern string
 	// previewID 职责：保存可选任务内对象身份；使用：临时预览增量；边界：不参与记录编号、连接或几何判断。
 	previewID string
 	// record 职责：字段与参数；使用：最终转换；边界：坐标由 a/b 覆盖。
@@ -135,10 +141,52 @@ type builder struct {
 	previewActive bool
 	// adapter 职责：保存当前生成组合的阶段实现；使用：统一收尾调用模式钩子；边界：每个 builder 生命周期只绑定一个适配器。
 	adapter *modeAdapter
+	// denseSpatial 职责：启用全场实体占位搜索；使用：超密度及普通模式共享设施候选；边界：具体碰撞与间距仍按适配器密度决定。
+	denseSpatial bool
+	// denseSpatialOrder 职责：选择全场装配顺序；使用：有界密铺比较；边界：只改变空间顺序，不改变物料份额。
+	denseSpatialOrder int
+	// denseMaxSpan 职责：限制当前密铺候选的机器长轴跨度；使用：保容量均衡细分；边界：零值不额外细分。
+	denseMaxSpan float64
+	// denseLatitudeSpan 职责：限制独立大厂候选的工作格纬向高度；使用：窄纬长矩形与真实共享物料相邻落位；边界：零保留旧预算，单元自身不得撑大该上限。
+	denseLatitudeSpan float64
+	// denseStationSprayNetwork 职责：保存塔黑盒外供剂的真实串供与规范份额映射；使用：独立大厂候选；边界：不混入配方原料或自产回流，不假设自喷节省。
+	denseStationSprayNetwork *denseStationSprayPlan
+	// denseRefine 职责：在整数全场候选附近继续搜索四分之一格接触位置；使用：独立优化候选；边界：仍需真实短接驳和完整终检。
+	denseRefine bool
+	// connectedBestObjective 职责：保留本次请求已完整验证的最优矩形指标；使用：固定Area的供电前严格劣解剪枝；边界：不作为通过证明，不影响普通模式。
+	connectedBestObjective *LayoutMetrics
+	// denseStreetCandidate/denseStreetRotation 职责：启用连续机器街道完整候选及整场四向比较；使用：mode1独立装配；边界：不改变普通或其它密铺候选。
+	denseStreetCandidate bool
+	denseStreetRotation  int
+	// denseStreetGroupLimit 职责：为完整候选指定每条双排街道的容量段数；使用：补电或接线失败后的几何比较；边界：零使用核心候选、负数保持所有组同行。
+	denseStreetGroupLimit int
+	// densePairedOutputs 职责：启用真实多去向双侧过滤候选；使用：缩短单侧长干线；边界：每个抓取点及所选等级过滤臂仍独立。
+	densePairedOutputs bool
+	// directBoundaryUnits 职责：为内部直连的黑盒候选提供真实边界设施；使用：机器端口建成后、全场占位前；边界：普通模式为空，回调必须给每条外部边分配真实端点。
+	directBoundaryUnits func(context.Context, []*transportRow) ([]denseSpatialUnit, error)
+	// directBoundaryCommit 职责：在内部共享网络恢复规范路线后提交独立边界网络；使用：真实全图路由完成且未裁尾/补电前；边界：只能改其拥有的规范份额，不覆盖其它网络恢复结果。
+	directBoundaryCommit func(context.Context) error
+	// directBoundaryAttach 职责：把已生成边界辅助节点归入真实刚性集合；使用：边界准备后、裁尾及轮廓估算前；边界：只补实际归属，不创建虚拟实体或改变排序hook合同。
+	directBoundaryAttach func([]denseSpatialUnit) ([]denseSpatialUnit, error)
+	// directBoundaryLaneLimit 职责：限制黑盒单个外部物理接口的净流量；使用：容量拆分；边界：零沿用带宽，不限制内部带或增加所选分拣器能力。
+	directBoundaryLaneLimit float64
+	// directBoundaryExtentScale 职责：按实际核心/附件规模给黑盒有限占位预算；使用：设施成形并裁尾后；边界：零保留调用方预算，候选仍用真实轮廓占位及最终包络评分。
+	directBoundaryExtentScale float64
+	// denseMaterialNetworks 职责：保存同物料共享消费轨的规范/物理映射；使用：独立密铺网络候选；边界：不能替代最终逐机、容量或真实路线证明。
+	denseMaterialNetworks *denseMaterialNetworkPlan
+	// denseUnitOrder 职责：为独立候选重排完整实体集合的落位顺序；使用：机器、辅助网络和边界设施全部准备后；边界：只允许重排，不改变集合实体、owner或规范生产顺序。
+	denseUnitOrder func(context.Context, []denseSpatialUnit) ([]denseSpatialUnit, error)
+	// denseFlyBlackbox 职责：登记密铺配送黑盒的真实边界库存及分支；使用：独立候选的最终设施证明；边界：内部运输必须由transportRoutes逐条直连，不生成虚拟配送端点。
+	denseFlyBlackbox *denseFlyBlackboxState
+	// denseConnectedStreets/denseStreetRoutes 职责：保存独立附件及其实际内部接线；使用：mode1全场落位后提交；边界：辅助线不重复记入规范净流边。
+	denseConnectedStreets []*denseConnectedStreetWork
+	denseStreetRoutes     []*transportRoute
 	// generationCtx 职责：保存本次生成的取消和总截止时间；使用：局部装配、占位和补电的长循环；边界：纯几何测试未设置时不附加截止时间，不跨请求复用。
 	generationCtx context.Context
 	// all 职责：最终建筑顺序；使用：编码；边界：每个指针只出现一次。
 	all []*placed
+	// machineLines 职责：保留实际局部生产拓扑；使用：全部重排/重绑后逐台最终核验；边界：不能仅凭早期passed摘要发布产物。
+	machineLines []*line
 	// models 职责：原型模型表；使用：创建；边界：未知 ID 拒绝。
 	models map[string]int16
 	// owner 职责：当前装配的产线；使用：归属登记；边界：跨块不依赖 recipeId 推测。

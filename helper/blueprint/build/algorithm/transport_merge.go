@@ -34,6 +34,10 @@ func (env *transportEnvironment) findTransportMergePath(ctx context.Context, sta
 	serial := 0
 	for i, candidate := range tail {
 		v := candidate.a
+		if env.densePorts != nil && !denseIntegerNode(v) {
+			// 分数节点不能作为整数A*根，但原尾链与原索引必须完整保留。
+			continue
+		}
 		if !inside(v) || incoming[candidate] >= 3 || env.reservedByOther(v, source, target) || seen[v] != nil {
 			continue
 		}
@@ -60,7 +64,7 @@ func (env *transportEnvironment) findTransportMergePath(ctx context.Context, sta
 		}
 		for _, delta := range []vector{{-1, 0, 0}, {0, 1, 0}, {1, 0, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
 			v := vector{current.point.x + delta.x, current.point.y + delta.y, current.point.z + delta.z}
-			if !inside(v) || env.blocked[beltCell(v)] || env.reservedByOther(v, source, target) {
+			if !inside(v) || env.blocked[beltCell(v)] || env.reservedByOther(v, source, target) || !env.denseTransportStepClear(current.point, v) {
 				continue
 			}
 			distance := current.distance + env.transportStepCost(current.point, v)

@@ -11,6 +11,9 @@ type Request = algorithm.Request
 // SurfaceLayout 职责：公开球面布局配置；使用：指定落点策略；边界：由引擎校验。
 type SurfaceLayout = algorithm.SurfaceLayout
 
+// DensityLatitudeOption 职责：公开密铺建造区域选项；使用：前端简化位置选择；边界：由后端定义合法键。
+type DensityLatitudeOption = algorithm.DensityLatitudeOption
+
 // SurfaceBandPlan 职责：公开纬带规划；使用：结果展示；边界：不执行布局。
 type SurfaceBandPlan = algorithm.SurfaceBandPlan
 

@@ -15,7 +15,7 @@ export interface FactoryGenerationProgress {
   readonly buildingCount?: number
   readonly batchCount?: number
   readonly operations?: readonly FactoryPreviewOperation[]
-  readonly areas?: readonly blueprint.Area[]
+  readonly areas?: readonly FactoryPreviewArea[]
   readonly primaryAreaIndex?: number
 }
 
@@ -26,6 +26,17 @@ export interface FactoryPreviewBuilding extends Readonly<Pick<blueprint.Building
   readonly inputObjectId?: string
   readonly outputObjectId?: string
   readonly productionIndex: number
+  readonly isTemporary: boolean
+}
+
+/** 职责：描述实时预览使用的嵌套区域元数据；使用：解释 Area 局部坐标；边界：不改变蓝图编解码 DTO。 */
+export interface FactoryPreviewArea {
+  readonly index: number
+  readonly parentIndex: number
+  readonly tropicAnchor: number
+  readonly areaSegments: number
+  readonly anchorLocalOffset: Readonly<{x: number; y: number}>
+  readonly size: Readonly<{x: number; y: number}>
 }
 
 /** 职责：描述稳定对象的新增、替换或撤销；使用：渲染器按 type 应用；边界：remove 不重复发送建筑数据。 */
@@ -54,9 +65,12 @@ export interface FactoryBuildingBatch {
   readonly module: FactoryPreviewModule
   readonly batchIndex: number
   readonly batchCount: number
-  readonly buildings: readonly blueprint.Building[]
-  readonly areas: readonly blueprint.Area[]
+  readonly buildings: readonly FactoryPreviewBuildingRecord[]
+  readonly areas: readonly FactoryPreviewArea[]
 }
+
+/** 职责：描述最终蓝图建筑记录及其预览生命周期；使用：最终建筑分块；边界：isTemporary 固定为 false，不修改蓝图记录。 */
+export type FactoryPreviewBuildingRecord = Readonly<blueprint.Building & {isTemporary: false}>
 
 /** 职责：关联运行时事件与请求；使用：过滤迟到消息；边界：同一方案每次生成也必须使用不同标识。 */
 export interface FactoryGenerationProgressEvent extends FactoryGenerationProgress {

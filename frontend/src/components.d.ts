@@ -19,6 +19,7 @@ declare module 'vue' {
     DysonSphereEncyclopediaEntrySection: typeof import('./components/dysonSphere/encyclopedia/entry-section.vue')['default']
     DysonSphereEncyclopediaRecipePanel: typeof import('./components/dysonSphere/encyclopedia/recipe-panel.vue')['default']
     DysonSphereEnvironmentResourceCard: typeof import('./components/dysonSphere/environment/resource-card.vue')['default']
+    DysonSphereFactoryDensitySummary: typeof import('./components/dysonSphere/factory/density-summary.vue')['default']
     DysonSphereFactoryEventTimeline: typeof import('./components/dysonSphere/factory/event-timeline.vue')['default']
     DysonSphereFactoryFactoryNode: typeof import('./components/dysonSphere/factory/factory-node.vue')['default']
     DysonSphereFactoryFlowCanvas: typeof import('./components/dysonSphere/factory/flow-canvas.vue')['default']

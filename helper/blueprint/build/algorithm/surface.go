@@ -13,8 +13,16 @@ import (
 // defaultSurfaceGridSegment 职责：指定原版半径 200 行星的主网格；使用：请求缺省；边界：不推断未知行星。
 const defaultSurfaceGridSegment = 200
 
+// NormalizeSurfaceLayout 职责：公开同一套球面请求校验；使用：方案导出复用；边界：复制配置，拒绝未知选区，不执行生成。
+func NormalizeSurfaceLayout(layout *SurfaceLayout) (*SurfaceLayout, error) {
+	return normalizeSurfaceLayout(layout)
+}
+
 // normalizeSurfaceLayout 职责：在布局前校验并复制纬圈配置；使用：Generate 的入口；边界：旧请求返回 nil，不改写调用方配置。
 func normalizeSurfaceLayout(layout *SurfaceLayout) (*SurfaceLayout, error) {
+	if layout != nil && layout.LatitudeZone != "" && (layout.Mode == "" || layout.Mode == "planar") {
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "建造区域选择需要球面模式"}
+	}
 	if layout == nil || layout.Mode == "" || layout.Mode == "planar" {
 		return nil, nil
 	}
@@ -30,6 +38,13 @@ func normalizeSurfaceLayout(layout *SurfaceLayout) (*SurfaceLayout, error) {
 	}
 	if normalized.GridSegment != defaultSurfaceGridSegment {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "当前仅支持已核对的原版 200 分段行星"}
+	}
+	if normalized.LatitudeZone != "" {
+		band, _, err := densityLatitudeBand(normalized.LatitudeZone, normalized.GridSegment)
+		if err != nil {
+			return nil, err
+		}
+		normalized.Mode, normalized.ExpandAdjacent, normalized.LatitudeGridIndex = "explicitTropic", false, bandCenter(band)
 	}
 	if normalized.Mode == "autoTropic" {
 		normalized.LatitudeGridIndex = 0

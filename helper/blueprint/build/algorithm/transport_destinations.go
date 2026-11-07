@@ -103,7 +103,7 @@ func (env *transportEnvironment) findTransportDestinationPath(ctx context.Contex
 		}
 		for _, delta := range []vector{{-1, 0, 0}, {0, 1, 0}, {1, 0, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
 			point := vector{current.point.x + delta.x, current.point.y + delta.y, current.point.z + delta.z}
-			if !allowed(point) {
+			if !allowed(point) || !env.denseTransportStepClear(current.point, point) {
 				continue
 			}
 			distance, length := current.distance+env.transportStepCost(current.point, point), current.length+1

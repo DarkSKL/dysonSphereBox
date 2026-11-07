@@ -424,6 +424,90 @@ export namespace build {
 	        this.z = source["z"];
 	    }
 	}
+	export class DensityLatitudeOption {
+	    value: string;
+	    label: string;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DensityLatitudeOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.value = source["value"];
+	        this.label = source["label"];
+	        this.description = source["description"];
+	    }
+	}
+	export class DensityProductionReport {
+	    referenceMachines: number;
+	    productionIndex: number;
+	    machineId: number;
+	    machineCount: number;
+	    pairedMachines: number;
+	    rowMachines: number;
+	    singleMachines: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DensityProductionReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.referenceMachines = source["referenceMachines"];
+	        this.productionIndex = source["productionIndex"];
+	        this.machineId = source["machineId"];
+	        this.machineCount = source["machineCount"];
+	        this.pairedMachines = source["pairedMachines"];
+	        this.rowMachines = source["rowMachines"];
+	        this.singleMachines = source["singleMachines"];
+	    }
+	}
+	export class DensityReport {
+	    referenceSourceSha256?: string;
+	    requested: string;
+	    applied: boolean;
+	    profileVersion: string;
+	    blueprintSha256: string;
+	    layoutEnvelopeArea: number;
+	    productions: DensityProductionReport[];
+	    verification: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DensityReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.referenceSourceSha256 = source["referenceSourceSha256"];
+	        this.requested = source["requested"];
+	        this.applied = source["applied"];
+	        this.profileVersion = source["profileVersion"];
+	        this.blueprintSha256 = source["blueprintSha256"];
+	        this.layoutEnvelopeArea = source["layoutEnvelopeArea"];
+	        this.productions = this.convertValues(source["productions"], DensityProductionReport);
+	        this.verification = source["verification"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PerformanceCollision {
 	    rule: string;
 	    invocations: number;
@@ -563,6 +647,8 @@ export namespace build {
 		}
 	}
 	export class LayoutMetrics {
+	    beltCount: number;
+	    totalBeltLengthMeters: number;
 	    envelopeArea: number;
 	    envelopeAspectRatio: number;
 	    shapeObjective: number;
@@ -584,6 +670,8 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.beltCount = source["beltCount"];
+	        this.totalBeltLengthMeters = source["totalBeltLengthMeters"];
 	        this.envelopeArea = source["envelopeArea"];
 	        this.envelopeAspectRatio = source["envelopeAspectRatio"];
 	        this.shapeObjective = source["shapeObjective"];
@@ -773,6 +861,7 @@ export namespace build {
 	}
 	
 	export class SurfaceLayout {
+	    latitudeZone?: string;
 	    mode: string;
 	    gridSegment: number;
 	    latitudeGridIndex: number;
@@ -784,6 +873,7 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.latitudeZone = source["latitudeZone"];
 	        this.mode = source["mode"];
 	        this.gridSegment = source["gridSegment"];
 	        this.latitudeGridIndex = source["latitudeGridIndex"];
@@ -981,6 +1071,11 @@ export namespace build {
 	    }
 	}
 	export class SurfacePlan {
+	    latitudeZone?: string;
+	    latitudeZoneLabel?: string;
+	    placementHint?: string;
+	    safeLatitudeMinDegrees?: number;
+	    safeLatitudeMaxDegrees?: number;
 	    anchorLatitudeGrid: number;
 	    primaryAreaIndex: number;
 	    bands: SurfaceBandPlan[];
@@ -1007,6 +1102,11 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.latitudeZone = source["latitudeZone"];
+	        this.latitudeZoneLabel = source["latitudeZoneLabel"];
+	        this.placementHint = source["placementHint"];
+	        this.safeLatitudeMinDegrees = source["safeLatitudeMinDegrees"];
+	        this.safeLatitudeMaxDegrees = source["safeLatitudeMaxDegrees"];
 	        this.anchorLatitudeGrid = source["anchorLatitudeGrid"];
 	        this.primaryAreaIndex = source["primaryAreaIndex"];
 	        this.bands = this.convertValues(source["bands"], SurfaceBandPlan);
@@ -1071,6 +1171,7 @@ export namespace build {
 	    }
 	}
 	export class Result {
+	    densityReport?: DensityReport;
 	    blueprintRef?: string;
 	    blueprintLength?: number;
 	    blueprint: string;
@@ -1092,6 +1193,7 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.densityReport = this.convertValues(source["densityReport"], DensityReport);
 	        this.blueprintRef = source["blueprintRef"];
 	        this.blueprintLength = source["blueprintLength"];
 	        this.blueprint = source["blueprint"];
@@ -3046,6 +3148,8 @@ export namespace factorycontract {
 	}
 	
 	export class DatasetDetail {
+	    densityLatitudeOptions: build.DensityLatitudeOption[];
+	    densityProfileVersion: string;
 	    info: quant.DatasetInfo;
 	    items: quant.Item[];
 	    recipes: quant.Recipe[];
@@ -3056,6 +3160,8 @@ export namespace factorycontract {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.densityLatitudeOptions = this.convertValues(source["densityLatitudeOptions"], build.DensityLatitudeOption);
+	        this.densityProfileVersion = source["densityProfileVersion"];
 	        this.info = this.convertValues(source["info"], quant.DatasetInfo);
 	        this.items = this.convertValues(source["items"], quant.Item);
 	        this.recipes = this.convertValues(source["recipes"], quant.Recipe);
@@ -3458,6 +3564,8 @@ export namespace factorycontract {
 		}
 	}
 	export class WorkspaceRequest {
+	    density: string;
+	    densityProfileVersion: string;
 	    name: string;
 	    request: quant.Request;
 	    plan: quant.Result;
@@ -3471,6 +3579,8 @@ export namespace factorycontract {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.density = source["density"];
+	        this.densityProfileVersion = source["densityProfileVersion"];
 	        this.name = source["name"];
 	        this.request = this.convertValues(source["request"], quant.Request);
 	        this.plan = this.convertValues(source["plan"], quant.Result);

@@ -12,6 +12,8 @@ import (
 
 // StationConfig 职责：声明一个物流塔组合的实体能力；使用：模式目录提供给布局和装配阶段；边界：不根据 Mode 隐式选择其他字段。
 type StationConfig struct {
+	// PreferredRows 职责：指定一个塔组优先形成的局部单元数；使用：普通四行与密集双排分组；边界：零表示按端口预算铺满，不能超过单带拆列上限。
+	PreferredRows int
 	// Mode 职责：保存兼容模式身份；使用：输入一致性检查和既有机器行调用；边界：不参与共享布局算法分支。
 	Mode int
 	// StationID 职责：指定物流塔原型；使用：实体创建；边界：必须与已核对原型一致。

@@ -104,7 +104,7 @@ func (b *builder) prepareFlyLeftovers(ctx context.Context, mode int) (err error)
 			changed = true
 			processed++
 		}
-		if changed {
+		if changed && *b.setting.NeedPower {
 			if err = b.completeFlyPower(0); err != nil {
 				return err
 			}
@@ -249,10 +249,18 @@ func (b *builder) flyLeftoverBoundaryCheck(mode int, routes []*transportRoute) (
 		if len(b.flyLayoutBlocks) == 0 {
 			rawAnchor, anchorMatched = b.flyLocalInputAnchorForItem(b.all, endpoint.item, endpoint.owner)
 		}
+		if b.denseSpatial {
+			// 全场密铺会旋转整个反馈关系；沿原指针核对真实输入箱，不能再按世界坐标的最西箱替换来源。
+			rawAnchor, anchorMatched = b.denseFlyLeftoverAnchor(endpoint)
+		}
 		if endpoint.flowEdgeID != route.edge.ID || endpoint.leftoverAnchor == nil || endpoint.leftoverAnchor != rawAnchor || endpoint.leftoverAnchorMatched != anchorMatched || endpoint.input || endpoint.leftoverAnchor == endpoint.box || endpoint.leftoverAnchor.record.ItemID != 2101 {
 			return nil, "", transportAllocationError(route.edge, route.rate, "配送副产物没有独立的原料区回收箱")
 		}
 		dx, dy := endpoint.box.a.x-endpoint.leftoverAnchor.a.x, endpoint.box.a.y-endpoint.leftoverAnchor.a.y
+		if b.denseSpatial {
+			angle := float64(endpoint.leftoverAnchor.record.Yaw) * math.Pi / 180
+			dx, dy = dx*math.Cos(angle)-dy*math.Sin(angle), dx*math.Sin(angle)+dy*math.Cos(angle)
+		}
 		if math.Abs(dx) > 1e-6 || dy < 4 || len(endpoint.belts) < 2 {
 			return nil, "", transportAllocationError(route.edge, route.rate, "配送副产物未沿真实带导至所标原料接口区")
 		}

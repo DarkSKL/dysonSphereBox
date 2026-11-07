@@ -134,12 +134,21 @@ func (b *builder) validateFlySelfSpray(endpoint *flyTransportEndpoint, graph *fl
 		return &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: "自产剂本地净出货加回流超过单带毛流能力"}
 	}
 	l, arm, path := recycle.line, recycle.arm, recycle.path
-	if arm == nil || len(path) < 2 || arm.input != endpoint.box || arm.output != path[0] || int(arm.record.FilterID) != endpoint.item || arm.record.InputFromSlot != 4 || arm.record.OutputToSlot != -1 || path[len(path)-1] != l.coaterInput || !graph.sprayInputs[endpoint.item][l.coaterInput] || len(endpoint.filters) == 0 {
+	if arm == nil || len(path) < 2 || arm.input != endpoint.box || arm.output != path[0] || int(arm.record.FilterID) != endpoint.item || arm.record.OutputToSlot != -1 || path[len(path)-1] != l.coaterInput || !graph.sprayInputs[endpoint.item][l.coaterInput] {
 		return flyEndpointFailure(endpoint, "自产供剂回流箱臂、独立产物过滤或喷涂端点不匹配")
 	}
-	point, ok := storageSlotPoint(endpoint.box.a, endpoint.box.record.Yaw, 4)
+	slot := arm.record.InputFromSlot
+	if slot != 4 && (!b.denseSpatial || slot < 9 || slot > 11) {
+		return flyEndpointFailure(endpoint, "自产供剂没有使用已核对的真实回料槽")
+	}
+	for _, inbound := range endpoint.arms {
+		if inbound.record.OutputToSlot == slot {
+			return flyEndpointFailure(endpoint, "自产供剂回料与入箱臂占用相同槽位")
+		}
+	}
+	point, ok := storageSlotPoint(endpoint.box.a, endpoint.box.record.Yaw, int(slot))
 	if !ok || !flySamePoint(arm.a, point) || !flySamePoint(arm.b, path[0].a) {
-		return flyEndpointFailure(endpoint, "自产供剂臂没有连接真实箱体东槽与回流带")
+		return flyEndpointFailure(endpoint, "自产供剂臂没有连接真实箱体槽位与回流带")
 	}
 	for _, machine := range l.machines {
 		if !graph.members[machine] || machine.owner != endpoint.owner {
@@ -147,6 +156,11 @@ func (b *builder) validateFlySelfSpray(endpoint *flyTransportEndpoint, graph *fl
 		}
 	}
 	output := l.outputForItem(endpoint.item)
+	if len(endpoint.filters) == 0 {
+		if err := b.validateDenseFlySelfOutput(endpoint, graph, output); err != nil {
+			return err
+		}
+	}
 	for _, filter := range endpoint.filters {
 		if !flyBeltReaches(output[len(output)-1], filter.input) {
 			return flyEndpointFailure(endpoint, "自产供剂过滤臂未从本机器行独立产物带取料")

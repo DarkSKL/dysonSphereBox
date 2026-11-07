@@ -51,7 +51,7 @@ type modeAdapter struct {
 const (
 	// densityStandard 职责：标识当前稳定布局实现；使用：默认生成请求和兼容旧工作区；边界：保持现有生成行为。
 	densityStandard = "standard"
-	// densityDense 职责：标识预留的高密度布局组合；使用：未来替换各阶段适配器；边界：当前先复用标准实现，不改变结果。
+	// densityDense 职责：标识预留的高密度布局组合；使用：未来替换各阶段适配器；边界：密集机器行使用独立局部几何，完整双排与外围密度优化仍在实现。
 	densityDense = "dense"
 )
 
@@ -101,7 +101,7 @@ type logisticsFinalization struct {
 // modeAdapters 职责：集中登记现有生成模式实现；使用：统一生成入口按 mode 查询；边界：未知模式明确失败，不隐式落入其它模式。
 var modeAdapters = buildModeAdapters()
 
-// buildModeAdapters 职责：登记公开 profile 和内部兼容模式；使用：进程启动时构建只读组合表；边界：dense 暂用标准算法指针，但组合对象独立可替换。
+// buildModeAdapters 职责：登记公开 profile 和内部兼容模式；使用：进程启动时构建只读组合表；边界：外围编排暂共享，机器行按组合密度选择独立几何。
 func buildModeAdapters() map[modeAdapterKey]*modeAdapter {
 	standard := map[int]*modeAdapter{
 		1: {mode: 1, density: densityStandard, generate: generateConnectedMode, retrySurfaceAnchor: retryConnectedSurfaceAnchor, supportsMachineRecycle: true, connectedRows: connectedRowsCapabilities{prepareConnectedSelfSpray: true}, lineAssembly: lineAssemblyCapabilities{reverseOutputRows: true, writeInputParameters: true, useLocalLinePower: true}, logistics: logisticsFinalization{validateConnectedRoutes: true, validateSelfSprays: true, validateLeftovers: true, validateEdgeConservation: true}},
@@ -119,6 +119,10 @@ func buildModeAdapters() map[modeAdapterKey]*modeAdapter {
 		}
 		adapter := *base
 		adapter.density = profile.Density
+		if profile.Density == densityDense && profile.Mode >= 2 && profile.Mode <= 4 {
+			// 仅密铺黑盒具备本地优先回流门；各模式对这类请求强制只走黑盒候选，不能退回旧远程净流端口。
+			adapter.supportsMachineRecycle = true
+		}
 		if profile.Station != nil {
 			stages := *profile.Station
 			adapter.station = &stages

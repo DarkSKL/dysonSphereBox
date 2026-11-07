@@ -1,0 +1,33 @@
+{
+  "gameVersion": "0.10.35.29151",
+  "assemblySha256": "ef314425dade51f529f184f07be136cd3c2660a6a81515603c7226fbe7ab1d8c",
+  "sources": [
+    "InserterComponent.InternalOffsetCorrection / InternalUpdate",
+    "FactorySystem.SetInserterPickTarget / SetInserterInsertTarget",
+    "PlanetFactory.PickFrom(uint, ...) / InsertInto(uint, ...)",
+    "CargoTraffic.TryPickItem / TryInsertItem",
+    "CargoPath.TryPickItem",
+    "SpraycoaterComponent.InternalUpdate",
+    "CargoTraffic.AlterBeltConnections / GeneratePathGeometry",
+    "BeltComponent.mainInputId"
+  ],
+  "nativeRules": {
+    "targetIdentity": "belt typed id and encoded offset; item filter and consumer needs remain active",
+    "offsetCorrection": "the native runtime clamps the path-global center into [4, pathLength - 6], then stores an offset relative to the target belt pivot",
+    "pickupWindow": "five consecutive buffer samples from pivot + offset - 2 through pivot + offset + 2",
+    "sprayerRead": "sprayer reads cargo at its host belt pivot",
+    "mergePath": "geometry selects a main input; a side input owns a separate cargo buffer and appended tail, so an offset cannot traverse directly from that side buffer into the main buffer"
+  },
+  "generatorFunctionalInvariants": {
+    "materialIdentity": "every fixed-offset insertion sample and all five pickup query samples remain on the proved material track",
+    "sprayOrder": "the complete pickup query window is downstream of the live sprayer pivot; generation retains its existing two-node downstream anchor margin",
+    "interpretation": "These establish the requested material and sprayed-input behavior; they are not extra game placement error codes.",
+    "currentLimits": "Only unchanged native offsets are currently accepted. Correction-needed offsets are unproved by this generator, not declared game-invalid. Main-input ties dependent on unknown construction order and samples inside an unmodeled side appended curve remain explicit failures."
+  },
+  "generationCalibration": {
+    "maximumNearestTargetErrorMeters": 0.08,
+    "purpose": "initial material-specific calibration of a newly generated blueprint",
+    "isNativeCrossLatitudeRestriction": false
+  },
+  "scope": "Native cargo indexing facts; does not waive build colliders, slot correction, length/angle, actual span capacity, power, topology, filter, material identity, or sprayer supply. No game GUI was operated."
+}

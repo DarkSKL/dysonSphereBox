@@ -49,6 +49,9 @@ func surfaceSpanDistanceSquared(a, b surfaceBeltSpan) float64 {
 
 // validateBeltCrossings 职责：拒绝无拓扑连接的同高度带段交叉；使用：球面出口；边界：共享节点的转弯与汇流合法，高架凭真实三维距离判断，不校验 addon 通道。
 func (encoding *surfaceEncoding) validateBeltCrossings(ctx context.Context, records []blueprint.Building) error {
+	if usesDenseBeltCollisions(ctx) {
+		return encoding.validateDenseBeltNodes(ctx, records)
+	}
 	var candidates, narrow uint64
 	defer func() { recordPerformanceCollision(ctx, "beltCrossings", candidates, narrow) }()
 	positions, err := encoding.surfaceWorldPositions(records)
