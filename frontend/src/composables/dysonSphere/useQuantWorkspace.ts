@@ -6,9 +6,12 @@ import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
 import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, renameFactoryBlueprint, solveFactory} from '../../pages/services/dysonSphere/factory'
 import {enableGeneratedEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../pages/services/dysonSphere/environment'
 import {requestBlueprintLibrary} from '../../pages/services/dysonSphere/blueprint-navigation'
+import {createFrameCoalescer} from '../../utils/frame-coalescer'
 import {buildFactoryLayoutRequest} from '../../pages/services/dysonSphere/factory-layout'
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../pages/services/dysonSphere/blueprint-preview-host'
+import type {FactoryGenerationProgress} from '../../types/factory-progress'
 import {generationDebugOptions} from './useGenerationTimeline'
+import {algorithmFollow, algorithmFollowKey} from './useAlgorithmFeed'
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
 type WorkspaceTarget = {key: number; itemId: number | null; ratePerMinute: number | null}
@@ -56,9 +59,11 @@ export const useQuantWorkspace = () => {
   const loadingDataset = ref(false)
   const solving = ref(false)
   const generating = ref(false)
+  const generationTaskId = ref('')
   // 失败后即使用户关闭错误提示，旧串仍属于上一次成功结果，导出必须再次确认。
   const generationFailed = ref(false)
   const generationProgress = ref('')
+  const progressWriter = createFrameCoalescer<string>(text => { generationProgress.value = text })
   const importing = ref(false)
   const saving = ref(false)
   const error = ref<{code: string; message: string; source?: 'generation'} | null>(null)
@@ -119,6 +124,11 @@ export const useQuantWorkspace = () => {
   let solveTimer: number | undefined
   let generateTimer: number | undefined
   let generationObserver: AbortController | undefined
+  const generationObservations = new Set<AbortController>()
+  const stopGenerationObservations = (): void => {
+    for (const observer of generationObservations) observer.abort()
+    generationObservations.clear()
+  }
   // 入库后的启用确认随工作区关闭，防止缓存页离开后仍接受启用操作或悬挂保存状态。
   let activationPrompt: {cancel: () => void; destroy: () => void} | undefined
   const closeActivationPrompt = (): void => {
@@ -233,7 +243,7 @@ export const useQuantWorkspace = () => {
   }
   const generate = async (): Promise<void> => {
     if (!plan.value || quantStale.value) return
-    generationObserver?.abort()
+    stopGenerationObservations()
     error.value = null
     const signature = generationSignature.value
     const sourcePlan = plan.value
@@ -242,17 +252,36 @@ export const useQuantWorkspace = () => {
     generationProgress.value = '正在校验生成参数'
     const observer = new AbortController()
     generationObserver = observer
+    generationObservations.add(observer)
+    // 预览差量：调试面板显式开启，或算法可视化正在跟随（已确认无法提供完整过程快照的模式与密度组合除外）
+    const debugDeltas = generationDebugOptions.debugMode && generationDebugOptions.emitPreviewDeltas
+    const followKey = algorithmFollowKey(mode.value, density.value)
+    const followDeltas = algorithmFollow.active && !algorithmFollow.unsupported.has(followKey)
+    // 阶段事件每秒可达数十条：只保留最新文案，每帧写入一次响应式状态
+    progressWriter.cancel()
+    const onProgress = (progress: FactoryGenerationProgress): void => {
+        if (progress.taskId && progress.taskId !== generationTaskId.value) return
+      if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
+      if (progress.kind === 'building-batch' && progress.previewBatch) {
+        const moduleName = progress.previewBatch.module.name || '共享设施'
+        progressWriter.push(`${progress.message} · ${moduleName} ${progress.current}/${progress.total}`)
+      } else {
+        progressWriter.push(progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message)
+      }
+    }
+      const run = (emitPreviewDeltas: boolean): Promise<build.Result> => generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, density: density.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas, previewProtocolVersion: followDeltas ? 4 : 3}), onProgress, observer.signal, taskId => { generationTaskId.value = taskId })
     try {
       if (denseLatitudeError.value) throw new FactoryError('GEN_E_DENSITY_REGION', denseLatitudeError.value)
-      const result = await generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, density: density.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas: generationDebugOptions.debugMode && generationDebugOptions.emitPreviewDeltas}), progress => {
-        if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
-        if (progress.kind === 'building-batch' && progress.previewBatch) {
-          const moduleName = progress.previewBatch.module.name || '共享设施'
-          generationProgress.value = `${progress.message} · ${moduleName} ${progress.current}/${progress.total}`
-        } else {
-          generationProgress.value = progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
-        }
-      }, observer.signal)
+      let result: build.Result
+      try {
+        result = await run(debugDeltas || followDeltas)
+      } catch (caught) {
+        // 可视化跟随不得改变生成成败：该组合缺少完整过程快照时记下，并改为普通生成重试一次
+        const previewOnly = followDeltas && !debugDeltas && caught instanceof FactoryError && caught.code === 'GEN_E_PROGRESS_PREVIEW'
+        if (!previewOnly || disposed || generationObserver !== observer || observer.signal.aborted) throw caught
+        algorithmFollow.unsupported.add(followKey)
+        result = await run(false)
+      }
       if (disposed || generationObserver !== observer) return
       if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) { if (active.value && !autoRun.value) message.warning('参数已变化，本次结果未替换预览，请重新量化或生成'); return }
       if (result.logisticsSummary && sourcePlan.flowGraph && result.logisticsSummary.flowGraphDigest !== sourcePlan.flowGraph.digest) throw new FactoryError('GEN_E_FLOW_MISMATCH', '生成物流摘要与量化物料图不一致，本次结果未替换预览。')
@@ -275,10 +304,10 @@ export const useQuantWorkspace = () => {
       }
       if (!disposed && generationObserver === observer && signature === generationSignature.value && plan.value?.planId === source) { generationFailed.value = true; report(caught, 'generation') }
     } finally {
-      observer.abort()
       if (generationObserver === observer) {
         generationObserver = undefined
         generating.value = false
+        progressWriter.cancel()
         generationProgress.value = ''
       }
     }
@@ -470,7 +499,7 @@ export const useQuantWorkspace = () => {
   watch(() => [plan.value?.planId, generationSignature.value], () => scheduleGenerate())
   watch(autoRun, value => { if (value) { scheduleSolve(); scheduleGenerate(0) } else { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer) } })
   watch(mode, value => { if (![1, 2, 3, 4].includes(value)) mode.value = 1 })
-  watch(generationSignature, () => { if (generating.value) generationProgress.value = '参数已变化，等待重新生成'; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
+  watch(generationSignature, () => { if (generating.value) { progressWriter.cancel(); generationProgress.value = '参数已变化，等待重新生成' }; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
   watch(datasetKey, () => { if (initialized) void loadDataset() })
   watch(() => route.query.itemId, value => { if (initialized && typeof value === 'string' && value) void loadLibraryItem(value) })
   onMounted(async () => {
@@ -479,8 +508,8 @@ export const useQuantWorkspace = () => {
   })
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
-  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {machineChoices, selectedMachine, selectMachine, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; progressWriter.cancel(); stopGenerationObservations(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
+  return {generationTaskId, machineChoices, selectedMachine, selectMachine, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import {computed, reactive, ref} from 'vue'
+import {computed, reactive, ref, watch} from 'vue'
 import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw, Save, Sparkles} from '@lucide/vue'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
+import AlgorithmStage from '../../components/dysonSphere/factory/algorithm-stage.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
 import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
@@ -35,6 +36,15 @@ const selectedData = computed(() => {
   if (!selectedNode.value || !w.plan || w.replay) return null
   return buildFlowGraph(w.plan, w.itemName).nodes.find(node => node.id === selectedNode.value)?.data ?? null
 })
+
+// =============== 预览标签页 ===============
+// 说明：下层卡片在「蓝图预览」与「算法可视化」间切换；切走时预览只隐藏不卸载，避免重建 WebGL 视图。
+// 算法可视化在首次切换时挂载，之后同样只隐藏，渲染循环随容器不可见自动暂停。
+type PreviewTab = 'preview' | 'algorithm'
+const previewTabs: {key: PreviewTab, label: string}[] = [{key: 'preview', label: '蓝图预览'}, {key: 'algorithm', label: '算法可视化'}]
+const previewTab = ref<PreviewTab>('preview')
+const algorithmMounted = ref(false)
+watch(previewTab, tab => { if (tab === 'algorithm') algorithmMounted.value = true })
 
 // =============== 上下分栏 ===============
 // 说明：拖动分隔条调整网格与预览高度，比例限制在 30%–80%；双击分隔条恢复默认。
@@ -88,14 +98,18 @@ const resizeByKey = (event: KeyboardEvent): void => {
     <!-- ~ 下层：实时蓝图预览 -->
     <section class="bench-preview" aria-label="蓝图预览">
       <header class="preview-bar">
+        <div class="preview-tabs" role="tablist" aria-label="预览视图">
+          <button v-for="tab in previewTabs" :id="`preview-tab-${tab.key}`" :key="tab.key" type="button" role="tab" class="preview-tab" :class="{'is-active': previewTab === tab.key}" :aria-selected="previewTab === tab.key" :aria-controls="`preview-panel-${tab.key}`" @click="previewTab = tab.key">{{ tab.label }}</button>
+        </div>
+        <span class="bar-divider" aria-hidden="true" />
         <span class="preview-state" :class="`is-${previewStatus.state}`" :title="previewStatus.text" role="status" aria-live="polite" aria-atomic="true"><i aria-hidden="true" /><span class="preview-state-text">{{ previewStatus.text }}</span></span>
         <!-- 多目标归属只用于查看与聚焦，真实上下游路线由统一流图决定，不要求用户手工跨区分送。 -->
-        <div v-if="w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
+        <div v-if="previewTab === 'preview' && w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
           <n-tooltip v-for="(zone, index) in w.zones" :key="zone.key"><template #trigger><button type="button" class="preview-zone" :class="{'is-active': w.activeZone === zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key)"><i />{{ zone.label }}</button></template>目标归属 {{ index + 1 }} · {{ zone.productionIndices.length }} 条产线{{ zone.key === 'shared' ? '，多个目标共享同一份上游产线' : '' }}</n-tooltip>
         </div>
         <!-- 蓝图名称：留空即按目标自动命名，输入后改为手动名称 -->
-        <n-input v-model:value="w.customName" size="tiny" class="name-input" :placeholder="w.autoName" maxlength="60" clearable aria-label="蓝图名称（留空自动命名）" :title="w.nameIsAuto ? `自动命名：${w.autoName}` : '手动名称，清空恢复自动命名'" />
-        <div class="preview-actions">
+        <n-input v-if="previewTab === 'preview'" v-model:value="w.customName" size="tiny" class="name-input" :placeholder="w.autoName" maxlength="60" clearable aria-label="蓝图名称（留空自动命名）" :title="w.nameIsAuto ? `自动命名：${w.autoName}` : '手动名称，清空恢复自动命名'" />
+        <div v-if="previewTab === 'preview'" class="preview-actions">
           <n-button v-if="!w.autoRun" size="tiny" type="primary" :loading="w.generating" :disabled="!w.plan || w.quantStale || w.solving || w.importing" @click="w.generate"><template #icon><Sparkles :size="13" /></template>生成</n-button>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="复制蓝图" @click="w.copy"><template #icon><Copy :size="14" /></template></n-button></template>复制蓝图编码</n-tooltip>
           <n-tooltip><template #trigger><n-button size="tiny" quaternary :disabled="!w.code" aria-label="导出文本" @click="w.download"><template #icon><Download :size="14" /></template></n-button></template>导出文本</n-tooltip>
@@ -105,7 +119,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <div v-if="w.generating" class="preview-progress" role="progressbar" aria-label="蓝图生成进度" :aria-valuetext="w.generationProgress || '正在准备生成'" />
       </header>
       <div class="preview-body">
-        <div class="preview-stage">
+        <div id="preview-panel-preview" class="preview-stage" :class="{'is-hidden': previewTab !== 'preview'}" role="tabpanel" aria-labelledby="preview-tab-preview" :aria-hidden="previewTab !== 'preview'">
           <BlueprintViewerPanel v-if="w.active && w.code && w.showPreview" ref="viewer" :code="w.code" :revision="w.previewRevision" interactive :selected-index="w.previewStale ? null : w.selectedBuilding" @ready="w.onPreviewReady" @select="w.onBuildingSelect" @error="w.onPreviewError" />
           <div v-else class="preview-empty">
             <Sparkles :size="22" />
@@ -116,6 +130,8 @@ const resizeByKey = (event: KeyboardEvent): void => {
           </div>
           <div v-if="w.previewStale && w.code" class="preview-overlay">{{ w.generationFailed ? '最近一次生成未成功，当前显示上次成功结果' : w.generating ? '正在生成，当前显示上次成功结果' : `参数已改变，${w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览'}` }}</div>
         </div>
+        <!-- 算法可视化：首次切换到该标签时才创建场景，之后保持挂载以保留舞台与播放进度 -->
+        <div v-if="algorithmMounted" v-show="previewTab === 'algorithm'" id="preview-panel-algorithm" class="preview-algorithm" role="tabpanel" aria-labelledby="preview-tab-algorithm"><AlgorithmStage :w="w" :active="previewTab === 'algorithm'" /></div>
       </div>
     </section>
 
@@ -173,6 +189,16 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-zone.is-active::after { transform: scaleX(1); }
 .name-input { width: 180px; flex: 0 1 180px; min-width: 96px; margin-left: auto; --n-border-radius: 2px !important; --n-color: var(--ds-hover-bg) !important; }
 .preview-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.preview-tabs { display: flex; flex: 0 0 auto; align-self: stretch; gap: 2px; }
+.preview-tab { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; border: 0; padding: 0 8px; background: transparent; color: var(--ds-text-secondary); font-size: 13px; white-space: nowrap; cursor: pointer; transition: color 150ms; }
+.preview-tab::after { content: ''; position: absolute; right: 8px; bottom: -1px; left: 8px; height: 2px; background: var(--ds-brand); transform: scaleX(0); transition: transform 150ms; }
+.preview-tab:hover { color: var(--ds-text-primary); }
+.preview-tab:focus-visible { outline: 1px solid var(--ds-brand); outline-offset: -4px; }
+.preview-tab.is-active { color: var(--ds-text-primary); font-weight: 600; }
+.preview-tab.is-active::after { transform: scaleX(1); }
+// 隐藏而非卸载：保留预览尺寸与 WebGL 上下文，切回时无需重建。
+.preview-stage.is-hidden { visibility: hidden; pointer-events: none; }
+.preview-algorithm { position: absolute; inset: 0; }
 .preview-body { position: relative; display: flex; min-height: 0; flex: 1; }
 .preview-stage { position: relative; min-width: 0; flex: 1; }
 .preview-empty { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); font-size: 13px; }
@@ -183,5 +209,5 @@ const resizeByKey = (event: KeyboardEvent): void => {
 @keyframes pulse { 50% { opacity: .35; } }
 @keyframes preview-progress-travel { from { transform: translateX(-35%) scaleX(.35); } to { transform: translateX(100%) scaleX(.35); } }
 @media (max-width: 1099px) { .bench-actions :deep(.n-button__content) { display: none; } .bench-actions :deep(.n-button__icon) { margin: 0; } }
-@media (prefers-reduced-motion: reduce) { .preview-state i { animation: none !important; } .preview-progress::after { animation: none; transform: scaleX(1); opacity: .65; } .bench-splitter span { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .preview-state i { animation: none !important; } .preview-progress::after { animation: none; transform: scaleX(1); opacity: .65; } .bench-splitter span { transition: none; } .preview-tab, .preview-tab::after { transition: none; } }
 </style>

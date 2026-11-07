@@ -1,0 +1,175 @@
+import * as THREE from 'three';
+
+/**
+ * 实例池：一个几何体 + 一个材质对应一个 InstancedMesh，按槽位分配给场景对象。
+ *
+ * - 槽位释放后写入零缩放矩阵（不可见），并进入空闲表复用；count 只覆盖到最高已用槽位
+ * - 容量不足时翻倍重建 InstancedMesh，并拷贝全部实例数据
+ * - 自定义的逐实例属性（状态、颜色索引、长度等）挂在池自有的几何体上，基础网格属性共享
+ */
+
+export interface InstanceAttributeSpec {
+  readonly name: string;
+  readonly itemSize: number;
+  /** 新槽位的默认值 */
+  readonly fill?: readonly number[];
+}
+
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+
+export class InstancePool {
+  mesh: THREE.InstancedMesh;
+  private capacity: number;
+  private used = 0;
+  private readonly free: number[] = [];
+  private readonly arrays = new Map<string, Float32Array>();
+  private dirtyMatrix = false;
+  private readonly dirtyAttributes = new Set<string>();
+
+  constructor(
+    readonly key: string,
+    private readonly base: THREE.BufferGeometry,
+    private readonly material: THREE.Material | THREE.Material[],
+    private readonly specs: readonly InstanceAttributeSpec[],
+    private readonly parent: THREE.Object3D,
+    initialCapacity = 64,
+    private readonly renderOrder = 0,
+  ) {
+    this.capacity = Math.max(8, initialCapacity);
+    for (const spec of specs) this.arrays.set(spec.name, new Float32Array(this.capacity * spec.itemSize));
+    this.mesh = this.createMesh();
+    parent.add(this.mesh);
+  }
+
+  /** 已用槽位数（含空洞） */
+  get size(): number {
+    return this.used - this.free.length;
+  }
+
+  alloc(): number {
+    const slot = this.free.length ? (this.free.pop() as number) : this.used++;
+    if (slot >= this.capacity) this.grow(Math.max(this.capacity * 2, slot + 1));
+    for (const spec of this.specs) {
+      const array = this.arrays.get(spec.name) as Float32Array;
+      for (let i = 0; i < spec.itemSize; i++) array[slot * spec.itemSize + i] = spec.fill?.[i] ?? 0;
+      this.dirtyAttributes.add(spec.name);
+    }
+    this.mesh.setMatrixAt(slot, ZERO);
+    this.mesh.count = this.used;
+    this.dirtyMatrix = true;
+    return slot;
+  }
+
+  release(slot: number): void {
+    if (slot < 0 || slot >= this.used) return;
+    this.mesh.setMatrixAt(slot, ZERO);
+    this.dirtyMatrix = true;
+    if (slot === this.used - 1) {
+      this.used--;
+      // 收缩尾部连续的空闲槽位，减少无效绘制
+      while (this.used > 0 && this.free.includes(this.used - 1)) {
+        this.free.splice(this.free.indexOf(this.used - 1), 1);
+        this.used--;
+      }
+      this.mesh.count = this.used;
+    } else {
+      this.free.push(slot);
+    }
+  }
+
+  setMatrix(slot: number, matrix: THREE.Matrix4): void {
+    this.mesh.setMatrixAt(slot, matrix);
+    this.dirtyMatrix = true;
+  }
+
+  set(name: string, slot: number, a: number, b = 0, c = 0, d = 0): void {
+    const array = this.arrays.get(name);
+    if (!array) return;
+    const size = array.length / this.capacity;
+    const offset = slot * size;
+    array[offset] = a;
+    if (size > 1) array[offset + 1] = b;
+    if (size > 2) array[offset + 2] = c;
+    if (size > 3) array[offset + 3] = d;
+    this.dirtyAttributes.add(name);
+  }
+
+  /** 把本帧的修改提交到 GPU；包围球失效后由拾取或剔除按需重算 */
+  commit(): void {
+    if (this.dirtyMatrix) {
+      this.mesh.instanceMatrix.needsUpdate = true;
+      this.mesh.boundingSphere = null;
+      this.mesh.boundingBox = null;
+      this.dirtyMatrix = false;
+    }
+    for (const name of this.dirtyAttributes) {
+      const attribute = this.mesh.geometry.getAttribute(name) as THREE.InstancedBufferAttribute | undefined;
+      if (attribute) attribute.needsUpdate = true;
+    }
+    this.dirtyAttributes.clear();
+  }
+
+  dispose(): void {
+    this.parent.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    this.mesh.dispose();
+  }
+
+  /** 释放池自有的材质（共享材质由创建方负责，不要对其调用） */
+  disposeMaterials(): void {
+    const materials = Array.isArray(this.material) ? this.material : [this.material];
+    for (const material of materials) material.dispose();
+  }
+
+  private createMesh(): THREE.InstancedMesh {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', this.base.getAttribute('position'));
+    const index = this.base.getIndex();
+    if (index) geometry.setIndex(index);
+    const uv = this.base.getAttribute('uv');
+    if (uv) geometry.setAttribute('uv', uv);
+    // 多材质模型：沿用基础几何体的材质分组
+    for (const group of this.base.groups) geometry.addGroup(group.start, group.count, group.materialIndex);
+    if (!this.base.boundingSphere) this.base.computeBoundingSphere();
+    if (!this.base.boundingBox) this.base.computeBoundingBox();
+    geometry.boundingSphere = (this.base.boundingSphere as THREE.Sphere).clone();
+    geometry.boundingBox = (this.base.boundingBox as THREE.Box3).clone();
+    for (const spec of this.specs) {
+      const attribute = new THREE.InstancedBufferAttribute(this.arrays.get(spec.name) as Float32Array, spec.itemSize);
+      attribute.setUsage(THREE.DynamicDrawUsage);
+      geometry.setAttribute(spec.name, attribute);
+    }
+    const mesh = new THREE.InstancedMesh(geometry, this.material, this.capacity);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = this.used;
+    // 动画期间实例位置频繁变化，包围球很快过期，关闭视锥剔除更稳妥
+    mesh.frustumCulled = false;
+    mesh.renderOrder = this.renderOrder;
+    mesh.userData.poolKey = this.key;
+    return mesh;
+  }
+
+  private grow(capacity: number): void {
+    const oldMesh = this.mesh;
+    const oldCapacity = this.capacity;
+    this.capacity = capacity;
+    for (const spec of this.specs) {
+      const next = new Float32Array(capacity * spec.itemSize);
+      next.set(this.arrays.get(spec.name) as Float32Array);
+      this.arrays.set(spec.name, next);
+    }
+    this.mesh = this.createMesh();
+    const matrix = new THREE.Matrix4();
+    for (let i = 0; i < oldCapacity; i++) {
+      oldMesh.getMatrixAt(i, matrix);
+      this.mesh.setMatrixAt(i, matrix);
+    }
+    for (let i = oldCapacity; i < capacity; i++) this.mesh.setMatrixAt(i, ZERO);
+    this.parent.remove(oldMesh);
+    oldMesh.geometry.dispose();
+    oldMesh.dispose();
+    this.parent.add(this.mesh);
+    this.dirtyMatrix = true;
+    for (const spec of this.specs) this.dirtyAttributes.add(spec.name);
+  }
+}

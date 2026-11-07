@@ -8,8 +8,10 @@ import (
 	"DysonSphereBox/constant/logging"
 	"DysonSphereBox/core/diagnostics"
 	logStore "DysonSphereBox/helper/system/logging"
+	"DysonSphereBox/service"
 	"context"
 	"fmt"
+	"time"
 
 	"DysonSphereBox/core"
 	legacyMigration "DysonSphereBox/helper/modDependence/installer/migration/legacy"
@@ -76,6 +78,11 @@ func (a *App) startup(ctx context.Context) {
 // 使用：Wails 框架在应用退出时自动调用。
 // 边界：关闭失败只记录到控制台，避免退出流程二次 panic。
 func (a *App) shutdown(ctx context.Context) {
+	cleanupContext, cancelCleanup := context.WithTimeout(context.Background(), 3*time.Second)
+	if err := service.ServiceGroupApp.FactoryServiceGroup.ReleaseResources(cleanupContext); err != nil {
+		diagnostics.Default.Record(logging.Entry{Action: "等待工厂生成退出超时", Level: logging.Error, Source: "backend.shutdown", Reason: "候选计算未在关闭期限内退出", Namespace: "factory.generation.shutdown", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})
+	}
+	cancelCleanup()
 	logStore.Stop()
 	if err := core.CloseDatabase(); err != nil {
 		diagnostics.Default.Record(logging.Entry{Action: "关闭数据库失败", Level: logging.Error, Source: "backend.shutdown", Reason: "数据库关闭返回错误", Namespace: "system.database.closeFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})

@@ -13,6 +13,7 @@ type GenerationTasks struct {
 	mu      sync.Mutex
 	current *generationTask
 	slot    chan struct{}
+	closed  bool
 }
 
 // generationTask 职责：保存可取消任务身份；使用：区分新旧清理；边界：仅在管理器锁下替换身份。
@@ -25,6 +26,11 @@ func (tasks *GenerationTasks) Begin(parent context.Context) (ctx context.Context
 	ctx, cancel := context.WithCancel(parent)
 	task := &generationTask{cancel: cancel}
 	tasks.mu.Lock()
+	if tasks.closed {
+		tasks.mu.Unlock()
+		cancel()
+		return ctx, func() {}
+	}
 	if tasks.slot == nil {
 		tasks.slot = make(chan struct{}, 1)
 	}
@@ -54,5 +60,26 @@ func (tasks *GenerationTasks) Begin(parent context.Context) (ctx context.Context
 				<-slot
 			}
 		})
+	}
+}
+
+// Shutdown 职责：停止接受新任务并协作取消当前任务；使用：应用关闭；边界：在截止时间内等待执行槽真正释放，不强杀 worker 或提前释放旧任务槽。
+func (tasks *GenerationTasks) Shutdown(ctx context.Context) error {
+	tasks.mu.Lock()
+	tasks.closed = true
+	if tasks.current != nil {
+		tasks.current.cancel()
+	}
+	slot := tasks.slot
+	tasks.mu.Unlock()
+	if slot == nil {
+		return nil
+	}
+	select {
+	case slot <- struct{}{}:
+		<-slot
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }

@@ -15,13 +15,18 @@ import (
 type generationProgress = build.Progress
 
 // GenerationContext 职责：为本次生成接入桌面阶段通知；使用：服务完成方案校验后调用；边界：空 ID 或非桌面调用保持纯引擎行为。
-func GenerationContext(parent context.Context, taskID string) context.Context {
+func GenerationContext(parent context.Context, taskID string, observers ...func(build.Progress)) context.Context {
 	runtimeContext := core.GLOBAL.RuntimeContext
-	if taskID == "" || runtimeContext == nil {
+	if taskID == "" || runtimeContext == nil && len(observers) == 0 {
 		return parent
 	}
 	return generationProgressContext(parent, taskID, func(progress generationProgress) {
-		runtime.EventsEmit(runtimeContext, factoryConstant.GenerationProgressEvent, progress)
+		for _, observer := range observers {
+			observer(progress)
+		}
+		if runtimeContext != nil {
+			runtime.EventsEmit(runtimeContext, factoryConstant.GenerationProgressEvent, progress)
+		}
 	})
 }
 

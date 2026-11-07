@@ -6,16 +6,27 @@ package build
 import (
 	"context"
 	"strconv"
+	"sync/atomic"
 
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build/algorithm/search"
 	"DysonSphereBox/helper/blueprint/build/preview"
 )
 
 // generationPreviewKey 职责：隔离任务预览旁路；使用：入口和最终结果发布；边界：不持有全局任务。
 type generationPreviewKey struct{}
+type candidateConcurrencyKey struct{}
 
 // generationPreview 职责：共享同一任务各候选的身份分配与已显示场景；使用：单任务串行生成；边界：只持有值快照，不参与算法状态恢复。
 type generationPreview struct {
+	root        *generationPreview
+	candidates  atomic.Uint64
+	protocol    int
+	candidateID string
+	ordinal     uint64
+	finished    bool
+	started     bool
+	sequence    uint64
 	// ctx 职责：保留父任务取消；使用：检查点停止发送；边界：不使用局部优化候选的截止来取消整个任务。
 	ctx context.Context
 	// notifier 职责：输出最小对象操作；使用：可见场景提交；边界：不输出全量蓝图。
@@ -28,6 +39,7 @@ type generationPreview struct {
 
 // generationPreviewSnapshot 职责：保留可获选结果的最终渲染值快照；使用：全部候选评估后提交真正的最佳场景；边界：未导出字段不进入正式结果 JSON。
 type generationPreviewSnapshot struct {
+	session *generationPreview
 	// scene 职责：保存最终记录姿态及稳定实体身份；使用：最终增量比较；边界：只内部持有，不直接全量发送。
 	scene preview.Scene
 }
@@ -38,10 +50,81 @@ func withGenerationPreview(ctx context.Context, request Request) context.Context
 		return ctx
 	}
 	session := &generationPreview{ctx: ctx, stage: "preview"}
+	if request.PreviewProtocolVersion == 4 {
+		session.protocol = 4
+		session.root = session
+		publishProgress(ctx, Progress{ProtocolVersion: 4, Kind: "search-start", Stage: "preview", Message: "开始候选方案搜索"})
+	}
 	session.notifier = preview.New(func(frame preview.Frame, operations []preview.Operation) {
 		publishProgress(ctx, Progress{ProtocolVersion: preview.ProtocolVersion, Kind: preview.Kind, Stage: session.stage, Message: "正在更新生成预览", CoordinateSystem: frame.CoordinateSystem, Operations: operations, PreviewAreas: frame.Areas, PreviewPrimaryAreaIndex: frame.PrimaryAreaIndex})
 	})
 	return context.WithValue(ctx, generationPreviewKey{}, session)
+}
+
+func (p *generationPreview) fork() *generationPreview {
+	if p == nil || p.protocol != 4 {
+		return p
+	}
+	session := &generationPreview{ctx: p.ctx, root: p.root, protocol: 4, stage: "preview"}
+	session.notifier = preview.New(func(frame preview.Frame, operations []preview.Operation) {
+		session.publish(Progress{Kind: preview.Kind, CoordinateSystem: frame.CoordinateSystem, Operations: operations, PreviewAreas: frame.Areas, PreviewPrimaryAreaIndex: frame.PrimaryAreaIndex})
+	})
+	return session
+}
+
+func (p *generationPreview) publish(event Progress) {
+	p.sequence++
+	event.ProtocolVersion, event.CandidateID, event.CandidateOrdinal = 4, p.candidateID, p.ordinal
+	event.CandidateSequence, event.Stage = p.sequence, p.stage
+	publishProgress(p.ctx, event)
+}
+
+func (p *generationPreview) start() {
+	if p.protocol != 4 || p.started {
+		return
+	}
+	if p.candidateID == "" {
+		p.ordinal = p.root.candidates.Add(1)
+		p.candidateID = "candidate-" + strconv.FormatUint(p.ordinal, 10)
+	}
+	p.started = true
+	p.publish(Progress{Kind: "candidate-start", Message: "候选方案开始生成"})
+}
+
+func (b *builder) planCandidatePreviews(count int) []*generationPreview {
+	sessions := make([]*generationPreview, count)
+	if b.preview == nil || b.preview.protocol != 4 {
+		return sessions
+	}
+	plans := make([]CandidatePreviewPlan, count)
+	for index := range sessions {
+		session := b.preview.fork()
+		session.ordinal = session.root.candidates.Add(1)
+		session.candidateID = "candidate-" + strconv.FormatUint(session.ordinal, 10)
+		sessions[index] = session
+		plans[index] = CandidatePreviewPlan{ID: session.candidateID, Ordinal: session.ordinal}
+	}
+	publishProgress(b.preview.ctx, Progress{ProtocolVersion: 4, Kind: "candidate-plan", Stage: "preview", Candidates: plans})
+	return sessions
+}
+
+func (b *builder) candidateWorkers(ctx context.Context, count int) int {
+	recordPerformanceStage(ctx, "candidate-search", count)
+	if b.preview != nil && b.preview.protocol != 4 {
+		return 1
+	}
+	if configured, _ := ctx.Value(candidateConcurrencyKey{}).(int); configured > 0 {
+		return max(1, min(count, configured))
+	}
+	return search.Concurrency(count)
+}
+
+func (p *generationPreview) finish(status string) {
+	if p.protocol != 4 || p.finished || p.candidateID == "" {
+		return
+	}
+	p.finished = true
+	p.publish(Progress{Kind: "candidate-finish", CandidateStatus: status})
 }
 
 // previewFromContext 职责：读取单任务预览会话；使用：Builder 初始化和最终提交；边界：未启用时返回 nil。
@@ -65,6 +148,9 @@ func (b *builder) beginPreview() {
 		return
 	}
 	b.previewActive = true
+	if b.preview.protocol == 4 && b.preview != b.preview.root {
+		b.preview.start()
+	}
 	b.previewCheckpoint("layout")
 }
 
@@ -72,6 +158,15 @@ func (b *builder) beginPreview() {
 func (b *builder) previewCheckpoint(stage string) {
 	if b.preview == nil || !b.previewActive || b.preview.ctx.Err() != nil {
 		return
+	}
+	if b.preview.protocol == 4 {
+		if b.preview == b.preview.root && len(b.all) == 0 {
+			return
+		}
+		if b.preview == b.preview.root {
+			b.preview = b.preview.fork()
+		}
+		b.preview.start()
 	}
 	ids := make(map[*placed]string, len(b.all))
 	for _, entity := range b.all {
@@ -99,6 +194,11 @@ func (b *builder) previewCheckpoint(stage string) {
 // rollbackPreview 职责：撤下真实失败或被放弃候选的全部临时对象；使用：候选失败边界；边界：不影响实体库存、告警或失败原因。
 func (b *builder) rollbackPreview() {
 	if b.preview == nil || !b.previewActive || b.preview.ctx.Err() != nil {
+		return
+	}
+	if b.preview.protocol == 4 {
+		b.preview.finish("rejected")
+		b.previewActive = false
 		return
 	}
 	b.preview.stage = "preview"
@@ -140,7 +240,8 @@ func (b *builder) finalPreviewSnapshot(records []blueprint.Building, areas []blu
 		building.InputObjectID, building.OutputObjectID = ids[record.InputObjIdx], ids[record.OutputObjIdx]
 		objects = append(objects, preview.Object{ID: ids[record.Index], Building: building})
 	}
-	return &generationPreviewSnapshot{scene: preview.Scene{Objects: objects, Frame: preview.Frame{CoordinateSystem: preview.AreaCoordinates, Areas: previewAreas(areas), PrimaryAreaIndex: primary}}}
+	b.preview.finish("valid")
+	return &generationPreviewSnapshot{session: b.preview, scene: preview.Scene{Objects: objects, Frame: preview.Frame{CoordinateSystem: preview.AreaCoordinates, Areas: previewAreas(areas), PrimaryAreaIndex: primary}}}
 }
 
 // commitGenerationPreview 职责：把真正获选的正式候选差量提交并标记流结束；使用：Generate 成功返回前；边界：完成不取代正式调用结果，取消时不返回预览成功。
@@ -155,12 +256,35 @@ func commitGenerationPreview(ctx context.Context, result Result) error {
 	if err := ctx.Err(); err != nil {
 		return previewContextError(err)
 	}
+	if session.protocol == 4 {
+		session = result.previewScene.session
+		scene := result.previewScene.scene
+		chunks := (len(scene.Objects) + preview.BatchSize - 1) / preview.BatchSize
+		for start := 0; start < len(scene.Objects); start += preview.BatchSize {
+			if err := ctx.Err(); err != nil {
+				return previewContextError(err)
+			}
+			end := min(start+preview.BatchSize, len(scene.Objects))
+			operations := make([]preview.Operation, 0, end-start)
+			for _, object := range scene.Objects[start:end] {
+				building := object.Building
+				operations = append(operations, preview.Operation{Type: preview.Add, ObjectID: object.ID, Building: &building})
+			}
+			session.publish(Progress{Kind: "preview-snapshot", SnapshotRevision: 1, ChunkIndex: start / preview.BatchSize, ChunkCount: chunks, CoordinateSystem: preview.AreaCoordinates, Operations: operations, PreviewAreas: scene.Frame.Areas, PreviewPrimaryAreaIndex: scene.Frame.PrimaryAreaIndex})
+		}
+		session.publish(Progress{Kind: ProgressKindPreviewComplete, WinnerCandidateID: session.candidateID, SnapshotRevision: 1, ChunkCount: chunks, CoordinateSystem: preview.AreaCoordinates, BuildingCount: result.BuildingCount, BatchCount: session.notifier.BatchCount()})
+		return nil
+	}
 	session.stage = "preview"
 	session.notifier.Sync(result.previewScene.scene)
 	if err := ctx.Err(); err != nil {
 		return previewContextError(err)
 	}
-	publishProgress(ctx, Progress{ProtocolVersion: preview.ProtocolVersion, Kind: ProgressKindPreviewComplete, Stage: "preview", Message: "生成预览已提交正式结果", CoordinateSystem: preview.AreaCoordinates, BuildingCount: result.BuildingCount, BatchCount: session.notifier.BatchCount()})
+	version := preview.ProtocolVersion
+	if session.protocol == 4 {
+		version = 4
+	}
+	publishProgress(ctx, Progress{ProtocolVersion: version, Kind: ProgressKindPreviewComplete, CandidateID: session.candidateID, WinnerCandidateID: session.candidateID, Stage: "preview", Message: "生成预览已提交正式结果", CoordinateSystem: preview.AreaCoordinates, BuildingCount: result.BuildingCount, BatchCount: session.notifier.BatchCount()})
 	if err := ctx.Err(); err != nil {
 		return previewContextError(err)
 	}
@@ -170,6 +294,10 @@ func commitGenerationPreview(ctx context.Context, result Result) error {
 // clearGenerationPreview 职责：为未成功任务撤下已发出的临时对象；使用：统一入口失败清理；边界：取消后事件停止，由前端任务生命周期清理视图。
 func clearGenerationPreview(ctx context.Context) {
 	if session := previewFromContext(ctx); session != nil && ctx.Err() == nil {
+		if session.protocol == 4 {
+			publishProgress(ctx, Progress{ProtocolVersion: 4, Kind: "search-failed", Stage: "preview", Message: "候选搜索未成功"})
+			return
+		}
 		session.stage = "preview"
 		session.notifier.Sync(preview.Scene{Frame: preview.Frame{CoordinateSystem: preview.LayoutCoordinates}})
 	}

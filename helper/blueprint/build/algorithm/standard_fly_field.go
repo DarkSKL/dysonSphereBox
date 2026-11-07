@@ -10,6 +10,7 @@ import (
 	"math"
 
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build/algorithm/search"
 	"DysonSphereBox/helper/quant"
 )
 
@@ -34,13 +35,28 @@ func (b *builder) generateStandardFlyField(ctx context.Context, req Request, dat
 		{scale: 1.2, latitudeFactor: .7, order: 3, materialOrder: true, consumerFirst: true},
 		{scale: 1.2, order: 3, materialOrder: true},
 	}
-	for variant, option := range options {
-		if err := b.checkGeneration("普通配送全场布局候选"); err != nil {
-			return Result{}, err
-		}
+	type evaluation struct {
+		out         Result
+		err         error
+		count       int
+		diagnostics []SearchCandidateDiagnostic
+	}
+	workers := b.candidateWorkers(ctx, len(options))
+	previews := b.planCandidatePreviews(len(options))
+	err := search.Waves(ctx, options, workers, func(ctx context.Context, variant int, option struct {
+		scale, latitudeFactor float64
+		order                 int
+		materialOrder         bool
+		consumerFirst         bool
+	}) (evaluated evaluation) {
+		ctx, finishPerformance := beginCandidatePerformance(ctx, "standard-fly", variant)
+		defer func() { finishPerformance(evaluated.err) }()
 		candidate, err := b.newCandidateBuilder()
 		if err != nil {
-			return Result{}, err
+			return evaluation{err: err}
+		}
+		if previews[variant] != nil {
+			candidate.preview = previews[variant]
 		}
 		candidate.generationCtx, candidate.flowGraph = ctx, b.flowGraph
 		candidate.denseSpatial, candidate.denseSpatialOrder, candidate.flyCompact = true, option.order, true
@@ -69,20 +85,30 @@ func (b *builder) generateStandardFlyField(ctx context.Context, req Request, dat
 			metrics := out.LogisticsSummary.Metrics
 			proof.Reason = fmt.Sprintf("完整通过：配送器%d个，包络%.0f格²，长宽比%.3f，真实带%d段/%.3f米", denseFlyFacilityCount(candidate.all), metrics.EnvelopeArea, metrics.EnvelopeAspectRatio, metrics.BeltCount, metrics.TotalBeltLengthMeters)
 		}
-		diagnostics = appendSearchCandidateDiagnostics(diagnostics, proof, candidate.logistics)
+		evaluated = evaluation{out: out, err: err, count: denseFlyFacilityCount(candidate.all), diagnostics: appendSearchCandidateDiagnostics(nil, proof, candidate.logistics)}
 		if err != nil {
-			failures = append(failures, err)
 			candidate.rollbackPreview()
-			continue
+			return evaluated
 		}
 		if out.LogisticsSummary == nil {
-			failures = append(failures, &blueprint.Error{Code: "GEN_E_FLOW", Message: "普通配送全场候选缺少最终物流证据"})
-			continue
+			evaluated.err = &blueprint.Error{Code: "GEN_E_FLOW", Message: "普通配送全场候选缺少最终物流证据"}
+			candidate.rollbackPreview()
 		}
-		count := denseFlyFacilityCount(candidate.all)
+		return evaluated
+	}, func(_ int, evaluated evaluation) error {
+		diagnostics = append(diagnostics, evaluated.diagnostics...)
+		if evaluated.err != nil {
+			failures = append(failures, evaluated.err)
+			return nil
+		}
+		out, count := evaluated.out, evaluated.count
 		if best == nil || count < bestFacilities || count == bestFacilities && betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
 			best, bestFacilities = &out, count
 		}
+		return nil
+	})
+	if err != nil {
+		return Result{}, previewContextError(err)
 	}
 	if err := b.checkGeneration("普通配送全场布局提交"); err != nil {
 		return Result{}, err

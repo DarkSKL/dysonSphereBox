@@ -4,6 +4,7 @@ package build
 // 使用：mode2 dense 专用装配；边界：不预留产线独占矩形，不改规范物流份额，原料回收与自产剂反馈保留必要局部关系。
 
 import (
+	"DysonSphereBox/helper/blueprint/build/algorithm/search"
 	"context"
 	"fmt"
 	"math"
@@ -60,6 +61,7 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 	var lastError error
 	diagnostics := []SearchCandidateDiagnostic{}
 	index, rejected := 0, 0
+	plannedPreviews := b.planCandidatePreviews(len(variants) * 6)
 	for variantIndex := 0; variantIndex < len(variants); variantIndex++ {
 		option := variants[variantIndex]
 		useStreet := option.street
@@ -68,80 +70,127 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 			clearance = .04
 		}
 		passed, assemblyFailures := 0, 0
-		for _, scale := range []float64{.85, 1, 1.2} {
-			for _, order := range []int{2, 3} {
-				if err := b.checkGeneration("配送全场密铺候选"); err != nil {
-					return Result{}, err
-				}
-				candidate, err := b.newCandidateBuilder()
-				if err != nil {
-					return Result{}, err
-				}
-				candidateContext := ctx
-				if useStreet {
-					candidateContext = context.WithValue(ctx, denseStreetFoldClearanceKey{}, clearance)
-				}
-				if best != nil {
-					candidateContext = context.WithValue(candidateContext, denseFlyFacilityBoundKey{}, denseFlyFacilityBound{count: bestFacilities, aspect: best.LogisticsSummary.Metrics.EnvelopeAspectRatio})
-				}
-				candidate.generationCtx, candidate.flowGraph = candidateContext, b.flowGraph
-				candidate.denseSpatial, candidate.denseSpatialOrder, candidate.flyCompact = true, order, true
-				candidate.denseStreetGroupLimit = option.groups
-				candidate.warnings = append(candidate.warnings, b.warnings...)
-				candidate.logistics = newLogisticsSummary(*b.flowGraph, candidate.setting)
-				candidate.logistics.Checks = append(candidate.logistics.Checks, b.logistics.Checks...)
-				candidate.beginPreview()
-				parameters := fmt.Sprintf("detachedFacilities=true;street=%t;streetGroups=%d;streetClearance=%.2f;extentScale=%.2f;order=%d", useStreet, option.groups, clearance, scale, order)
-				parameters += fmt.Sprintf(";blackbox=%t", option.blackbox)
-				if option.blackbox {
-					span := 12
-					if order%2 == 1 {
-						span = 18
-					}
-					parameters += fmt.Sprintf(";maxSpan=%d", span)
-				}
-				stage := "assembly"
-				if option.blackbox {
-					err = candidate.assembleDenseFlyBlackbox(candidateContext, req, dataset, scale, useStreet)
-				} else {
-					err = candidate.assembleDenseFlyLayout(candidateContext, req, dataset, scale, useStreet)
-				}
-				if err == nil {
-					stage = "final-validation"
-					var result Result
-					result, err = candidate.finish(candidateContext, req, dataset)
-					if err == nil && result.LogisticsSummary != nil {
-						passed++
-						proof := newSearchCandidateDiagnostic("dense-fly-layout", index, parameters, stage, nil)
-						m := result.LogisticsSummary.Metrics
-						facilities := denseFlyFacilityCount(candidate.all)
-						proof.Reason = fmt.Sprintf("完整通过：配送器%d个，包络%.0f格²，长宽比%.3f，真实带%d段/%.3f米", facilities, m.EnvelopeArea, m.EnvelopeAspectRatio, m.BeltCount, m.TotalBeltLengthMeters)
-						diagnostics = appendSearchCandidateDiagnostics(diagnostics, proof, result.LogisticsSummary)
-						if best == nil || betterDenseFlyCandidate(result.LogisticsSummary.Metrics, facilities, best.LogisticsSummary.Metrics, bestFacilities) {
-							result.LogisticsSummary.Checks = append(result.LogisticsSummary.Checks, LogisticsCheck{RuleID: "dense-fly-selected-layout", Status: "passed", Message: parameters})
-							best = &result
-							bestFacilities = facilities
-						}
-						index++
-						continue
-					}
-				}
-				if err == nil {
-					err = &blueprint.Error{Code: "GEN_E_FLOW", Message: "密铺配送缺少最终物流证据"}
-				}
-				if denseFlyFacilityDominated(err) {
-					stage = "facility-bound"
-				} else {
-					assemblyFailures++
-				}
-				diagnostics = appendSearchCandidateDiagnostics(diagnostics, newSearchCandidateDiagnostic("dense-fly-layout", index, parameters, stage, err), candidate.logistics)
-				lastError, rejected = err, rejected+1
-				candidate.rollbackPreview()
-				index++
+		type flyEvaluation struct {
+			out              Result
+			count            int
+			parameters       string
+			err              error
+			diagnostics      []SearchCandidateDiagnostic
+			assemblyFailures int
+		}
+		type flyInput struct {
+			scale float64
+			order int
+		}
+		inputs := []flyInput{{.85, 2}, {.85, 3}, {1, 2}, {1, 3}, {1.2, 2}, {1.2, 3}}
+		previews := plannedPreviews[variantIndex*6 : (variantIndex+1)*6]
+		groupBase := index
+		waveErr := search.Waves(ctx, inputs, b.candidateWorkers(ctx, len(inputs)), func(ctx context.Context, localIndex int, input flyInput) (evaluation flyEvaluation) {
+			ctx, finishPerformance := beginCandidatePerformance(ctx, "dense-fly", groupBase+localIndex)
+			defer func() { finishPerformance(evaluation.err) }()
+			scale, order := input.scale, input.order
+			index := groupBase + localIndex
+			var lastError error
+			var diagnostics []SearchCandidateDiagnostic
+			assemblyFailures := 0
+			defer func() {
+				evaluation.err = lastError
+				evaluation.diagnostics = diagnostics
+				evaluation.assemblyFailures = assemblyFailures
+			}()
+			if err := b.checkGeneration("配送全场密铺候选"); err != nil {
+				lastError = err
+				return
 			}
+			candidate, err := b.newCandidateBuilder()
+			if err != nil {
+				lastError = err
+				return
+			}
+			if previews[localIndex] != nil {
+				candidate.preview = previews[localIndex]
+			}
+			candidateContext := ctx
+			if useStreet {
+				candidateContext = context.WithValue(ctx, denseStreetFoldClearanceKey{}, clearance)
+			}
+			if best != nil {
+				candidateContext = context.WithValue(candidateContext, denseFlyFacilityBoundKey{}, denseFlyFacilityBound{count: bestFacilities, aspect: best.LogisticsSummary.Metrics.EnvelopeAspectRatio})
+			}
+			candidate.generationCtx, candidate.flowGraph = candidateContext, b.flowGraph
+			candidate.denseSpatial, candidate.denseSpatialOrder, candidate.flyCompact = true, order, true
+			candidate.denseStreetGroupLimit = option.groups
+			candidate.warnings = append(candidate.warnings, b.warnings...)
+			candidate.logistics = newLogisticsSummary(*b.flowGraph, candidate.setting)
+			candidate.logistics.Checks = append(candidate.logistics.Checks, b.logistics.Checks...)
+			candidate.beginPreview()
+			parameters := fmt.Sprintf("detachedFacilities=true;street=%t;streetGroups=%d;streetClearance=%.2f;extentScale=%.2f;order=%d", useStreet, option.groups, clearance, scale, order)
+			parameters += fmt.Sprintf(";blackbox=%t", option.blackbox)
+			if option.blackbox {
+				span := 12
+				if order%2 == 1 {
+					span = 18
+				}
+				parameters += fmt.Sprintf(";maxSpan=%d", span)
+			}
+			stage := "assembly"
+			if option.blackbox {
+				err = candidate.assembleDenseFlyBlackbox(candidateContext, req, dataset, scale, useStreet)
+			} else {
+				err = candidate.assembleDenseFlyLayout(candidateContext, req, dataset, scale, useStreet)
+			}
+			if err == nil {
+				stage = "final-validation"
+				var result Result
+				result, err = candidate.finish(candidateContext, req, dataset)
+				if err == nil && result.LogisticsSummary != nil {
+					proof := newSearchCandidateDiagnostic("dense-fly-layout", index, parameters, stage, nil)
+					m := result.LogisticsSummary.Metrics
+					facilities := denseFlyFacilityCount(candidate.all)
+					proof.Reason = fmt.Sprintf("完整通过：配送器%d个，包络%.0f格²，长宽比%.3f，真实带%d段/%.3f米", facilities, m.EnvelopeArea, m.EnvelopeAspectRatio, m.BeltCount, m.TotalBeltLengthMeters)
+					diagnostics = appendSearchCandidateDiagnostics(diagnostics, proof, result.LogisticsSummary)
+					evaluation.out, evaluation.count = result, facilities
+					evaluation.parameters = parameters
+
+					return
+				}
+			}
+			if err == nil {
+				err = &blueprint.Error{Code: "GEN_E_FLOW", Message: "密铺配送缺少最终物流证据"}
+			}
+			if denseFlyFacilityDominated(err) {
+				stage = "facility-bound"
+			} else {
+				assemblyFailures++
+			}
+			diagnostics = appendSearchCandidateDiagnostics(diagnostics, newSearchCandidateDiagnostic("dense-fly-layout", index, parameters, stage, err), candidate.logistics)
+			lastError = err
+			candidate.rollbackPreview()
+
+			return
+		}, func(_ int, evaluation flyEvaluation) error {
+			index++
+			diagnostics = append(diagnostics, evaluation.diagnostics...)
+			assemblyFailures += evaluation.assemblyFailures
+			if evaluation.err != nil {
+				lastError = evaluation.err
+				rejected++
+				return nil
+			}
+			passed++
+			result, facilities := evaluation.out, evaluation.count
+			if best == nil || betterDenseFlyCandidate(result.LogisticsSummary.Metrics, facilities, best.LogisticsSummary.Metrics, bestFacilities) {
+				result.LogisticsSummary.Checks = append(result.LogisticsSummary.Checks, LogisticsCheck{RuleID: "dense-fly-selected-layout", Status: "passed", Message: evaluation.parameters})
+				best, bestFacilities = &result, facilities
+			}
+			return nil
+		})
+		if waveErr != nil {
+			return Result{}, previewContextError(waveErr)
 		}
 		if useStreet && !option.blackbox && option.groups == 0 && passed == 0 && assemblyFailures > 0 {
 			variants = append(variants, denseFlyLayoutVariant{street: true, groups: 3}, denseFlyLayoutVariant{street: true, groups: 2, clearance: .2}, denseFlyLayoutVariant{street: true, groups: 2, clearance: .4}, denseFlyLayoutVariant{street: true, groups: 2, clearance: .6}, denseFlyLayoutVariant{street: true, groups: 1})
+			plannedPreviews = append(plannedPreviews, b.planCandidatePreviews(30)...)
 		}
 	}
 	if err := b.checkGeneration("配送全场密铺提交"); err != nil {

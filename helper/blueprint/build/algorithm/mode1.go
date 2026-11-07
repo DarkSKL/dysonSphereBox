@@ -4,6 +4,7 @@ package build
 // 使用：mode 1 生成主链；边界：任何容量、端口、寻路或最终规则失败都不返回部分蓝图。
 
 import (
+	"DysonSphereBox/helper/blueprint/build/algorithm/search"
 	"context"
 	"fmt"
 	"math"
@@ -106,93 +107,134 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 	var lastError error
 	var searchCandidates []SearchCandidateDiagnostic
 	evaluated, rejected := 0, 0
-	for candidateIndex := 0; candidateIndex < budget; candidateIndex++ {
-		// 就近入口改变了前序路径占位；只有整组均不可行时才独立重建旧入口候选，
-		// 避免线路节省变成生成兼容性回退，也不在常规成功路径上翻倍装配开销。
-		if candidateIndex == layouts && best != nil {
+	type connectedEvaluation struct {
+		out         Result
+		dense       bool
+		err         error
+		diagnostics []SearchCandidateDiagnostic
+	}
+	if layouts == 0 {
+		return Result{}, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "没有可执行的布局候选"}
+	}
+	for group := 0; group < 2; group++ {
+		if group == 1 && best != nil {
 			break
 		}
-		legacyInputs := candidateIndex >= layouts
-		layoutIndex := candidateIndex % layouts
-		limit, compact := variants[layoutIndex].Limit, variants[layoutIndex].Compact
-		if ctx.Err() != nil {
-			return Result{}, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成已取消或超过 4 分钟"}
+		indices := make([]int, layouts)
+		for index := range indices {
+			indices[index] = group*layouts + index
 		}
-		evaluated++
-		inputKind := "就近原料入口"
-		if legacyInputs {
-			inputKind = "兼容原料入口"
-		}
-		reportProgress(ctx, "flow-layout", fmt.Sprintf("正在检查直连带布局候选 %d/%d（%s）", evaluated, budget, inputKind), evaluated, budget)
-		candidate, err := b.newCandidateBuilder()
-		if err != nil {
-			return Result{}, err
-		}
-		candidate.flowGraph = b.flowGraph
-		if best != nil {
-			objective := best.LogisticsSummary.Metrics
-			candidate.connectedBestObjective = &objective
-		}
-		candidate.connectedCompactBelts = true
-		candidate.connectedLegacyInputs = legacyInputs
-		candidate.connectedHorizontalPacking = variants[layoutIndex].Horizontal
-		candidate.connectedGlobalPower = variants[layoutIndex].GlobalPower
-		if req.Density == densityDense {
-			candidate.denseSpatial, candidate.denseSpatialOrder = true, variants[layoutIndex].denseOrder
-			candidate.denseMaxSpan, candidate.denseRefine = variants[layoutIndex].denseSpan, variants[layoutIndex].refine
-			candidate.denseStreetCandidate, candidate.denseStreetRotation = variants[layoutIndex].street, variants[layoutIndex].streetRotation
-			candidate.denseStreetGroupLimit = variants[layoutIndex].streetGroupLimit
-			candidate.densePairedOutputs = variants[layoutIndex].pairedOutputs
-			candidate.connectedGlobalPower = req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "planar"
-		}
-		candidate.generationCtx = ctx
-		candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
-		candidate.logistics.Metrics.CandidateBudget = budget
-		candidate.beginPreview()
-		parameters := fmt.Sprintf("heightLimit=%g;compact=%t;horizontal=%t;globalPower=%t;legacyInputs=%t", limit, compact, variants[layoutIndex].Horizontal, variants[layoutIndex].GlobalPower, legacyInputs)
-		if candidate.denseSpatial {
-			parameters = fmt.Sprintf("globalDense=true;extent=%g;maxSpan=%g;order=%d;refine=%t;globalPower=%t;legacyInputs=%t", limit, candidate.denseMaxSpan, candidate.denseSpatialOrder, candidate.denseRefine, candidate.connectedGlobalPower, legacyInputs)
-			if candidate.denseStreetCandidate {
-				parameters += fmt.Sprintf(";continuousStreet=true;streetRotation=%d;streetGroupLimit=%d", candidate.denseStreetRotation, candidate.denseStreetGroupLimit)
+		previews := b.planCandidatePreviews(layouts)
+		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, layouts), func(ctx context.Context, localIndex int, candidateIndex int) (evaluation connectedEvaluation) {
+			ctx, finishPerformance := beginCandidatePerformance(ctx, "connected", candidateIndex)
+			defer func() { finishPerformance(evaluation.err) }()
+			var lastError error
+			var searchCandidates []SearchCandidateDiagnostic
+			defer func() { evaluation.err = lastError; evaluation.diagnostics = searchCandidates }()
+			legacyInputs := candidateIndex >= layouts
+			layoutIndex := candidateIndex % layouts
+			limit, compact := variants[layoutIndex].Limit, variants[layoutIndex].Compact
+			if ctx.Err() != nil {
+				lastError = &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "生成已取消或超过 4 分钟"}
+				return
 			}
-			parameters += fmt.Sprintf(";pairedOutputs=%t", candidate.densePairedOutputs)
-		}
-		if err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, compact); err != nil {
-			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "assembly", err), candidate.logistics)
-			lastError, rejected = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err), rejected+1
-			reportProgress(ctx, "layout-rejected", lastError.Error(), evaluated, budget)
-			candidate.rollbackPreview()
-			continue
-		}
-		out, err := candidate.finish(ctx, req, dataset)
-		if err != nil {
-			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", err), candidate.logistics)
-			lastError, rejected = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err), rejected+1
-			reportProgress(ctx, "layout-rejected", lastError.Error(), evaluated, budget)
-			candidate.rollbackPreview()
-			continue
-		}
-		if out.LogisticsSummary == nil {
-			lastError, rejected = &blueprint.Error{Code: "GEN_E_FLOW", Message: "直连候选缺少物流摘要"}, rejected+1
-			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", lastError), candidate.logistics)
-			candidate.rollbackPreview()
-			continue
-		}
-		searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", nil), out.LogisticsSummary)
-		better := best == nil
-		if best != nil {
-			better = betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics)
+			evaluated := candidateIndex + 1
+			inputKind := "就近原料入口"
+			if legacyInputs {
+				inputKind = "兼容原料入口"
+			}
+			reportProgress(ctx, "flow-layout", fmt.Sprintf("正在检查直连带布局候选 %d/%d（%s）", evaluated, budget, inputKind), evaluated, budget)
+			candidate, err := b.newCandidateBuilder()
+			if err != nil {
+				lastError = err
+				return
+			}
+			if previews[localIndex] != nil {
+				candidate.preview = previews[localIndex]
+			}
+			candidate.flowGraph = b.flowGraph
+			if best != nil {
+				objective := best.LogisticsSummary.Metrics
+				candidate.connectedBestObjective = &objective
+			}
+			candidate.connectedCompactBelts = true
+			candidate.connectedLegacyInputs = legacyInputs
+			candidate.connectedHorizontalPacking = variants[layoutIndex].Horizontal
+			candidate.connectedGlobalPower = variants[layoutIndex].GlobalPower
+			if req.Density == densityDense {
+				candidate.denseSpatial, candidate.denseSpatialOrder = true, variants[layoutIndex].denseOrder
+				candidate.denseMaxSpan, candidate.denseRefine = variants[layoutIndex].denseSpan, variants[layoutIndex].refine
+				candidate.denseStreetCandidate, candidate.denseStreetRotation = variants[layoutIndex].street, variants[layoutIndex].streetRotation
+				candidate.denseStreetGroupLimit = variants[layoutIndex].streetGroupLimit
+				candidate.densePairedOutputs = variants[layoutIndex].pairedOutputs
+				candidate.connectedGlobalPower = req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "planar"
+			}
+			candidate.generationCtx = ctx
+			candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
+			candidate.logistics.Metrics.CandidateBudget = budget
+			candidate.beginPreview()
+			parameters := fmt.Sprintf("heightLimit=%g;compact=%t;horizontal=%t;globalPower=%t;legacyInputs=%t", limit, compact, variants[layoutIndex].Horizontal, variants[layoutIndex].GlobalPower, legacyInputs)
 			if candidate.denseSpatial {
-				better = betterDenseCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics)
-				if req.Density == densityDense {
-					if edgeOrder := compareDenseLatitudeEdge(req.SurfaceLayout, out.SurfacePlan, best.SurfacePlan); edgeOrder != 0 {
-						better = edgeOrder < 0
+				parameters = fmt.Sprintf("globalDense=true;extent=%g;maxSpan=%g;order=%d;refine=%t;globalPower=%t;legacyInputs=%t", limit, candidate.denseMaxSpan, candidate.denseSpatialOrder, candidate.denseRefine, candidate.connectedGlobalPower, legacyInputs)
+				if candidate.denseStreetCandidate {
+					parameters += fmt.Sprintf(";continuousStreet=true;streetRotation=%d;streetGroupLimit=%d", candidate.denseStreetRotation, candidate.denseStreetGroupLimit)
+				}
+				parameters += fmt.Sprintf(";pairedOutputs=%t", candidate.densePairedOutputs)
+			}
+			if err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, compact); err != nil {
+				searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "assembly", err), candidate.logistics)
+				lastError = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err)
+				reportProgress(ctx, "layout-rejected", lastError.Error(), evaluated, budget)
+				candidate.rollbackPreview()
+				return
+			}
+			out, err := candidate.finish(ctx, req, dataset)
+			if err != nil {
+				searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", err), candidate.logistics)
+				lastError = fmt.Errorf("直连候选%d/%d（高度%.0f、轮廓%t、%s）：%w", evaluated, budget, limit, compact, inputKind, err)
+				reportProgress(ctx, "layout-rejected", lastError.Error(), evaluated, budget)
+				candidate.rollbackPreview()
+				return
+			}
+			if out.LogisticsSummary == nil {
+				lastError = &blueprint.Error{Code: "GEN_E_FLOW", Message: "直连候选缺少物流摘要"}
+				searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", lastError), candidate.logistics)
+				candidate.rollbackPreview()
+				return
+			}
+			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", nil), out.LogisticsSummary)
+
+			evaluation.out = out
+			evaluation.dense = candidate.denseSpatial
+			return
+		}, func(_ int, evaluation connectedEvaluation) error {
+			evaluated++
+			searchCandidates = append(searchCandidates, evaluation.diagnostics...)
+			if evaluation.err != nil {
+				rejected++
+				lastError = evaluation.err
+				return nil
+			}
+			out := evaluation.out
+			better := best == nil
+			if best != nil {
+				better = betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics)
+				if evaluation.dense {
+					better = betterDenseCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics)
+					if req.Density == densityDense {
+						if edgeOrder := compareDenseLatitudeEdge(req.SurfaceLayout, out.SurfacePlan, best.SurfacePlan); edgeOrder != 0 {
+							better = edgeOrder < 0
+						}
 					}
 				}
 			}
-		}
-		if better {
-			best = &out
+			if better {
+				best = &out
+			}
+			return nil
+		})
+		if waveErr != nil {
+			return Result{}, previewContextError(waveErr)
 		}
 	}
 	if ctx.Err() != nil {

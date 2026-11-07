@@ -6,6 +6,7 @@ package build
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 // GenerationPerformance 职责：汇总单次 Generate 的全部候选工作；使用：结果诊断与性能回归；边界：耗时不是确定性输出或游戏验收证据。
 type GenerationPerformance struct {
+	CandidateDetails []PerformanceCandidate `json:"candidateDetails"`
 	// Scope 职责：标识计数作用域；使用：区分请求与获选候选；边界：固定为 request-all-candidates。
 	Scope string `json:"scope"`
 	// Outcome 职责：记录 passed、failed、canceled 或 timed-out；使用：失败观察回调；边界：不替代返回错误。
@@ -262,6 +264,15 @@ func (p *generationPerformance) finish(ctx context.Context, result Result, err e
 		r.CacheHitRate = float64(r.CacheHits) / float64(r.SearchCalls)
 	}
 	snapshot := p.data
+	sort.Slice(snapshot.Collisions, func(first, second int) bool {
+		return snapshot.Collisions[first].Rule < snapshot.Collisions[second].Rule
+	})
+	sort.Slice(snapshot.CandidateStages, func(first, second int) bool {
+		return snapshot.CandidateStages[first].Stage < snapshot.CandidateStages[second].Stage
+	})
+	sort.Slice(snapshot.CandidateDetails, func(first, second int) bool {
+		return snapshot.CandidateDetails[first].ID < snapshot.CandidateDetails[second].ID
+	})
 	p.mu.Unlock()
 	if observer, ok := ctx.Value(performanceObserverKey{}).(func(GenerationPerformance)); ok && observer != nil {
 		observer(snapshot)
