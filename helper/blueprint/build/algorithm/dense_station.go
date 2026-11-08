@@ -14,6 +14,31 @@ import (
 	"math"
 )
 
+// betterDenseStationCandidate 职责：让新增同线轨候选同时改善空间与真实线长的综合代价；使用：完成终检且塔数相同的候选比较；边界：既有候选之间沿用原评分，不能用小幅面积收益换取大量绕线。
+func betterDenseStationCandidate(a, c *LogisticsSummary) bool {
+	if !betterDenseCandidate(a.Metrics, c.Metrics) {
+		return false
+	}
+	collinear := false
+	for _, summary := range []*LogisticsSummary{a, c} {
+		for _, check := range summary.Checks {
+			collinear = collinear || check.RuleID == "refinery-collinear-lanes"
+		}
+	}
+	if collinear {
+		if a.Metrics.EnvelopeArea > c.Metrics.EnvelopeArea {
+			return false
+		}
+		// 乘积按相对比例比较两种代价，不混加米与格面积，也保留既有长条惩罚。
+		first := denseLayoutShapeObjective(a.Metrics) * math.Max(1, a.Metrics.TotalBeltLengthMeters)
+		second := denseLayoutShapeObjective(c.Metrics) * math.Max(1, c.Metrics.TotalBeltLengthMeters)
+		if math.Abs(first-second) > 1e-6 {
+			return first < second
+		}
+	}
+	return true
+}
+
 // generateDenseStationField 职责：比较共享塔库存、矩形全场占位与实际路由的有限候选；使用：密铺塔入口；边界：不以失败布局或普通闭合组冒充成功。
 func (b *builder) generateDenseStationField(ctx context.Context, req Request, dataset *quant.Dataset, input contract.StationLayoutInput, plan contract.StationLayoutPlan, config contract.StationConfig) (Result, error) {
 	var best *Result
@@ -45,16 +70,26 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	if req.Plan.MachineCount >= 80 || narrowTier {
 		blackboxBudget = 7
 	}
-	regularBlackboxBudget := blackboxBudget
+	blackboxIndices := make([]int, blackboxBudget)
+	for index := range blackboxIndices {
+		blackboxIndices[index] = index
+	}
 	if !b.setting.EnableFlowMonitor {
 		for index, production := range input.Productions {
 			p, r := input.Plan.Productions[index], production.Recipe
 			if p.MachineType == 4 && denseReferenceSource(p.MachineID) == 2317 && p.IncreasePoints == 0 && len(r.Items) == 3 && len(r.Results) == 1 && !recipeHasMachineRecycle(r) && referenceSingleArmsSufficient(p, r, b.setting.InserterLv) {
-				blackboxBudget += 3
+				blackboxIndices = append(blackboxIndices, 7, 8, 9)
 				break
 			}
 		}
 	}
+	for index, production := range input.Productions {
+		if b.denseRefineryEligible(input.Plan.Productions[index], production.Recipe) {
+			blackboxIndices = append(blackboxIndices, 10, 11, 12)
+			break
+		}
+	}
+	blackboxBudget = len(blackboxIndices)
 	budget = fieldBudget + blackboxBudget
 	allPreviews := b.planCandidatePreviews(budget)
 	type stationEvaluation struct {
@@ -64,13 +99,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		diagnostics []SearchCandidateDiagnostic
 	}
 	{
-		indices := make([]int, blackboxBudget)
-		for index := range indices {
-			indices[index] = index
-			if index >= regularBlackboxBudget {
-				indices[index] = 7 + index - regularBlackboxBudget
-			}
-		}
+		indices := blackboxIndices
 		previews := allPreviews[:blackboxBudget]
 		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
 			ctx, finishPerformance := beginCandidatePerformance(ctx, "dense-station-blackbox", variant)
@@ -114,7 +143,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 				return nil
 			}
 			out, count := evaluation.out, evaluation.count
-			if best == nil || count < bestTowers || count == bestTowers && betterDenseCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
+			if best == nil || count < bestTowers || count == bestTowers && betterDenseStationCandidate(out.LogisticsSummary, best.LogisticsSummary) {
 				best, bestTowers = &out, count
 			}
 			return nil
@@ -225,7 +254,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 				return nil
 			}
 			out, count := evaluation.out, evaluation.count
-			if best == nil || count < bestTowers || count == bestTowers && betterDenseCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
+			if best == nil || count < bestTowers || count == bestTowers && betterDenseStationCandidate(out.LogisticsSummary, best.LogisticsSummary) {
 				best, bestTowers = &out, count
 			}
 			return nil

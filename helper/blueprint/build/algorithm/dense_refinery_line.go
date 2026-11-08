@@ -18,6 +18,12 @@ const denseRefineryPitch = 3.15
 // refinerySameSideKey 职责：选择极区候选的局部炼油拓扑；使用：同侧与分侧密铺比较；边界：不更换密度模式、机器等级或物料计划。
 type refinerySameSideKey struct{}
 
+// refineryCollinearKey 职责：为独立候选启用同线错相三轨；使用：塔模式黑盒比较；边界：既有同侧三轨与分侧候选继续保留。
+type refineryCollinearKey struct{}
+
+// denseRefineryCargoBand 职责：在已核对的2308槽位外保留合法短臂及带节点净空；使用：同线错相候选；边界：只适用于当前等离子精炼原型，最终仍复核实际跨度和建造盒。
+const denseRefineryCargoBand = 3.75
+
 // refineryLayoutVariants 职责：只为本次支持的炼油产线保留两种真实局部拓扑；使用：极区候选；边界：新拓扑不适合边缘时仍须对分侧拓扑进行同样的完整终检。
 func refineryLayoutVariants(req Request) []bool {
 	if req.Setting.EnableFlowMonitor {
@@ -64,6 +70,10 @@ func (b *builder) buildDenseRefineryLine(p quant.Production, r quant.Recipe, cou
 	if err != nil {
 		return nil, err
 	}
+	collinear := false
+	if b.generationCtx != nil {
+		collinear, _ = b.generationCtx.Value(refineryCollinearKey{}).(bool)
+	}
 	begin := len(b.all)
 	l := &line{recipe: r, info: p, referenceLowTracks: true}
 	originX, originY, pitch := 4., 6., denseRefineryPitch+float64(b.setting.RefineryOtherSpace)
@@ -93,7 +103,17 @@ func (b *builder) buildDenseRefineryLine(p quant.Production, r quant.Recipe, cou
 		}
 		anchor := frame.project(byIndex[index].LocalOffset)
 		start, end := originX-2, originX+float64(count-1)*pitch+1
-		points := refineryTrackPoints(start, end, originY+anchor.y, step)
+		y := originY + anchor.y
+		if collinear {
+			// 三条独立带沿同一纬线错开1/3节点周期；端点保留同一相位，不能均分短尾后让异物料节点相撞。
+			// 比原轨多保留两格入口直线，避免整厂接线的转弯侵入首台机器的货物采样窗口。
+			start -= 2
+			phase := float64(slot) * step / 3
+			end = start + math.Ceil((end-start)/step)*step + phase
+			start += phase
+			y = originY - denseRefineryCargoBand
+		}
+		points := refineryTrackPoints(start, end, y, step)
 		tracks[slot] = b.byPath(points)
 	}
 	l.inputs = [][]*placed{tracks[0]}
@@ -127,6 +147,11 @@ func (b *builder) buildDenseRefineryLine(p quant.Production, r quant.Recipe, cou
 			point := frame.project(byIndex[sourceBelt].LocalOffset)
 			point.x += dx
 			point.y += originY
+			deltaY := 0.
+			if collinear {
+				deltaY = originY - denseRefineryCargoBand - point.y
+				point.y += deltaY
+			}
 			anchor := track[0]
 			distance := math.Inf(1)
 			for _, node := range track {
@@ -146,6 +171,14 @@ func (b *builder) buildDenseRefineryLine(p quant.Production, r quant.Recipe, cou
 			arm.b.x += dx
 			arm.a.y += originY
 			arm.b.y += originY
+			if collinear {
+				if slot == 0 {
+					arm.a.y += deltaY
+				} else {
+					arm.b.y += deltaY
+				}
+				arm.record.Parameters = []int32{int32(math.Round(math.Hypot(arm.b.x-arm.a.x, arm.b.y-arm.a.y)))}
+			}
 			arm.densityPattern = "reference-low-arm"
 			arm.input, arm.output = anchor, machine
 			if slot > 0 {
@@ -153,7 +186,7 @@ func (b *builder) buildDenseRefineryLine(p quant.Production, r quant.Recipe, cou
 			}
 			goal := goals[original.Index]
 			goal.x += dx
-			goal.y += originY
+			goal.y += originY + deltaY
 			setDenseCargoTarget(arm, anchor, track, goal, slot > 0)
 		}
 	}
@@ -169,6 +202,9 @@ func (b *builder) buildDenseRefineryLine(p quant.Production, r quant.Recipe, cou
 		row[0].record.Parameters = []int32{int32(r.Results[i]), 0}
 	}
 	if b.logistics != nil {
+		if collinear {
+			b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "refinery-collinear-lanes", Status: "passed", Message: "等离子精炼使用同线错相的三条独立地面带，保留首台取放缓冲；各轨独立接线，实际跨度与逐物料能力随后复核，不放宽节点合并或货物误差限制"})
+		}
 		found := false
 		for _, check := range b.logistics.Checks {
 			found = found || check.RuleID == "refinery-same-side-reference"
