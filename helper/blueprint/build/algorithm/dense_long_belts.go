@@ -17,7 +17,7 @@ func denseLongBeltLongitudeFactor(ctx context.Context) float64 {
 	nativeScale := 1.
 	if ctx != nil {
 		if zone, _ := ctx.Value(densityLatitudeKey{}).(string); zone != "" {
-			if band, _, err := densityLatitudeBand(zone, defaultSurfaceGridSegment); err == nil {
+			if band, _, err := densityContextBand(ctx,zone,defaultSurfaceGridSegment); err == nil {
 				low, high = band.low, band.high
 				if selection, ok := densityLatitudeSelectionFor(zone); ok && selection.tier >= 4 {
 					pole := math.Max(math.Abs(float64(low)), math.Abs(float64(high)))

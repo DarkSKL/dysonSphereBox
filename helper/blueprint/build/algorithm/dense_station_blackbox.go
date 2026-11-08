@@ -142,7 +142,11 @@ func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contra
 			route := plan.routes[index]
 			output := route.to == nil
 			// 均匀使用四边以避免所有外部物料堵在单侧；实际路线仍按真实端点求解。
-			slot := []int{10, 1, 7, 4, 9, 0, 6, 3, 11, 2, 8, 5}[port]
+			slots := []int{10, 1, 7, 4, 9, 0, 6, 3, 11, 2, 8, 5}
+			if selection, ok := densityLatitudeSelectionFor(func() string { zone, _ := ctx.Value(densityLatitudeKey{}).(string); return zone }()); ok && selection.tier == 5 {
+				slots = []int{10, 4, 9, 5, 11, 3, 1, 7, 0, 6, 2, 8}
+			}
+			slot := slots[port]
 			points := append([]vector{denseStationOuter(stock.tower.a, slot)}, denseStationInner(stock.tower.a, slot)...)
 			belts := b.byPath(points)
 			head, last := belts[0], belts[len(belts)-1]

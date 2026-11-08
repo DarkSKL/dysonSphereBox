@@ -3,7 +3,11 @@ package build
 // 文件职责：将密铺传送带原料接口统一放在工厂左侧，并尽量对齐消费者。
 // 使用：全场密铺布线前；边界：仍保持真实外部入口与独立物料，现有副产物归集契约单独保留。
 
-import "math"
+import (
+	"DysonSphereBox/helper/blueprint"
+	"context"
+	"math"
+)
 
 // denseExternalStep 职责：返回外部入口实际向内方向；使用：端口净空和寻路首步；边界：旧模式零值保持向东。
 func denseExternalStep(route *transportRoute) vector {
@@ -63,4 +67,67 @@ func (b *builder) denseInputPositions(low, high vector) []vector {
 		positions = append(positions, chosen)
 	}
 	return positions
+}
+
+// fitDenseInputHeight 职责：外供口超过窄环高度时在左侧分层接入，保留地面副产物出口。
+// 使用：原料位置已规划、实体尚未创建；边界：不合并物料、不改变份额、带等级或内部目标，不把外供长尾延伸到相邻纬带。
+func (b *builder) fitDenseInputHeight(ctx context.Context, positions []vector, low, high vector) ([]vector, error) {
+	if len(positions) == 0 || b.adapter == nil || b.adapter.density != densityDense {
+		return positions, nil
+	}
+	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
+	selection, ok := densityLatitudeSelectionFor(zone)
+	if !ok || selection.tier < 4 {
+		return positions, nil
+	}
+	band, _, err := densityContextBand(ctx, zone, 200)
+	if err != nil {
+		return nil, err
+	}
+	leftovers := 0
+	for _, r := range b.transportRoutes {
+		if r.edge.FlowKind == "leftover" {
+			leftovers++
+		}
+	}
+	minimum, maximum := positions[0].y, positions[0].y
+	for _, p := range positions {
+		minimum = math.Min(minimum, p.y)
+		maximum = math.Max(maximum, p.y)
+	}
+	if math.Max(maximum,high.y)-math.Min(minimum,low.y)+1+float64(leftovers*2) <= float64(band.high-band.low+1) {
+		return positions, nil
+	}
+	bottom, top := math.Ceil(low.y), math.Min(math.Floor(high.y), math.Ceil(low.y)+float64(band.high-band.low))
+	count := int((top-bottom)/2) + 1
+	if count <= leftovers {
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "所选窄环缺少独立原料与副产物接入口"}
+	}
+	result := append([]vector(nil), positions...)
+	left := positions[0].x
+	for _, p := range positions {
+		left = math.Min(left, p.x)
+	}
+	used := map[[2]int]bool{}
+	for i, p := range positions {
+		best, distance := [2]int{-1, 0}, math.Inf(1)
+		for level := 0; level <= int(transportMaxHeight)/2; level++ {
+			for row := 0; row < count; row++ {
+				key := [2]int{row, level}
+				if used[key] || level == 0 && row < leftovers {
+					continue
+				}
+				cost := math.Abs(bottom+float64(row*2)-p.y) + float64(level*4)
+				if cost < distance {
+					best, distance = key, cost
+				}
+			}
+		}
+		if best[0] < 0 {
+			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "窄环分层原料入口超过高度容量"}
+		}
+		used[best] = true
+		result[i] = vector{left, bottom + float64(best[0]*2), float64(best[1] * 2)}
+	}
+	return result, nil
 }

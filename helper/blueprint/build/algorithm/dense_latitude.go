@@ -21,7 +21,7 @@ func compareDenseLatitudeEdge(layout *SurfaceLayout, a, b *SurfacePlan) int {
 	if !ok || selection.tier != 3 || selection.position == "center" {
 		return 0
 	}
-	band, _, err := densityLatitudeBand(layout.LatitudeZone, layout.GridSegment)
+	band, _, err := densityLayoutBand(layout)
 	if err != nil {
 		return 0
 	}
@@ -107,10 +107,13 @@ func densityLatitudeBand(zone string, segment int) (surfacePackedBand, string, e
 	if !ok || segment != defaultSurfaceGridSegment {
 		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE", Message: "未知密铺建造区域或不支持的星球网格"}
 	}
-	// 极区必须使用跨原生纬带的专用生成，不能当作单Area生成。
-	if selection.tier > 4 {
-		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "该档位尚未接入对应的纬带生成方案"}
+	if selection.tier == 5 {
+		bands := densityLatitudeTierBands(5, selection.hemisphere, segment)
+		if len(bands) > 0 {
+			return surfacePackedBand{low: bands[0].low, high: bands[len(bands)-1].high}, selection.label(), nil
+		}
 	}
+
 	label := ""
 	for _, option := range densityLatitudeOptionLabels() {
 		if option.Value == zone {
@@ -135,7 +138,7 @@ func surfaceLayoutAnchorCandidates(layout *SurfaceLayout, width, height int) []i
 	if layout.LatitudeZone == "" {
 		return surfaceAnchorCandidates(layout.Mode, layout.GridSegment, layout.LatitudeGridIndex, layout.ExpandAdjacent, width, height)
 	}
-	band, _, err := densityLatitudeBand(layout.LatitudeZone, layout.GridSegment)
+	band, _, err := densityLayoutBand(layout)
 	if err != nil {
 		return nil
 	}
@@ -171,7 +174,7 @@ func denseLatitudeHeightLimit(ctx context.Context, limit float64) float64 {
 	if zone == "" {
 		return limit
 	}
-	band, _, err := densityLatitudeBand(zone, defaultSurfaceGridSegment)
+	band, _, err := densityContextBand(ctx, zone, defaultSurfaceGridSegment)
 	if err != nil {
 		return limit
 	}
@@ -181,6 +184,9 @@ func denseLatitudeHeightLimit(ctx context.Context, limit float64) float64 {
 	if selection.tier >= 3 && dense {
 		// 塔可利用21格内部空间；直连、配送器及保守塔候选在装箱时另保留更长接头的余量。
 		margin = 4
+		if selection.tier == 5 {
+			margin = 0
+		}
 	}
 	return math.Min(limit, math.Max(1, float64(band.high-band.low+1-margin)))
 }
@@ -190,7 +196,7 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 	if layout == nil || layout.LatitudeZone == "" {
 		return nil
 	}
-	band, label, err := densityLatitudeBand(layout.LatitudeZone, layout.GridSegment)
+	band, label, err := densityLayoutBand(layout)
 	if err != nil {
 		return err
 	}

@@ -30,7 +30,9 @@ func transportLeftoverPositions(ctx context.Context, routes []*transportRoute, i
 	}
 	for _, input := range inputs {
 		x = math.Min(x, input.x)
-		used[int(math.Round(input.y))] = true
+		if input.z == 0 {
+			used[int(math.Round(input.y))] = true
+		}
 	}
 	positions := []vector{}
 	for _, route := range routes {
@@ -130,7 +132,7 @@ func (b *builder) validateLeftoverBoundaries() error {
 			return transportAllocationError(route.edge, route.rate, "副产物原料区出口必须沿真实地面带向西出货")
 		}
 		for _, input := range inputs {
-			if math.Abs(input.a.x-route.end.a.x) > 1e-6 || math.Abs(input.a.y-route.end.a.y) < 2-1e-6 || input == route.end {
+			if math.Abs(input.a.x-route.end.a.x) > 1e-6 || input.a.z == 0 && math.Abs(input.a.y-route.end.a.y) < 2-1e-6 || input == route.end {
 				return transportAllocationError(route.edge, route.rate, "副产物出口没有独立留在原料入口边界")
 			}
 		}

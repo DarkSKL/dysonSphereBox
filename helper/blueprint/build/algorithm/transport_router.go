@@ -116,6 +116,11 @@ func (b *builder) routeTransport(ctx context.Context) error {
 	if b.denseSpatial && !b.connectedLegacyInputs {
 		positions = b.denseInputPositions(minimum, maximum)
 	}
+	var err error
+	positions, err = b.fitDenseInputHeight(ctx, positions, minimum, maximum)
+	if err != nil {
+		return err
+	}
 	return b.routeTransportWithInputs(ctx, positions)
 }
 

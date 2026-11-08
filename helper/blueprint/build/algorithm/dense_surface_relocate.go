@@ -142,7 +142,7 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source 
 	if req.Density != densityDense || req.SurfaceLayout == nil || req.SurfaceLayout.LatitudeZone == "" {
 		return source, records, nil
 	}
-	band, _, err := densityLatitudeBand(req.SurfaceLayout.LatitudeZone, req.SurfaceLayout.GridSegment)
+	band, _, err := densityLayoutBand(req.SurfaceLayout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -301,7 +301,7 @@ func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request,
 	if encoding == nil || (encoding.relocation == nil && !denseNativeLatitude(req)) {
 		return nil
 	}
-	band, _, err := densityLatitudeBand(req.SurfaceLayout.LatitudeZone, req.SurfaceLayout.GridSegment)
+	band, _, err := densityLayoutBand(req.SurfaceLayout)
 	if err != nil {
 		return err
 	}

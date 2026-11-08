@@ -40,7 +40,7 @@ func normalizeSurfaceLayout(layout *SurfaceLayout) (*SurfaceLayout, error) {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "当前仅支持已核对的原版 200 分段行星"}
 	}
 	if normalized.LatitudeZone != "" {
-		band, _, err := densityLatitudeBand(normalized.LatitudeZone, normalized.GridSegment)
+		band, _, err := densityLayoutBand(&normalized)
 		if err != nil {
 			return nil, err
 		}

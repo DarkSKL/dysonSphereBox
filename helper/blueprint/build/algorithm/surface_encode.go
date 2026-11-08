@@ -70,7 +70,7 @@ func (b *builder) prepareSurfaceEncodingContext(ctx context.Context, layout *Sur
 	candidates := surfaceLayoutAnchorCandidates(layout, width, height)
 	if len(candidates) == 0 {
 		if layout.LatitudeZone != "" {
-			_, label, _ := densityLatitudeBand(layout.LatitudeZone, segment)
+			_, label, _ := densityLayoutBand(layout)
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("%s无法容纳当前%dx%d的完整矩形，请降低产量或选择更宽的建造位置", label, width, height)}
 		}
 		// 自动模式不再把整块矩形锁死在一个纬圈；先尝试按设施安全切面跨相邻 Area，失败后再使用闭合产线块装箱。
