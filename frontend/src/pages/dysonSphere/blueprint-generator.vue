@@ -2,11 +2,12 @@
 import {computed, reactive, ref, watch} from 'vue'
 import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw, Save, Sparkles} from '@lucide/vue'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
+import AlgorithmHeatmap from '../../components/dysonSphere/factory/algorithm-heatmap.vue'
 import AlgorithmStage from '../../components/dysonSphere/factory/algorithm-stage.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
 import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
-import {useQuantWorkspace, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
+import {useQuantWorkspace} from '../../composables/dysonSphere/useQuantWorkspace'
 import {generationDebugOptions} from '../../composables/dysonSphere/useGenerationTimeline'
 import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
 
@@ -14,14 +15,6 @@ definePage({meta: {layout: 'main', title: '量化与蓝图', keepAlive: true}})
 const w = reactive(useQuantWorkspace())
 const fileInput = ref<HTMLInputElement | null>(null)
 const viewer = ref<{resetCamera: () => void} | null>(null)
-const previewLabels: Record<PreviewState, string> = {idle: '等待生成', loading: '正在加载预览模型', ready: '实时预览', stale: '等待刷新', error: '预览不可用', empty: '没有建筑'}
-const previewStatus = computed(() => {
-  if (w.generating) return {state: 'loading', text: w.generationProgress || '正在准备生成'}
-  if (w.error?.source === 'generation') return {state: 'error', text: '蓝图生成失败'}
-  if (w.previewStale) return {state: 'stale', text: w.generationFailed ? '显示上次成功结果' : '等待刷新'}
-  if (w.code && !w.showPreview) return {state: 'idle', text: '预览已折叠'}
-  return {state: w.previewState, text: previewLabels[w.previewState]}
-})
 const onFile = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -102,7 +95,8 @@ const resizeByKey = (event: KeyboardEvent): void => {
           <button v-for="tab in previewTabs" :id="`preview-tab-${tab.key}`" :key="tab.key" type="button" role="tab" class="preview-tab" :class="{'is-active': previewTab === tab.key}" :aria-selected="previewTab === tab.key" :aria-controls="`preview-panel-${tab.key}`" @click="previewTab = tab.key">{{ tab.label }}</button>
         </div>
         <span class="bar-divider" aria-hidden="true" />
-        <span class="preview-state" :class="`is-${previewStatus.state}`" :title="previewStatus.text" role="status" aria-live="polite" aria-atomic="true"><i aria-hidden="true" /><span class="preview-state-text">{{ previewStatus.text }}</span></span>
+        <!-- 算法活动热力图：仅在「算法可视化」下显示，占满标签右侧到操作区之间的空间 -->
+        <AlgorithmHeatmap v-if="previewTab === 'algorithm'" />
         <!-- 多目标归属只用于查看与聚焦，真实上下游路线由统一流图决定，不要求用户手工跨区分送。 -->
         <div v-if="previewTab === 'preview' && w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
           <n-tooltip v-for="(zone, index) in w.zones" :key="zone.key"><template #trigger><button type="button" class="preview-zone" :class="{'is-active': w.activeZone === zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key)"><i />{{ zone.label }}</button></template>目标归属 {{ index + 1 }} · {{ zone.productionIndices.length }} 条产线{{ zone.key === 'shared' ? '，多个目标共享同一份上游产线' : '' }}</n-tooltip>
@@ -174,12 +168,6 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-bar { position: relative; display: flex; min-height: 38px; min-width: 0; flex-shrink: 0; align-items: center; gap: 10px; white-space: nowrap; border-bottom: 1px solid var(--ds-border-subtle); padding: 0 16px 0 14px; }
 .preview-progress { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; overflow: hidden; background: var(--ds-border-subtle); pointer-events: none; }
 .preview-progress::after { content: ''; position: absolute; inset: 0; background: var(--ds-brand); transform-origin: left; animation: preview-progress-travel 1.4s linear infinite; }
-.preview-state { display: inline-flex; width: 240px; min-width: 100px; flex: 0 1 240px; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
-.preview-state-text { overflow: hidden; text-overflow: ellipsis; }
-.preview-state i { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--ds-text-muted); }
-.preview-state.is-ready i { background: var(--ds-success); box-shadow: 0 0 6px var(--ds-success); }
-.preview-state.is-loading i, .preview-state.is-stale i { background: var(--ds-brand); animation: pulse 1s ease-in-out infinite; }
-.preview-state.is-error i { background: var(--ds-error); }
 .preview-zones { display: flex; min-width: 0; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .preview-zone { --zone: var(--ds-brand); position: relative; display: inline-flex; height: 24px; flex: 0 0 auto; align-items: center; gap: 5px; border: 0; border-radius: 2px; padding: 0 8px; background: transparent; color: var(--ds-text-secondary); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .preview-zone i { width: 8px; height: 8px; border-radius: 1px; background: var(--zone); }
@@ -206,8 +194,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-overlay { position: absolute; top: 10px; left: 50%; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 3px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; transform: translateX(-50%); pointer-events: none; }
 .muted { color: var(--ds-text-muted); font-size: 12px; line-height: 1.6; }
 .import-actions { display: flex; justify-content: space-between; margin: 16px 0; }
-@keyframes pulse { 50% { opacity: .35; } }
 @keyframes preview-progress-travel { from { transform: translateX(-35%) scaleX(.35); } to { transform: translateX(100%) scaleX(.35); } }
 @media (max-width: 1099px) { .bench-actions :deep(.n-button__content) { display: none; } .bench-actions :deep(.n-button__icon) { margin: 0; } }
-@media (prefers-reduced-motion: reduce) { .preview-state i { animation: none !important; } .preview-progress::after { animation: none; transform: scaleX(1); opacity: .65; } .bench-splitter span { transition: none; } .preview-tab, .preview-tab::after { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .preview-progress::after { animation: none; transform: scaleX(1); opacity: .65; } .bench-splitter span { transition: none; } .preview-tab, .preview-tab::after { transition: none; } }
 </style>

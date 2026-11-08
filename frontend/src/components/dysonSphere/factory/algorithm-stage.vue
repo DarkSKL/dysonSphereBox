@@ -4,6 +4,7 @@ import {ChevronsRight, Crosshair, Pause, Play, RefreshCw, RotateCcw, RotateCw, S
 import basisTranscoderJs from 'three/examples/jsm/libs/basis/basis_transcoder.js?url'
 import basisTranscoderWasm from 'three/examples/jsm/libs/basis/basis_transcoder.wasm?url'
 import {ALGORITHM_VIZ_MODEL_KEYS, createAlgorithmViz, type AlgorithmVizController, type AlgoVizBuilding, type AlgoVizProgress, type AlgoVizSelection} from '../../../packages/algorithm-viz/src'
+import {recordAlgorithmActivity, resetAlgorithmActivity} from '../../../composables/dysonSphere/useAlgorithmActivity'
 import {useThemeMode} from '../../../composables/useThemeMode'
 import {ALGORITHM_VIZ_LIMIT, algorithmFollow, algorithmFollowKey, useAlgorithmFeed} from '../../../composables/dysonSphere/useAlgorithmFeed'
 import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
@@ -77,7 +78,7 @@ onMounted(async () => {
     maxObjects: ALGORITHM_VIZ_LIMIT,
     viewPaddingTop: 64,
     describe,
-    onProgress: value => { progress.value = value },
+    onProgress: value => { progress.value = value; recordAlgorithmActivity(value) },
     onSelect,
   })
   viz.setViewLocked(props.w.generating)
@@ -85,6 +86,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   algorithmFollow.active = false
+  resetAlgorithmActivity()
   viz?.dispose()
   viz = null
 })
@@ -165,14 +167,6 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
     <div class="algo-hud">
       <div class="algo-hud-row">
         <n-tooltip placement="bottom-start"><template #trigger><span class="algo-source" :class="`is-${decoding ? 'busy' : feedSource}`"><i />{{ sourceLabel }}</span></template>{{ sourceHint }}</n-tooltip>
-        <span v-if="progress" class="algo-stats">
-          <span v-if="progress.candidates">平台 <strong class="type-display">{{ progress.candidates }}</strong></span>
-          <span>建筑 <strong class="type-display">{{ progress.objects }}</strong></span>
-          <span class="is-add">新增 <strong class="type-display">{{ progress.added }}</strong></span>
-          <span class="is-replace">替换 <strong class="type-display">{{ progress.replaced }}</strong></span>
-          <span class="is-remove">撤销 <strong class="type-display">{{ progress.removed }}</strong></span>
-          <span v-if="progress.pending">队列 <strong class="type-display">{{ progress.pending }}</strong></span>
-        </span>
       </div>
       <!-- 算法实时阶段：直接取自生成过程的阶段事件，与画面播放进度无关；生成结束后隐藏 -->
       <p v-if="phaseText" class="algo-phase" role="status" aria-live="polite"><i aria-hidden="true" />{{ phaseText }}</p>
@@ -219,11 +213,6 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
 .algo-source.is-live i { background: var(--ds-brand); box-shadow: 0 0 6px var(--ds-brand); animation: algo-pulse 1.2s ease-in-out infinite; }
 .algo-source.is-replay i { background: var(--ds-success); }
 .algo-source.is-busy i { background: var(--ds-warning); animation: algo-pulse 1s ease-in-out infinite; }
-.algo-stats { display: inline-flex; height: 24px; min-width: 0; align-items: center; gap: 10px; overflow: hidden; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 0 10px; background: color-mix(in srgb, var(--ds-bg-panel-elevated) 88%, transparent); color: var(--ds-text-muted); font-size: 11px; white-space: nowrap; }
-.algo-stats strong { margin-left: 2px; color: var(--ds-text-primary); font-size: 12px; font-variant-numeric: tabular-nums; }
-.algo-stats .is-add strong { color: var(--ds-success); }
-.algo-stats .is-replace strong { color: var(--ds-info); }
-.algo-stats .is-remove strong { color: var(--ds-warning); }
 .algo-tools { position: absolute; top: 10px; right: 12px; z-index: 2; display: flex; align-items: center; gap: 4px; }
 .tool-button { display: inline-flex; height: 28px; align-items: center; justify-content: center; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 0 8px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; cursor: pointer; transition: border-color 150ms, color 150ms; }
 .tool-button.icon-only { width: 28px; padding: 0; }
@@ -245,5 +234,5 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
 .algo-notice { position: absolute; bottom: 10px; left: 12px; z-index: 2; max-width: calc(100% - 24px); margin: 0; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 4px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-warning); font-size: 12px; }
 @keyframes algo-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .algo-source i, .algo-phase i { animation: none !important; } .tool-button { transition: none; } }
-@container (max-width: 760px) { .algo-stats { display: none; } .tool-button.run span { display: none; } .tool-button.run { width: 28px; padding: 0; } }
+@container (max-width: 760px) { .tool-button.run span { display: none; } .tool-button.run { width: 28px; padding: 0; } }
 </style>
