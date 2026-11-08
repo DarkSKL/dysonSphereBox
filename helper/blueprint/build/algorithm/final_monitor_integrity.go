@@ -128,7 +128,7 @@ func (b *builder) validateFinalMonitorIntegrity(ctx context.Context, req Request
 		}
 	}
 	if req.Mode == 1 || b.directBoundaryUnits != nil {
-		routes := b.denseBoundaryMonitorRoutes()
+		routes := b.uniqueMaterialBoundaryRoutes(b.denseBoundaryMonitorRoutes())
 		for _, route := range routes {
 			if route != nil {
 				mark(route.path, route.edge.ItemID)

@@ -64,7 +64,7 @@ type denseMaterialInputKey struct {
 	item int
 }
 
-// planDenseMaterialNetworks 职责：按真实配置毛需求组合有限共享组，并合并同来源同组的物理出货；使用：机器行几何创建之前；边界：外部边及机器回流保持原拓扑，喷涂组仅共享喷涂前的原料供给。
+// planDenseMaterialNetworks 职责：按真实配置毛需求组合有限共享组，并合并同来源同组的物理出货；使用：机器行几何创建之前；边界：直连无喷涂原料可共享入口但保留规范份额，机器回流保持原拓扑，喷涂组仅共享喷涂前的原料供给。
 func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transportRow) error {
 	enabled, _ := ctx.Value(denseMaterialNetworksKey{}).(bool)
 	if !enabled || !b.denseSpatial || b.adapter == nil || b.adapter.mode < 1 || b.adapter.mode > 4 {
@@ -74,6 +74,7 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 		row              *transportRow
 		planned, maximum float64
 		order            int
+		external         bool
 	}
 	incoming := map[denseMaterialInputKey][]*transportRoute{}
 	for _, route := range b.transportRoutes {
@@ -91,8 +92,14 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 		for _, item := range row.recipe.Items {
 			flows := incoming[denseMaterialInputKey{row, item}]
 			valid, planned := len(flows) > 0, 0.
+			external := len(flows) > 0 && flows[0].from == nil
 			for _, route := range flows {
-				if route.from == nil || route.edge.FlowKind != "internal" || recipeHasMachineRecycle(route.from.recipe) || productionSprayItem(route.from.info) == item {
+				if external {
+					if b.adapter.mode != 1 || route.from != nil || route.edge.FlowKind != "external-input" || productionSprayItem(row.info) != 0 {
+						valid = false
+						break
+					}
+				} else if route.from == nil || route.edge.FlowKind != "internal" || recipeHasMachineRecycle(route.from.recipe) || productionSprayItem(route.from.info) == item {
 					valid = false
 					break
 				}
@@ -109,7 +116,7 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 			if !finitePositive(maximum) || maximum+1e-6 < planned || maximum > capacity+1e-6 {
 				continue
 			}
-			byItem[item] = append(byItem[item], demand{row, planned, maximum, order})
+			byItem[item] = append(byItem[item], demand{row, planned, maximum, order, external})
 		}
 	}
 	plan := &denseMaterialNetworkPlan{canonical: append([]*transportRoute{}, b.transportRoutes...), bindings: map[*transportRoute]denseMaterialNetworkBinding{}, members: map[*transportRoute][]*transportRoute{}, originalOutputs: map[*transportRow][]*transportRoute{}, physicalOutputs: map[*transportRow][]*transportRoute{}}
@@ -131,10 +138,14 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 			chosen := []demand{pending[0]}
 			pending = pending[1:]
 			load := chosen[0].maximum
-			for len(chosen) < 4 {
+			maximumGroup := 4
+			if chosen[0].external {
+				maximumGroup = 32
+			}
+			for len(chosen) < maximumGroup {
 				best := -1
 				for i, candidate := range pending {
-					if load+candidate.maximum > capacity+1e-6 {
+					if candidate.external != chosen[0].external || load+candidate.maximum > capacity+1e-6 {
 						continue
 					}
 					if best < 0 || pending[best].row.recipe.ID == chosen[0].row.recipe.ID && candidate.row.recipe.ID != chosen[0].row.recipe.ID {

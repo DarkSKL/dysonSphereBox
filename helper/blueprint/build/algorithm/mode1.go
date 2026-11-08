@@ -66,6 +66,9 @@ func connectedLayoutVariants(req Request, limits []float64) []connectedLayoutVar
 
 // generateConnected 职责：在固定预算内选择最小面积可行候选；使用：直连带主链；边界：候选必须通过最终数值、连通和编码检查，不以矩形面积替代可行性。
 func (b *builder) generateConnected(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
+	if denseNativeLatitude(req) && req.Plan.MachineCount >= 90 {
+		ctx = context.WithValue(ctx, denseMaterialNetworksKey{}, true)
+	}
 	limits, err := b.layoutHeightCandidates(ctx, req, dataset, true)
 	if err != nil {
 		return Result{}, err

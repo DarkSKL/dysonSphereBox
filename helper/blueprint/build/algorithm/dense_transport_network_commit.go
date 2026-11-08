@@ -105,6 +105,9 @@ func (b *builder) commitDenseMaterialNetworks() error {
 			continue
 		}
 		group, source := binding.group, binding.source
+		if source.from == nil {
+			route.boundary = source.boundary
+		}
 		if group.tapped {
 			tap := group.taps[binding.target]
 			if len(tap.route.path) == 0 || tap.route.path[len(tap.route.path)-1] != group.entries[binding.target] {

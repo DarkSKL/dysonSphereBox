@@ -46,7 +46,7 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 	incoming := make(map[*placed]int, len(b.all))
 	existing := map[vector][]*placed{}
 	items := map[*placed]map[int]bool{}
-	routes := b.denseBoundaryMonitorRoutes()
+	routes := b.uniqueMaterialBoundaryRoutes(b.denseBoundaryMonitorRoutes())
 	for index, entity := range b.all {
 		if index%64 == 0 {
 			if err = b.checkGeneration("原料入口监测占位索引"); err != nil {

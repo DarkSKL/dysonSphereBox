@@ -26,6 +26,7 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 	edgeTotals := map[string]float64{}
 	// 同一实体带可能承载多个规范边（例如合流或过滤干线）；按建筑链累计，防止每条 lane 单独合格而共享带超载。
 	sharedBeltRates := map[*placed]float64{}
+	externalInputs := map[*placed]bool{}
 	// mode3/4 在塔端核验阶段已经按具体 stationLink 写入 lanes/边界；
 	// finish 这里只补空间与索引指标，不能把已核验的实体 lane 清空。
 	if !policy.preserveStationLanes {
@@ -98,8 +99,9 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 			}
 			point := route.boundary.a
 			summary.ExternalPorts = append(summary.ExternalPorts, BoundaryPort{EdgeID: route.edge.ID, ItemID: route.edge.ItemID, Kind: route.edge.FlowKind, RatePerMinute: route.rate, BuildingIndex: index, X: point.x, Y: point.y, Z: point.z})
-			if route.from == nil {
+			if route.from == nil && !externalInputs[route.boundary] {
 				summary.Metrics.ExternalInputCount++
+				externalInputs[route.boundary] = true
 			}
 		}
 	}
