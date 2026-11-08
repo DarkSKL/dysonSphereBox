@@ -49,6 +49,9 @@ func (b *builder) repairPolarUnitOccupancy(ctx context.Context, units []denseSpa
 			}
 			continue
 		}
+		if len(units) >= 64 {
+			return err
+		}
 		if blocked == nil || len(blocked.entities) == 0 {
 			return err
 		}
@@ -101,30 +104,18 @@ func (b *builder) repairPolarUnitOccupancy(ctx context.Context, units []denseSpa
 	return &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: "极区局部单元在本次球面位置搜索内未全部落位"}
 }
 
-// packPolarUnitOccupancy 职责：沿纬线选择互不冲突的经向位置；使用：极区二维修复的一次完整尝试；边界：返回阻塞单元供调用方重新选择纬度，不据有限搜索声称数学容量不足。
+// packPolarUnitOccupancy 职责：在真实球面选择互不冲突的单元位置；使用：极区占位修复；边界：小厂保留纬线重排，大厂逐单元搜索纬度，有限搜索失败不代表数学容量不足。
 func (b *builder) packPolarUnitOccupancy(ctx context.Context, units []denseSpatialUnit) (*denseSpatialUnit, error) {
 	catalog, err := placement.LoadCatalog()
 	if err != nil {
 		return nil, err
 	}
 	encoding := &surfaceEncoding{}
-	parts := make([]polarUnitOccupancy, 0, len(units))
-	for _, unit := range units {
+	// 大厂在每个单元内完整搜索纬度，避免已落位单元被反复移动而耗尽重排预算。
+	flexibleLatitude := len(units) >= 64
+	makePart := func(unit denseSpatialUnit) (polarUnitOccupancy, error) {
 		part := polarUnitOccupancy{unit: unit}
 		part.low, part.high = bounds(unit.entities)
-		period := float64(b.polarFrame.segments * 5)
-		limit := b.polarFrame.longitudeLimit()
-		if part.high.x-part.low.x >= limit {
-			return &unit, &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: fmt.Sprintf("极区单元在当前纬度的经向跨度 %.1f 格超过可接线范围 %.1f 格", part.high.x-part.low.x, limit)}
-		}
-		// 每个纬线上的整周平移是同一球面位置；先归入一周，避免有限搜索围绕多周外的坐标空转。
-		dx := -math.Floor(part.low.x/period) * period
-		if part.high.x+dx >= limit {
-			dx = limit - part.high.x - .001
-		}
-		shift(unit.entities, dx, 0, 0)
-		part.low.x += dx
-		part.high.x += dx
 		for _, p := range unit.entities {
 			if surfaceIsBelt(p.record.ItemID) {
 				part.nodes = append(part.nodes, b.polarFrame.world(p.a, .2))
@@ -136,7 +127,7 @@ func (b *builder) packPolarUnitOccupancy(ctx context.Context, units []denseSpati
 			}
 			shapes, err := catalog.Shapes(p.record.ItemID, p.record.ModelIndex)
 			if err != nil {
-				return nil, err
+				return part, err
 			}
 			point := b.polarFrame.world(p.a, 0)
 			if surfaceIsStation(p.record.ItemID) {
@@ -145,141 +136,223 @@ func (b *builder) packPolarUnitOccupancy(ctx context.Context, units []denseSpati
 			for _, shape := range shapes {
 				box, err := encoding.colliderBox(vector{point[0], point[1], point[2]}, p.record.Yaw, shape)
 				if err != nil {
-					return nil, err
+					return part, err
 				}
 				part.boxes = append(part.boxes, box)
 			}
 		}
+		return part, nil
+	}
+	parts := make([]polarUnitOccupancy, 0, len(units))
+	for _, unit := range units {
+		part, err := makePart(unit)
+		if err != nil {
+			return nil, err
+		}
+		if !flexibleLatitude {
+			period := float64(b.polarFrame.segments * 5)
+			limit := b.polarFrame.longitudeLimit()
+			if part.high.x-part.low.x >= limit {
+				return &unit, &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: fmt.Sprintf("极区单元在当前纬度的经向跨度 %.1f 格超过可接线范围 %.1f 格", part.high.x-part.low.x, limit)}
+			}
+			dx := -math.Floor(part.low.x/period) * period
+			if part.high.x+dx >= limit {
+				dx = limit - part.high.x - .001
+			}
+			shift(unit.entities, dx, 0, 0)
+			part, err = makePart(unit)
+			if err != nil {
+				return nil, err
+			}
+		}
 		parts = append(parts, part)
 	}
+
 	sort.SliceStable(parts, func(i, j int) bool {
-		return (parts[i].high.x-parts[i].low.x)*(parts[i].high.y-parts[i].low.y) > (parts[j].high.x-parts[j].low.x)*(parts[j].high.y-parts[j].low.y)
+		area := func(part polarUnitOccupancy) float64 {
+			scale := 1.
+			if flexibleLatitude {
+				for _, p := range part.unit.entities {
+					if p.nativeUnitScale > 0 {
+						scale = p.nativeUnitScale
+						break
+					}
+				}
+			}
+			return (part.high.x - part.low.x) * (part.high.y - part.low.y) / scale
+		}
+		return area(parts[i]) > area(parts[j])
 	})
 	boxes := []placement.Box{}
 	nodes := []placement.Vector{}
 	arms := []surfaceBeltSpan{}
 	stations := []polarStationOccupancy{}
-	for _, part := range parts {
+	boxIndex, nodeIndex, armIndex := &polarSpatialIndex{}, &polarSpatialIndex{}, &polarSpatialIndex{}
+	for _, seed := range parts {
 		found := false
-		for attempt := 0; attempt <= b.polarFrame.segments*40; attempt++ {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			dx := float64((attempt+1)/2) / 4
-			if attempt%2 == 1 {
-				dx = -dx
-			}
-			if part.low.x+dx < 0 || part.high.x+dx >= b.polarFrame.longitudeLimit() {
-				continue
-			}
-			s, c := math.Sincos(dx * float64(b.polarFrame.longitudeStep))
-			stationConflict := false
-			for _, station := range part.stations {
-				point := rotatePolarPoint(station.point, s, c)
-				for _, other := range stations {
-					delta := point.Sub(other.point)
-					if delta.Dot(delta) < float64(surfaceStationDistanceLimit(station.item, other.item)) {
-						stationConflict = true
+		latitudeCount := 1
+		if flexibleLatitude {
+			latitudeCount = b.polarFrame.height
+		}
+		for latitude := 0; latitude < latitudeCount && !found; latitude++ {
+			part := seed
+			if flexibleLatitude {
+				low, high := bounds(seed.unit.entities)
+				target := float64(latitude)
+				if b.polarFrame.start < 0 {
+					target = float64(b.polarFrame.height-1-latitude) - (high.y - low.y)
+				}
+				dy := target - low.y
+				if low.y+dy < 0 || high.y+dy > float64(b.polarFrame.height-1) {
+					continue
+				}
+				oldScale := 0.
+				for _, p := range seed.unit.entities {
+					if p.nativeUnitScale > 0 {
+						oldScale = p.nativeUnitScale
 						break
 					}
 				}
-				if stationConflict {
-					break
+				if oldScale <= 0 {
+					return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "极区单元缺少格距证据"}
 				}
-			}
-			if stationConflict {
-				continue
+				movedLow, movedHigh := low, high
+				movedLow.y += dy
+				movedHigh.y += dy
+				scale := b.polarFrame.unitScale(seed.unit, movedLow, movedHigh)
+				ratio, center := scale/oldScale, (low.x+high.x)/2
+				for _, p := range seed.unit.entities {
+					p.a.x = center + (p.a.x-center)*ratio
+					p.b.x = center + (p.b.x-center)*ratio
+					p.a.y += dy
+					p.b.y += dy
+					p.densityCargo.relative.x *= ratio
+					p.nativeUnitScale = scale
+				}
+				low, high = bounds(seed.unit.entities)
+				if high.x-low.x >= b.polarFrame.longitudeLimit() {
+					continue
+				}
+				shift(seed.unit.entities, -low.x, 0, 0)
+				part, err = makePart(seed.unit)
+				if err != nil {
+					return nil, err
+				}
 			}
 			rotatedBoxes := make([]placement.Box, len(part.boxes))
 			rotatedNodes := make([]placement.Vector, len(part.nodes))
 			rotatedArms := make([]surfaceBeltSpan, len(part.arms))
-			for i, box := range part.boxes {
-				box.Center = rotatePolarPoint(box.Center, s, c)
-				for j := range box.Axes {
-					box.Axes[j] = rotatePolarPoint(box.Axes[j], s, c)
+			for attempt := 0; attempt <= b.polarFrame.segments*40; attempt++ {
+				if err := ctx.Err(); err != nil {
+					return nil, err
 				}
-				rotatedBoxes[i] = box
-			}
-			for i, p := range part.nodes {
-				rotatedNodes[i] = rotatePolarPoint(p, s, c)
-			}
-			for i, a := range part.arms {
-				rotatedArms[i] = surfaceBeltSpan{ends: [2]placement.Vector{rotatePolarPoint(a.ends[0], s, c), rotatePolarPoint(a.ends[1], s, c)}}
-			}
-			conflict := false
-			for _, a := range rotatedBoxes {
-				for _, c := range boxes {
-					if a.Overlaps(c) {
-						conflict = true
+				dx := float64((attempt+1)/2) / 4
+				if attempt%2 == 1 {
+					dx = -dx
+				}
+				if flexibleLatitude {
+					dx = float64(attempt) / 4
+					if part.high.x+dx >= b.polarFrame.longitudeLimit() {
+						break
+					}
+				}
+				if part.low.x+dx < 0 || part.high.x+dx >= b.polarFrame.longitudeLimit() {
+					continue
+				}
+				s, c := math.Sincos(dx * float64(b.polarFrame.longitudeStep))
+				stationConflict := false
+				for _, station := range part.stations {
+					point := rotatePolarPoint(station.point, s, c)
+					for _, other := range stations {
+						delta := point.Sub(other.point)
+						if delta.Dot(delta) < float64(surfaceStationDistanceLimit(station.item, other.item)) {
+							stationConflict = true
+							break
+						}
+					}
+					if stationConflict {
+						break
+					}
+				}
+				if stationConflict {
+					continue
+				}
+				for i, box := range part.boxes {
+					box.Center = rotatePolarPoint(box.Center, s, c)
+					for j := range box.Axes {
+						box.Axes[j] = rotatePolarPoint(box.Axes[j], s, c)
+					}
+					rotatedBoxes[i] = box
+				}
+				for i, p := range part.nodes {
+					rotatedNodes[i] = rotatePolarPoint(p, s, c)
+				}
+				for i, a := range part.arms {
+					rotatedArms[i] = surfaceBeltSpan{ends: [2]placement.Vector{rotatePolarPoint(a.ends[0], s, c), rotatePolarPoint(a.ends[1], s, c)}}
+				}
+				conflict := false
+				for _, a := range rotatedBoxes {
+					low, high := a.Bounds()
+					conflict = boxIndex.any(low, high, func(i int) bool { return a.Overlaps(boxes[i]) })
+					if !conflict {
+						margin := placement.Vector{.25, .25, .25}
+						conflict = nodeIndex.any(low.Sub(margin), high.Add(margin), func(i int) bool { return polarPointBoxDistance(a, nodes[i]) < .25*.25 })
+					}
+					if conflict {
 						break
 					}
 				}
 				if conflict {
-					break
+					continue
 				}
-				for _, p := range nodes {
-					if a.SegmentDistanceSquared(p, p) < .25*.25 {
-						conflict = true
+				for _, p := range rotatedNodes {
+					margin := placement.Vector{.25, .25, .25}
+					conflict = boxIndex.any(p.Sub(margin), p.Add(margin), func(i int) bool { return polarPointBoxDistance(boxes[i], p) < .25*.25 })
+					if !conflict {
+						margin = placement.Vector{.37, .37, .37}
+						conflict = nodeIndex.any(p.Sub(margin), p.Add(margin), func(i int) bool { d := p.Sub(nodes[i]); return d.Dot(d) < .37*.37 })
+					}
+					if conflict {
 						break
 					}
 				}
 				if conflict {
-					break
+					continue
 				}
-			}
-			if conflict {
-				continue
-			}
-			for _, p := range rotatedNodes {
-				for _, box := range boxes {
-					if box.SegmentDistanceSquared(p, p) < .25*.25 {
-						conflict = true
+				for _, a := range rotatedArms {
+					low, high := polarSpanBounds(a, .5)
+					conflict = armIndex.any(low, high, func(i int) bool { return surfaceSpanDistanceSquared(a, arms[i]) < .5*.5 })
+					if conflict {
 						break
 					}
 				}
 				if conflict {
-					break
+					continue
 				}
-				for _, q := range nodes {
-					d := p.Sub(q)
-					if d.Dot(d) < .37*.37 {
-						conflict = true
-						break
-					}
+				shift(part.unit.entities, dx, 0, 0)
+				for _, box := range rotatedBoxes {
+					low, high := box.Bounds()
+					boxIndex.add(low, high)
 				}
-				if conflict {
-					break
+				for _, point := range rotatedNodes {
+					nodeIndex.add(point, point)
 				}
-			}
-			if conflict {
-				continue
-			}
-			for _, a := range rotatedArms {
-				for _, c := range arms {
-					if surfaceSpanDistanceSquared(a, c) < .5*.5 {
-						conflict = true
-						break
-					}
+				for _, arm := range rotatedArms {
+					low, high := polarSpanBounds(arm, 0)
+					armIndex.add(low, high)
 				}
-				if conflict {
-					break
+				boxes = append(boxes, rotatedBoxes...)
+				nodes = append(nodes, rotatedNodes...)
+				arms = append(arms, rotatedArms...)
+				for _, station := range part.stations {
+					stations = append(stations, polarStationOccupancy{rotatePolarPoint(station.point, s, c), station.item})
 				}
+				found = true
+				break
 			}
-			if conflict {
-				continue
-			}
-			shift(part.unit.entities, dx, 0, 0)
-			boxes = append(boxes, rotatedBoxes...)
-			nodes = append(nodes, rotatedNodes...)
-			arms = append(arms, rotatedArms...)
-			for _, station := range part.stations {
-				stations = append(stations, polarStationOccupancy{rotatePolarPoint(station.point, s, c), station.item})
-			}
-			found = true
-			break
 		}
 		if !found {
-			return &part.unit, &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: "极区球面单元在本次环向搜索内未找到无冲突位置"}
+			return &seed.unit, &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: "极区球面单元在本次经纬位置搜索内未找到无冲突位置"}
 		}
 	}
 	return nil, nil
