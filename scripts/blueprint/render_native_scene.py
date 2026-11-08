@@ -30,13 +30,18 @@ def hull(points):
 
 
 def render(source_path, output_path, title, subtitle, projection):
-    """采用工厂中心切平面或极轴俯视；输入盒必须来自Go最终坐标的原生几何。"""
+    """采用切平面、极轴俯视或经纬展开；输入盒必须来自Go最终坐标的原生几何。"""
     source = json.loads(source_path.read_text(encoding="utf-8"))
     records, points = source["records"], source["points"]
     centers = [point for record, point in zip(records, points)
                if record.get("recipeId", 0) > 0]
     center = [sum(point[axis] for point in centers) / len(centers)
               for axis in range(3)]
+    anchors = source.get("longitudes", [])
+    if projection == "unwrapped" and len(anchors) != len(records):
+        raise ValueError("经纬展开需要每条记录的原生经度，避免整圈布局在180度处折返")
+    mean_latitude = sum(math.asin(point[1] / math.sqrt(sum(
+        value * value for value in point))) for point in centers) / len(centers)
     if projection == "polar":
         horizontal, vertical = (1, 0, 0), (0, 0, 1)
     else:
@@ -48,12 +53,20 @@ def render(source_path, output_path, title, subtitle, projection):
                     up[0] * horizontal[2] - up[2] * horizontal[0],
                     up[1] * horizontal[0])
 
-    def project(point):
+    def project(point, anchor=0):
+        if projection == "unwrapped":
+            longitude = math.atan2(point[0], -point[2])
+            longitude = anchor + math.remainder(longitude - anchor, 2 * math.pi)
+            latitude = math.asin(point[1] / math.sqrt(sum(value * value for value in point)))
+            return longitude * 200.2 * math.cos(mean_latitude), latitude * 200.2
         delta = [point[axis] - center[axis] for axis in range(3)]
         return (sum(delta[axis] * horizontal[axis] for axis in range(3)),
                 sum(delta[axis] * vertical[axis] for axis in range(3)))
 
-    polygons, projected = [], [project(point) for point in points]
+    def record_project(point, index):
+        return project(point, anchors[index] if anchors else 0)
+
+    polygons, projected = [], [record_project(point, index) for index, point in enumerate(points)]
     for item in source["boxes"]:
         box = item["box"]
         corners = []
@@ -61,7 +74,7 @@ def render(source_path, output_path, title, subtitle, projection):
             point = [box["Center"][axis] + sum(
                 signs[index] * box["HalfSize"][index] * box["Axes"][index][axis]
                 for index in range(3)) for axis in range(3)]
-            corners.append(project(point))
+            corners.append(record_project(point, item["index"]))
         polygons.append((item["itemId"], hull(corners)))
         projected.extend(corners)
     left, right = min(point[0] for point in projected) - 4, max(point[0] for point in projected) + 4
@@ -86,17 +99,17 @@ def render(source_path, output_path, title, subtitle, projection):
                      fill=colors.get(aliases.get(item, item), "#9aacba"), outline="#e9eef3")
     indices = {record["index"]: index for index, record in enumerate(records)}
     for index, record in enumerate(records):
-        first = screen(project(points[index]))
+        first = screen(record_project(points[index], index))
         if 2001 <= record["itemId"] <= 2003:
             other = indices.get(record["outputObjIdx"])
             if other is not None and 2001 <= records[other]["itemId"] <= 2003:
                 color = "#62bbdb" if record["localOffset"]["z"] > .4 else "#e3ad55"
-                draw.line((*first, *screen(project(points[other]))), fill=color, width=2)
+                draw.line((*first, *screen(record_project(points[other], other))), fill=color, width=2)
         elif 2011 <= record["itemId"] <= 2014:
-            second = screen(project(source["points2"][index]))
+            second = screen(record_project(source["points2"][index], index))
             draw.line((*first, *second), fill="#e8edf2")
     # 箭头直接取当地经纬基和导出Yaw，避免把投影曲线误读成机器姿态倾斜。
-    for record, point in zip(records, points):
+    for index, (record, point) in enumerate(zip(records, points)):
         if record.get("recipeId", 0) <= 0:
             continue
         radius = math.sqrt(sum(value * value for value in point))
@@ -109,10 +122,11 @@ def render(source_path, output_path, title, subtitle, projection):
         forward = [math.sin(yaw) * east[axis] + math.cos(yaw) * north[axis]
                    for axis in range(3)]
         tip = [point[axis] + forward[axis] * 1.2 for axis in range(3)]
-        draw.line((*screen(project(point)), *screen(project(tip))), fill="#243343", width=2)
+        draw.line((*screen(record_project(point, index)), *screen(record_project(tip, index))), fill="#243343", width=2)
     draw.text((18, 10), title, font=font, fill="#f5f7fa")
     draw.text((18, 44), subtitle, font=small, fill="#b5c5d4")
-    draw.text((18, height - 35), "原生建造盒与导出连接投影；离线检查，游戏内铺设尚未实测",
+    caption = "原生盒的经纬展开投影；离线检查，游戏内铺设尚未实测" if projection == "unwrapped" else "原生建造盒与导出连接投影；离线检查，游戏内铺设尚未实测"
+    draw.text((18, height - 35), caption,
               font=small, fill="#b5c5d4")
     image.save(output_path)
     print(output_path)
@@ -124,6 +138,6 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--title", default="Native blueprint geometry")
     parser.add_argument("--subtitle", default="World positions and build colliders")
-    parser.add_argument("--projection", choices=("tangent", "polar"), default="tangent")
+    parser.add_argument("--projection", choices=("tangent", "polar", "unwrapped"), default="tangent")
     arguments = parser.parse_args()
     render(arguments.source, arguments.output, arguments.title, arguments.subtitle, arguments.projection)

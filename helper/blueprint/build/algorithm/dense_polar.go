@@ -66,7 +66,9 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 	}
 	for _, extent := range extents {
 		orientations := []bool{false}
-		if req.Mode >= 2 && req.Mode <= 4 && (selection.hemisphere > 0 && selection.position == "north" || selection.hemisphere < 0 && selection.position == "south") {
+		// 非极区大厂的两侧边缘都需要比较刚体半周对称候选；固定左侧入口的直连模式不参与。
+		largeEdge := selection.tier < 5 && req.Plan.MachineCount >= denseNativeLargeMachineThreshold && selection.position != "center"
+		if req.Mode >= 2 && req.Mode <= 4 && (largeEdge || selection.hemisphere > 0 && selection.position == "north" || selection.hemisphere < 0 && selection.position == "south") {
 			orientations = []bool{false, true}
 			if selection.hemisphere > 0 {
 				orientations = []bool{true, false}
