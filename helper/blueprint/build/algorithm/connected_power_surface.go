@@ -46,7 +46,7 @@ func (b *builder) completeConnectedSurfacePower(ctx context.Context, req Request
 	if err := encoding.applyRecords(b.all, records); err != nil {
 		return err
 	}
-	if err := encoding.validateAnchorCandidates(ctx, records); err != nil {
+	if _, err := b.validateNativeSurfaceCandidates(ctx, req, encoding, records); err != nil {
 		return err
 	}
 	// 当前锚点已通过无塔机器及路线几何；供电后不再平移或重选坐标系。

@@ -136,6 +136,9 @@ func validateRelocatedSurface(ctx context.Context, req Request, encoding *surfac
 
 // relocateDenseSurface 职责：将已通过的密铺结果迁移到明确中部或南北边缘，并实测连续安全起点；使用：finish供电裁剪之后；边界：失败不退回同名选区的其它位置，普通和平面请求不变。
 func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source *surfaceEncoding, records []blueprint.Building) (*surfaceEncoding, []blueprint.Building, error) {
+	if denseNativeLatitude(req) {
+		return source, records, validateDensityLatitudePlan(req.SurfaceLayout, source.plan)
+	}
 	if req.Density != densityDense || req.SurfaceLayout == nil || req.SurfaceLayout.LatitudeZone == "" {
 		return source, records, nil
 	}
@@ -295,7 +298,7 @@ func (b *builder) validateRelocatedCargoOffsets(encoding *surfaceEncoding, recor
 
 // finalizeDenseRelocationRange 职责：以最终引用、固定货物offset和完整供电证明连续可用起点；使用：cargo重绑之后；边界：首次失败即停止扩区，不把中间失败点跨过去拼成范围。
 func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request, encoding *surfaceEncoding, records []blueprint.Building) error {
-	if encoding == nil || encoding.relocation == nil {
+	if encoding == nil || (encoding.relocation == nil && !denseNativeLatitude(req)) {
 		return nil
 	}
 	band, _, err := densityLatitudeBand(req.SurfaceLayout.LatitudeZone, req.SurfaceLayout.GridSegment)
@@ -312,7 +315,7 @@ func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request,
 		return err
 	}
 	anchor := encoding.plan.AnchorLatitudeGrid
-	encoding.relocation.safeAnchors = []int{anchor}
+	safe := []int{anchor}
 	for _, direction := range []int{-1, 1} {
 		for next := anchor + direction; next >= band.low && next+int(encoding.areas[0].Height)-1 <= band.high; next += direction {
 			trial, plan := *encoding, *encoding.plan
@@ -324,11 +327,13 @@ func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request,
 				}
 				break
 			}
-			encoding.relocation.safeAnchors = append(encoding.relocation.safeAnchors, next)
+			safe = append(safe, next)
 		}
 	}
-	sort.Ints(encoding.relocation.safeAnchors)
-	safe := encoding.relocation.safeAnchors
+	sort.Ints(safe)
+	if encoding.relocation != nil {
+		encoding.relocation.safeAnchors = safe
+	}
 	minimum := float64(safe[0]) * 360 / float64(encoding.plan.GridSegment*5)
 	maximum := float64(safe[len(safe)-1]) * 360 / float64(encoding.plan.GridSegment*5)
 	encoding.plan.SafeLatitudeMinDegrees, encoding.plan.SafeLatitudeMaxDegrees = &minimum, &maximum
@@ -338,10 +343,10 @@ func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request,
 			return err
 		}
 		rule, method := "dense-surface-rigid-relocation", "刚体迁移"
-		if encoding.relocation.orthogonal {
+		if encoding.relocation == nil || encoding.relocation.orthogonal {
 			rule, method = "dense-surface-orthogonal", "保持建筑朝向并补偿横向格距"
 		}
-		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: rule, Status: "passed", Message: fmt.Sprintf("球面几何从纬圈%d到%d，%s；机器、带臂、塔距和真实线路重新校验；%d个带侧端点的固定offset及完整取货窗口、跨度能力和供电已核验连续起点%d..%d，范围外不承诺可用", encoding.relocation.sourceAnchor, anchor, method, len(scopes), safe[0], safe[len(safe)-1])})
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: rule, Status: "passed", Message: fmt.Sprintf("球面几何从纬圈%d到%d，%s；机器、带臂、塔距和真实线路重新校验；%d个带侧端点的固定offset及完整取货窗口、跨度能力和供电已核验连续起点%d..%d，范围外不承诺可用", nativeSourceAnchor(encoding), anchor, method, len(scopes), safe[0], safe[len(safe)-1])})
 	}
 	return nil
 }
@@ -358,4 +363,12 @@ func (b *builder) relocatedProductionZones(records []blueprint.Building) []Zone 
 		view.all[i] = &entity
 	}
 	return view.finalProductionZones()
+}
+
+// nativeSourceAnchor 职责：提供诊断中的源锚点；使用：连续范围记录；边界：原生生成没有重定位来源。
+func nativeSourceAnchor(encoding *surfaceEncoding) int {
+	if encoding.relocation != nil {
+		return encoding.relocation.sourceAnchor
+	}
+	return encoding.plan.AnchorLatitudeGrid
 }

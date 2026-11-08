@@ -122,7 +122,11 @@ func (b *builder) validateLeftoverBoundaries() error {
 			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: fmt.Sprintf("副产物 %d 的原料区出口缺少正确物品标记", route.edge.ItemID)}
 		}
 		previous := route.path[len(route.path)-2]
-		if previous == nil || previous.output != route.end || previous.a.x != route.end.a.x+1 || previous.a.y != route.end.a.y || previous.a.z != route.end.a.z || route.end.a.z != 0 {
+		step := 1.
+		if b.nativeLatitudeScaled {
+			step = b.nativeLongitudeScale
+		}
+		if previous == nil || previous.output != route.end || math.Abs(previous.a.x-route.end.a.x-step) > 1e-6 || previous.a.y != route.end.a.y || previous.a.z != route.end.a.z || route.end.a.z != 0 {
 			return transportAllocationError(route.edge, route.rate, "副产物原料区出口必须沿真实地面带向西出货")
 		}
 		for _, input := range inputs {

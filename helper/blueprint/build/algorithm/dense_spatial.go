@@ -227,7 +227,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
 	selection, selected := densityLatitudeSelectionFor(zone)
 	// 窄纬只限制纬向容量，经向预算按实体总占地估算；普通共享布局保留原策略。
-	if selected && selection.tier == 3 && (b.adapter == nil || b.adapter.density == densityDense) {
+	if selected && selection.tier >= 3 && (b.adapter == nil || b.adapter.density == densityDense) {
 		strictHeight = true
 		// 直连原料入口和配送边界需要更多纬向接线余量；避免较宽核心挤掉内部直连而退回逐物料配送。
 		if b.adapter != nil && b.adapter.mode <= 2 {

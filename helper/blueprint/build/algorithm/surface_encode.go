@@ -50,6 +50,7 @@ func (b *builder) prepareSurfaceEncodingContext(ctx context.Context, layout *Sur
 		return b.surfaceBusEncoding, nil
 	}
 	layout = b.denseLatitudeAssemblyLayout(layout)
+	b.scaleNativeLatitudeLayout(layout)
 	// 优先保留原排版，完整矩形超容量时才整体移动闭合块；具体碰撞仍须按最终姿态检查。
 	minimum, maximum := bounds(b.all)
 	shift(b.all, -minimum.x, -minimum.y, 0)

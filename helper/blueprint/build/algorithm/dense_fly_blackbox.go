@@ -53,6 +53,9 @@ func (b *builder) configureDenseFlyBlackbox() error {
 	b.adapter = &adapter
 	b.directBoundaryUnits = b.prepareDenseFlyBoundaryUnits
 	b.directBoundaryLaneLimit = math.Min(b.logistics.BeltCapacityPerMinute, 3*inserterCapacityPerMinute(b.setting.InserterLv, 1))
+	if b.nativeCapacityReserve {
+		b.directBoundaryLaneLimit = math.Min(b.logistics.BeltCapacityPerMinute, 3*inserterCapacityPerMinute(b.setting.InserterLv, 3))
+	}
 	b.denseFlyBlackbox = &denseFlyBlackboxState{}
 	b.connectedCompactBelts, b.connectedGlobalPower, b.densePairedOutputs = true, true, true
 	return nil

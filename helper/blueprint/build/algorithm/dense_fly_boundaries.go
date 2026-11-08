@@ -178,6 +178,9 @@ func (b *builder) attachDenseFlyBoundaryBranches(facility *denseFlyBoundaryFacil
 	main := endpoint.link
 	shared := append(append([]*placed{}, endpoint.belts...), main)
 	capacity := inserterCapacityPerMinute(b.setting.InserterLv, 1)
+	if b.nativeCapacityReserve {
+		capacity = inserterCapacityPerMinute(b.setting.InserterLv, 3)
+	}
 	direction := math.Copysign(1, main.a.x-endpoint.box.a.x)
 	for i, route := range facility.routes {
 		side := 1.

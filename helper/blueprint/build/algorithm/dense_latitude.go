@@ -73,7 +73,7 @@ func DensityLatitudeOptions() []DensityLatitudeOption {
 
 // densityLatitudeOptionLabels 职责：维护选区键与玩家可读文案；使用：DensityLatitudeOptions 补充几何前的基础表；边界：每次返回独立切片。
 func densityLatitudeOptionLabels() []DensityLatitudeOption {
-	return []DensityLatitudeOption{
+	options := []DensityLatitudeOption{
 		{Value: "equator", Label: "第1档 · 赤道环 · 中心", Description: "最宽的赤道环中心；按最终已验证起点范围放置。"},
 		{Value: "equator-south", Label: "第1档 · 赤道环 · 南边缘", Description: "靠赤道环南侧分界线放置；保持默认方向。"},
 		{Value: "equator-north", Label: "第1档 · 赤道环 · 北边缘", Description: "靠赤道环北侧分界线放置；保持默认方向。"},
@@ -90,6 +90,15 @@ func densityLatitudeOptionLabels() []DensityLatitudeOption {
 		{Value: "south-high", Label: "第3档 · 南半球 · 南边缘", Description: "第3档远离赤道的一侧；兼容原南半球高纬选项。"},
 		{Value: "ring3-south-north", Label: "第3档 · 南半球 · 北边缘", Description: "第3档靠近赤道的一侧；整图保持在本圈内。"},
 	}
+	for _, hemisphere := range []string{"north", "south"} {
+		for _, position := range []string{"center", "south", "north"} {
+			key := "ring4-" + hemisphere + "-" + position
+			selection, _ := densityLatitudeSelectionFor(key)
+			options = append(options, DensityLatitudeOption{Value: key, Label: selection.label(), Description: "第4档环宽25格；按原生格距适配间距，按蓝图给出的光标范围放置。"})
+		}
+	}
+	return options
+
 }
 
 // densityLatitudeBand 职责：通过当前网格表解析选区；使用：请求与候选核验；边界：不硬编码纬带边界，不支持任意字符串或其它网格。
@@ -98,8 +107,8 @@ func densityLatitudeBand(zone string, segment int) (surfacePackedBand, string, e
 	if !ok || segment != defaultSurfaceGridSegment {
 		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE", Message: "未知密铺建造区域或不支持的星球网格"}
 	}
-	// 逐档接入生成：尚未接入的第4档及极区键不能误当作已验证单Area生成。
-	if selection.tier > 3 {
+	// 极区必须使用跨原生纬带的专用生成，不能当作单Area生成。
+	if selection.tier > 4 {
 		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "该档位尚未接入对应的纬带生成方案"}
 	}
 	label := ""
@@ -134,7 +143,7 @@ func surfaceLayoutAnchorCandidates(layout *SurfaceLayout, width, height int) []i
 	anchors := []int{}
 	margin := 2
 	selection, _ := densityLatitudeSelectionFor(layout.LatitudeZone)
-	if selection.tier == 3 {
+	if selection.tier >= 3 {
 		// 狭窄原生带可使用全部格行；完整碰撞检查决定落点，不能再重复扣除装箱已预留的线路余量。
 		margin = 0
 		if selection.position == "south" {
@@ -145,6 +154,9 @@ func surfaceLayoutAnchorCandidates(layout *SurfaceLayout, width, height int) []i
 		}
 	}
 	for anchor := band.low + margin; anchor+height-1 <= band.high-margin; anchor++ {
+		if selection.tier >= 4 && absInt(anchor-preferred) > 4 {
+			continue
+		}
 		if candidateFitsRing(anchor, 0, height-1, width, layout.GridSegment) {
 			anchors = append(anchors, anchor)
 		}
@@ -166,7 +178,7 @@ func denseLatitudeHeightLimit(ctx context.Context, limit float64) float64 {
 	margin := 8
 	selection, _ := densityLatitudeSelectionFor(zone)
 	dense, _ := ctx.Value(denseCollisionKey{}).(bool)
-	if selection.tier == 3 && dense {
+	if selection.tier >= 3 && dense {
 		// 塔可利用21格内部空间；直连、配送器及保守塔候选在装箱时另保留更长接头的余量。
 		margin = 4
 	}

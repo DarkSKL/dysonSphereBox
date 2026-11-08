@@ -133,6 +133,9 @@ func validateLineMachineInserters(l *line, setting Setting) error {
 		occupied[machine][slot] = true
 		reach := int(arm.record.Parameters[0])
 		observedReach := int(math.Round(math.Hypot(arm.b.x-arm.a.x, arm.b.y-arm.a.y)))
+		if arm.nativeInserterSpan > 0 {
+			observedReach = int(arm.nativeInserterSpan)
+		}
 		heightAllowed := math.Abs(arm.a.z-arm.b.z) <= 1e-6 || l.referenceLowTracks && arm.densityPattern == "reference-low-arm" && math.Abs(arm.a.z-arm.b.z) <= .51
 		if reach != observedReach || reach < 1 || reach > 3 || !heightAllowed {
 			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "机器分拣器跨度参数与实际端点不一致"}

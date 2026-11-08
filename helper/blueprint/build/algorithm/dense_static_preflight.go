@@ -13,6 +13,10 @@ import (
 
 // preflightDenseMachineSurface 职责：在昂贵完整几何/补电前筛出固定包络下的稳健机器冲突；使用：全部路由和裁剪后；边界：精确旧单点请求和可多区重排流程不据此剪枝。
 func (b *builder) preflightDenseMachineSurface(ctx context.Context, req Request) error {
+	// 原生高纬随后才补偿经向格距；不能用尚未适配的平面间距提前淘汰，完整原生检查仍必跑。
+	if denseNativeLatitude(req) {
+		return nil
+	}
 	if !b.denseSpatial || !b.connectedGlobalPower || req.SurfaceLayout == nil || req.SurfaceLayout.Mode == "planar" {
 		return nil
 	}

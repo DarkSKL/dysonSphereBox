@@ -83,6 +83,10 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 			order int
 		}
 		inputs := []flyInput{{.85, 2}, {.85, 3}, {1, 2}, {1, 3}, {1.2, 2}, {1.2, 3}}
+		if denseNativeLatitude(req) {
+			// 高纬高度预算会让多个尺度收敛到同一排布；保留面积优先的两种次序作为独立候选。
+			inputs[4].order, inputs[5].order = 0, 1
+		}
 		previews := plannedPreviews[variantIndex*6 : (variantIndex+1)*6]
 		groupBase := index
 		waveErr := search.Waves(ctx, inputs, b.candidateWorkers(ctx, len(inputs)), func(ctx context.Context, localIndex int, input flyInput) (evaluation flyEvaluation) {
@@ -119,6 +123,7 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 			}
 			candidate.generationCtx, candidate.flowGraph = candidateContext, b.flowGraph
 			candidate.denseSpatial, candidate.denseSpatialOrder, candidate.flyCompact = true, order, true
+			candidate.nativeCapacityReserve = denseNativeLatitude(req) && localIndex >= 4
 			candidate.denseStreetGroupLimit = option.groups
 			candidate.warnings = append(candidate.warnings, b.warnings...)
 			candidate.logistics = newLogisticsSummary(*b.flowGraph, candidate.setting)
@@ -165,6 +170,7 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 			}
 			diagnostics = appendSearchCandidateDiagnostics(diagnostics, newSearchCandidateDiagnostic("dense-fly-layout", index, parameters, stage, err), candidate.logistics)
 			lastError = err
+			reportProgress(ctx, "layout-rejected", fmt.Sprintf("配送候选%d（%s）：%v", index+1, parameters, err), index+1, len(inputs))
 			candidate.rollbackPreview()
 
 			return

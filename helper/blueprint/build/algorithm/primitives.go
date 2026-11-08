@@ -24,8 +24,8 @@ type vector struct{ x, y, z float64 }
 type placed struct {
 	// densityCargo 职责：保存参考臂实际取放目标与独立物料轨道；使用：最终货物采样重绑；边界：值类型元数据及只读轨道切片可随候选快照安全复制。
 	densityCargo denseCargoTarget
-	// densityThirdInput 职责：标识参考单元派生的第三输入臂；使用：目标纬度局部端口适配；边界：仅内部装配元数据，不写入蓝图。
-	densityThirdInput bool
+	// nativeInserterSpan 职责：保存当前原生端点实测跨度；使用：已通过完整几何的本地能力复核；边界：仅高纬适配事务写入。
+	nativeInserterSpan int32
 	// densityPattern 职责：记录实际机器局部布局来源；使用：获选候选的密度报告；边界：仅生成器写入，不能由请求自证。
 	densityPattern string
 	// previewID 职责：保存可选任务内对象身份；使用：临时预览增量；边界：不参与记录编号、连接或几何判断。
@@ -143,6 +143,12 @@ type builder struct {
 	adapter *modeAdapter
 	// denseSpatial 职责：启用全场实体占位搜索；使用：超密度及普通模式共享设施候选；边界：具体碰撞与间距仍按适配器密度决定。
 	denseSpatial bool
+	// nativeLatitudeScaled 职责：防止高纬原生格距重复补偿；使用：同一候选编码；边界：候选间不共享。
+	nativeLatitudeScaled bool
+	// nativeLongitudeScale 职责：保存本次原生经向补偿；使用：设施槽位及独立出口一致性检查；边界：没有开启补偿时不用此值。
+	nativeLongitudeScale float64
+	// nativeCapacityReserve 职责：为高纬配送回退候选预留三格实际跨度的并联臂数；使用：容量回退；边界：仍按最终实体重新核算，不提高单臂能力。
+	nativeCapacityReserve bool
 	// denseSpatialOrder 职责：选择全场装配顺序；使用：有界密铺比较；边界：只改变空间顺序，不改变物料份额。
 	denseSpatialOrder int
 	// denseMaxSpan 职责：限制当前密铺候选的机器长轴跨度；使用：保容量均衡细分；边界：零值不额外细分。
@@ -461,6 +467,9 @@ func (b *builder) records() ([]blueprint.Building, []ProductionBinding, []int, e
 				machines[p.owner] = append(machines[p.owner], i)
 			}
 		}
+	}
+	if err := b.alignFlowMonitorDirections(context.Background(), nil, out, true); err != nil {
+		return nil, nil, nil, err
 	}
 	if err := assignBeltInputSlots(out); err != nil {
 		return nil, nil, nil, err

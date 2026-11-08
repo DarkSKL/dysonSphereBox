@@ -35,13 +35,15 @@ for path in sources:
         draw.line((margin,header+margin+y*scale,width-margin,header+margin+y*scale),fill="#253343")
     for b in buildings:
         x,y=point(b["localOffset"])
-        if b["itemId"] in (2302,2303,2901,2101,2102,2107):
-            size,color={2302:(1.8,"#5098b0"),2303:(2.1,"#768de6"),2901:(2.5,"#d7e5ef"),2101:(1.5,"#6db695"),2102:(2,"#6db695"),2107:(.8,"#b0f5cb")}[b["itemId"]]
-            half=size*scale/2
+        if b.get("recipeId", 0) > 0 or b["itemId"] in (2101,2102,2107):
+            sizes={2302:(1.8,1.8,"#5098b0"),2303:(2.1,2.1,"#768de6"),2901:(2.5,2.5,"#d7e5ef"),2101:(1.5,1.5,"#6db695"),2102:(2,2,"#6db695"),2107:(.8,.8,"#b0f5cb"),2308:(5,2,"#e6b368"),2309:(5,3,"#be8ee6"),2310:(6,5,"#dd8e95")}
+            aliases={2315:2302,2319:2302,2304:2303,2305:2303,2318:2303,2902:2901,2317:2309}
+            sx,sy,color=sizes.get(aliases.get(b["itemId"],b["itemId"]),(3,3,"#aaaabb"))
+            hx,hy=sx*scale/2,sy*scale/2
             angle=math.radians(b["yaw"])
-            corners=[(x+dx*math.cos(angle)+dy*math.sin(angle),y+dx*math.sin(angle)-dy*math.cos(angle)) for dx,dy in ((-half,-half),(half,-half),(half,half),(-half,half))]
+            corners=[(x+dx*math.cos(angle)+dy*math.sin(angle),y+dx*math.sin(angle)-dy*math.cos(angle)) for dx,dy in ((-hx,-hy),(hx,-hy),(hx,hy),(-hx,hy))]
             draw.polygon(corners,fill=color,outline="#f5fafc")
-            draw.line((x,y,x+half*math.sin(angle),y-half*math.cos(angle)),fill="#273d50",width=2)
+            draw.line((x,y,x+hy*math.sin(angle),y-hy*math.cos(angle)),fill="#273d50",width=2)
         elif b["itemId"] in (2103,2104):
             radius=4.5*scale
             draw.ellipse((x-radius,y-radius,x+radius,y+radius),outline="#f0a965",width=3)
@@ -54,6 +56,15 @@ for path in sources:
                 draw.line((*point(b["localOffset"]),*point(end["localOffset"])),fill=color,width=2)
         elif 2011<=b["itemId"]<=2014:
             draw.line((*point(b["localOffset"]),*point(b["localOffset2"])),fill="#a0adb9")
+    # 监测器最后画，箭头沿导出Yaw；不使用宿主原来的默认朝向。
+    for b in buildings:
+        if b["itemId"] == 2030:
+            x,y=point(b["localOffset"])
+            a=math.radians(b["yaw"])
+            tip=(x+6*math.sin(a),y-6*math.cos(a))
+            left=(x-4*math.sin(a)+4*math.cos(a),y+4*math.cos(a)+4*math.sin(a))
+            right=(x-4*math.sin(a)-4*math.cos(a),y+4*math.cos(a)-4*math.sin(a))
+            draw.polygon((tip,left,right),fill="#ffeb6e",outline="#ffffff")
     belts=sum(2001<=b["itemId"]<=2003 for b in buildings)
     towers=sum(b["itemId"] in (2103,2104) for b in buildings)
     draw.text((20,12),path.stem,fill="#f2f6fa")

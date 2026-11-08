@@ -14,10 +14,15 @@ const denseLongBeltGridSpan = 1.5
 // denseLongBeltLongitudeFactor 职责：按实际选区给出经向物理格宽的保守上界；使用：长带重采样前；边界：旧自动请求覆盖全星球，不以赤道格宽假设高纬或高架安全。
 func denseLongBeltLongitudeFactor(ctx context.Context) float64 {
 	low, high := -250, 250
+	nativeScale := 1.
 	if ctx != nil {
 		if zone, _ := ctx.Value(densityLatitudeKey{}).(string); zone != "" {
 			if band, _, err := densityLatitudeBand(zone, defaultSurfaceGridSegment); err == nil {
 				low, high = band.low, band.high
+				if selection, ok := densityLatitudeSelectionFor(zone); ok && selection.tier >= 4 {
+					pole := math.Max(math.Abs(float64(low)), math.Abs(float64(high)))
+					nativeScale = float64(band.segments) / 200 / math.Cos(pole*math.Pi/500)
+				}
 			}
 		}
 	}
@@ -25,7 +30,7 @@ func denseLongBeltLongitudeFactor(ctx context.Context) float64 {
 	for latitude := low; latitude <= high; latitude++ {
 		factor = math.Max(factor, math.Cos(float64(latitude)*2*math.Pi/1000)*200/float64(longitudeSegmentCount(latitude, 200)))
 	}
-	return factor
+	return factor * nativeScale
 }
 
 // denseLongBeltAxis 职责：识别同高度、同向的正交直段；使用：合并连续自由段；边界：斜线、升降和退回均不合并。

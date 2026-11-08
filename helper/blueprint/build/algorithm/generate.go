@@ -264,7 +264,7 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 			return result, err
 		}
 		reportProgress(ctx, "collision", "正在检查球面锚点与建筑碰撞", 0, 0)
-		err = surface.validateAnchorCandidates(ctx, records)
+		records, err = b.validateNativeSurfaceCandidates(ctx, req, surface, records)
 		if err != nil && b.adapter != nil && b.adapter.retrySurfaceAnchor != nil {
 			surface, records, bindings, shared, err = b.adapter.retrySurfaceAnchor(ctx, b, req, surface, records, err)
 		}
@@ -327,6 +327,9 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		return result, err
 	}
 	zones := b.finalProductionZones()
+	if err := b.alignFlowMonitorDirections(ctx, surface, records, true); err != nil {
+		return result, err
+	}
 	if surface != nil && surface.relocation != nil {
 		zones = b.relocatedProductionZones(records)
 	}

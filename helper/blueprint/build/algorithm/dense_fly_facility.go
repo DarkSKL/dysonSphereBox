@@ -8,7 +8,11 @@ import "DysonSphereBox/helper/blueprint"
 // makeDenseFlyFacility 职责：创建真实独立设施集合；使用：全场占位前；边界：不附加固定长度机器接驳长尾。
 func (b *builder) makeDenseFlyFacility(port flyIndependentPort, rate float64) (*flyTransportEndpoint, []*placed, []*placed, error) {
 	begin := len(b.all)
-	storage, err := planFlyStorageArms(rate, b.setting.InserterLv)
+	planningRate := rate
+	if b.nativeCapacityReserve {
+		planningRate *= inserterCapacityPerMinute(b.setting.InserterLv, 1) / inserterCapacityPerMinute(b.setting.InserterLv, 3)
+	}
+	storage, err := planFlyStorageArms(planningRate, b.setting.InserterLv)
 	if err != nil {
 		return nil, nil, nil, err
 	}

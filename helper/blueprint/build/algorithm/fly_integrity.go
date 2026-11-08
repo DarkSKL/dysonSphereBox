@@ -365,6 +365,10 @@ func (b *builder) validateFlyFacilityLink(endpoint *flyTransportEndpoint, mode i
 		}
 		usedSlots[slot] = true
 		point, ok := storageSlotPoint(endpoint.box.a, endpoint.box.record.Yaw, int(slot))
+		if b.nativeLatitudeScaled {
+			scale := b.nativeLongitudeScale
+			point.x = endpoint.box.a.x + (point.x-endpoint.box.a.x)*scale
+		}
 		if !ok || !flySamePoint(point, boxPoint) || !flySamePoint(belt.a, beltPoint) {
 			return flyEndpointFailure(endpoint, "箱体分拣器端点未对齐真实槽位或所属带节点")
 		}
@@ -456,6 +460,12 @@ func flyEntityInserterCapacity(arm *placed) (float64, error) {
 func flyInserterSpanMatchesGeometry(arm *placed) error {
 	if arm == nil || len(arm.record.Parameters) == 0 {
 		return fmt.Errorf("分拣器缺少真实跨距参数")
+	}
+	if arm.nativeInserterSpan > 0 {
+		if arm.record.Parameters[0] != arm.nativeInserterSpan {
+			return fmt.Errorf("原生实测跨度与参数不一致")
+		}
+		return nil
 	}
 	distance := math.Hypot(arm.a.x-arm.b.x, arm.a.y-arm.b.y)
 	if math.Abs(arm.a.z-arm.b.z) > 1e-6 || distance < .9 || distance > 3.01 || int32(math.Round(distance)) != arm.record.Parameters[0] {

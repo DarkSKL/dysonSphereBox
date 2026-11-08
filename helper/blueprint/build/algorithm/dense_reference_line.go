@@ -127,6 +127,14 @@ func (b *builder) buildReferenceLowLine(p quant.Production, r quant.Recipe, coun
 			secondRowX = pitch / 4
 		}
 	}
+	// 高纬化工盒的长边跨过较大的球面弧度；为双排低轨保留局部净空，避免扩大整厂间距。
+	if b.generationCtx != nil && p.MachineType == 4 {
+		zone, _ := b.generationCtx.Value(densityLatitudeKey{}).(string)
+		if selection, ok := densityLatitudeSelectionFor(zone); ok && selection.tier >= 4 {
+			rowMargin += .3
+			pitch += .15
+		}
+	}
 	columns := (count + 1) / 2
 	anchors := [2][]float64{}
 	bandY := 0.
