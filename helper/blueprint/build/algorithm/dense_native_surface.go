@@ -32,7 +32,9 @@ func (b *builder) validateNativeSurfaceCandidates(ctx context.Context, req Reque
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		encoding.reanchorSurfaceEncoding(anchor)
+		if !encoding.rootCoordinates {
+			encoding.reanchorSurfaceEncoding(anchor)
+		}
 		adjusted, err := b.alignNativeInserterPorts(ctx, encoding, records)
 		if err == nil {
 			return adjusted, nil

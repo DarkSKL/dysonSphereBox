@@ -92,6 +92,8 @@ type Request struct {
 type SurfaceLayout struct {
 	// nativeBand 职责：保存极区本次候选的原生子环；使用：生成内部调度；边界：不接受JSON输入、不替代整个第5档定义。
 	nativeBand *surfacePackedBand
+	// polarRoot 职责：在极区用主区域坐标表达跨子环实体；使用：内部候选；边界：区域元数据仍覆盖全部实体和真实纬带。
+	polarRoot bool
 	// LatitudeZone 职责：保存面向玩家的放置区域选项；使用：密铺按选定原生纬带校验；边界：非空时不允许隐式跨到其它纬带。
 	LatitudeZone string `json:"latitudeZone,omitempty"`
 	// Mode 职责：选择 planar、autoTropic 或 explicitTropic；使用：生成流程决定是否运行纬圈网格预检；边界：未知值拒绝。

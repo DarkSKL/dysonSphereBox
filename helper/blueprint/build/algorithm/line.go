@@ -418,17 +418,40 @@ func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bo
 		return false
 	}
 	encoding := newPlanarRuleEncoding()
-	origin := vector{belt.a.x * planarGridLength, belt.a.z*1.3333333 + .2, belt.a.y * planarGridLength}
+	toWorld := func(point vector) placement.Vector {
+		return placement.Vector{point.x * planarGridLength, point.z*1.3333333 + .2, point.y * planarGridLength}
+	}
+	yaw := belt.record.Yaw
+	if b.polarFrame != nil {
+		encoding = &surfaceEncoding{}
+		toWorld = func(point vector) placement.Vector { return b.polarFrame.world(point, 0) }
+		point := toWorld(belt.a)
+		direction := placement.Vector{}
+		if before := incoming[belt]; before != nil {
+			direction = direction.Add(surfaceUnit(point.Sub(toWorld(before.a))))
+		}
+		if after := belt.output; after != nil && surfaceIsBelt(after.record.ItemID) {
+			direction = direction.Add(surfaceUnit(toWorld(after.a).Sub(point)))
+		}
+		pose, err := encoding.recordPose(vector{point[0], point[1], point[2]}, 0, 0, 0)
+		if err != nil {
+			return false
+		}
+		x, y := direction.Dot(pose.axes[0]), direction.Dot(pose.axes[2])
+		if math.Hypot(x, y) < 1e-6 {
+			return false
+		}
+		yaw = float32(math.Mod(math.Atan2(x, y)*180/math.Pi+360, 360))
+	}
+	point := toWorld(belt.a)
+	origin := vector{point[0], point[1], point[2]}
 	monitorBoxes := make([]placement.Box, 0, len(monitorShapes))
 	for _, shape := range monitorShapes {
-		box, err := encoding.colliderBox(origin, belt.record.Yaw, shape)
+		box, err := encoding.colliderBox(origin, yaw, shape)
 		if err != nil {
 			return false
 		}
 		monitorBoxes = append(monitorBoxes, box)
-	}
-	toWorld := func(point vector) placement.Vector {
-		return placement.Vector{point.x * planarGridLength, point.z*1.3333333 + .2, point.y * planarGridLength}
 	}
 	for index, other := range existing {
 		if index%64 == 0 && b.checkGeneration("流速监测器选点") != nil {
@@ -440,13 +463,14 @@ func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bo
 		if surfaceIsBelt(other.record.ItemID) {
 			// 与终检使用相同的0.2米节点抬升及缩短胶囊，低层轨道不能只测未抬升的节点中心。
 			point := toWorld(other.a)
-			center := point.Add(placement.Vector{0, .2, 0})
+			lift := encoding.localUp(point).Scale(.2)
+			center := point.Add(lift)
 			first, second := center, center
 			if before, after := incoming[other], other.output; before != nil && after != nil && surfaceIsBelt(after.record.ItemID) {
 				first = point.Add(toWorld(before.a).Sub(point).Scale(.65))
 				second = point.Add(toWorld(after.a).Sub(point).Scale(.65))
 				delta := second.Sub(first).Scale(.45)
-				first, second = first.Add(delta).Add(placement.Vector{0, .2, 0}), second.Sub(delta).Add(placement.Vector{0, .2, 0})
+				first, second = first.Add(delta).Add(lift), second.Sub(delta).Add(lift)
 			}
 			for _, box := range monitorBoxes {
 				if box.SegmentDistanceSquared(center, center) < .23*.23 && box.SegmentDistanceSquared(first, second) < .23*.23 {

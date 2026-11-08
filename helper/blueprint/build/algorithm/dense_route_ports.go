@@ -19,7 +19,9 @@ const denseRouteMaximumSpan = 2.15
 
 // denseRoutePortIndex 职责：索引当前真实静态盒和带节点；使用：分数接驳及整数边检查；边界：普通模式额外检查带段交叉，超密度保留原路由规则。
 type denseRoutePortIndex struct {
-	boxes []connectedPackingShape
+	// polarFrame 职责：令所有距离及静态盒使用同一原生球面；使用：跨子环接线；边界：nil仍用既有平面预检。
+	polarFrame *densePolarFrame
+	boxes      []connectedPackingShape
 	// strictBelts 职责：普通布局寻路时禁止与已提交的独立带段相交；使用：共享塔/配送全场候选；边界：超密度保留原带段规则，最终仍统一验收。
 	strictBelts bool
 	belts       []surfaceBeltSpan
@@ -45,6 +47,11 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 	}
 	index := &denseRoutePortIndex{strictBelts: b.adapter != nil && b.adapter.density == densityStandard, cells: map[[3]int][]int{}, nodes: map[[3]int][]*placed{}, previous: map[*placed][]*placed{}, edges: map[[2]vector]bool{}, registered: map[*placed]bool{}, beltCells: map[[3]int][]int{}, beltEdges: map[[2]*placed]bool{}}
 	encoding := newPlanarRuleEncoding()
+	if b.polarFrame != nil {
+		frame := *b.polarFrame
+		index.polarFrame = &frame
+		encoding = &surfaceEncoding{}
+	}
 	for _, entity := range b.all {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -57,6 +64,9 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 			return nil, err
 		}
 		origin := placement.Vector{entity.a.x * planarGridLength, entity.a.z*1.3333333 + .2, entity.a.y * planarGridLength}
+		if index.polarFrame != nil {
+			origin = index.polarFrame.world(entity.a, 0)
+		}
 		for _, collider := range shapes {
 			box, err := encoding.colliderBox(vector{origin[0], origin[1], origin[2]}, entity.record.Yaw, collider)
 			if err != nil {
@@ -87,6 +97,14 @@ func denseRouteWorld(p vector) placement.Vector {
 	return placement.Vector{p.x * planarGridLength, p.z*1.3333333 + .4, p.y * planarGridLength}
 }
 
+// world 职责：在索引固定坐标系内计算带节点中心；使用：全部边和净距检查；边界：不能混用平面盒和球面点。
+func (index *denseRoutePortIndex) world(p vector) placement.Vector {
+	if index.polarFrame != nil {
+		return index.polarFrame.world(p, .2)
+	}
+	return denseRouteWorld(p)
+}
+
 // denseRouteNodeCell 职责：索引带节点所在的八米空间桶；使用：动态占位；边界：查询会枚举净距球覆盖的所有桶。
 func denseRouteNodeCell(p placement.Vector) [3]int {
 	return [3]int{int(math.Floor(p[0] / 8)), int(math.Floor(p[1] / 8)), int(math.Floor(p[2] / 8))}
@@ -102,7 +120,7 @@ func (index *denseRoutePortIndex) addNode(p *placed) {
 		return
 	}
 	index.registered[p] = true
-	cell := denseRouteNodeCell(denseRouteWorld(p.a))
+	cell := denseRouteNodeCell(index.world(p.a))
 	index.nodes[cell] = append(index.nodes[cell], p)
 }
 
@@ -116,7 +134,7 @@ func (index *denseRoutePortIndex) addBeltSpan(p *placed) {
 		return
 	}
 	index.beltEdges[key] = true
-	first, second := denseRouteWorld(p.a), denseRouteWorld(p.output.a)
+	first, second := index.world(p.a), index.world(p.output.a)
 	span := connectedBeltShape(first, second)
 	index.belts = append(index.belts, span.span)
 	number := len(index.belts) - 1
@@ -131,7 +149,7 @@ func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
 	if !index.strictBelts {
 		return true
 	}
-	a, c := denseRouteWorld(first), denseRouteWorld(second)
+	a, c := index.world(first), index.world(second)
 	candidate := connectedBeltShape(a, c)
 	seen := map[int]bool{}
 	clear := connectedShapeCells(candidate, func(cell [3]int) bool {
@@ -155,7 +173,7 @@ func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
 
 // nodeClear 职责：检查新节点不会被现有带自动合并；使用：分数接驳；边界：只豁免明确复用的已有端点自身，不豁免其它同物料节点。
 func (index *denseRoutePortIndex) nodeClear(p vector, reused *placed) bool {
-	world := denseRouteWorld(p)
+	world := index.world(p)
 	padding := placement.Vector{denseRouteNodeClearance, denseRouteNodeClearance, denseRouteNodeClearance}
 	low, high := denseRouteNodeCell(world.Sub(padding)), denseRouteNodeCell(world.Add(padding))
 	for x := low[0]; x <= high[0]; x++ {
@@ -165,7 +183,7 @@ func (index *denseRoutePortIndex) nodeClear(p vector, reused *placed) bool {
 					if existing == reused && existing.a == p {
 						continue
 					}
-					delta := world.Sub(denseRouteWorld(existing.a))
+					delta := world.Sub(index.world(existing.a))
 					if delta.Dot(delta) < denseRouteNodeClearance*denseRouteNodeClearance-1e-9 {
 						return false
 					}
@@ -202,7 +220,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 			return clear && index.beltSpanClear(first, second)
 		}
 	}
-	a, c := denseRouteWorld(first), denseRouteWorld(second)
+	a, c := index.world(first), index.world(second)
 	delta := a.Sub(c)
 	lengthSquared := delta.Dot(delta)
 	clear := lengthSquared >= denseRouteNodeClearance*denseRouteNodeClearance-1e-9 && lengthSquared <= denseRouteMaximumSpan*denseRouteMaximumSpan+1e-9
@@ -227,7 +245,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 					clear = false
 					break
 				}
-				if n < len(index.origins) && math.Min(a[1], c[1]) > index.boxes[n].high[1] {
+				if index.polarFrame == nil && n < len(index.origins) && math.Min(a[1], c[1]) > index.boxes[n].high[1] {
 					firstCurved := denseRouteCurvedPoint(a, index.origins[n])
 					secondCurved := denseRouteCurvedPoint(c, index.origins[n])
 					if index.boxes[n].box.SegmentDistanceSquared(firstCurved, secondCurved) < .23*.23-1e-6 {
@@ -338,7 +356,7 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 			return false
 		}
 		for _, previous := range path {
-			delta := denseRouteWorld(previous).Sub(denseRouteWorld(p))
+			delta := index.world(previous).Sub(index.world(p))
 			if delta.Dot(delta) < denseRouteNodeClearance*denseRouteNodeClearance-1e-9 {
 				return false
 			}
@@ -473,7 +491,7 @@ func (env *transportEnvironment) densePathClear(points []vector, source, target 
 			}
 		}
 		for j := 0; j < i; j++ {
-			delta := denseRouteWorld(point).Sub(denseRouteWorld(points[j]))
+			delta := env.densePorts.world(point).Sub(env.densePorts.world(points[j]))
 			if delta.Dot(delta) < denseRouteNodeClearance*denseRouteNodeClearance-1e-9 {
 				return false
 			}
@@ -517,7 +535,7 @@ func (env *transportEnvironment) findDenseTransportPath(ctx context.Context, rou
 			added := map[vector]bool{}
 			for _, point := range prefix.points[1 : len(prefix.points)-1] {
 				cells := map[vector]bool{}
-				blockDenseBeltNode(cells, point)
+				env.densePorts.blockNode(cells, point)
 				for cell := range cells {
 					if cell != start && !env.blocked[cell] {
 						env.blocked[cell], added[cell] = true, true

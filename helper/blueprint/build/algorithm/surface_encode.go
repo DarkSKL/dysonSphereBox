@@ -16,6 +16,8 @@ import (
 
 // surfaceEncoding 职责：保存整块平面蓝图的区域和候选锚点；使用：finish 的共同出口；边界：建筑仍按原顺序编号。
 type surfaceEncoding struct {
+	// rootCoordinates 职责：使用游戏原生跨区捕获的主区域实体坐标；使用：极区多Area；边界：完整实体包络仍由plan覆盖，不能隐瞒越出第5档的建筑。
+	rootCoordinates bool
 	// planar 职责：选择等赤道格长的切平面规则；使用：旧平面请求的数值预检；边界：不冒充球面映射或实际粘贴验证。
 	planar bool
 	// packed 职责：标记已重排完整产线块；使用：防止几何失败后重复装箱；边界：单 Area 的重排也为 true。
@@ -48,6 +50,9 @@ func (b *builder) prepareSurfaceEncodingContext(ctx context.Context, layout *Sur
 	}
 	if b.surfaceBusEncoding != nil {
 		return b.surfaceBusEncoding, nil
+	}
+	if layout.polarRoot {
+		return b.preparePolarRootEncoding(ctx, layout)
 	}
 	layout = b.denseLatitudeAssemblyLayout(layout)
 	b.scaleNativeLatitudeLayout(layout)
@@ -206,6 +211,15 @@ func (encoding *surfaceEncoding) validateAnchorCandidates(ctx context.Context, r
 // applyRecords 职责：将最终编号记录转换为所属 Area 的 float32 局部坐标；使用：编码前；边界：不改变连接编号或原始装配视图，量化后越界拒绝。
 func (encoding *surfaceEncoding) applyRecords(all []*placed, records []blueprint.Building) error {
 	for i, p := range all {
+		if encoding.rootCoordinates {
+			records[i].AreaIndex = 0
+			for _, point := range []blueprint.Point{records[i].LocalOffset, records[i].LocalOffset2} {
+				if point.X < 0 || point.Y < 0 || point.X > float32(encoding.plan.LayoutWidth-1) || point.Y > float32(encoding.plan.LayoutHeight-1) {
+					return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "跨子环实体超出完整极区包络"}
+				}
+			}
+			continue
+		}
 		band, exists := encoding.byBuilding[p]
 		if !exists {
 			return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "建筑缺少所属区域"}

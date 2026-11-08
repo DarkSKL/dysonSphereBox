@@ -293,6 +293,9 @@ func (index *connectedPowerIndex) insideArea(point vector) bool {
 
 // areaAt 职责：把装配坐标解析到唯一可编码的纬带；使用：最终补电候选与新增塔归属；边界：保留各 Area 经度比例及纬向原点，纬带缝隙不伪造落点。
 func (index *connectedPowerIndex) areaAt(point vector) (int, bool) {
+	if index.encoding.rootCoordinates {
+		return 0, point.x >= 0 && point.y >= 0 && point.x <= float64(index.encoding.plan.LayoutWidth-1) && point.y <= float64(index.encoding.plan.LayoutHeight-1)
+	}
 	for i, area := range index.encoding.areas {
 		x, y := point.x, point.y-float64(index.encoding.latitudeOffsets[i])
 		if len(index.encoding.longitudeScales) > 0 {
@@ -393,6 +396,9 @@ func (index *connectedPowerIndex) add(entity *placed) error {
 			area, valid := index.areaAt(entity.a)
 			if !valid {
 				return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "新增感应塔缺少合法最终区域"}
+			}
+			if index.encoding.rootCoordinates {
+				area = 0
 			}
 			index.encoding.byBuilding[entity] = area
 		}

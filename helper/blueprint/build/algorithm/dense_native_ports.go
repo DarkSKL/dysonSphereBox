@@ -14,7 +14,7 @@ import (
 
 // alignNativeInserterPorts 职责：按真实槽位调整不合法臂端点并重标定货物采样；使用：已定位的单Area整厂；边界：完整校验成功才提交，失败恢复全部引用与端点。
 func (b *builder) alignNativeInserterPorts(ctx context.Context, encoding *surfaceEncoding, records []blueprint.Building) (result []blueprint.Building, err error) {
-	if encoding == nil || encoding.planar || encoding.plan == nil || encoding.plan.GridSegment != 200 || encoding.plan.PrimaryAreaIndex != 0 || len(encoding.areas) != 1 || encoding.relocation != nil || len(records) != len(b.all) || len(records) == 0 {
+	if encoding == nil || encoding.planar || encoding.plan == nil || encoding.plan.GridSegment != 200 || encoding.plan.PrimaryAreaIndex != 0 || (len(encoding.areas) != 1 && !encoding.rootCoordinates) || encoding.relocation != nil || len(records) != len(b.all) || len(records) == 0 {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "原生端口适配需要已定位的200分段单Area实体"}
 	}
 	if int(encoding.areas[0].AreaSegments) != longitudeSegmentCount(encoding.plan.AnchorLatitudeGrid, 200) || !candidateFitsRing(encoding.plan.AnchorLatitudeGrid, 0, int(encoding.areas[0].Height)-1, int(encoding.areas[0].Width), 200) {

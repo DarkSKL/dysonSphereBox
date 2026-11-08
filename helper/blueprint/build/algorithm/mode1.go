@@ -583,6 +583,9 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			low, _ := bounds(b.all)
 			shift(b.all, -math.Floor(low.x), -math.Floor(low.y), 0)
 		}
+		if err := b.placePolarUnitFrames(ctx, denseUnits); err != nil {
+			return err
+		}
 	}
 	// 规范边全部接好后已成为整体物理图，不能再由旧的逐产线块装箱移动并拉断跨块路线。
 	b.surfaceBlocks = nil

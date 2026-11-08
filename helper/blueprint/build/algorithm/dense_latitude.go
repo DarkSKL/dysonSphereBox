@@ -63,9 +63,9 @@ func DensityLatitudeOptions() []DensityLatitudeOption {
 			continue
 		}
 		options[i].Tier, options[i].Position = selection.tier, selection.position
-		if bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, defaultSurfaceGridSegment); len(bands) == 1 {
+		if bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, defaultSurfaceGridSegment); len(bands) > 0 {
 			options[i].LatitudeLow = (float64(bands[0].low) - 0.5) * degreesPerRow
-			options[i].LatitudeHigh = (float64(bands[0].high) + 0.5) * degreesPerRow
+			options[i].LatitudeHigh = (float64(bands[len(bands)-1].high) + 0.5) * degreesPerRow
 		}
 	}
 	return options
@@ -90,11 +90,17 @@ func densityLatitudeOptionLabels() []DensityLatitudeOption {
 		{Value: "south-high", Label: "第3档 · 南半球 · 南边缘", Description: "第3档远离赤道的一侧；兼容原南半球高纬选项。"},
 		{Value: "ring3-south-north", Label: "第3档 · 南半球 · 北边缘", Description: "第3档靠近赤道的一侧；整图保持在本圈内。"},
 	}
-	for _, hemisphere := range []string{"north", "south"} {
-		for _, position := range []string{"center", "south", "north"} {
-			key := "ring4-" + hemisphere + "-" + position
-			selection, _ := densityLatitudeSelectionFor(key)
-			options = append(options, DensityLatitudeOption{Value: key, Label: selection.label(), Description: "第4档环宽25格；按原生格距适配间距，按蓝图给出的光标范围放置。"})
+	for tier := 4; tier <= 5; tier++ {
+		for _, hemisphere := range []string{"north", "south"} {
+			for _, position := range []string{"center", "south", "north"} {
+				key := fmt.Sprintf("ring%d-%s-%s", tier, hemisphere, position)
+				selection, _ := densityLatitudeSelectionFor(key)
+				description := "第4档环宽25格；按原生格距适配间距，按蓝图给出的光标范围放置。"
+				if tier == 5 {
+					description = "极区圆心环；建筑和线路随纬线弧度排列，按蓝图给出的默认方向起点放置。"
+				}
+				options = append(options, DensityLatitudeOption{Value: key, Label: selection.label(), Description: description})
+			}
 		}
 	}
 	return options
@@ -204,8 +210,32 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "所选建造区域没有经过球面布局校验"}
 	}
 	for _, area := range plan.Bands {
-		if area.MinLatitudeGrid < band.low || area.MaxLatitudeGrid > band.high || area.LongitudeSegments != band.segments {
+		validSegments := area.LongitudeSegments == band.segments
+		if layout.polarRoot {
+			selection, _ := densityLatitudeSelectionFor(layout.LatitudeZone)
+			for _, native := range densityLatitudeTierBands(5, selection.hemisphere, 200) {
+				if area.MinLatitudeGrid >= native.low && area.MaxLatitudeGrid <= native.high && area.LongitudeSegments == native.segments {
+					validSegments = true
+					break
+				}
+			}
+		}
+		if area.MinLatitudeGrid < band.low || area.MaxLatitudeGrid > band.high || !validSegments {
 			return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("完整蓝图超出%s，请降低产量或选择更宽的建造位置", label)}
+		}
+	}
+	if selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone); ok && selection.tier == 5 {
+		regions := densityLatitudeTierBands(5, selection.hemisphere, layout.GridSegment)
+		south, north := regions[0].low, regions[len(regions)-1].high
+		first, last := plan.AnchorLatitudeGrid, plan.AnchorLatitudeGrid+plan.LayoutHeight-1
+		valid := math.Abs(float64(first+last-south-north)/2) <= 5
+		if selection.position == "south" {
+			valid = first >= south && first-south <= 4
+		} else if selection.position == "north" {
+			valid = last <= north && north-last <= 4
+		}
+		if !valid {
+			return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "极区候选偏离所选中心或边缘，拒绝以其它子环代替"}
 		}
 	}
 	plan.LatitudeZone, plan.LatitudeZoneLabel = layout.LatitudeZone, label

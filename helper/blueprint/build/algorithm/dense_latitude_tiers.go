@@ -22,6 +22,13 @@ func (selection densityLatitudeSelection) label() string {
 	} else if selection.hemisphere < 0 {
 		region = "南半球"
 	}
+	if selection.tier == 5 {
+		if selection.hemisphere > 0 {
+			region = "北极区"
+		} else {
+			region = "南极区"
+		}
+	}
 	position := map[string]string{"center": "中心", "north": "北边缘", "south": "南边缘"}[selection.position]
 	return fmt.Sprintf("第%d档 · %s · %s", selection.tier, region, position)
 }

@@ -174,7 +174,9 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	minimum, maximum := bounds(b.all)
 	var buildingBlocked map[vector]bool
 	var err error
-	if b.denseSpatial {
+	if b.polarFrame != nil {
+		buildingBlocked = map[vector]bool{}
+	} else if b.denseSpatial {
 		buildingBlocked, err = denseTransportObstacles(ctx, b.all)
 	} else {
 		buildingBlocked, err = stationBuildingObstacles(ctx, b.all)
@@ -183,6 +185,10 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		return err
 	}
 	env := &transportEnvironment{blocked: buildingBlocked, reserved: map[vector]map[*placed]bool{}, cache: map[transportPathCacheKey][]vector{}, minimum: vector{math.Floor(minimum.x) - 8, math.Floor(minimum.y) - 8, 0}, maximum: vector{math.Ceil(maximum.x) + 8, math.Ceil(maximum.y) + 8, transportMaxHeight}, preferCorridor: preferCorridor, beltCorridors: map[[2]int]bool{}}
+	if b.polarFrame != nil {
+		env.minimum.x = math.Max(env.minimum.x, -8)
+		env.maximum.x = math.Min(env.maximum.x, b.polarFrame.longitudeLimit()+8)
+	}
 	if b.denseSpatial && b.denseLatitudeSpan > 0 {
 		env.minimum.y = math.Max(env.minimum.y, 0)
 		env.maximum.y = math.Min(env.maximum.y, b.denseLatitudeSpan-1)
@@ -197,7 +203,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	for _, p := range b.all {
 		if surfaceIsBelt(p.record.ItemID) {
 			if b.denseSpatial {
-				blockDenseBeltNode(env.blocked, p.a)
+				env.densePorts.blockNode(env.blocked, p.a)
 			} else {
 				env.blocked[beltCell(p.a)] = true
 			}
@@ -433,7 +439,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		}
 		for _, point := range points {
 			if b.denseSpatial {
-				blockDenseBeltNode(env.blocked, point)
+				env.densePorts.blockNode(env.blocked, point)
 			} else {
 				env.blocked[beltCell(point)] = true
 			}

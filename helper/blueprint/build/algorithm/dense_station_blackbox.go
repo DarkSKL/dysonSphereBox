@@ -131,7 +131,9 @@ func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contra
 	begin := len(b.all)
 	b.owner = -1
 	ports := []denseStreetPort{}
+	units := []denseSpatialUnit{}
 	for i := range plan.towers {
+		unitBegin, portBegin := len(b.all), len(ports)
 		stock := &plan.towers[i]
 		stock.tower = b.createStation(vector{float64(i%columns)*pitch + 5, float64(i/columns)*pitch + 5, 0}, stock.items, config)
 		for slot := 0; slot < 12; slot++ {
@@ -178,8 +180,12 @@ func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contra
 			b.stationLinks = append(b.stationLinks, stationTransportLink{item: route.edge.ItemID, output: output, tower: stock.tower, belt: last, slot: slot, head: head, path: append([]*placed(nil), belts[1:]...), owner: owner, rate: route.rate})
 			ports = append(ports, denseStreetPort{item: route.edge.ItemID, input: output, head: head, inner: belts[1]})
 		}
+		units = append(units, denseSpatialUnit{entities: append([]*placed(nil), b.all[unitBegin:]...), ports: append([]denseStreetPort(nil), ports[portBegin:]...)})
 	}
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-station-facility-bound", Status: "passed", Message: fmt.Sprintf("仅对外%d类供需库存；按所选带速聚合的物料下界%d塔/至少%d带口，当前%d条独立边界lane下界%d塔，实际%d塔；库存槽%d、每塔12口；当前lane分配最少塔搜索证明=%t。内部中间流不占塔槽，未假设运输站堆叠科技", plan.roleCount, plan.materialLowerBound, plan.minimumPorts, len(plan.routes), plan.laneLowerBound, len(plan.towers), config.ItemSlots, plan.proven)})
+	if polar, _ := ctx.Value(densityPolarRootKey{}).(bool); polar {
+		return units, nil
+	}
 	return []denseSpatialUnit{{entities: append([]*placed(nil), b.all[begin:]...), ports: ports}}, nil
 }
 

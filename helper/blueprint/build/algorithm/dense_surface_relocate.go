@@ -317,6 +317,9 @@ func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request,
 	anchor := encoding.plan.AnchorLatitudeGrid
 	safe := []int{anchor}
 	for _, direction := range []int{-1, 1} {
+		if encoding.rootCoordinates {
+			break
+		}
 		for next := anchor + direction; next >= band.low && next+int(encoding.areas[0].Height)-1 <= band.high; next += direction {
 			trial, plan := *encoding, *encoding.plan
 			plan.AnchorLatitudeGrid, plan.BeltConnectionsChecked, plan.StaticCollidersChecked, plan.CollisionCoverage = next, false, false, "none"

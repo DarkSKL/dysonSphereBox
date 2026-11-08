@@ -26,6 +26,8 @@ type placed struct {
 	densityCargo denseCargoTarget
 	// nativeInserterSpan 职责：保存当前原生端点实测跨度；使用：已通过完整几何的本地能力复核；边界：仅高纬适配事务写入。
 	nativeInserterSpan int32
+	// nativeUnitScale 职责：保存原生局部单元的经向格距补偿；使用：箱体槽位证明；边界：不代表碰撞已通过。
+	nativeUnitScale float64
 	// densityPattern 职责：记录实际机器局部布局来源；使用：获选候选的密度报告；边界：仅生成器写入，不能由请求自证。
 	densityPattern string
 	// previewID 职责：保存可选任务内对象身份；使用：临时预览增量；边界：不参与记录编号、连接或几何判断。
@@ -147,6 +149,8 @@ type builder struct {
 	nativeLatitudeScaled bool
 	// nativeLongitudeScale 职责：保存本次原生经向补偿；使用：设施槽位及独立出口一致性检查；边界：没有开启补偿时不用此值。
 	nativeLongitudeScale float64
+	// polarFrame 职责：固定路由与最终编码共用的极区坐标基；使用：原生单元布局；边界：不跨生成请求共享。
+	polarFrame *densePolarFrame
 	// nativeCapacityReserve 职责：为高纬配送回退候选预留三格实际跨度的并联臂数；使用：容量回退；边界：仍按最终实体重新核算，不提高单臂能力。
 	nativeCapacityReserve bool
 	// denseSpatialOrder 职责：选择全场装配顺序；使用：有界密铺比较；边界：只改变空间顺序，不改变物料份额。

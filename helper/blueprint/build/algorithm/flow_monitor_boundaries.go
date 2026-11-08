@@ -250,6 +250,29 @@ func boundaryFlowMonitorMatches(host, entity *placed) bool {
 
 // validateBoundaryFlowMonitorLayout 职责：对监测器和补电后的全局实体重新执行静态、动态及供电规则；使用：入口监测收尾；边界：切平面预检不能替代 finish 的实际球面和游戏放置审计。
 func (b *builder) validateBoundaryFlowMonitorLayout(ctx context.Context) error {
+	if b.polarFrame != nil {
+		// 极区已经在原生球面落位，不能再按切平面把格坐标当作等距坐标检查整厂。
+		zone, _ := ctx.Value(densityLatitudeKey{}).(string)
+		layout := &SurfaceLayout{Mode: "autoTropic", GridSegment: 200, LatitudeZone: zone, polarRoot: true}
+		encoding, err := b.preparePolarRootEncoding(ctx, layout)
+		if err != nil {
+			return err
+		}
+		records, _, _, err := b.records()
+		if err != nil {
+			return err
+		}
+		if err := encoding.applyRecords(b.all, records); err != nil {
+			return err
+		}
+		if _, err := b.validateNativeSurfaceCandidates(ctx, Request{Density: densityDense, SurfaceLayout: layout}, encoding, records); err != nil {
+			return err
+		}
+		if b.setting.NeedPower == nil || *b.setting.NeedPower {
+			_, err = validateFinalPowerCoverage(ctx, encoding, records)
+		}
+		return err
+	}
 	records, _, _, err := b.records()
 	if err != nil {
 		return err

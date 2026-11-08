@@ -12,3 +12,5 @@ build
 !helper/blueprint/build/**
 /runtime-shots
 .local
+.tmp
+.idea

@@ -367,6 +367,9 @@ func (b *builder) validateFlyFacilityLink(endpoint *flyTransportEndpoint, mode i
 		point, ok := storageSlotPoint(endpoint.box.a, endpoint.box.record.Yaw, int(slot))
 		if b.nativeLatitudeScaled {
 			scale := b.nativeLongitudeScale
+			if endpoint.box.nativeUnitScale > 0 {
+				scale = endpoint.box.nativeUnitScale
+			}
 			point.x = endpoint.box.a.x + (point.x-endpoint.box.a.x)*scale
 		}
 		if !ok || !flySamePoint(point, boxPoint) || !flySamePoint(belt.a, beltPoint) {

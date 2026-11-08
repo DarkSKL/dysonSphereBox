@@ -226,11 +226,12 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 	strictHeight := b.denseLatitudeSpan > 0
 	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
 	selection, selected := densityLatitudeSelectionFor(zone)
+	polarRoot, _ := ctx.Value(densityPolarRootKey{}).(bool)
 	// 窄纬只限制纬向容量，经向预算按实体总占地估算；普通共享布局保留原策略。
 	if selected && selection.tier >= 3 && (b.adapter == nil || b.adapter.density == densityDense) {
 		strictHeight = true
 		// 直连原料入口和配送边界需要更多纬向接线余量；避免较宽核心挤掉内部直连而退回逐物料配送。
-		if b.adapter != nil && b.adapter.mode <= 2 {
+		if b.adapter != nil && b.adapter.mode <= 2 && !polarRoot {
 			heightLimit = math.Min(heightLimit, 17)
 		}
 	}
@@ -273,6 +274,11 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 			}
 			low, high := bounds(unit.entities)
 			width, height := math.Ceil(high.x)-math.Floor(low.x)+1, math.Ceil(high.y)-math.Floor(low.y)+1
+			// 极区单元沿纬线展开，避免纵向长列的统一格距补偿把赤道侧长臂拉出实际范围。
+			if polarRoot && height > width {
+				rotatePlacedQuarter(unit.entities, 1)
+				continue
+			}
 			if strictHeight && height > heightLimit+1e-6 {
 				rotatePlacedQuarter(unit.entities, 1)
 				continue
@@ -283,8 +289,17 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 				maxX, maxY = 0, 0
 			}
 			attempts := 0
+			columns := maxX + 1
+			if columns*(maxY+1) > 8192 {
+				// 大厂仍保留同一搜索预算，但覆盖完整纬向范围；不能把预算全部耗在前几行。
+				columns = max(2, 8192/(maxY+1))
+			}
 			for y := 0; y <= maxY && attempts < 8192; y++ {
-				for x := 0; x <= maxX && attempts < 8192; x++ {
+				for column := 0; column < columns && attempts < 8192; column++ {
+					x := column
+					if columns < maxX+1 {
+						x = column * maxX / (columns - 1)
+					}
 					attempts++
 					if err := b.checkGeneration("全场实体密铺位置搜索"); err != nil {
 						rotatePlacedQuarter(unit.entities, 4-turns)
