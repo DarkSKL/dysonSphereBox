@@ -254,6 +254,28 @@ func (b *builder) refineryLayoutFootprint() (*[2]vector, error) {
 
 // layoutDenseSpatialRows 职责：使用实际获选局部模板的重复节距细分容量组；使用：直连、配送和塔候选；边界：各原单带组独立守恒，不改变产线总数或带速。
 func (b *builder) layoutDenseSpatialRows(p quant.Production, r quant.Recipe, counts []int, maxSpan float64) ([]int, error) {
+	if b.referenceChemicalFourEligible(p, r) {
+		pitch, err := referenceLineSpacing(p.MachineType, b.setting.extraSpace(p.MachineType))
+		if err != nil {
+			return nil, err
+		}
+		limit := 2 * max(1, int(math.Floor(maxSpan/pitch))+1)
+		result := []int{}
+		for _, count := range counts {
+			if count < 1 {
+				return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "化工容量组缺少真实机器"}
+			}
+			parts := (count + limit - 1) / limit
+			for i := 0; i < parts; i++ {
+				n := count / parts
+				if i < count%parts {
+					n++
+				}
+				result = append(result, n)
+			}
+		}
+		return result, nil
+	}
 	if !b.denseRefineryEligible(p, r) {
 		return denseSpatialRowCounts(p, r, b.setting, counts, maxSpan)
 	}

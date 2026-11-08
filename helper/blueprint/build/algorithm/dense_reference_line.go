@@ -117,7 +117,7 @@ func (b *builder) buildReferenceLowLine(p quant.Production, r quant.Recipe, coun
 		return nil, err
 	}
 	rowMargin, secondRowX := .04, 0.
-	if len(r.Items)+len(r.Results) == 3 {
+	if len(r.Items)+len(r.Results) >= 3 {
 		rowMargin = 1.2
 		if p.MachineType == 2 && len(r.Items) == 2 {
 			rowMargin = .4
@@ -249,12 +249,17 @@ func (b *builder) buildReferenceLowLine(p quant.Production, r quant.Recipe, coun
 			setDenseCargoTarget(arm, anchor, track, target, output)
 		}
 	}
-	if len(r.Items)+len(r.Results) == 3 {
+	if len(r.Items)+len(r.Results) >= 3 {
 		anchorIndex := 0
 		if len(r.Results) == 2 {
 			anchorIndex = 1
 		}
 		if err := b.appendReferenceThirdPort(l, anchors[anchorIndex], bandY, machineLeft, machineRight); err != nil {
+			return nil, err
+		}
+	}
+	if len(r.Items) == 3 && b.referenceChemicalFourEligible(p, r) {
+		if err := b.appendChemicalOuterPort(l); err != nil {
 			return nil, err
 		}
 	}

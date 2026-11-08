@@ -152,7 +152,7 @@ func (b *builder) relocateDenseSurface(ctx context.Context, req Request, source 
 	target, direction := band.high-int(source.areas[0].Height)+1, -1
 	selection, _ := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
 	center := selection.position == "center"
-	orthogonal := selection.tier <= 3 && (selection.tier > 1 || !center)
+	orthogonal := selection.tier <= 3
 	orientations := []bool{false}
 	if orthogonal && req.Mode != 1 {
 		// 塔与配送器没有固定左侧原料接口，可比较两个正交排向；北侧优先采用南侧布局的半周对称排向。

@@ -45,6 +45,16 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	if req.Plan.MachineCount >= 80 || narrowTier {
 		blackboxBudget = 7
 	}
+	regularBlackboxBudget := blackboxBudget
+	if !b.setting.EnableFlowMonitor {
+		for index, production := range input.Productions {
+			p, r := input.Plan.Productions[index], production.Recipe
+			if p.MachineType == 4 && denseReferenceSource(p.MachineID) == 2317 && p.IncreasePoints == 0 && len(r.Items) == 3 && len(r.Results) == 1 && !recipeHasMachineRecycle(r) && referenceSingleArmsSufficient(p, r, b.setting.InserterLv) {
+				blackboxBudget += 3
+				break
+			}
+		}
+	}
 	budget = fieldBudget + blackboxBudget
 	allPreviews := b.planCandidatePreviews(budget)
 	type stationEvaluation struct {
@@ -57,6 +67,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		indices := make([]int, blackboxBudget)
 		for index := range indices {
 			indices[index] = index
+			if index >= regularBlackboxBudget {
+				indices[index] = 7 + index - regularBlackboxBudget
+			}
 		}
 		previews := allPreviews[:blackboxBudget]
 		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {

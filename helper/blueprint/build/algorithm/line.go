@@ -123,6 +123,9 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	if b.denseRefineryEligible(p, r) {
 		return b.buildDenseRefineryLine(p, r, count, mode, lineIndex, last)
 	}
+	if b.referenceChemicalFourEligible(p, r) {
+		return b.buildReferenceLowLine(p, r, count, mode, lineIndex, last)
+	}
 	if b.referenceLowTrackEligible(p, r) {
 		return b.buildReferenceLowLine(p, r, count, mode, lineIndex, last)
 	}
