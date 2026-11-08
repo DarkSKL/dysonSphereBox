@@ -29,6 +29,15 @@ definePage({meta: {layout: 'main', title: '量化与蓝图', keepAlive: true}})
 const w = reactive(useQuantWorkspace())
 const fileInput = ref<HTMLInputElement | null>(null)
 const viewer = ref<ViewerPanelExpose | null>(null)
+// =============== 加载顺序 ===============
+// 说明：预览器先挂载并预加载 ESM，流程图等预览器真正渲染出画面（ready 事件）后再挂载。
+// 边界：预览折叠、渲染失败或存在错误时兜底放行，避免流程图永久空白。
+const previewerRendered = ref(false)
+const onPreviewerReady = (value: {buildingCount: number}): void => {
+  previewerRendered.value = true
+  w.onPreviewReady(value)
+}
+const flowGraphReady = computed(() => previewerRendered.value || !w.showPreview || w.previewState === 'error' || Boolean(w.error))
 // =============== 预览协调 ===============
 // 说明：把 Viewer 暴露的 beginPreview/applyPreviewDelta/commitPreview/discardPreview 注册给 workspace，
 // workspace 在生成时自动编排四步生命周期（begin → 提交生成 → 边收边 apply → commit / discard）。
@@ -112,9 +121,13 @@ const resizeByKey = (event: KeyboardEvent): void => {
     <n-alert v-if="w.error" type="error" closable class="bench-alert" @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
 
     <!-- ~ 上层：网格节点图 -->
+    <!-- * 加载顺序：等下方预览器真正渲染出画面后再挂载，确保预览器先于流程图完成加载 -->
     <div class="bench-graph">
-      <FlowCanvas v-model:selected="selectedNode" :w="w" class="graph-canvas" />
-      <InspectorPanel :w="w" :node="selectedData" @clear="selectedNode = null" />
+      <template v-if="flowGraphReady">
+        <FlowCanvas v-model:selected="selectedNode" :w="w" class="graph-canvas" />
+        <InspectorPanel :w="w" :node="selectedData" @clear="selectedNode = null" />
+      </template>
+      <div v-else class="graph-boot">正在等待蓝图预览渲染…</div>
     </div>
 
     <div class="bench-splitter" role="separator" aria-orientation="horizontal" aria-label="调整网格与预览高度" tabindex="0" :aria-valuenow="Math.round(split)" aria-valuemin="30" aria-valuemax="80" @pointerdown="startResize" @dblclick="split = 58" @keydown="resizeByKey"><span /></div>
@@ -140,8 +153,9 @@ const resizeByKey = (event: KeyboardEvent): void => {
       </header>
       <div class="preview-body">
         <div class="preview-stage">
-          <BlueprintViewerPanel v-if="w.active && w.code && w.showPreview" ref="viewer" :code="w.code" :revision="w.previewRevision" interactive :selected-buildings="w.previewStale ? [] : w.selectedBuildings" :focus-index="w.focusIndex" :focus-revision="w.focusRevision" @ready="w.onPreviewReady" @select="w.onBuildingSelect" @error="w.onPreviewError" />
-          <div v-else class="preview-empty">
+          <!-- * 加载顺序：预览器随页面激活即挂载并预加载 ESM（不再等 code），空态由下方覆盖层呈现 -->
+          <BlueprintViewerPanel v-if="w.active && w.showPreview" ref="viewer" :code="w.code" :revision="w.previewRevision" interactive :selected-buildings="w.previewStale ? [] : w.selectedBuildings" :focus-index="w.focusIndex" :focus-revision="w.focusRevision" @ready="onPreviewerReady" @select="w.onBuildingSelect" @error="w.onPreviewError" />
+          <div v-if="!w.code || !w.showPreview" class="preview-empty">
             <Sparkles :size="22" />
             <p v-if="w.code && !w.showPreview">{{ w.previewNotice || '预览已折叠' }}</p>
             <p v-else-if="w.generating">{{ w.generationProgress || '正在准备生成' }}…</p>
@@ -209,8 +223,11 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
 .preview-body { position: relative; display: flex; min-height: 0; flex: 1; }
 .preview-stage { position: relative; min-width: 0; flex: 1; }
-.preview-empty { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); font-size: 13px; }
+// 空态覆盖在已挂载的预览器之上：预览器随页面激活即预加载，无编码时由该层承接提示。
+.preview-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--ds-bg-panel); color: var(--ds-text-muted); font-size: 13px; }
 .preview-empty p { margin: 0; }
+// 预览器预加载期间占用网格区域，避免流程图抢先挂载导致初始化顺序倒置。
+.graph-boot { display: flex; flex: 1; align-items: center; justify-content: center; color: var(--ds-text-muted); font-size: 13px; }
 .preview-overlay { position: absolute; top: 10px; left: 50%; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 3px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; transform: translateX(-50%); pointer-events: none; }
 .muted { color: var(--ds-text-muted); font-size: 12px; line-height: 1.6; }
 .import-actions { display: flex; justify-content: space-between; margin: 16px 0; }

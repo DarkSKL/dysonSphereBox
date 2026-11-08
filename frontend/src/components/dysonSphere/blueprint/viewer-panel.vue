@@ -118,6 +118,16 @@ const withAppThemeIsolation = <T>(operation: () => T): T => {
 const ensureBlueprintEditor = (): Promise<BlueprintEditorModule> =>
   import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
 
+// 说明：组件挂载即预加载预览器 ESM，不等蓝图编码就绪，缩短首次渲染的等待时间。
+// 边界：只负责模块加载；实例创建仍由 loadCurrentBlueprint 在 code 就绪后执行，失败报错由该流程承担。
+const preloadBlueprintEditor = async (): Promise<void> => {
+  try {
+    await ensureBlueprintEditor()
+  } catch {
+    // 加载失败不在这里上报：code 就绪后 loadCurrentBlueprint 会走 error 事件。
+  }
+}
+
 // =============== 预览器生命周期 ===============
 // 说明：初始化、加载蓝图和同步尺寸都集中在这里，详情切换时复用实例刷新模型。
 // 边界：容器不可用或编码为空时不创建实例；组件卸载时释放 WebGL 资源。
@@ -346,6 +356,8 @@ const activate = async (): Promise<void> => {
     resizeObserver = new ResizeObserver(() => { if (!viewer.value && props.code && hasRenderableSize()) void loadCurrentBlueprint(); else resizeViewer() })
     if (containerRef.value) resizeObserver.observe(containerRef.value)
   }
+  // 先启动预览器模块预加载（不阻塞当前编码加载）；模块就绪后广播 boot
+  void preloadBlueprintEditor()
   await loadCurrentBlueprint()
 }
 onMounted(() => { void activate() })
