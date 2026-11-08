@@ -5,6 +5,7 @@ import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWork
 import type {FlowNodeData} from '../../../pages/services/dysonSphere/factory-graph'
 import IconSelect from './icon-select.vue'
 import ItemIcon from './item-icon.vue'
+import LatitudeGlobe from './latitude-globe.vue'
 import {generationDebugOptions} from '../../../composables/dysonSphere/useGenerationTimeline'
 
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
@@ -21,11 +22,10 @@ const equipmentGroups = computed(() => [
 ].filter(group => group.tiles.length > 0))
 const merges = [{label: '纵向单列', value: 1, icon: ''}, {label: '按宽度换列', value: 2, icon: ''}]
 const densityOptions: {label: string; value: 'standard' | 'dense'; code: string}[] = [{label: '普通', value: 'standard', code: 'STD'}, {label: '超密度', value: 'dense', code: 'DENSE'}]
-// 超密度经纬位置复用图标选择栏的括角外观；选项不显示图标，未提供选项时值为空以显示占位提示。
-const latitudeOptions = computed(() => props.w.denseLatitudeOptions.map(option => ({label: option.label, value: option.value, icon: ''})))
+// 超密度经纬位置由球体选择器呈现；纬带几何来自后端选项，未提供选项时值为空以显示占位提示。
 const latitudeZone = computed({
-  get: () => latitudeOptions.value.length ? props.w.denseLatitudeZone : null,
-  set: (value: string | number | null) => { if (typeof value === 'string') props.w.denseLatitudeZone = value },
+  get: () => props.w.denseLatitudeOptions.length ? props.w.denseLatitudeZone : null,
+  set: (value: string | null | undefined) => { if (typeof value === 'string') props.w.denseLatitudeZone = value },
 })
 const surfaceModes = [{label: '自动模式', value: 'autoTropic', icon: ''}, {label: '旧平面兼容', value: 'planar', icon: ''}]
 // 旧工作区的指定纬圈值在界面上归一到自动策略；后端仍保留旧值读取兼容。
@@ -185,8 +185,8 @@ const importedRows = computed(() => {
         </div>
         <template v-if="w.density === 'dense'">
           <!-- 经纬位置来自后端能力目录；旧后端不提供伪造选项。 -->
-          <div class="field-row">
-            <label class="field">经纬位置<IconSelect v-model:value="latitudeZone" size="small" :options="latitudeOptions" :loading="w.loadingDataset" :disabled="w.loadingDataset || !latitudeOptions.length" :placeholder="w.loadingDataset ? '读取位置…' : '后端需更新'" aria-label="超密度建造位置" /></label>
+          <div class="field">经纬位置
+            <LatitudeGlobe v-model:value="latitudeZone" :options="w.denseLatitudeOptions" :disabled="w.loadingDataset || !w.denseLatitudeOptions.length" :placeholder="w.loadingDataset ? '读取位置…' : '后端需更新'" />
           </div>
           <p v-if="w.denseLatitudeError && !w.loadingDataset" class="region-error" role="alert">{{ w.denseLatitudeError }}</p>
           <p v-else-if="w.denseLatitudeOption" class="surface-hint">{{ w.denseLatitudeOption.description }}</p>

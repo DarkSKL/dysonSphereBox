@@ -42,10 +42,37 @@ type DensityLatitudeOption struct {
 	Label string `json:"label"`
 	// Description 职责：说明区域位置及容量差异；使用：选项提示；边界：不是游戏放置保证。
 	Description string `json:"description"`
+	// Tier 职责：标示从赤道向两极的档位；使用：界面球体分档着色；边界：仅展示，不参与生成判定。
+	Tier int `json:"tier"`
+	// Position 职责：标示南北边缘或中心（center/north/south）；使用：界面在纬带内划分子区；边界：南北按地理方向定义。
+	Position string `json:"position"`
+	// LatitudeLow 职责：所属原生纬带南界纬度（度，南负北正）；使用：界面球体绘制真实纬带；边界：按200分段网格折算，仅展示。
+	LatitudeLow float64 `json:"latitudeLow"`
+	// LatitudeHigh 职责：所属原生纬带北界纬度（度）；使用：同 LatitudeLow；边界：同 LatitudeLow。
+	LatitudeHigh float64 `json:"latitudeHigh"`
 }
 
 // DensityLatitudeOptions 职责：返回支持的原版建造区域；使用：界面发现能力；边界：每次返回独立切片。
 func DensityLatitudeOptions() []DensityLatitudeOption {
+	options := densityLatitudeOptionLabels()
+	// 纬度按网格行边界折算：每行占 90/(segment*5/4) 度，纬带上下界各外扩半行，使相邻档无缝衔接。
+	degreesPerRow := 90 / float64(defaultSurfaceGridSegment*5/4)
+	for i := range options {
+		selection, ok := densityLatitudeSelectionFor(options[i].Value)
+		if !ok {
+			continue
+		}
+		options[i].Tier, options[i].Position = selection.tier, selection.position
+		if bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, defaultSurfaceGridSegment); len(bands) == 1 {
+			options[i].LatitudeLow = (float64(bands[0].low) - 0.5) * degreesPerRow
+			options[i].LatitudeHigh = (float64(bands[0].high) + 0.5) * degreesPerRow
+		}
+	}
+	return options
+}
+
+// densityLatitudeOptionLabels 职责：维护选区键与玩家可读文案；使用：DensityLatitudeOptions 补充几何前的基础表；边界：每次返回独立切片。
+func densityLatitudeOptionLabels() []DensityLatitudeOption {
 	return []DensityLatitudeOption{
 		{Value: "equator", Label: "第1档 · 赤道环 · 中心", Description: "最宽的赤道环中心；按最终已验证起点范围放置。"},
 		{Value: "equator-south", Label: "第1档 · 赤道环 · 南边缘", Description: "靠赤道环南侧分界线放置；保持默认方向。"},
@@ -76,7 +103,7 @@ func densityLatitudeBand(zone string, segment int) (surfacePackedBand, string, e
 		return surfacePackedBand{}, "", &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "该档位尚未接入对应的纬带生成方案"}
 	}
 	label := ""
-	for _, option := range DensityLatitudeOptions() {
+	for _, option := range densityLatitudeOptionLabels() {
 		if option.Value == zone {
 			label = option.Label
 		}

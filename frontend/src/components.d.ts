@@ -29,6 +29,7 @@ declare module 'vue' {
     DysonSphereFactoryIconSelect: typeof import('./components/dysonSphere/factory/icon-select.vue')['default']
     DysonSphereFactoryInspectorPanel: typeof import('./components/dysonSphere/factory/inspector-panel.vue')['default']
     DysonSphereFactoryItemIcon: typeof import('./components/dysonSphere/factory/item-icon.vue')['default']
+    DysonSphereFactoryLatitudeGlobe: typeof import('./components/dysonSphere/factory/latitude-globe.vue')['default']
     DysonSphereFactoryLogisticsSummary: typeof import('./components/dysonSphere/factory/logistics-summary.vue')['default']
     DysonSphereHeadlessServerHeroLottie: typeof import('./components/dysonSphere/headless/server-hero-lottie.vue')['default']
     DysonSphereHeadlessServiceStatusLottie: typeof import('./components/dysonSphere/headless/service-status-lottie.vue')['default']

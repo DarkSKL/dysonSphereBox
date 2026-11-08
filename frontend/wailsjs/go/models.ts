@@ -588,6 +588,10 @@ export namespace build {
 	    value: string;
 	    label: string;
 	    description: string;
+	    tier: number;
+	    position: string;
+	    latitudeLow: number;
+	    latitudeHigh: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new DensityLatitudeOption(source);
@@ -598,6 +602,10 @@ export namespace build {
 	        this.value = source["value"];
 	        this.label = source["label"];
 	        this.description = source["description"];
+	        this.tier = source["tier"];
+	        this.position = source["position"];
+	        this.latitudeLow = source["latitudeLow"];
+	        this.latitudeHigh = source["latitudeHigh"];
 	    }
 	}
 	export class DensityProductionReport {
