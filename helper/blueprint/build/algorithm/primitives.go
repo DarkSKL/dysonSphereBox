@@ -28,6 +28,8 @@ type placed struct {
 	nativeInserterSpan int32
 	// nativeUnitScale 职责：保存原生局部单元的经向格距补偿；使用：箱体槽位证明；边界：不代表碰撞已通过。
 	nativeUnitScale float64
+	// layoutFootprint 职责：保存已核对原型在Yaw零度下的局部格网外包；使用：旋转后的宽高预算；边界：只读共享，不替代真实建造盒。
+	layoutFootprint *[2]vector
 	// densityPattern 职责：记录实际机器局部布局来源；使用：获选候选的密度报告；边界：仅生成器写入，不能由请求自证。
 	densityPattern string
 	// previewID 职责：保存可选任务内对象身份；使用：临时预览增量；边界：不参与记录编号、连接或几何判断。
@@ -414,7 +416,7 @@ func bounds(all []*placed) (min, max vector) {
 	min = vector{math.Inf(1), math.Inf(1), math.Inf(1)}
 	max = vector{math.Inf(-1), math.Inf(-1), math.Inf(-1)}
 	for _, p := range all {
-		lo, hi := footprint(p.record.ItemID)
+		lo, hi := placedFootprint(p)
 		for _, v := range []vector{p.a, p.b, {p.a.x + lo.x, p.a.y + lo.y, p.a.z}, {p.a.x + hi.x, p.a.y + hi.y, p.a.z}} {
 			min.x = math.Min(min.x, v.x)
 			min.y = math.Min(min.y, v.y)

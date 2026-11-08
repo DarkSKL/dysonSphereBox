@@ -14,7 +14,7 @@ import (
 // denseLineSpacing 职责：提供基础密集单排实验节距；使用：局部机器和运输联合装配；边界：这些值不声明游戏已验证，最终碰撞失败不得退回普通结果。
 func denseLineSpacing(kind, extra int) (float64, error) {
 	// 炼油厂按270度朝向的7.2米建造盒取5.8格，对撞机按10.4米最大建造盒取8.8格。
-	// 这两类没有参考图中的低层轨道，使用独立物料带的紧凑单排，并继续执行完整终检。
+	// 未采用来源型同侧三轨的炼油候选及对撞机使用本基础单排，并继续执行完整终检。
 	pitch, ok := map[int]float64{1: 2.8, 2: 3.4, 3: 5.8, 4: 6.8, 5: 8.8, 6: 4.8}[kind]
 	if !ok {
 		return 0, &blueprint.Error{Code: "GEN_E_DENSITY_UNSUPPORTED", Message: fmt.Sprintf("机器类型 %d 尚无密集局部运输候选", kind)}

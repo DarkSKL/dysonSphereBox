@@ -44,7 +44,7 @@ type geometry struct {
 
 // line 职责：保留一条产线的入口/机器引用；使用：配送和总线装配；边界：归属由 builder 登记。
 type line struct {
-	// referenceLowTracks 职责：标识参考图的低双层带单元；使用：局部容量与供电；边界：不跳过最终规则。
+	// referenceLowTracks 职责：标识来源型紧凑轨道单元；使用：局部容量与供电；边界：包括低层轨道及同侧地面三轨，不跳过最终规则。
 	referenceLowTracks bool
 	// densePaired 职责：标识不可拆分的相向双排单元；使用：设施周边放置；边界：不能按独立机器行再次拆开。
 	densePaired bool
@@ -119,6 +119,9 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	}
 	if _, err := productionMaterialFlows(p, r); err != nil {
 		return nil, err
+	}
+	if b.denseRefineryEligible(p, r) {
+		return b.buildDenseRefineryLine(p, r, count, mode, lineIndex, last)
 	}
 	if b.referenceLowTrackEligible(p, r) {
 		return b.buildReferenceLowLine(p, r, count, mode, lineIndex, last)

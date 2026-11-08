@@ -85,10 +85,10 @@ func (b *builder) densityReport(req Request, code string, area float64) (*Densit
 		case "paired-rows":
 			production.PairedMachines++
 			report.Applied = true
-		case "single-row":
+		case "single-row", "refinery-same-side":
 			production.RowMachines++
 			report.Applied = true
-		case "single-machine":
+		case "single-machine", "refinery-same-side-single":
 			production.SingleMachines++
 		default:
 			return nil, &blueprint.Error{Code: "GEN_E_DENSITY_PROFILE", Message: "密集结果存在未登记布局来源的机器"}

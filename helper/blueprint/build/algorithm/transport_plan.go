@@ -115,7 +115,7 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 			return nil, err
 		}
 		if b.denseSpatial && b.denseMaxSpan > 0 {
-			counts, err = denseSpatialRowCounts(p, r, b.setting, counts, b.denseMaxSpan)
+			counts, err = b.layoutDenseSpatialRows(p, r, counts, b.denseMaxSpan)
 			if err != nil {
 				return nil, err
 			}

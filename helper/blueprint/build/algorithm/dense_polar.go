@@ -70,23 +70,26 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 			}
 		}
 		for _, opposite := range orientations {
-			candidate := req
-			layout := *req.SurfaceLayout
-			layout.polarRoot = true
-			candidate.SurfaceLayout = &layout
-			budget := surfacePackedBand{low: 0, high: extent - 1, segments: 200}
-			local := context.WithValue(context.WithValue(ctx, densityNativeBandKey{}, budget), densityPolarRootKey{}, true)
-			local = context.WithValue(local, densityPolarMirrorKey{}, opposite)
-			prepared, err := prepareGeneration(local, candidate, adapter)
-			if err != nil {
-				return Result{}, err
+			for _, sameSide := range refineryLayoutVariants(req) {
+				candidate := req
+				layout := *req.SurfaceLayout
+				layout.polarRoot = true
+				candidate.SurfaceLayout = &layout
+				budget := surfacePackedBand{low: 0, high: extent - 1, segments: 200}
+				local := context.WithValue(context.WithValue(ctx, densityNativeBandKey{}, budget), densityPolarRootKey{}, true)
+				local = context.WithValue(local, densityPolarMirrorKey{}, opposite)
+				local = context.WithValue(local, refinerySameSideKey{}, sameSide)
+				prepared, err := prepareGeneration(local, candidate, adapter)
+				if err != nil {
+					return Result{}, err
+				}
+				out, err := adapter.generate(local, prepared.builder, prepared.request, prepared.dataset)
+				if err == nil {
+					return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
+				}
+				last = err
+				reportProgress(ctx, "polar-rejected", fmt.Sprintf("极区跨子环%d行候选（对称=%t，同侧炼油=%t）未通过：%v", extent, opposite, sameSide, err), 0, 0)
 			}
-			out, err := adapter.generate(local, prepared.builder, prepared.request, prepared.dataset)
-			if err == nil {
-				return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
-			}
-			last = err
-			reportProgress(ctx, "polar-rejected", fmt.Sprintf("极区跨子环%d行候选（对称=%t）未通过：%v", extent, opposite, err), 0, 0)
 		}
 	}
 	for _, band := range bands {
@@ -97,22 +100,25 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
-		candidate := req
-		layout := *req.SurfaceLayout
-		layout.nativeBand = &band
-		layout.LatitudeGridIndex = bandCenter(band)
-		candidate.SurfaceLayout = &layout
-		local := context.WithValue(ctx, densityNativeBandKey{}, band)
-		prepared, err := prepareGeneration(local, candidate, adapter)
-		if err != nil {
-			return Result{}, err
+		for _, sameSide := range refineryLayoutVariants(req) {
+			candidate := req
+			layout := *req.SurfaceLayout
+			layout.nativeBand = &band
+			layout.LatitudeGridIndex = bandCenter(band)
+			candidate.SurfaceLayout = &layout
+			local := context.WithValue(ctx, densityNativeBandKey{}, band)
+			local = context.WithValue(local, refinerySameSideKey{}, sameSide)
+			prepared, err := prepareGeneration(local, candidate, adapter)
+			if err != nil {
+				return Result{}, err
+			}
+			out, err := adapter.generate(local, prepared.builder, prepared.request, prepared.dataset)
+			if err == nil {
+				return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
+			}
+			last = err
+			reportProgress(ctx, "polar-rejected", fmt.Sprintf("极区原生子环%d..%d（同侧炼油=%t）未通过：%v", band.low, band.high, sameSide, err), 0, 0)
 		}
-		out, err := adapter.generate(local, prepared.builder, prepared.request, prepared.dataset)
-		if err == nil {
-			return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
-		}
-		last = err
-		reportProgress(ctx, "polar-rejected", fmt.Sprintf("极区原生子环%d..%d未通过：%v", band.low, band.high, err), 0, 0)
 	}
 	return Result{}, fmt.Errorf("极区完整布局候选未通过：%w", last)
 }
