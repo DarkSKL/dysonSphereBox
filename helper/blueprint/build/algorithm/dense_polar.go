@@ -1,7 +1,7 @@
 package build
 
-// 文件职责：在极区按所选位置构造跨原生子环的完整工厂。
-// 使用：第5档生成；边界：仅发布经过目标区域、实体、货物与供电复核的结果，不以外侧子环代替指定中心或边缘。
+// 文件职责：在目标球面坐标内构造完整工厂，避免大厂在临时锚点误拒绝。
+// 使用：第5档及其它档的大型产线；边界：仅发布经过目标区域、实体、货物与供电复核的结果，不以其它地区代替指定中心或边缘。
 
 import (
 	"DysonSphereBox/helper/blueprint"
@@ -37,12 +37,12 @@ func densityContextBand(ctx context.Context, zone string, segment int) (surfaceP
 	return densityLatitudeBand(zone, segment)
 }
 
-// generateDensePolar 职责：先在共享球面坐标内比较有限跨环包络，再检查同目标位置的单环候选；使用：第5档入口；边界：不换产量、设备或地区，不返回失败的部分蓝图。
+// generateDensePolar 职责：先在共享球面坐标内比较有限矩形包络，再检查同目标位置的单环候选；使用：极区和大厂入口；边界：不换产量、设备或地区，不返回失败的部分蓝图。
 func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) (Result, error) {
 	selection, _ := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
-	bands := densityLatitudeTierBands(5, selection.hemisphere, 200)
+	bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, 200)
 	if len(bands) == 0 {
-		return Result{}, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "极区没有原生纬带"}
+		return Result{}, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "所选区域没有原生纬带"}
 	}
 	low, high := bands[0].low, bands[len(bands)-1].high
 	preferred := (low + high) / 2
@@ -57,7 +57,10 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 	})
 	var last error
 	extents := []int{24, 32, 40, 48, 56, 64}
-	if req.Plan.MachineCount >= 256 {
+	if selection.tier < 5 {
+		extents = denseTargetFrameExtents(bands)
+	}
+	if req.Plan.MachineCount >= denseNativeLargeMachineThreshold {
 		// 大产线先验证容量更充足的包络，所有较窄候选仍保留，避免把总时限耗在小包络上。
 		sort.Sort(sort.Reverse(sort.IntSlice(extents)))
 	}
@@ -88,7 +91,7 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 					return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
 				}
 				last = err
-				reportProgress(ctx, "polar-rejected", fmt.Sprintf("极区跨子环%d行候选（对称=%t，同侧炼油=%t）未通过：%v", extent, opposite, sameSide, err), 0, 0)
+				reportProgress(ctx, "polar-rejected", fmt.Sprintf("目标球面%d行候选（对称=%t，同侧炼油=%t）未通过：%v", extent, opposite, sameSide, err), 0, 0)
 			}
 		}
 	}
@@ -117,8 +120,8 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 				return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
 			}
 			last = err
-			reportProgress(ctx, "polar-rejected", fmt.Sprintf("极区原生子环%d..%d（同侧炼油=%t）未通过：%v", band.low, band.high, sameSide, err), 0, 0)
+				reportProgress(ctx, "polar-rejected", fmt.Sprintf("原生子环%d..%d（同侧炼油=%t）未通过：%v", band.low, band.high, sameSide, err), 0, 0)
 		}
 	}
-	return Result{}, fmt.Errorf("极区完整布局候选未通过：%w", last)
+	return Result{}, fmt.Errorf("目标球面完整布局候选未通过：%w", last)
 }

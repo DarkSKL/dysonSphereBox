@@ -199,7 +199,9 @@ func (b *builder) packPolarUnitOccupancy(ctx context.Context, units []denseSpati
 			if flexibleLatitude {
 				low, high := bounds(seed.unit.entities)
 				target := float64(latitude)
-				if b.polarFrame.start < 0 {
+				if b.polarFrame.position != "" {
+					target = b.polarFrame.targetLatitude(latitude, high.y-low.y)
+				} else if b.polarFrame.start < 0 {
 					target = float64(b.polarFrame.height-1-latitude) - (high.y - low.y)
 				}
 				dy := target - low.y

@@ -1,7 +1,7 @@
 package build
 
 // 文件职责：在原生高纬坐标中完成端口适配后再固定供电坐标。
-// 使用：高纬整厂几何入口；边界：失败候选不提交，前三档沿用已验收策略。
+// 使用：高纬及大厂整厂几何入口；边界：失败候选不提交，前三档小厂沿用已验收策略。
 
 import (
 	"DysonSphereBox/helper/blueprint"
@@ -10,13 +10,13 @@ import (
 	"math"
 )
 
-// denseNativeLatitude 职责：识别原生高纬生成；使用：几何和供电共同入口；边界：普通模式及前三档不改变。
+// denseNativeLatitude 职责：识别已固定原生球面坐标的生成；使用：几何和供电共同入口；边界：普通模式及前三档小厂不改变。
 func denseNativeLatitude(req Request) bool {
 	if req.Density != densityDense || req.SurfaceLayout == nil {
 		return false
 	}
 	selection, ok := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
-	return ok && selection.tier >= 4
+	return ok && (selection.tier >= 4 || req.SurfaceLayout.polarRoot)
 }
 
 // validateNativeSurfaceCandidates 职责：把端口适配加入原生锚点检验；使用：补电前和最终编码；边界：仅成功候选修改实体，不在供电后迁移整图。

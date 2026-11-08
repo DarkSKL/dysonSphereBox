@@ -213,7 +213,7 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 		validSegments := area.LongitudeSegments == band.segments
 		if layout.polarRoot {
 			selection, _ := densityLatitudeSelectionFor(layout.LatitudeZone)
-			for _, native := range densityLatitudeTierBands(5, selection.hemisphere, 200) {
+			for _, native := range densityLatitudeTierBands(selection.tier, selection.hemisphere, 200) {
 				if area.MinLatitudeGrid >= native.low && area.MaxLatitudeGrid <= native.high && area.LongitudeSegments == native.segments {
 					validSegments = true
 					break
@@ -224,8 +224,8 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 			return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("完整蓝图超出%s，请降低产量或选择更宽的建造位置", label)}
 		}
 	}
-	if selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone); ok && selection.tier == 5 {
-		regions := densityLatitudeTierBands(5, selection.hemisphere, layout.GridSegment)
+	if selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone); ok && (selection.tier == 5 || layout.polarRoot) {
+		regions := densityLatitudeTierBands(selection.tier, selection.hemisphere, layout.GridSegment)
 		south, north := regions[0].low, regions[len(regions)-1].high
 		first, last := plan.AnchorLatitudeGrid, plan.AnchorLatitudeGrid+plan.LayoutHeight-1
 		valid := math.Abs(float64(first+last-south-north)/2) <= 5
@@ -235,7 +235,7 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 			valid = last <= north && north-last <= 4
 		}
 		if !valid {
-			return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "极区候选偏离所选中心或边缘，拒绝以其它子环代替"}
+			return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "球面候选偏离所选中心或边缘，拒绝以其它位置代替"}
 		}
 	}
 	plan.LatitudeZone, plan.LatitudeZoneLabel = layout.LatitudeZone, label

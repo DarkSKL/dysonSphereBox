@@ -125,7 +125,7 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	req.SurfaceLayout = surface
 	if surface != nil && surface.LatitudeZone != "" {
 		ctx = context.WithValue(ctx, densityLatitudeKey{}, surface.LatitudeZone)
-		if selection, ok := densityLatitudeSelectionFor(surface.LatitudeZone); ok && selection.tier == 5 && req.Density == densityDense {
+		if selection, ok := densityLatitudeSelectionFor(surface.LatitudeZone); ok && req.Density == densityDense && (selection.tier == 5 || req.Plan.MachineCount >= denseNativeLargeMachineThreshold) {
 			return generateDensePolar(ctx, req, adapter)
 		}
 	}

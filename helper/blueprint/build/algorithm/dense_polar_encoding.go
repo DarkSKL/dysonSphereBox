@@ -1,7 +1,7 @@
 package build
 
-// 文件职责：以主区坐标编码极区跨原生子环的完整实体。
-// 使用：极区整厂候选；边界：区域覆盖真实完整包络，机器保持正交，最终几何、货物采样与供电全部重验。
+// 文件职责：以目标主区坐标编码原生球面中的完整实体。
+// 使用：极区及大厂整厂候选；边界：区域覆盖真实完整包络，机器保持正交，最终几何、货物采样与供电全部重验。
 
 import (
 	"DysonSphereBox/helper/blueprint"
@@ -10,16 +10,16 @@ import (
 	"math"
 )
 
-// preparePolarRootEncoding 职责：保留主区坐标的跨环实体并补齐原生Area父链；使用：固定目标极区后的编码；边界：不借缩小Area矩形隐藏实体，不接受超过整圈或极区的坐标。
+// preparePolarRootEncoding 职责：保留目标主区坐标的实体并补齐原生Area父链；使用：固定目标球面后的编码；边界：不借缩小Area矩形隐藏实体，不接受超过整圈或所选档位的坐标。
 func (b *builder) preparePolarRootEncoding(ctx context.Context, layout *SurfaceLayout) (*surfaceEncoding, error) {
 	selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone)
-	if !ok || selection.tier != 5 {
-		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "跨子环编码需要第5档选区"}
+	if !ok {
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "原生球面编码需要有效的五档选区"}
 	}
-	bands := densityLatitudeTierBands(5, selection.hemisphere, 200)
+	bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, 200)
 
 	if b.polarFrame == nil {
-		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "极区路由没有固定的原生单元坐标"}
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "目标球面路由没有固定的原生单元坐标"}
 	}
 	if b.polarFrame.flipHemisphere {
 		// 同时反转经度、纬度和本地朝向，对应真实球面刚体旋转；不剪切单元或镜像槽位。
@@ -62,7 +62,7 @@ func (b *builder) preparePolarRootEncoding(ctx context.Context, layout *SurfaceL
 	start := b.polarFrame.start
 	height := int(math.Ceil(high.y)) + 1
 	if start < bands[0].low || start+height-1 > bands[len(bands)-1].high {
-		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "极区完整包络超出第5档"}
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("原生球面完整包络超出第%d档", selection.tier)}
 	}
 	width := int(math.Ceil(high.x+shiftX)) + 1
 	if width < 1 || width > rootSegments*5 {

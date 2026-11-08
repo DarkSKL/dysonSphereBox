@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：固定极区局部单元与跨单元布线使用的真实球面坐标。
+// 文件职责：固定局部单元与跨单元布线使用的真实目标球面坐标。
 // 使用：全场落位后、寻路前；边界：单元内部采用仿射格距补偿，不在整厂完工后逐行剪切机器与分拣器。
 
 import (
@@ -16,12 +16,20 @@ type densePolarFrame struct {
 	latitudeStep, longitudeStep float32
 	// flipHemisphere 职责：在路由结束后以球面半周旋转映射回目标极区；使用：设施对称候选；边界：只写出前应用一次。
 	flipHemisphere bool
+	// longitudeBudget 职责：限制非极区的矩形经向搜索范围；使用：大厂目标球面装箱；边界：零值保留极区原生整圈预算。
+	longitudeBudget float64
+	// position 职责：保存非极区矩形从中心或南北边缘展开的顺序；使用：大厂球面装箱；边界：空值保留极区既有顺序。
+	position string
 }
 
 // longitudeLimit 职责：预留主Area整数边界与两侧八格接线预算；使用：极区单元装箱及路由共享范围；边界：不增加整圈容量，不把跨缝实体藏到区域之外。
 func (frame densePolarFrame) longitudeLimit() float64 {
 	rootCell := float64(frame.segments) / float64(longitudeSegmentCount(frame.start, 200))
-	return float64(frame.segments*5) - rootCell - 16
+	limit := float64(frame.segments*5) - rootCell - 16
+	if frame.longitudeBudget > 0 {
+		limit = math.Min(limit, frame.longitudeBudget)
+	}
+	return limit
 }
 
 // unitScale 职责：按生产阵列最窄处或独立物流设施中心计算格距；使用：定位与纬向避让；边界：物流端口不随无关塔的纬度放大，独立塔间距另用世界距离限制。
@@ -72,7 +80,7 @@ func (index *denseRoutePortIndex) blockNode(blocked map[vector]bool, p vector) {
 	}
 }
 
-// placePolarUnitFrames 职责：按各单元中心纬度补偿内部格距，再交给真实球面路由；使用：跨子环布局候选；边界：所有端口、cargo目标和附属设施随同一单元移动。
+// placePolarUnitFrames 职责：按各单元目标纬度补偿内部格距，再交给真实球面路由；使用：极区及大厂布局候选；边界：所有端口、cargo目标和附属设施随同一单元移动。
 func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatialUnit) error {
 	root, _ := ctx.Value(densityPolarRootKey{}).(bool)
 	if !root || b.polarFrame != nil {
@@ -89,7 +97,7 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 			selection.position = "north"
 		}
 	}
-	bands := densityLatitudeTierBands(5, selection.hemisphere, 200)
+	bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, 200)
 	budget, _, err := densityContextBand(ctx, zone, 200)
 	if err != nil {
 		return err
@@ -97,7 +105,7 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 	if len(bands) == 0 {
 		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "极区缺少原生子环"}
 	}
-	if selection.hemisphere < 0 && selection.position == "south" {
+	if selection.tier == 5 && selection.hemisphere < 0 && selection.position == "south" {
 		// 南极侧让较大单元朝赤道排列；整单元半周旋转保留槽位手性和内部连接。
 		rotatePlacedQuarter(b.all, 2)
 		minimum, _ := bounds(b.all)
@@ -119,7 +127,7 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 	start := (bands[0].low + bands[len(bands)-1].high - height + 1) / 2
 	if selection.position == "south" {
 		start = bands[0].low
-		if selection.hemisphere < 0 {
+		if selection.tier == 5 && selection.hemisphere < 0 {
 			// 极点最内侧只剩少量格子；预留四行实体半径，避免把局部单元中心压在极点上。
 			start += 4
 		}
@@ -135,6 +143,10 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 	// 寻路采用覆盖区最细的经向格网；若直接沿南极带头的粗网格，靠赤道一侧一步便可能超过合法带长。
 	// 写出前统一换算回主Area原生格距，保持同一球面位置。
 	frame := &densePolarFrame{start: start, height: height, segments: segments, latitudeStep: step, longitudeStep: float32(2*float32(math.Pi)) / float32(segments*5), flipHemisphere: flipHemisphere}
+	if selection.tier < 5 {
+		frame.position = selection.position
+		frame.longitudeBudget = denseTargetLongitudeBudget(frame, units)
+	}
 	if high.y-low.y+1 > float64(height) {
 		return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "极区单元排向超过预留纬向容量"}
 	}

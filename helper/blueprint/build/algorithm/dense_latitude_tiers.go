@@ -102,7 +102,7 @@ func densityLatitudeTierBands(tier, hemisphere, segment int) []surfacePackedBand
 // denseLatitudeAssemblyLayout 职责：让第2、3档设施候选共用北侧原生格距预检，再显式映射回所选半球；使用：装配和补电阶段；边界：目标环宽、请求和最终放置半球不改变，南侧仍须完整复验。
 func (b *builder) denseLatitudeAssemblyLayout(layout *SurfaceLayout) *SurfaceLayout {
 	// 直连模式保留左侧入口，不能使用依赖半周旋转的对称装配。普通模式不参与密铺映射。
-	if b.adapter == nil || b.adapter.density != densityDense || b.adapter.mode < 2 || b.adapter.mode > 4 || layout == nil || layout.Mode == "planar" {
+	if b.adapter == nil || b.adapter.density != densityDense || b.adapter.mode < 2 || b.adapter.mode > 4 || layout == nil || layout.Mode == "planar" || layout.polarRoot {
 		return layout
 	}
 	selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone)
