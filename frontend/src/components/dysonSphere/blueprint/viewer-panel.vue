@@ -3,7 +3,7 @@ import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, s
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview} from '../../../pages/services/dysonSphere/blueprint-preview-host'
 import {enableBlueprintPreviewInteraction} from '../../../pages/services/dysonSphere/blueprint-preview-interaction'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
-import type {BlueprintViewer as BlueprintViewerInstance} from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js'
+import type {BlueprintData, BlueprintViewer as BlueprintViewerInstance} from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js'
 
 type BlueprintEditorModule = typeof import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
 
@@ -48,6 +48,29 @@ let releaseHost: (() => void) | null = null
 let releaseInteraction: (() => void) | null = null
 const buildingCount = ref(0)
 const blueprintEditorThemeStorageKey = 'dsp-editor-theme'
+
+// =============== 增量预览快照 ===============
+// 说明：库的 beginPreview 不会清空正式场景（保留上一次成功结果）。为避免旧蓝图与预览层叠加，
+//       这里在 beginPreview 前保存旧蓝图编码与建筑数，清空正式场景；commitPreview 后丢弃快照，
+//       discardPreview 时用快照恢复旧蓝图。
+// 边界：只在 viewer 实例就绪时操作；快照随 commit/discard 清除，组件卸载时 disposeViewer 兜底。
+interface PreviewSnapshot {
+  code: string
+  buildingCount: number
+}
+let previewSnapshot: PreviewSnapshot | null = null
+// commitPreview 成功后正式场景已替换为新蓝图，code 变化触发的全量重载应跳过，避免闪白与多余加载遮罩
+let skipNextCodeReload = false
+const buildEmptyBlueprintData = (): BlueprintData => ({
+  header: {layout: 0, icons: [], time: new Date(), gameVersion: '', shortDesc: '', author: '', blueprintVersion: '', properties: '', desc: ''},
+  version: 0,
+  cursorOffset: {x: 0, y: 0},
+  cursorTargetArea: 0,
+  dragBoxSize: {x: 0, y: 0},
+  primaryAreaIdx: 0,
+  areas: [],
+  buildings: [],
+})
 
 // =============== 应用主题隔离 ===============
 // 说明：第三方蓝图库加载时会写入 html[data-theme]，这里在每次外部调用后恢复盒子当前主题。
@@ -125,10 +148,25 @@ const focusRequestedBuilding = (): void => {
 const setRenderSettings = (showRealModels: boolean, maxInstancesPerModel: number): void => {
   withAppThemeIsolation(() => viewer.value?.setRenderSettings({showRealModels, maxInstancesPerModel}))
 }
+
+const BLANK_BLUEPRINT = 'BLUEPRINT:1,10,0,0,0,0,0,0,639273500692970000,0.10.35.29104,%E6%96%B0%E8%93%9D%E5%9B%BE,,,,"H4sIAAAAAAAAA2NiYGDgAGJmBggQAGI2KJuR4T8DwwmoMBtUCAgA9wEkuTQAAAA="7FFF389CC152F6E763D8B8B72DF4D44A'
+
 // =============== 增量预览 API ===============
 // 说明：对接后端 preview-delta 事件流；所有调用走主题隔离，避免第三方库写入 html[data-theme]。
-// 边界：调用顺序由上层协调层负责（beginPreview → 提交生成 → applyPreviewDelta → commitPreview/discardPreview）。
+// 边界：调用顺序由上层协1调层负责（beginPreview → 提交生成 → applyPreviewDelta → commitPreview/discardPreview）。
+//       beginPreview 前保存并清空旧正式场景；commitPreview 后丢弃快照；discardPreview 恢复旧场景。
 const beginPreview = (): void => {
+  if (!viewer.value) return
+  // 保存旧蓝图快照（编码 + 建筑数），供 discardPreview 恢复
+  previewSnapshot = { code: props.code, buildingCount: buildingCount.value }
+  // 清空正式场景：库的 beginPreview 保留旧场景，这里主动加载空数据避免与预览层叠加
+  const out = withAppThemeIsolation(() => viewer.value!.loadBlueprint(BLANK_BLUEPRINT))
+  if (!out.ok) {
+    // 关键：清空失败，正式场景还是旧蓝图，不能继续 beginPreview
+    emit('error', { code: 'PREVIEW_E_CLEAR', message: out.error.message })
+    return
+  }
+  buildingCount.value = 0
   withAppThemeIsolation(() => viewer.value?.beginPreview())
 }
 const applyPreviewDelta = (event: unknown): boolean => {
@@ -136,15 +174,37 @@ const applyPreviewDelta = (event: unknown): boolean => {
   return withAppThemeIsolation(() => viewer.value?.applyPreviewDelta(event as Parameters<typeof viewer.value.applyPreviewDelta>[0]) ?? false)
 }
 const commitPreview = (blueprint: string): unknown => {
-  return withAppThemeIsolation(() => viewer.value?.commitPreview(blueprint))
+  const outcome = withAppThemeIsolation(() => viewer.value?.commitPreview(blueprint))
+  const ok = outcome && typeof outcome === 'object' && 'ok' in outcome && outcome.ok === true
+  if (ok) {
+    // commitPreview 内部先建后换，正式场景已替换为新蓝图；跳过 code 变化触发的全量重载
+    skipNextCodeReload = true
+    buildingCount.value = viewer.value?.getBlueprintData()?.buildings.length ?? 0
+    previewSnapshot = null
+    if (buildingCount.value > props.maxBuildings) emit('error', {code: 'PREVIEW_E_LIMIT', message: `共 ${buildingCount.value} 个建筑，模型交互可能较慢`})
+    emit('ready', {buildingCount: buildingCount.value})
+  }
+  // commit 失败：不设跳过标记，code 变化会触发全量重载作为兜底
+  return outcome
 }
 const discardPreview = (): void => {
   withAppThemeIsolation(() => viewer.value?.discardPreview())
+  // 恢复旧蓝图快照：重新加载旧编码、还原建筑数与选中态
+  const snapshot = previewSnapshot
+  previewSnapshot = null
+  if (snapshot && viewer.value) {
+    withAppThemeIsolation(() => viewer.value!.loadBlueprint(snapshot.code))
+    buildingCount.value = viewer.value?.getBlueprintData()?.buildings.length ?? snapshot.buildingCount
+    selectBuildings(props.selectedBuildings)
+    emit('ready', {buildingCount: buildingCount.value})
+  }
 }
+// 内部 viewer 实例是否就绪（ESM 已加载且实例已创建）；未就绪时增量预览调用全部静默失败
+const isReady = (): boolean => viewer.value !== null
 const getPreviewing = (): boolean => viewer.value?.previewing ?? false
 const getPreviewStats = () => withAppThemeIsolation(() => viewer.value?.previewStats() ?? null)
 // 暴露 API
-defineExpose({selectBuildings, focusBuilding, resetCamera, captureImage, setRenderSettings, beginPreview, applyPreviewDelta, commitPreview, discardPreview, getPreviewing, getPreviewStats})
+defineExpose({selectBuildings, focusBuilding, resetCamera, captureImage, setRenderSettings, beginPreview, applyPreviewDelta, commitPreview, discardPreview, isReady, getPreviewing, getPreviewStats})
 
 // 释放预览器实例
 const releaseViewerInstance = (): void => {
@@ -170,6 +230,8 @@ const disposeViewer = (): void => {
   releaseViewerInstance()
   releaseHost?.()
   releaseHost = null
+  previewSnapshot = null
+  skipNextCodeReload = false
   isLoadingViewer.value = false
 }
 
@@ -294,6 +356,8 @@ watch(() => props.focusRevision, focusRequestedBuilding)
 
 watch(() => [props.code, props.revision], () => {
   if (!props.code) { disposeViewer(); buildingCount.value = 0; return }
+  // commitPreview 成功后正式场景已替换为新蓝图，跳过此次全量重载，避免闪白与加载遮罩
+  if (skipNextCodeReload) { skipNextCodeReload = false; return }
   void loadCurrentBlueprint()
 })
 

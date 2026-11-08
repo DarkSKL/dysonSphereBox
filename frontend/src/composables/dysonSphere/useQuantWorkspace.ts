@@ -17,6 +17,8 @@ export interface FactoryPreviewApi {
   applyPreviewDelta(event: FactoryGenerationProgress): boolean
   commitPreview(blueprint: string): unknown
   discardPreview(): void
+  /** 内部 viewer 实例是否就绪；未就绪时增量预览调用全部静默失败，应回退静态预览链路 */
+  isReady(): boolean
 }
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
@@ -286,7 +288,8 @@ export const useQuantWorkspace = () => {
     // 顺序不能颠倒——后端会在生成过程中陆续推 preview-delta，请求发出后开头的差量会在 beginPreview 前到达，漏掉会导致画面缺一块。
     // emitDeltas 是请求字段与预览层开关的唯一有效值：调试模式开启且允许差量时才发送/接收，避免请求不发差量而预览层空开。
     const emitDeltas = generationDebugOptions.debugMode && generationDebugOptions.emitPreviewDeltas
-    const useLivePreview = Boolean(previewApi && emitDeltas)
+    // 仅当 viewer 内部实例就绪时才走增量预览链路；未就绪时 beginPreview/applyPreviewDelta 全部静默失败，回退静态预览
+    const useLivePreview = Boolean(previewApi && previewApi.isReady() && emitDeltas)
     if (useLivePreview) {
       try { previewApi!.beginPreview() } catch { /* Viewer 未就绪或已释放：继续走旧链路 */ }
     }
@@ -323,20 +326,21 @@ export const useQuantWorkspace = () => {
       if (result.densityReport?.requested !== density.value || result.densityReport?.profileVersion !== detail.value?.densityProfileVersion) throw new FactoryError('GEN_E_DENSITY_PROFILE', '生成规则或密度与当前工作区不一致，请刷新数据集后重新生成。')
       if (density.value === 'dense' && result.surfacePlan?.latitudeZone !== denseLatitudeZone.value) throw new FactoryError('GEN_E_DENSITY_REGION', '生成结果的建造地区与所选位置不一致，本次结果未替换预览。请重启应用或开发服务后重新生成。')
       // =============== 第三步：成功收尾 ===============
-      if (useLivePreview && previewApi) {
-        // commitPreview 内部先建后换，不会闪白。commit 成功后预览层自动切换为正式场景，旧 temp 层被清掉。
-        try { previewApi.commitPreview(result.blueprint) } catch { /* commit 失败不影响数据，只是画面回退到临时层 */ }
-      }
       generated.value = result
       generatedFlowGraph.value = sourcePlan.flowGraph ?? null
       generationFailed.value = false
       generatedSignature.value = signature
-      code.value = result.blueprint
-      previewRevision.value++
       replay.value = false
       selectedBuildings.value = []
       selectedProductions.value = []
+      // 先置为 loading；commitPreview 成功后 emit('ready') 会置为 ready，失败则靠 code 变化触发的全量重载 emit ready
       resetPreviewState(result.buildingCount)
+      if (useLivePreview && previewApi) {
+        // commitPreview 内部先建后换，不会闪白。commit 成功后预览层自动切换为正式场景，旧 temp 层被清掉。
+        try { previewApi.commitPreview(result.blueprint) } catch { /* commit 失败不影响数据，只是画面回退到临时层 */ }
+      }
+      code.value = result.blueprint
+      previewRevision.value++
     } catch (caught) {
       // =============== 第四步：失败 / 中止 → 丢弃预览层，保留上次成功画面 ===============
       if (useLivePreview && previewApi && currentTaskToken === taskToken) {

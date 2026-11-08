@@ -20,6 +20,7 @@ interface ViewerPanelExpose {
   applyPreviewDelta(event: unknown): boolean
   commitPreview(blueprint: string): unknown
   discardPreview(): void
+  isReady(): boolean
   getPreviewing(): boolean
   getPreviewStats(): unknown | null
 }
@@ -39,6 +40,7 @@ watch(viewer, (panel) => {
       applyPreviewDelta: (event) => panel.applyPreviewDelta(event),
       commitPreview: (blueprint) => panel.commitPreview(blueprint),
       discardPreview: () => panel.discardPreview(),
+      isReady: () => panel.isReady(),
     }
     w.registerPreviewApi(api)
   } else {

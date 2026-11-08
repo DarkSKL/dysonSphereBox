@@ -27,7 +27,7 @@ export interface GenerationTimelineEntry {
 // 使用：debugMode 由检查面板切换，决定是否显示生成事件时间流；emitPreviewDeltas 对应后端同名请求字段，
 //       仅在调试模式下随请求发送；两者默认关闭，只影响下一次生成，不进入生成签名，切换不会触发重新生成。
 // 边界：开启差量后后端要求获选候选带完整预览快照，缺失时生成会以 GEN_E_PROGRESS_PREVIEW 失败，且事件量大。
-export const generationDebugOptions = reactive({debugMode: false, emitPreviewDeltas: false})
+export const generationDebugOptions = reactive({debugMode: true, emitPreviewDeltas: true})
 
 /** 时间流保留上限；预览差量事件频率高，超过后丢弃最旧条目，避免调试面板拖慢页面。 */
 const TIMELINE_LIMIT = 500
