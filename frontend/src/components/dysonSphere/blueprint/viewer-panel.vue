@@ -3,7 +3,7 @@ import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, s
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview} from '../../../pages/services/dysonSphere/blueprint-preview-host'
 import {enableBlueprintPreviewInteraction} from '../../../pages/services/dysonSphere/blueprint-preview-interaction'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
-import type {BlueprintData, BlueprintViewer as BlueprintViewerInstance} from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js'
+import type {BlueprintViewer as BlueprintViewerInstance} from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js'
 
 type BlueprintEditorModule = typeof import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
 
@@ -24,7 +24,7 @@ interface AppThemeSnapshot {
 
 const props = withDefaults(defineProps<BlueprintViewerPanelProps>(), {interactive: false, selectedBuildings: () => [], focusIndex: null, focusRevision: 0, maxBuildings: BLUEPRINT_PREVIEW_BUILDING_LIMIT, revision: 0})
 const emit = defineEmits<{
-  (event: 'ready', value: {buildingCount: number}): void
+  (event: 'ready', value: {buildingCount: number; blank?: boolean}): void
   (event: 'select', value: {index: number | null}): void
   (event: 'error', value: {code: string; message: string}): void
 }>()
@@ -49,9 +49,14 @@ let releaseInteraction: (() => void) | null = null
 const buildingCount = ref(0)
 const blueprintEditorThemeStorageKey = 'dsp-editor-theme'
 
+// =============== 空白蓝图 ===============
+// 说明：仅包含星球主体、没有任何建筑的合法蓝图；预览器首次加载与增量预览前清场都用它。
+// 边界：加载失败时正式场景可能仍是旧蓝图，调用方必须终止后续预览动作。
+const BLANK_BLUEPRINT = 'BLUEPRINT:1,10,0,0,0,0,0,0,639273500692970000,0.10.35.29104,%E6%96%B0%E8%93%9D%E5%9B%BE,,,,"H4sIAAAAAAAAA2NiYGDgAGJmBggQAGI2KJuR4T8DwwmoMBtUCAgA9wEkuTQAAAA="7FFF389CC152F6E763D8B8B72DF4D44A'
+
 // =============== 增量预览快照 ===============
 // 说明：库的 beginPreview 不会清空正式场景（保留上一次成功结果）。为避免旧蓝图与预览层叠加，
-//       这里在 beginPreview 前保存旧蓝图编码与建筑数，清空正式场景；commitPreview 后丢弃快照，
+//       这里在 beginPreview 前保存旧蓝图编码与建筑数，用空白蓝图清场；commitPreview 后丢弃快照，
 //       discardPreview 时用快照恢复旧蓝图。
 // 边界：只在 viewer 实例就绪时操作；快照随 commit/discard 清除，组件卸载时 disposeViewer 兜底。
 interface PreviewSnapshot {
@@ -61,16 +66,17 @@ interface PreviewSnapshot {
 let previewSnapshot: PreviewSnapshot | null = null
 // commitPreview 成功后正式场景已替换为新蓝图，code 变化触发的全量重载应跳过，避免闪白与多余加载遮罩
 let skipNextCodeReload = false
-const buildEmptyBlueprintData = (): BlueprintData => ({
-  header: {layout: 0, icons: [], time: new Date(), gameVersion: '', shortDesc: '', author: '', blueprintVersion: '', properties: '', desc: ''},
-  version: 0,
-  cursorOffset: {x: 0, y: 0},
-  cursorTargetArea: 0,
-  dragBoxSize: {x: 0, y: 0},
-  primaryAreaIdx: 0,
-  areas: [],
-  buildings: [],
-})
+// 说明：把正式场景切回空白蓝图；返回是否成功，失败已上报 PREVIEW_E_CLEAR。
+// 边界：调用方在返回 false 时不得继续 beginPreview 或写选中态。
+const loadBlankBlueprint = (): boolean => {
+  if (!viewer.value) return false
+  const outcome = withAppThemeIsolation(() => viewer.value!.loadBlueprint(BLANK_BLUEPRINT))
+  if (!outcome.ok) {
+    emit('error', {code: 'PREVIEW_E_CLEAR', message: outcome.error.message})
+    return false
+  }
+  return true
+}
 
 // =============== 应用主题隔离 ===============
 // 说明：第三方蓝图库加载时会写入 html[data-theme]，这里在每次外部调用后恢复盒子当前主题。
@@ -159,21 +165,18 @@ const setRenderSettings = (showRealModels: boolean, maxInstancesPerModel: number
   withAppThemeIsolation(() => viewer.value?.setRenderSettings({showRealModels, maxInstancesPerModel}))
 }
 
-const BLANK_BLUEPRINT = 'BLUEPRINT:1,10,0,0,0,0,0,0,639273500692970000,0.10.35.29104,%E6%96%B0%E8%93%9D%E5%9B%BE,,,,"H4sIAAAAAAAAA2NiYGDgAGJmBggQAGI2KJuR4T8DwwmoMBtUCAgA9wEkuTQAAAA="7FFF389CC152F6E763D8B8B72DF4D44A'
-
 // =============== 增量预览 API ===============
 // 说明：对接后端 preview-delta 事件流；所有调用走主题隔离，避免第三方库写入 html[data-theme]。
-// 边界：调用顺序由上层协1调层负责（beginPreview → 提交生成 → applyPreviewDelta → commitPreview/discardPreview）。
+// 边界：调用顺序由上层协调层负责（beginPreview → 提交生成 → applyPreviewDelta → commitPreview/discardPreview）。
 //       beginPreview 前保存并清空旧正式场景；commitPreview 后丢弃快照；discardPreview 恢复旧场景。
 const beginPreview = (): void => {
   if (!viewer.value) return
   // 保存旧蓝图快照（编码 + 建筑数），供 discardPreview 恢复
-  previewSnapshot = { code: props.code, buildingCount: buildingCount.value }
-  // 清空正式场景：库的 beginPreview 保留旧场景，这里主动加载空数据避免与预览层叠加
-  const out = withAppThemeIsolation(() => viewer.value!.loadBlueprint(BLANK_BLUEPRINT))
-  if (!out.ok) {
-    // 关键：清空失败，正式场景还是旧蓝图，不能继续 beginPreview
-    emit('error', { code: 'PREVIEW_E_CLEAR', message: out.error.message })
+  previewSnapshot = {code: props.code, buildingCount: buildingCount.value}
+  // 清空正式场景：库的 beginPreview 保留旧场景，这里用空白蓝图清场，避免与预览层叠加
+  // 关键：清空失败时正式场景还是旧蓝图，不能继续 beginPreview
+  if (!loadBlankBlueprint()) {
+    previewSnapshot = null
     return
   }
   buildingCount.value = 0
@@ -199,11 +202,12 @@ const commitPreview = (blueprint: string): unknown => {
 }
 const discardPreview = (): void => {
   withAppThemeIsolation(() => viewer.value?.discardPreview())
-  // 恢复旧蓝图快照：重新加载旧编码、还原建筑数与选中态
+  // 恢复旧蓝图快照：重新加载旧编码（无编码时回退空白蓝图）、还原建筑数与选中态
   const snapshot = previewSnapshot
   previewSnapshot = null
   if (snapshot && viewer.value) {
-    withAppThemeIsolation(() => viewer.value!.loadBlueprint(snapshot.code))
+    const restoreCode = snapshot.code || BLANK_BLUEPRINT
+    withAppThemeIsolation(() => viewer.value!.loadBlueprint(restoreCode))
     buildingCount.value = viewer.value?.getBlueprintData()?.buildings.length ?? snapshot.buildingCount
     selectBuildings(props.selectedBuildings)
     emit('ready', {buildingCount: buildingCount.value})
@@ -245,11 +249,12 @@ const disposeViewer = (): void => {
   isLoadingViewer.value = false
 }
 
-// 蓝图加载器入口
+// 蓝图加载器入口：无编码时先加载空白蓝图渲染星球主体，真实编码到达后由 watch 重新加载
 const loadCurrentBlueprint = async (): Promise<void> => {
   // 检查状态
-  if (!active || !containerRef.value || !props.code) return
+  if (!active || !containerRef.value) return
   if (!hasRenderableSize()) return
+  const blank = !props.code
 
   const version = ++loadVersion
   isLoadingViewer.value = true
@@ -281,8 +286,12 @@ const loadCurrentBlueprint = async (): Promise<void> => {
       if (canvas) releaseInteraction = enableBlueprintPreviewInteraction(viewer.value, canvas)
     }
     setRenderSettings(false,1024)
-    // 加载蓝图模型
-    withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
+    // 加载蓝图模型：无编码时用空白蓝图先渲染星球主体，保证预览器先于流程图出画面
+    if (blank) {
+      if (!loadBlankBlueprint()) return
+    } else {
+      withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
+    }
     buildingCount.value = viewer.value.getBlueprintData()?.buildings.length ?? 0
     // 强制重置尺寸
     lastSize = {width: 0, height: 0}
@@ -296,7 +305,7 @@ const loadCurrentBlueprint = async (): Promise<void> => {
     setRenderSettings(true,1024)
     // 提示建筑数量
     if (buildingCount.value > props.maxBuildings) emit('error', {code: 'PREVIEW_E_LIMIT', message: `共 ${buildingCount.value} 个建筑，模型交互可能较慢`})
-    emit('ready', {buildingCount: buildingCount.value})
+    emit('ready', {buildingCount: buildingCount.value, blank})
   } catch (error) {
     if (!active || version !== loadVersion) return
     viewerError.value = error instanceof Error ? error.message : String(error || '蓝图模型渲染失败。')
@@ -353,10 +362,10 @@ const activate = async (): Promise<void> => {
   await nextTick()
   if (!active) return
   if (!resizeObserver) {
-    resizeObserver = new ResizeObserver(() => { if (!viewer.value && props.code && hasRenderableSize()) void loadCurrentBlueprint(); else resizeViewer() })
+    resizeObserver = new ResizeObserver(() => { if (!viewer.value && hasRenderableSize()) void loadCurrentBlueprint(); else resizeViewer() })
     if (containerRef.value) resizeObserver.observe(containerRef.value)
   }
-  // 先启动预览器模块预加载（不阻塞当前编码加载）；模块就绪后广播 boot
+  // 先启动预览器模块预加载，再加载蓝图（无编码时加载空白蓝图渲染星球主体）
   void preloadBlueprintEditor()
   await loadCurrentBlueprint()
 }

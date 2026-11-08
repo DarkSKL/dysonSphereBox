@@ -30,12 +30,12 @@ const w = reactive(useQuantWorkspace())
 const fileInput = ref<HTMLInputElement | null>(null)
 const viewer = ref<ViewerPanelExpose | null>(null)
 // =============== 加载顺序 ===============
-// 说明：预览器先挂载并预加载 ESM，流程图等预览器真正渲染出画面（ready 事件）后再挂载。
-// 边界：预览折叠、渲染失败或存在错误时兜底放行，避免流程图永久空白。
+// 说明：预览器先挂载并注入空白蓝图渲染星球主体，流程图等预览器出画面（ready 事件）后再挂载。
+// 边界：空白蓝图只用于提前渲染与释放门控，不写入工作区的预览统计；渲染失败或存在错误时兜底放行。
 const previewerRendered = ref(false)
-const onPreviewerReady = (value: {buildingCount: number}): void => {
+const onPreviewerReady = (value: {buildingCount: number; blank?: boolean}): void => {
   previewerRendered.value = true
-  w.onPreviewReady(value)
+  if (!value.blank) w.onPreviewReady(value)
 }
 const flowGraphReady = computed(() => previewerRendered.value || !w.showPreview || w.previewState === 'error' || Boolean(w.error))
 // =============== 预览协调 ===============
@@ -223,9 +223,10 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
 .preview-body { position: relative; display: flex; min-height: 0; flex: 1; }
 .preview-stage { position: relative; min-width: 0; flex: 1; }
-// 空态覆盖在已挂载的预览器之上：预览器随页面激活即预加载，无编码时由该层承接提示。
-.preview-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--ds-bg-panel); color: var(--ds-text-muted); font-size: 13px; }
-.preview-empty p { margin: 0; }
+// 空态覆盖在已挂载的预览器之上：不遮挡空白蓝图渲染出的星球主体，仅给提示文字加底。
+.preview-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); font-size: 13px; pointer-events: none; }
+.preview-empty p { margin: 0; padding: 4px 10px; border-radius: 2px; background: color-mix(in srgb, var(--ds-bg-panel) 82%, transparent); }
+.preview-empty :deep(.n-button) { pointer-events: auto; }
 // 预览器预加载期间占用网格区域，避免流程图抢先挂载导致初始化顺序倒置。
 .graph-boot { display: flex; flex: 1; align-items: center; justify-content: center; color: var(--ds-text-muted); font-size: 13px; }
 .preview-overlay { position: absolute; top: 10px; left: 50%; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 3px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; transform: translateX(-50%); pointer-events: none; }
