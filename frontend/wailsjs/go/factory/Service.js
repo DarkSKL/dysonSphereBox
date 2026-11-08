@@ -38,6 +38,10 @@ export function ReadBlueprintChunk(arg1) {
   return window['go']['factory']['Service']['ReadBlueprintChunk'](arg1);
 }
 
+export function ReadGenerationProgress(arg1, arg2) {
+  return window['go']['factory']['Service']['ReadGenerationProgress'](arg1, arg2);
+}
+
 export function Solve(arg1) {
   return window['go']['factory']['Service']['Solve'](arg1);
 }

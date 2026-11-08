@@ -6,6 +6,7 @@ import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
 import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, renameFactoryBlueprint, solveFactory} from '../../pages/services/dysonSphere/factory'
 import {enableGeneratedEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../pages/services/dysonSphere/environment'
 import {requestBlueprintLibrary} from '../../pages/services/dysonSphere/blueprint-navigation'
+import {createFrameCoalescer} from '../../utils/frame-coalescer'
 import {buildFactoryLayoutRequest} from '../../pages/services/dysonSphere/factory-layout'
 import {BLUEPRINT_PREVIEW_BUILDING_LIMIT} from '../../pages/services/dysonSphere/blueprint-preview-host'
 import {generationDebugOptions} from './useGenerationTimeline'
@@ -67,9 +68,11 @@ export const useQuantWorkspace = () => {
   const loadingDataset = ref(false)
   const solving = ref(false)
   const generating = ref(false)
+  const generationTaskId = ref('')
   // 失败后即使用户关闭错误提示，旧串仍属于上一次成功结果，导出必须再次确认。
   const generationFailed = ref(false)
   const generationProgress = ref('')
+  const progressWriter = createFrameCoalescer<string>(text => { generationProgress.value = text })
   const importing = ref(false)
   const saving = ref(false)
   const error = ref<{code: string; message: string; source?: 'generation'} | null>(null)
@@ -309,7 +312,11 @@ export const useQuantWorkspace = () => {
         } else {
           generationProgress.value = progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
         }
-      }, observer.signal)
+      }, observer.signal, taskId => {
+        // 任务号在请求发出前同步回调；旧任务迟到的回调不得覆盖当前任务号。
+        if (disposed || currentTaskToken !== taskToken || generationObserver !== observer) return
+        generationTaskId.value = taskId
+      })
       // 竞态防护：调用返回后仍要检查当前 token 和 observer，防止旧任务结果覆盖新画面。
       if (disposed || currentTaskToken !== taskToken || generationObserver !== observer) return
       if (signature !== generationSignature.value || result.sourcePlanId !== source || plan.value?.planId !== source) {
@@ -352,10 +359,10 @@ export const useQuantWorkspace = () => {
       }
       if (!disposed && generationObserver === observer && signature === generationSignature.value && plan.value?.planId === source) { generationFailed.value = true; report(caught, 'generation') }
     } finally {
-      observer.abort()
       if (generationObserver === observer) {
         generationObserver = undefined
         generating.value = false
+        progressWriter.cancel()
         generationProgress.value = ''
       }
     }
@@ -560,7 +567,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; generationObserver?.abort(); discardActivePreview(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {machineChoices, selectedMachine, selectMachine, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal, registerPreviewApi, discardActivePreview}
+  return {machineChoices, selectedMachine, selectMachine, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationTaskId, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal, registerPreviewApi, discardActivePreview}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

@@ -424,6 +424,166 @@ export namespace build {
 	        this.z = source["z"];
 	    }
 	}
+	export class PreviewBuildingRecord {
+	    num: number;
+	    recordLayout: string;
+	    index: number;
+	    itemId: number;
+	    modelIndex: number;
+	    areaIndex: number;
+	    localOffset: blueprint.Point;
+	    yaw: number;
+	    tilt: number;
+	    pitch: number;
+	    localOffset2: blueprint.Point;
+	    yaw2: number;
+	    tilt2: number;
+	    pitch2: number;
+	    outputObjIdx: number;
+	    inputObjIdx: number;
+	    outputToSlot: number;
+	    inputFromSlot: number;
+	    outputFromSlot: number;
+	    inputToSlot: number;
+	    outputOffset: number;
+	    inputOffset: number;
+	    recipeId: number;
+	    filterId: number;
+	    parameters: number[];
+	    content: string;
+	    rawTail?: number[];
+	    isTemporary: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewBuildingRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.num = source["num"];
+	        this.recordLayout = source["recordLayout"];
+	        this.index = source["index"];
+	        this.itemId = source["itemId"];
+	        this.modelIndex = source["modelIndex"];
+	        this.areaIndex = source["areaIndex"];
+	        this.localOffset = this.convertValues(source["localOffset"], blueprint.Point);
+	        this.yaw = source["yaw"];
+	        this.tilt = source["tilt"];
+	        this.pitch = source["pitch"];
+	        this.localOffset2 = this.convertValues(source["localOffset2"], blueprint.Point);
+	        this.yaw2 = source["yaw2"];
+	        this.tilt2 = source["tilt2"];
+	        this.pitch2 = source["pitch2"];
+	        this.outputObjIdx = source["outputObjIdx"];
+	        this.inputObjIdx = source["inputObjIdx"];
+	        this.outputToSlot = source["outputToSlot"];
+	        this.inputFromSlot = source["inputFromSlot"];
+	        this.outputFromSlot = source["outputFromSlot"];
+	        this.inputToSlot = source["inputToSlot"];
+	        this.outputOffset = source["outputOffset"];
+	        this.inputOffset = source["inputOffset"];
+	        this.recipeId = source["recipeId"];
+	        this.filterId = source["filterId"];
+	        this.parameters = source["parameters"];
+	        this.content = source["content"];
+	        this.rawTail = source["rawTail"];
+	        this.isTemporary = source["isTemporary"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PreviewModule {
+	    id: string;
+	    name: string;
+	    productionIndex: number;
+	    mainItemId?: number;
+	    recipeId?: number;
+	    machineId?: number;
+	    machineCount?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewModule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.productionIndex = source["productionIndex"];
+	        this.mainItemId = source["mainItemId"];
+	        this.recipeId = source["recipeId"];
+	        this.machineId = source["machineId"];
+	        this.machineCount = source["machineCount"];
+	    }
+	}
+	export class BuildingBatch {
+	    module: PreviewModule;
+	    batchIndex: number;
+	    batchCount: number;
+	    buildings: PreviewBuildingRecord[];
+	    areas: preview.Area[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BuildingBatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.module = this.convertValues(source["module"], PreviewModule);
+	        this.batchIndex = source["batchIndex"];
+	        this.batchCount = source["batchCount"];
+	        this.buildings = this.convertValues(source["buildings"], PreviewBuildingRecord);
+	        this.areas = this.convertValues(source["areas"], preview.Area);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CandidatePreviewPlan {
+	    id: string;
+	    ordinal: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CandidatePreviewPlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.ordinal = source["ordinal"];
+	    }
+	}
 	export class DensityLatitudeOption {
 	    value: string;
 	    label: string;
@@ -600,7 +760,44 @@ export namespace build {
 	        this.visits = source["visits"];
 	    }
 	}
+	export class PerformanceCandidate {
+	    id: string;
+	    durationMs: number;
+	    stages: PerformanceStage[];
+	    failed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PerformanceCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.durationMs = source["durationMs"];
+	        this.stages = this.convertValues(source["stages"], PerformanceStage);
+	        this.failed = source["failed"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class GenerationPerformance {
+	    candidateDetails: PerformanceCandidate[];
 	    scope: string;
 	    outcome: string;
 	    totalDurationMs: number;
@@ -617,6 +814,7 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.candidateDetails = this.convertValues(source["candidateDetails"], PerformanceCandidate);
 	        this.scope = source["scope"];
 	        this.outcome = source["outcome"];
 	        this.totalDurationMs = source["totalDurationMs"];
@@ -843,6 +1041,9 @@ export namespace build {
 	
 	
 	
+	
+	
+	
 	export class ProductionBinding {
 	    machineIndices?: number[];
 	    productionIndex: number;
@@ -860,6 +1061,82 @@ export namespace build {
 	    }
 	}
 	
+	export class Progress {
+	    candidateSequence?: number;
+	    snapshotRevision?: number;
+	    chunkIndex?: number;
+	    chunkCount?: number;
+	    candidates?: CandidatePreviewPlan[];
+	    candidateId?: string;
+	    candidateOrdinal?: number;
+	    candidateStatus?: string;
+	    winnerCandidateId?: string;
+	    taskId?: string;
+	    protocolVersion: number;
+	    kind: string;
+	    sequence: number;
+	    stage: string;
+	    message: string;
+	    current: number;
+	    total: number;
+	    coordinateSystem?: string;
+	    previewBatch?: BuildingBatch;
+	    buildingCount?: number;
+	    batchCount?: number;
+	    operations?: preview.Operation[];
+	    areas?: preview.Area[];
+	    primaryAreaIndex?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Progress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.candidateSequence = source["candidateSequence"];
+	        this.snapshotRevision = source["snapshotRevision"];
+	        this.chunkIndex = source["chunkIndex"];
+	        this.chunkCount = source["chunkCount"];
+	        this.candidates = this.convertValues(source["candidates"], CandidatePreviewPlan);
+	        this.candidateId = source["candidateId"];
+	        this.candidateOrdinal = source["candidateOrdinal"];
+	        this.candidateStatus = source["candidateStatus"];
+	        this.winnerCandidateId = source["winnerCandidateId"];
+	        this.taskId = source["taskId"];
+	        this.protocolVersion = source["protocolVersion"];
+	        this.kind = source["kind"];
+	        this.sequence = source["sequence"];
+	        this.stage = source["stage"];
+	        this.message = source["message"];
+	        this.current = source["current"];
+	        this.total = source["total"];
+	        this.coordinateSystem = source["coordinateSystem"];
+	        this.previewBatch = this.convertValues(source["previewBatch"], BuildingBatch);
+	        this.buildingCount = source["buildingCount"];
+	        this.batchCount = source["batchCount"];
+	        this.operations = this.convertValues(source["operations"], preview.Operation);
+	        this.areas = this.convertValues(source["areas"], preview.Area);
+	        this.primaryAreaIndex = source["primaryAreaIndex"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class SurfaceLayout {
 	    latitudeZone?: string;
 	    mode: string;
@@ -941,6 +1218,8 @@ export namespace build {
 	    }
 	}
 	export class Request {
+	    candidateConcurrency?: number;
+	    previewProtocolVersion?: number;
 	    emitPreviewDeltas?: boolean;
 	    taskId?: string;
 	    emitBlueprintProgress?: boolean;
@@ -958,6 +1237,8 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.candidateConcurrency = source["candidateConcurrency"];
+	        this.previewProtocolVersion = source["previewProtocolVersion"];
 	        this.emitPreviewDeltas = source["emitPreviewDeltas"];
 	        this.taskId = source["taskId"];
 	        this.emitBlueprintProgress = source["emitBlueprintProgress"];
@@ -1171,6 +1452,7 @@ export namespace build {
 	    }
 	}
 	export class Result {
+	    winnerCandidateId?: string;
 	    densityReport?: DensityReport;
 	    blueprintRef?: string;
 	    blueprintLength?: number;
@@ -1193,6 +1475,7 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.winnerCandidateId = source["winnerCandidateId"];
 	        this.densityReport = this.convertValues(source["densityReport"], DensityReport);
 	        this.blueprintRef = source["blueprintRef"];
 	        this.blueprintLength = source["blueprintLength"];
@@ -4664,6 +4947,206 @@ export namespace p2p {
 	        this.limitDataBytes = source["limitDataBytes"];
 	        this.error = source["error"];
 	    }
+	}
+
+}
+
+export namespace preview {
+	
+	export class Point2 {
+	    x: number;
+	    y: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Point2(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	    }
+	}
+	export class Area {
+	    index: number;
+	    parentIndex: number;
+	    tropicAnchor: number;
+	    areaSegments: number;
+	    anchorLocalOffset: Point2;
+	    size: Point2;
+	
+	    static createFrom(source: any = {}) {
+	        return new Area(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.parentIndex = source["parentIndex"];
+	        this.tropicAnchor = source["tropicAnchor"];
+	        this.areaSegments = source["areaSegments"];
+	        this.anchorLocalOffset = this.convertValues(source["anchorLocalOffset"], Point2);
+	        this.size = this.convertValues(source["size"], Point2);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Building {
+	    index: number;
+	    isTemporary: boolean;
+	    itemId: number;
+	    modelIndex: number;
+	    areaIndex: number;
+	    localOffset: blueprint.Point;
+	    localOffset2: blueprint.Point;
+	    yaw: number;
+	    yaw2: number;
+	    tilt: number;
+	    tilt2: number;
+	    pitch: number;
+	    pitch2: number;
+	    inputObjectId?: string;
+	    outputObjectId?: string;
+	    inputFromSlot: number;
+	    outputToSlot: number;
+	    productionIndex: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Building(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.isTemporary = source["isTemporary"];
+	        this.itemId = source["itemId"];
+	        this.modelIndex = source["modelIndex"];
+	        this.areaIndex = source["areaIndex"];
+	        this.localOffset = this.convertValues(source["localOffset"], blueprint.Point);
+	        this.localOffset2 = this.convertValues(source["localOffset2"], blueprint.Point);
+	        this.yaw = source["yaw"];
+	        this.yaw2 = source["yaw2"];
+	        this.tilt = source["tilt"];
+	        this.tilt2 = source["tilt2"];
+	        this.pitch = source["pitch"];
+	        this.pitch2 = source["pitch2"];
+	        this.inputObjectId = source["inputObjectId"];
+	        this.outputObjectId = source["outputObjectId"];
+	        this.inputFromSlot = source["inputFromSlot"];
+	        this.outputToSlot = source["outputToSlot"];
+	        this.productionIndex = source["productionIndex"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Operation {
+	    type: string;
+	    objectId: string;
+	    building?: Building;
+	
+	    static createFrom(source: any = {}) {
+	        return new Operation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.objectId = source["objectId"];
+	        this.building = this.convertValues(source["building"], Building);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace progressjournal {
+	
+	export class Page {
+	    events: build.Progress[];
+	    next: number;
+	    complete: boolean;
+	    incomplete: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Page(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.events = this.convertValues(source["events"], build.Progress);
+	        this.next = source["next"];
+	        this.complete = source["complete"];
+	        this.incomplete = source["incomplete"];
+	        this.message = source["message"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

@@ -4,6 +4,7 @@ package build
 
 import (
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build/algorithm/search"
 	"DysonSphereBox/helper/quant"
 	"context"
 	"fmt"
@@ -89,6 +90,7 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	ctx, cancel := context.WithTimeout(parent, generationTimeout)
 	defer cancel()
 	ctx = context.WithValue(ctx, generationTaskIDKey{}, req.TaskID)
+	ctx = context.WithValue(ctx, candidateConcurrencyKey{}, req.CandidateConcurrency)
 	ctx = withGenerationPreview(ctx, req)
 	defer func() {
 		if generateErr != nil {
@@ -104,6 +106,9 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	}()
 	result = Result{Warnings: []string{}, Bindings: []ProductionBinding{}, SharedBuildingIndices: []int{}}
 	reportProgress(ctx, "validate", "正在校验生成参数", 0, 0)
+	if req.CandidateConcurrency < 0 || req.CandidateConcurrency > search.MaxCandidateWorkers {
+		return result, &blueprint.Error{Code: "GEN_E_CONCURRENCY", Message: "候选并发上限必须为自动或一到十"}
+	}
 	if req.Mode < 1 || req.Mode > 6 {
 		return result, &blueprint.Error{Code: "GEN_E_MODE", Message: "策略必须为 1 到 6"}
 	}
@@ -208,6 +213,9 @@ func publishFinalBlueprintProgress(ctx context.Context, request Request, dataset
 	}
 	if err := commitGenerationPreview(ctx, result); err != nil {
 		return Result{}, err
+	}
+	if result.previewScene != nil && result.previewScene.session != nil {
+		result.WinnerCandidateID = result.previewScene.session.candidateID
 	}
 	result.previewScene = nil
 	if err := emitBlueprintProgress(ctx, request, result, dataset); err != nil {

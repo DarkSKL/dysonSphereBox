@@ -281,7 +281,7 @@ func (b *builder) newCandidateBuilder() (*builder, error) {
 		return nil, err
 	}
 	candidate.adapter = b.adapter
-	candidate.preview = b.preview
+	candidate.preview = b.preview.fork()
 	return candidate, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"DysonSphereBox/helper/blueprint/build"
 	factoryHelper "DysonSphereBox/helper/factory"
 	contract "DysonSphereBox/helper/factory/contract"
+	"DysonSphereBox/helper/factory/progressjournal"
 	"DysonSphereBox/helper/quant"
 	systemHelper "DysonSphereBox/helper/system"
 	"context"
@@ -19,6 +20,7 @@ import (
 
 // Service 职责：校验输入、保存有限方案快照并编排纯引擎；使用：Wails 绑定；边界：构造无副作用，不将账号或真实游戏资源纳入计算。
 type Service struct {
+	progress progressjournal.Store
 	// mu 职责：保护快照；使用：Solve/Generate；边界：计算不持锁。
 	mu sync.Mutex
 	// plans 职责：后端可信求解结果；使用：防篡改生成；边界：仅最近 16 个。
@@ -149,7 +151,15 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 	if ctx.Err() != nil {
 		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_CANCELED", Message: "已中止旧任务，改为执行新的生成请求"}}
 	}
-	data, err := build.Generate(factoryHelper.GenerationContext(ctx, req.TaskID), req)
+	var generationContext context.Context
+	if req.PreviewProtocolVersion == 4 && req.EmitPreviewDeltas && req.TaskID != "" {
+		s.progress.Begin(req.TaskID)
+		defer s.progress.Finish(req.TaskID)
+		generationContext = factoryHelper.GenerationContext(ctx, req.TaskID, s.progress.Append)
+	} else {
+		generationContext = factoryHelper.GenerationContext(ctx, req.TaskID)
+	}
+	data, err := build.Generate(generationContext, req)
 	if ctx.Err() != nil {
 		return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_CANCELED", Message: "已中止旧任务，改为执行新的生成请求"}}
 	}

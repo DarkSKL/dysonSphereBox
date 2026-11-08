@@ -4,6 +4,7 @@ package build
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"DysonSphereBox/helper/blueprint/build/preview"
@@ -11,6 +12,24 @@ import (
 
 // Progress 职责：描述生成阶段或蓝图预览分块；使用：Wails 事件和内部观察者；边界：序号仅保证单请求内有序，不代表完成百分比。
 type Progress struct {
+	// CandidateSequence 职责：提供候选内连续序号；使用：分流校验；边界：不替代任务全局序号。
+	CandidateSequence uint64 `json:"candidateSequence,omitempty"`
+	// SnapshotRevision 职责：标识完整正式快照；使用：分块组装；边界：当前每任务提交一次获选快照。
+	SnapshotRevision uint64 `json:"snapshotRevision,omitempty"`
+	// ChunkIndex 职责：保存快照块下标；使用：原子组装；边界：零开始。
+	ChunkIndex int `json:"chunkIndex,omitempty"`
+	// ChunkCount 职责：保存快照总块数；使用：完整性校验；边界：不是预览差量批数。
+	ChunkCount int `json:"chunkCount,omitempty"`
+	// Candidates 职责：声明已启用候选组；使用：先铺开全部平台；边界：未启用回退组不提前创建。
+	Candidates []CandidatePreviewPlan `json:"candidates,omitempty"`
+	// CandidateID 职责：标识独立候选；使用：预览分流；边界：只在任务内有效。
+	CandidateID string `json:"candidateId,omitempty"`
+	// CandidateOrdinal 职责：保存候选稳定顺序；使用：平台排布；边界：不按完成顺序编号。
+	CandidateOrdinal uint64 `json:"candidateOrdinal,omitempty"`
+	// CandidateStatus 职责：保存候选局部终检状态；使用：独立淘汰；边界：可行不代表最终获选。
+	CandidateStatus string `json:"candidateStatus,omitempty"`
+	// WinnerCandidateID 职责：声明唯一获选候选；使用：正式结果对齐；边界：只有成功结束时有效。
+	WinnerCandidateID string `json:"winnerCandidateId,omitempty"`
 	// TaskID 职责：关联当前生成任务；使用：过滤迟到或旧任务事件；边界：不作为认证凭据或最终蓝图身份。
 	TaskID string `json:"taskId,omitempty"`
 	// ProtocolVersion 职责：标识事件载荷版本；使用：前端兼容分支；边界：只针对本事件契约。
@@ -43,6 +62,12 @@ type Progress struct {
 	PreviewPrimaryAreaIndex int32 `json:"primaryAreaIndex,omitempty"`
 }
 
+// CandidatePreviewPlan 职责：在计算前声明完整候选平台身份；使用：候选组派发；边界：不包含未启用的条件回退组。
+type CandidatePreviewPlan struct {
+	ID      string `json:"id"`
+	Ordinal uint64 `json:"ordinal"`
+}
+
 // progressKey 职责：隔离上下文观察者键；使用：WithProgress 与通知函数；边界：不保存全局订阅。
 type progressKey struct{}
 
@@ -51,6 +76,7 @@ type generationTaskIDKey struct{}
 
 // progressObserver 职责：保存单请求的同步观察者和事件序号；使用：各阶段统一发布；边界：不跨请求共享。
 type progressObserver struct {
+	mu sync.Mutex
 	// callback 职责：接收已编号事件；使用：WithProgress 注册；边界：必须快速返回且不修改引擎状态。
 	callback func(Progress)
 	// sequence 职责：分配单请求递增序号；使用：发布阶段和预览分块；边界：只在同一观察者内有效。
@@ -75,6 +101,11 @@ func publishProgress(ctx context.Context, progress Progress) {
 	}
 	observer, ok := ctx.Value(progressKey{}).(*progressObserver)
 	if !ok || observer == nil || observer.callback == nil {
+		return
+	}
+	observer.mu.Lock()
+	defer observer.mu.Unlock()
+	if ctx.Err() != nil {
 		return
 	}
 	if progress.ProtocolVersion == 0 {

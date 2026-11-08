@@ -83,7 +83,22 @@ export const isFactoryGenerationProgressEvent = (value: unknown): value is Facto
     || value.total < value.current) return false
   if (value.protocolVersion === undefined && value.kind === undefined) return true
   if (!isIntegerAtLeast(value.sequence, 1)) return false
-  if (value.protocolVersion === 3) {
+  if (value.protocolVersion === 4) {
+    if (value.kind === 'candidate-plan') return Array.isArray(value.candidates) && value.candidates.every(candidate => isRecord(candidate) && typeof candidate.id === 'string' && candidate.id.length > 0 && isIntegerAtLeast(candidate.ordinal, 1))
+    if (value.kind === 'search-start' || value.kind === 'search-failed') return true
+    if (typeof value.candidateId !== 'string' || !value.candidateId) return false
+    if (!isIntegerAtLeast(value.candidateSequence, 1)) return false
+    if (value.kind === 'candidate-start') return isIntegerAtLeast(value.candidateOrdinal, 1)
+    if (value.kind === 'candidate-finish') return ['valid', 'rejected', 'pruned'].includes(String(value.candidateStatus))
+    if (value.kind === 'preview-snapshot') return value.coordinateSystem === 'blueprint-area-local-v1'
+      && hasAreaFrame(value) && isIntegerAtLeast(value.snapshotRevision, 1)
+      && isIntegerAtLeast(value.chunkCount, 1) && isIntegerAtLeast(value.chunkIndex ?? 0, 0)
+      && Number(value.chunkIndex ?? 0) < value.chunkCount
+      && Array.isArray(value.operations) && value.operations.length > 0 && value.operations.length <= 128
+      && value.operations.every(operation => isFactoryPreviewOperation(operation) && operation.type === 'add' && !operation.building.isTemporary)
+    if (value.kind === 'preview-complete' && (typeof value.winnerCandidateId !== 'string' || !value.winnerCandidateId)) return false
+  }
+  if (value.protocolVersion === 3 || value.protocolVersion === 4) {
     if (value.kind === 'preview-delta') return hasAreaFrame(value)
       && Array.isArray(value.operations) && value.operations.length > 0
       && value.operations.length <= 128 && value.operations.every(operation => (

@@ -43,18 +43,21 @@ export const listFactoryDatasets = async (): Promise<quant.DatasetInfo[]> => { r
 export const describeFactoryDataset = async (key: string): Promise<factorycontract.DatasetDetail> => { ready(); return unwrap(await DescribeDataset(key)) }
 export const solveFactory = async (request: quant.Request): Promise<quant.Result> => { ready(); return unwrap(await Solve(request)) }
 /** 职责：生成蓝图并透传任务内有序事件；使用：调用方通过 request.emitPreviewDeltas 按需订阅差量；边界：不维护预览场景，不执行渲染或动画。 */
-export const generateFactory = async (request: build.Request, onProgress?: (progress: FactoryGenerationProgress) => void, signal?: AbortSignal): Promise<build.Result> => {
+export const generateFactory = async (request: build.Request, onProgress?: (progress: FactoryGenerationProgress) => void, signal?: AbortSignal, onTask?: (taskId: string) => void): Promise<build.Result> => {
   ready()
   ensureNotAborted(signal)
   const taskId = crypto.randomUUID()
-  const stop = observeFactoryGeneration(taskId, onProgress, signal)
+  onTask?.(taskId)
+  const stop = observeFactoryGeneration(taskId, onProgress, signal, request.previewProtocolVersion === 4 && request.emitPreviewDeltas)
   try {
-    const result = unwrap(await Generate(new build.Request({...request, taskId})))
-    stop()
+    const response = await Generate(new build.Request({...request, taskId}))
+    await stop.drain()
+    const result = unwrap(response)
+    stop.finish()
     if (result.blueprintRef && !signal?.aborted) onProgress?.({taskId, stage: 'read', message: '正在读取生成的蓝图', current: 0, total: 0})
     result.blueprint = await readGenerated(result, signal)
     return result
-  } finally { stop() }
+  } finally { stop.finish() }
 }
 export const inspectFactoryBlueprint = async (code: string, dataset: string): Promise<factorycontract.Inspection> => {
   ready(); return unwrap(await Inspect(new factorycontract.InspectRequest({blueprint: code, dataset})))

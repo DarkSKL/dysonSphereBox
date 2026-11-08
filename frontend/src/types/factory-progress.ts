@@ -8,7 +8,16 @@ export interface FactoryGenerationProgress {
   readonly current: number
   readonly total: number
   readonly protocolVersion?: number
-  readonly kind?: 'phase' | 'building-batch' | 'preview-delta' | 'preview-complete'
+  readonly kind?: 'phase' | 'building-batch' | 'preview-delta' | 'preview-snapshot' | 'preview-complete' | 'search-start' | 'search-failed' | 'candidate-plan' | 'candidate-start' | 'candidate-finish'
+  readonly candidateSequence?: number
+  readonly snapshotRevision?: number
+  readonly chunkIndex?: number
+  readonly chunkCount?: number
+  readonly candidates?: readonly {readonly id: string; readonly ordinal: number}[]
+  readonly candidateId?: string
+  readonly candidateOrdinal?: number
+  readonly candidateStatus?: 'valid' | 'rejected' | 'pruned'
+  readonly winnerCandidateId?: string
   readonly sequence?: number
   readonly coordinateSystem?: 'blueprint-area-local-v1' | 'layout-grid-v1'
   readonly previewBatch?: FactoryBuildingBatch

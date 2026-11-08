@@ -1,7 +1,7 @@
 import { computed, nextTick, ref } from 'vue';
 import { GetConfig, SetConfig } from '../../wailsjs/go/system/ConfigurationService';
 
-export type ThemeMode = 'light' | 'dark' | 'editor';
+export type ThemeMode = 'light' | 'dark';
 
 interface ThemeTogglePoint {
   readonly x: number;

@@ -4,6 +4,7 @@ package build
 // 使用：mode 3/4 标准密度布局完成后；边界：候选仍执行普通碰撞、间距及完整物流终检。
 
 import (
+	"DysonSphereBox/helper/blueprint/build/algorithm/search"
 	"context"
 	"errors"
 	"fmt"
@@ -20,34 +21,67 @@ func (b *builder) generateStandardStationField(ctx context.Context, req Request,
 	bestTowers := math.MaxInt
 	var failures []error
 	diagnostics := []SearchCandidateDiagnostic{}
-	for variant := 0; variant < 4; variant++ {
-		if err := b.checkGeneration("普通共享塔布局候选"); err != nil {
-			return Result{}, err
+	type stationEvaluation struct {
+		out         Result
+		count       int
+		err         error
+		diagnostics []SearchCandidateDiagnostic
+	}
+	{
+		indices := make([]int, 4)
+		for index := range indices {
+			indices[index] = index
 		}
-		candidate, err := b.denseStationBlackboxCandidate(ctx, req, dataset, config, variant)
-		stage := "assembly"
-		var out Result
-		if err == nil {
-			stage = "final-validation"
-			out, err = candidate.finish(ctx, req, dataset)
-		}
-		if candidate != nil {
-			diagnostics = appendSearchCandidateDiagnostics(diagnostics, newSearchCandidateDiagnostic("standard-station-field", variant, fmt.Sprintf("ordinarySpacing=true;sharedBoundaryTowers=true;variant=%d", variant), stage, err), candidate.logistics)
-		}
-		if err != nil {
-			failures = append(failures, err)
-			if candidate != nil {
-				candidate.rollbackPreview()
+		previews := b.planCandidatePreviews(len(indices))
+		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
+			ctx, finishPerformance := beginCandidatePerformance(ctx, "standard-station", variant)
+			defer func() { finishPerformance(evaluation.err) }()
+			var failures []error
+			var diagnostics []SearchCandidateDiagnostic
+			defer func() { evaluation.err = errors.Join(failures...); evaluation.diagnostics = diagnostics }()
+			if err := b.checkGeneration("普通共享塔布局候选"); err != nil {
+				failures = append(failures, err)
+				return
 			}
-			continue
-		}
-		if out.LogisticsSummary == nil {
-			failures = append(failures, &blueprint.Error{Code: "GEN_E_FLOW", Message: "普通共享塔候选缺少最终物流证据"})
-			continue
-		}
-		count := denseStationFacilityCount(candidate)
-		if best == nil || count < bestTowers || count == bestTowers && betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
-			best, bestTowers = &out, count
+			candidate, err := b.denseStationBlackboxCandidate(ctx, req, dataset, config, variant, previews[localIndex])
+			stage := "assembly"
+			var out Result
+			if err == nil {
+				stage = "final-validation"
+				out, err = candidate.finish(ctx, req, dataset)
+			}
+			if candidate != nil {
+				diagnostics = appendSearchCandidateDiagnostics(diagnostics, newSearchCandidateDiagnostic("standard-station-field", variant, fmt.Sprintf("ordinarySpacing=true;sharedBoundaryTowers=true;variant=%d", variant), stage, err), candidate.logistics)
+			}
+			if err != nil {
+				failures = append(failures, err)
+				if candidate != nil {
+					candidate.rollbackPreview()
+				}
+				return
+			}
+			if out.LogisticsSummary == nil {
+				failures = append(failures, &blueprint.Error{Code: "GEN_E_FLOW", Message: "普通共享塔候选缺少最终物流证据"})
+				return
+			}
+
+			evaluation.out = out
+			evaluation.count = denseStationFacilityCount(candidate)
+			return
+		}, func(_ int, evaluation stationEvaluation) error {
+			diagnostics = append(diagnostics, evaluation.diagnostics...)
+			if evaluation.err != nil {
+				failures = append(failures, evaluation.err)
+				return nil
+			}
+			out, count := evaluation.out, evaluation.count
+			if best == nil || count < bestTowers || count == bestTowers && betterTransportCandidate(out.LogisticsSummary.Metrics, best.LogisticsSummary.Metrics) {
+				best, bestTowers = &out, count
+			}
+			return nil
+		})
+		if waveErr != nil {
+			return Result{}, previewContextError(waveErr)
 		}
 	}
 	if err := b.checkGeneration("普通共享塔布局提交"); err != nil {
