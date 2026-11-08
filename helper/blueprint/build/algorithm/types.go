@@ -60,7 +60,7 @@ type Setting struct {
 
 // Request 职责：承载生成边界数据；使用：服务与预览联动；边界：不承诺游戏实际验收。
 type Request struct {
-	// CandidateConcurrency 职责：指定单任务候选并发上限；使用：诊断与资源调优；边界：零为自动，只允许一到四，不改变全局 GOMAXPROCS。
+	// CandidateConcurrency 职责：指定单任务候选并发上限；使用：诊断与资源调优；边界：零为自动，只允许一到十，不改变全局 GOMAXPROCS。
 	CandidateConcurrency   int `json:"candidateConcurrency,omitempty"`
 	PreviewProtocolVersion int `json:"previewProtocolVersion,omitempty"`
 	// EmitPreviewDeltas 职责：启用生成期间的对象新增、撤销与替换事件；使用：支持实时增量的预览器；边界：缺省关闭，与旧最终建筑分块选项独立。

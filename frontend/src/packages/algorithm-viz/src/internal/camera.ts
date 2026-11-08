@@ -11,6 +11,8 @@ import { damp } from './math';
 
 const ELEVATION = Math.atan(1 / Math.SQRT2);
 const DISTANCE = 600;
+/** 以观察点为中心，前后各保留的可见纵深（世界单位） */
+const DEPTH_RANGE = 6000;
 const QUARTER = Math.PI / 2;
 const ROTATE_SPEED = 0.008;
 const ZOOM_MIN = 0.3;
@@ -44,7 +46,9 @@ export class IsoCameraRig {
   private readonly corner = new THREE.Vector3();
 
   constructor() {
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, DISTANCE * 3);
+    // 裁剪面要覆盖大蓝图多平台方阵的整个纵深：正交投影深度线性，近面取负值也合法，
+    // 范围太窄时远处或近处的平台会被整块截断
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, DISTANCE - DEPTH_RANGE, DISTANCE + DEPTH_RANGE);
     this.update(1, true);
   }
 
@@ -128,11 +132,18 @@ export class IsoCameraRig {
     this.targetGoal.addScaledVector(this.right, sx * (before - after)).addScaledVector(this.up, sy * (before - after));
   }
 
-  /** 恢复自动取景与默认方位 */
-  reset(): void {
+  /** 恢复自动取景；full 为 true 时连方位也回到默认的 45°（取最近的等价角度，旋转路径最短） */
+  reset(full = false): void {
     this.autoFrame = true;
     this.zoomGoal = 1;
-    this.azimuthGoal = this.snap(this.azimuthGoal);
+    if (this.dragging) this.endRotate();
+    if (full) {
+      const turn = Math.PI * 2;
+      const home = Math.PI / 4;
+      this.azimuthGoal = home + Math.round((this.azimuth - home) / turn) * turn;
+    } else {
+      this.azimuthGoal = this.snap(this.azimuthGoal);
+    }
   }
 
   update(dt: number, immediate = false): void {

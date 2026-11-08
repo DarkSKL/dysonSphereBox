@@ -174,6 +174,9 @@ export interface AlgorithmVizController {
   rotate(steps: number): void;
   /** 视角复位：恢复自动取景 */
   resetView(): void;
+  /** 视角锁定：为 true 时立即强制复位（默认方位 + 自动取景），并禁止旋转、平移、缩放；复位操作仍可用 */
+  setViewLocked(locked: boolean): void;
+  isViewLocked(): boolean;
   /** 选中或取消选中建筑 */
   select(id: string | null): void;
   getProgress(): AlgoVizProgress;

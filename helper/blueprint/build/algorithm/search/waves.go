@@ -6,9 +6,12 @@ import (
 	"sync"
 )
 
-// Concurrency 职责：计算单任务候选并发上限；使用：候选组派发；边界：不修改全局运行时设置。
+// MaxCandidateWorkers 单任务候选并发数的默认上限。
+const MaxCandidateWorkers = 10
+
+// Concurrency 职责：计算单任务候选并发上限；使用：候选组派发；边界：不修改全局运行时设置，至少保留一个逻辑核心给界面与其他任务。
 func Concurrency(candidates int) int {
-	return max(1, min(candidates, 4, max(1, runtime.GOMAXPROCS(0)-1)))
+	return max(1, min(candidates, MaxCandidateWorkers, max(1, runtime.GOMAXPROCS(0)-1)))
 }
 
 // Waves 职责：按固定波次执行候选并顺序归约；使用：模式候选组；边界：execute 独占可变状态，reduce 仅在整波退出后执行，取消后等待所有已启动任务退出。

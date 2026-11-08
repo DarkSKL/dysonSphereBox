@@ -141,6 +141,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
 
   // --- 场景对象 ---
   private readonly objects = new Map<string, VizObject>();
+  /** 视角锁定：计算期间强制复位并禁止旋转、平移、缩放 */
+  private viewLocked = false;
   private readonly animating = new Set<VizObject>();
   /** 正在衰减闪白但不在动画中的对象 */
   private readonly glowing = new Set<VizObject>();
@@ -405,15 +407,30 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     return this.themeName;
   }
 
+  setViewLocked(locked: boolean): void {
+    if (this.disposed || !this.supported || locked === this.viewLocked) return;
+    this.viewLocked = locked;
+    if (!locked) return;
+    // 锁定即强制复位：回到默认方位并恢复自动取景；正在进行的拖动立即作废
+    if (this.pointer && this.pointer.mode !== 'pending') this.pointer.mode = 'pending';
+    this.rig.reset(true);
+    this.boundsDirty = true;
+    this.boundsAt = -1;
+  }
+
+  isViewLocked(): boolean {
+    return this.viewLocked;
+  }
+
   rotate(steps: number): void {
-    if (this.disposed || !this.supported || !Number.isFinite(steps)) return;
+    if (this.disposed || !this.supported || this.viewLocked || !Number.isFinite(steps)) return;
     this.rig.rotate(Math.round(steps));
     this.boundsDirty = true;
   }
 
   resetView(): void {
     if (this.disposed || !this.supported) return;
-    this.rig.reset();
+    this.rig.reset(this.viewLocked);
     this.boundsDirty = true;
     this.boundsAt = -1;
   }
@@ -1427,7 +1444,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (drag && drag.id === e.pointerId) {
       const dx = x - drag.lastX;
       const dy = y - drag.lastY;
-      if (drag.mode === 'pending' && Math.hypot(x - drag.startX, y - drag.startY) > DRAG_THRESHOLD) {
+      if (this.viewLocked && drag.mode !== 'pending') drag.mode = 'pending';
+      if (!this.viewLocked && drag.mode === 'pending' && Math.hypot(x - drag.startX, y - drag.startY) > DRAG_THRESHOLD) {
         drag.mode = 'rotate';
         this.rig.beginRotate();
         this.setHovered(null);
@@ -1471,6 +1489,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private readonly onWheel = (e: WheelEvent): void => {
     if (e.target !== this.renderer.domElement) return;
     e.preventDefault();
+    if (this.viewLocked) return;
     const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
     const { x, y } = this.localPoint(e);
     this.rig.zoomAt(Math.exp(-dy * 0.0015), x, y);

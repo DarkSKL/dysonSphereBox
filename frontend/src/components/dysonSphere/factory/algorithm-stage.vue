@@ -80,6 +80,7 @@ onMounted(async () => {
     onProgress: value => { progress.value = value },
     onSelect,
   })
+  viz.setViewLocked(props.w.generating)
   void feed.sync()
 })
 onBeforeUnmount(() => {
@@ -108,6 +109,8 @@ const regenerate = (): void => {
 // 说明：只读应用主题；应用自身有圆形揭示动画，场景立即切换避免新旧配色混杂。切走标签页时关闭选中卡片。
 watch(themeMode, mode => viz?.setTheme(mode, true))
 watch(() => props.active, active => { if (!active) viz?.select(null) })
+// 计算过程中强制处于复位视角：自动取景跟随画面，不允许旋转、平移、缩放，计算结束后恢复
+watch(() => props.w.generating, generating => viz?.setViewLocked(generating))
 
 // =============== 播放控制 ===============
 const togglePause = (): void => {
@@ -184,8 +187,8 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
       <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" :disabled="!busy" aria-label="跳过动画" @click="skip"><ChevronsRight :size="14" /></button></template>跳过动画，直接显示最终状态</n-tooltip>
       <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" :disabled="!w.code" aria-label="重新回放" @click="rebuild"><RefreshCw :size="14" /></button></template>清空舞台，按装配顺序重新回放当前结果</n-tooltip>
       <span class="tool-divider" />
-      <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="向左旋转" @click="viz?.rotate(-1)"><RotateCcw :size="14" /></button></template>向左旋转 90°</n-tooltip>
-      <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="向右旋转" @click="viz?.rotate(1)"><RotateCw :size="14" /></button></template>向右旋转 90°</n-tooltip>
+      <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="向左旋转" :disabled="w.generating" @click="viz?.rotate(-1)"><RotateCcw :size="14" /></button></template>向左旋转 90°</n-tooltip>
+      <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="向右旋转" :disabled="w.generating" @click="viz?.rotate(1)"><RotateCw :size="14" /></button></template>向右旋转 90°</n-tooltip>
       <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="复位视角" @click="viz?.resetView()"><Crosshair :size="14" /></button></template>复位视角并恢复自动取景</n-tooltip>
     </div>
 

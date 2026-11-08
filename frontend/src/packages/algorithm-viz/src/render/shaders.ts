@@ -201,8 +201,9 @@ void main() {
   }
   // 预览器的光照：白色主光 + 很暗的半球环境光（约 0.1），金属没有漫反射、靠反射着色
   // 预览器的主光斜射，朝上的面也只有约 0.75 的漫反射；背光面靠很暗的环境光
-  float ambient = 0.14;
-  vec3 col = albedo * mix(1.0, 0.55, metal) * ao * (ambient + (1.0 - ambient) * mvTone(n, vWorld.y)) * uLight * detail;
+  // 预览器的主光斜射，朝上的面也只有约 0.8 的漫反射；背光面靠很暗的环境光
+  float ambient = 0.1;
+  vec3 col = albedo * mix(1.0, 0.55, metal) * ao * (ambient + (0.8 - ambient) * mvTone(n, vWorld.y)) * uLight * detail;
   // 金属反光：朝天的面映出冷色天空，侧面与背光面映出暗地面；粗糙度越高越模糊
   vec3 viewV = normalize(uViewDir);
   float ndv = clamp(dot(nb, viewV), 0.0, 1.0);
@@ -211,12 +212,12 @@ void main() {
   vec3 env = mix(vec3(0.02, 0.03, 0.05), vec3(0.34, 0.5, 0.78), sky);
   float f0 = mix(0.03, 0.3, metal);
   float fres = f0 + (1.0 - f0) * pow(1.0 - ndv, 5.0);
-  col += env * fres * (1.0 - rough * 0.5) * 0.7;
+  col += env * fres * (1.0 - rough * 0.5) * 0.3;
   // 主光高光：光源在屏幕左上方，粗糙度越低越尖锐
   vec3 lightV = normalize(viewV * 0.5 - uViewRight * 0.6 + vec3(0.0, 1.0, 0.0));
   float spec = pow(max(dot(nb, normalize(lightV + viewV)), 0.0), mix(160.0, 22.0, rough));
   spec *= (0.1 + metal * 0.6) * (1.0 - rough * 0.6);
-  col += vec3(0.8, 0.88, 1.0) * spec * 0.4;
+  col += vec3(0.8, 0.88, 1.0) * spec * 0.25;
   // 自发光：依赖供电的材质在预览器里未通电，完全不发光（GLB 的自发光贴图丢了 alpha，强行开启会把机身照白）；
   // 不依赖供电的按遮罩颜色发光
   vec3 glow = uEmissiveTint;
@@ -225,6 +226,9 @@ void main() {
     glow = e * uEmissiveTint * (uNative > 0.5 ? 0.5 * (1.0 - uUnlit) : 0.4);
   }
   col += glow;
+  // 预览器的后期：饱和度 1.1、对比度 1.1，压住灰白、让涂装色更实
+  col = mix(vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), col, 1.15);
+  col = max((col - 0.18) * 1.1 + 0.18, 0.0);
   // 预览器的后期：饱和度 1.1、对比度 1.1，压住灰白、让涂装色更实
   if (holo > 0.001) {
     vec3 h = mvShade(uGhost, n, 2.4) * 0.85 + uGhost * (0.12 + holoSweep(vWorld.y) * 0.7);
@@ -252,10 +256,15 @@ varying vec3 vTier;
 varying vec4 vState;
 varying float vLen;
 varying float vFail;
+varying float vSteep;
 void main() {
   vec4 world = vec4(position, 1.0);
   #ifdef USE_INSTANCING
     world = instanceMatrix * world;
+    // 实例矩阵第一列是 运输方向 × 长度：竖直分量占比大即为陡坡带
+    vSteep = step(0.35, abs(instanceMatrix[0].y) / max(length(instanceMatrix[0].xyz), 1e-4));
+  #else
+    vSteep = 0.0;
   #endif
   world = modelMatrix * world;
   vWorld = world.xyz;
@@ -273,6 +282,7 @@ ${COMMON}
 uniform vec3 uBelt;
 uniform float uFlow;
 varying float vFail;
+varying float vSteep;
 varying vec3 vWorld;
 varying vec3 vLocal;
 varying vec3 vTier;
@@ -283,7 +293,10 @@ void main() {
   float holo = vState.z;
   if (holo > 0.5 && mod(floor(gl_FragCoord.y), 3.0) < 1.0) discard;
   vec3 n = flatNormal(vWorld);
-  float top = step(0.5, n.y);
+  // 带面按局部朝向判定（单位盒 y 轴 0..1，顶面恰在 1），而不是世界朝上：
+  // 垂直升降的传送带顶面朝向侧面，箭头动画必须跟着贴在这一面；
+  // 陡坡带（升降）的顶面容易背向或正对视线，顶底两面都绘制箭头，任何视角都能看见流向
+  float top = max(step(0.99, vLocal.y), vSteep * step(vLocal.y, 0.01));
   float across = abs(vLocal.z) * 2.0;
   float u = (vLocal.x + 0.5) * vLen;
   // 箭头尖端在带中线、两翼向后张开，整体沿运输方向（局部 +x）移动

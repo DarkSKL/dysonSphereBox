@@ -4,6 +4,7 @@ package build
 
 import (
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build/algorithm/search"
 	"DysonSphereBox/helper/quant"
 	"context"
 	"fmt"
@@ -105,8 +106,8 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	}()
 	result = Result{Warnings: []string{}, Bindings: []ProductionBinding{}, SharedBuildingIndices: []int{}}
 	reportProgress(ctx, "validate", "正在校验生成参数", 0, 0)
-	if req.CandidateConcurrency < 0 || req.CandidateConcurrency > 4 {
-		return result, &blueprint.Error{Code: "GEN_E_CONCURRENCY", Message: "候选并发上限必须为自动或一到四"}
+	if req.CandidateConcurrency < 0 || req.CandidateConcurrency > search.MaxCandidateWorkers {
+		return result, &blueprint.Error{Code: "GEN_E_CONCURRENCY", Message: "候选并发上限必须为自动或一到十"}
 	}
 	if req.Mode < 1 || req.Mode > 6 {
 		return result, &blueprint.Error{Code: "GEN_E_MODE", Message: "策略必须为 1 到 6"}
