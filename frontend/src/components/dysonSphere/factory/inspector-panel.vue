@@ -64,7 +64,7 @@ const importedRows = computed(() => {
       <div class="inspector-body">
         <div class="metric-grid ds-bracket"><div><span>建筑</span><strong class="type-display">{{ w.inspection.summary.buildingCount }}</strong></div><div><span>制造设备</span><strong class="type-display">{{ w.inspection.machines.length }}</strong></div></div>
         <div class="list">
-          <button v-for="row in importedRows" :key="row.recipeId" type="button" class="list-row" :class="{'is-active': w.selectedBuilding === row.first}" @click="w.selectedBuilding = row.first"><span class="row-main">{{ row.outputs }}</span><span class="row-value type-display">× {{ row.count }}</span></button>
+          <button v-for="row in importedRows" :key="row.recipeId" type="button" class="list-row" :class="{'is-active': w.selectedBuildings.includes(row.first)}" @click="w.selectedBuildings = [row.first]"><span class="row-main">{{ row.outputs }}</span><span class="row-value type-display">× {{ row.count }}</span></button>
         </div>
         <h3>未喷涂理论产出</h3>
         <div class="list"><div v-for="output in w.inspection.outputs" :key="output.itemId" class="list-row"><ItemIcon :name="output.name" :size="18" /><span class="row-main">{{ output.name }}</span><span class="row-value type-display">{{ w.number(output.ratePerMinute) }}</span></div></div>

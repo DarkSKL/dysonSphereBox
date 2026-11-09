@@ -24,7 +24,7 @@ const modelFiles = import.meta.glob([
   '!**/space-capsule.glb',
   '!**/stone-wall.glb',
   '!**/energy-exchanger-mcl-*.glb',
-], {as: 'url', eager: true})
+], {query: '?url', import: 'default', eager: true})
 // 涂装遮罩：游戏只把材质颜色染在贴图 alpha 通道标出的涂装区，GLB 的贴图没有保留这个通道，单独以图片提供
 const maskFiles = import.meta.glob('../../../data/models/masks/mask-*.png', {as: 'url', eager: true})
 const maskUrls: Record<string, string> = {}

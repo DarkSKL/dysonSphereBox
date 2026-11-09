@@ -1,5 +1,7 @@
+import {useMessage} from 'naive-ui'
 import {computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef} from 'vue'
 import {observeRawFactoryGenerationEvents} from '../../pages/services/dysonSphere/factory-progress'
+import {downloadJson} from '../../utils/download-json'
 import {isFactoryGenerationProgressEvent} from '../../utils/factory-preview-protocol'
 
 // =============== 时间流条目 ===============
@@ -27,7 +29,7 @@ export interface GenerationTimelineEntry {
 //       两者默认关闭，只影响下一次生成，不进入生成签名，切换不会触发重新生成。
 // 边界：开启差量后后端要求获选候选带完整预览快照，缺失时生成会以 GEN_E_PROGRESS_PREVIEW 失败，且事件量大；
 //       调试开关保留该失败以便定位，可视化跟随则由工作区改为普通生成重试。
-export const generationDebugOptions = reactive({debugMode: false, emitPreviewDeltas: false})
+export const generationDebugOptions = reactive({debugMode: true, emitPreviewDeltas: true})
 
 /** 时间流保留上限；预览差量事件频率高，超过后丢弃最旧条目，避免调试面板拖慢页面。 */
 const TIMELINE_LIMIT = 500
@@ -43,6 +45,7 @@ const integer = (value: unknown): number => typeof value === 'number' && Number.
 // 使用：调试侧栏调用；暂停只停止追加，不取消订阅；KeepAlive 停用期间仍继续记录。
 // 边界：无 Wails 运行时（纯 Vite 预览）时静默为空列表。
 export const useGenerationTimeline = () => {
+  const message = useMessage()
   const entries = shallowRef<GenerationTimelineEntry[]>([])
   const previewEntries = shallowRef<GenerationTimelineEntry[]>([])
   const paused = ref(false)
@@ -52,6 +55,15 @@ export const useGenerationTimeline = () => {
   const completeCount = ref(0)
   let nextId = 0
   let stop: (() => void) | undefined
+  /** 按任务暂存差量原文；预览完成时合并成一份样例并自动下载。 */
+  const pendingDeltas = new Map<string, unknown[]>()
+
+  const saveTaskDeltas = (taskId: string, deltas: unknown[]): void => {
+    try {
+      downloadJson(deltas, `preview-delta-${taskId.slice(0, 8) || 'task'}-${Date.now()}.json`)
+      message.success(`已自动保存 ${deltas.length} 条预览差量`)
+    } catch { message.warning('预览差量自动保存失败，可在事件详情中手动保存') }
+  }
 
   const record = (payload: unknown): void => {
     if (paused.value) return
@@ -70,15 +82,27 @@ export const useGenerationTimeline = () => {
       payload,
     }
     if (entry.kind === 'preview-delta' || entry.kind === 'preview-complete') {
-      if (entry.kind === 'preview-delta') deltaCount.value++
-      else completeCount.value++
+      const taskKey = entry.taskId || 'unknown'
+      if (entry.kind === 'preview-delta') {
+        deltaCount.value++
+        const deltas = pendingDeltas.get(taskKey) ?? []
+        deltas.push(payload)
+        if (deltas.length > TIMELINE_LIMIT) deltas.shift()
+        pendingDeltas.set(taskKey, deltas)
+      } else {
+        completeCount.value++
+        // 预览结束即自动落盘；同一任务只保存一次，不逐条触发下载。
+        const deltas = pendingDeltas.get(taskKey)
+        pendingDeltas.delete(taskKey)
+        if (deltas?.length) saveTaskDeltas(taskKey, deltas)
+      }
       previewEntries.value = [entry, ...previewEntries.value].slice(0, TIMELINE_LIMIT)
     }
     const next = [entry, ...entries.value]
     if (next.length > TIMELINE_LIMIT) dropped.value += next.length - TIMELINE_LIMIT
     entries.value = next.slice(0, TIMELINE_LIMIT)
   }
-  const clear = (): void => { entries.value = []; previewEntries.value = []; dropped.value = 0; deltaCount.value = 0; completeCount.value = 0; selected.value = null }
+  const clear = (): void => { entries.value = []; previewEntries.value = []; dropped.value = 0; deltaCount.value = 0; completeCount.value = 0; selected.value = null; pendingDeltas.clear() }
   const taskCount = computed(() => new Set(entries.value.map(entry => entry.taskId)).size)
 
   onMounted(() => { stop = observeRawFactoryGenerationEvents(record) })

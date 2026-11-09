@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import {Activity, Copy, PanelRightClose, PanelRightOpen, Pause, Play, Trash2} from '@lucide/vue'
+import {Activity, Copy, Download, PanelRightClose, PanelRightOpen, Pause, Play, Trash2} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import {computed, ref} from 'vue'
 import {ClipboardSetText} from '../../../../wailsjs/runtime/runtime'
 import {generationDebugOptions, useGenerationTimeline, type GenerationTimelineEntry} from '../../../composables/dysonSphere/useGenerationTimeline'
+import {downloadJson} from '../../../utils/download-json'
 
 const message = useMessage()
 const {entries, previewEntries, paused, selected, dropped, deltaCount, completeCount, clear} = useGenerationTimeline()
@@ -17,12 +18,17 @@ const emit = defineEmits<{generate: []}>()
 // 说明：为当前方案发起一次明确启用 preview-delta 的生成，避免仅打开开关却没有新请求。
 // 边界：没有可用量化方案或正在生成时禁用；暂停的记录先恢复，确保测试事件可见。
 const generateWithDeltas = (): void => {
+  // 禁用差量采集开关，避免重复请求
   if (!props.canGenerate || props.generating) return
+  // 启用差量采集开关
   generationDebugOptions.emitPreviewDeltas = true
+  // 恢复暂停记录，确保测试事件可见
   paused.value = false
   previewOnly.value = true
   testActive.value = true
+  // 清空时间线，确保新请求可见
   clear()
+  // 触发生成事件，确保新请求可见
   emit('generate')
 }
 
@@ -60,6 +66,16 @@ const copyDetail = async (): Promise<void> => {
     message.success('事件内容已复制')
   } catch { message.error('复制失败') }
 }
+// =============== 样例保存 ===============
+// 说明：把当前选中事件的原始载荷保存为 JSON 文件，供预览渲染对接或协议回归使用。
+// 边界：只保存已选中的单条事件，不额外拼接、不修改载荷结构。
+const saveDetail = (): void => {
+  if (!selected.value) return
+  try {
+    downloadJson(selected.value.payload, `${selected.value.kind || 'event'}-${selected.value.sequence ?? 'na'}-${selected.value.receivedAt}.json`)
+    message.success('事件内容已保存')
+  } catch { message.error('保存失败') }
+}
 </script>
 
 <template>
@@ -86,6 +102,7 @@ const copyDetail = async (): Promise<void> => {
     <div v-if="!collapsed" class="timeline-test">
       <n-button size="small" secondary block :loading="generating" :disabled="!canGenerate || generating" @click="generateWithDeltas">重新生成并采集差量</n-button>
       <n-button size="tiny" quaternary block :type="previewOnly ? 'primary' : 'default'" @click="previewOnly = !previewOnly">{{ previewOnly ? '只看预览事件 · 显示全部事件' : '只看预览事件' }}</n-button>
+      <small>预览完成时自动保存整段差量 JSON，无需手动下载</small>
       <small v-if="!canGenerate">请先完成量化计算</small>
       <small v-else-if="testActive && !deltaCount && entries.length && !generating">本次未收到 preview-delta，可切换查看全部事件定位阶段</small>
     </div>
@@ -120,7 +137,7 @@ const copyDetail = async (): Promise<void> => {
           <dt>协议校验</dt><dd :class="selected.valid ? 'is-ok' : 'is-bad'">{{ selected.valid ? '通过' : '未通过（生成流程会忽略该事件）' }}</dd>
           <dt>消息</dt><dd>{{ selected.message || '—' }}</dd>
         </dl>
-        <div class="detail-bar"><span>原始载荷</span><n-button size="tiny" quaternary @click="copyDetail"><template #icon><Copy :size="13" /></template>复制 JSON</n-button></div>
+        <div class="detail-bar"><span>原始载荷</span><div class="detail-actions"><n-button size="tiny" quaternary @click="copyDetail"><template #icon><Copy :size="13" /></template>复制 JSON</n-button><n-button size="tiny" quaternary @click="saveDetail"><template #icon><Download :size="13" /></template>保存 JSON</n-button></div></div>
         <pre class="detail-json type-mono">{{ detailJson }}</pre>
       </div>
     </n-modal>
@@ -169,6 +186,7 @@ const copyDetail = async (): Promise<void> => {
 .detail-meta .is-ok { color: var(--ds-success); }
 .detail-meta .is-bad { color: var(--ds-warning); }
 .detail-bar { display: flex; align-items: center; justify-content: space-between; color: var(--ds-text-muted); font-size: 12px; }
+.detail-actions { display: flex; gap: 4px; }
 .detail-json { max-height: 56vh; overflow: auto; margin: 6px 0 0; border: 1px solid var(--ds-border-subtle); border-radius: 2px; padding: 10px 12px; background: var(--ds-hover-bg); font-size: 11px; line-height: 1.55; white-space: pre; }
 @media (prefers-reduced-motion: reduce) { .event-card { transition: none; } }
 </style>

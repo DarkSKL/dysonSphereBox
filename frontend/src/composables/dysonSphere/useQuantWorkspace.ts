@@ -13,6 +13,16 @@ import type {FactoryGenerationProgress} from '../../types/factory-progress'
 import {generationDebugOptions} from './useGenerationTimeline'
 import {algorithmFollow, algorithmFollowKey} from './useAlgorithmFeed'
 
+// 职责：预览库六动作契约；使用：页面把 BlueprintViewerPanel 暴露的方法注册进来；边界：只描述协调层需要的最小集合。
+export interface FactoryPreviewApi {
+  beginPreview(): void
+  applyPreviewDelta(event: FactoryGenerationProgress): boolean
+  commitPreview(blueprint: string): unknown
+  discardPreview(): void
+  /** 内部 viewer 实例是否就绪；未就绪时增量预览调用全部静默失败，应回退静态预览链路 */
+  isReady(): boolean
+}
+
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
 type WorkspaceTarget = {key: number; itemId: number | null; ratePerMinute: number | null}
 type ExportSnapshot = {code: string; name: string; revision: number; generated: build.Result | null}
@@ -80,8 +90,17 @@ export const useQuantWorkspace = () => {
   }
 
   const narrow = ref(false)
-  const selectedBuilding = ref<number | null>(null)
+  // 选中建筑支持多个下标：节点点击时点亮该产线全部机器，预览点击时只点亮单台。
+  const selectedBuildings = ref<number[]>([])
   const selectedProductions = ref<number[]>([])
+  // 聚焦请求只由上半部分触发；用 revision 区分「同一栋建筑再次聚焦」。
+  const focusIndex = ref<number | null>(null)
+  const focusRevision = ref(0)
+  const requestFocus = (index: number | undefined): void => {
+    if (index === undefined || index < 0) return
+    focusIndex.value = index
+    focusRevision.value++
+  }
   const importVisible = ref(false)
   const importText = ref('')
   const sourceName = ref('导入的蓝图')
@@ -128,6 +147,25 @@ export const useQuantWorkspace = () => {
   const stopGenerationObservations = (): void => {
     for (const observer of generationObservations) observer.abort()
     generationObservations.clear()
+  }
+  // =============== 增量预览协调 ===============
+  // previewApi：页面注册的 Viewer 预览六动作；未注册时走旧的静态预览链路。
+  let previewApi: FactoryPreviewApi | undefined
+  // 当前任务 token：每个 generate 分配唯一 token，旧任务回调发现不匹配直接返回，不覆盖新画面。
+  let currentTaskToken = 0
+  // 页面卸载 / 切换任务时丢弃预览层的公共出口；页面侧也要自行清理（组件卸载），这里只兜底。
+  const discardActivePreview = (): void => {
+    if (previewApi) {
+      try { previewApi.discardPreview() } catch { /* 预览层已释放 */ }
+    }
+  }
+  // =============== 预览 API 注册 ===============
+  const registerPreviewApi = (api: FactoryPreviewApi | undefined): void => {
+    previewApi = api
+    // 注册时若已有进行中的生成任务，立即丢弃旧预览（beginPreview 会在下一次 generate 调用时重新触发）。
+    if (api && generating.value) {
+      try { api.discardPreview() } catch { /* 忽略 */ }
+    }
   }
   // 入库后的启用确认随工作区关闭，防止缓存页离开后仍接受启用操作或悬挂保存状态。
   let activationPrompt: {cancel: () => void; destroy: () => void} | undefined
@@ -227,7 +265,7 @@ export const useQuantWorkspace = () => {
       solvedSignature.value = signature
       replay.value = false
       inspection.value = null
-      selectedBuilding.value = null
+      selectedBuildings.value = []
       selectedProductions.value = []
     } catch (caught) { if (version === solveVersion) report(caught) } finally { if (version === solveVersion) solving.value = false }
   }
@@ -243,7 +281,10 @@ export const useQuantWorkspace = () => {
   }
   const generate = async (): Promise<void> => {
     if (!plan.value || quantStale.value) return
+    // 中止旧任务：前端立即停止观察，不等后端 Go 结束；旧任务的迟到回调因 token 不匹配直接返回。
     stopGenerationObservations()
+    // 每个任务分配独立 token，旧回调发现自己不是当前任务就什么都不做。
+    const taskToken = ++currentTaskToken
     error.value = null
     const signature = generationSignature.value
     const sourcePlan = plan.value
@@ -270,6 +311,15 @@ export const useQuantWorkspace = () => {
       }
     }
       const run = (emitPreviewDeltas: boolean): Promise<build.Result> => generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, density: density.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas, previewProtocolVersion: followDeltas ? 4 : 3}), onProgress, observer.signal, taskId => { generationTaskId.value = taskId })
+    // =============== 第一步：先开预览，再提交请求 ===============
+    // 顺序不能颠倒——后端会在生成过程中陆续推 preview-delta，请求发出后开头的差量会在 beginPreview 前到达，漏掉会导致画面缺一块。
+    // emitDeltas 是请求字段与预览层开关的唯一有效值：调试模式开启且允许差量时才发送/接收，避免请求不发差量而预览层空开。
+    const emitDeltas = generationDebugOptions.debugMode && generationDebugOptions.emitPreviewDeltas
+    // 仅当 viewer 内部实例就绪时才走增量预览链路；未就绪时 beginPreview/applyPreviewDelta 全部静默失败，回退静态预览
+    const useLivePreview = Boolean(previewApi && previewApi.isReady() && emitDeltas)
+    if (useLivePreview) {
+      try { previewApi!.beginPreview() } catch { /* Viewer 未就绪或已释放：继续走旧链路 */ }
+    }
     try {
       if (denseLatitudeError.value) throw new FactoryError('GEN_E_DENSITY_REGION', denseLatitudeError.value)
       let result: build.Result
@@ -287,17 +337,27 @@ export const useQuantWorkspace = () => {
       if (result.logisticsSummary && sourcePlan.flowGraph && result.logisticsSummary.flowGraphDigest !== sourcePlan.flowGraph.digest) throw new FactoryError('GEN_E_FLOW_MISMATCH', '生成物流摘要与量化物料图不一致，本次结果未替换预览。')
       if (result.densityReport?.requested !== density.value || result.densityReport?.profileVersion !== detail.value?.densityProfileVersion) throw new FactoryError('GEN_E_DENSITY_PROFILE', '生成规则或密度与当前工作区不一致，请刷新数据集后重新生成。')
       if (density.value === 'dense' && result.surfacePlan?.latitudeZone !== denseLatitudeZone.value) throw new FactoryError('GEN_E_DENSITY_REGION', '生成结果的建造地区与所选位置不一致，本次结果未替换预览。请重启应用或开发服务后重新生成。')
+      // =============== 第三步：成功收尾 ===============
       generated.value = result
       generatedFlowGraph.value = sourcePlan.flowGraph ?? null
       generationFailed.value = false
       generatedSignature.value = signature
+      replay.value = false
+      selectedBuildings.value = []
+      selectedProductions.value = []
+      // 先置为 loading；commitPreview 成功后 emit('ready') 会置为 ready，失败则靠 code 变化触发的全量重载 emit ready
+      resetPreviewState(result.buildingCount)
+      if (useLivePreview && previewApi) {
+        // commitPreview 内部先建后换，不会闪白。commit 成功后预览层自动切换为正式场景，旧 temp 层被清掉。
+        try { previewApi.commitPreview(result.blueprint) } catch { /* commit 失败不影响数据，只是画面回退到临时层 */ }
+      }
       code.value = result.blueprint
       previewRevision.value++
-      replay.value = false
-      selectedBuilding.value = null
-      selectedProductions.value = []
-      resetPreviewState(result.buildingCount)
     } catch (caught) {
+      // =============== 第四步：失败 / 中止 → 丢弃预览层，保留上次成功画面 ===============
+      if (useLivePreview && previewApi && currentTaskToken === taskToken) {
+        try { previewApi.discardPreview() } catch { /* 忽略 */ }
+      }
       if (caught instanceof FactoryError && caught.code === 'GEN_E_CANCELED') {
         if (generationObserver === observer && signature === generationSignature.value && !observer.signal.aborted) generationFailed.value = true
         return
@@ -332,7 +392,7 @@ export const useQuantWorkspace = () => {
       sourceName.value = title
       customName.value = title
       resetPreviewState(value.summary.buildingCount)
-      selectedBuilding.value = null
+      selectedBuildings.value = []
       selectedProductions.value = []
       importVisible.value = false
     } catch (caught) { if (version === importVersion) report(caught) } finally { if (version === importVersion) importing.value = false }
@@ -359,11 +419,13 @@ export const useQuantWorkspace = () => {
   const selectProduction = (index: number): void => {
     if (previewStale.value || quantStale.value) return
     selectedProductions.value = [index]
-    selectedBuilding.value = generated.value?.bindings?.find(binding => binding.productionIndex === index)?.machineIndices?.[0] ?? null
+    const binding = generated.value?.bindings?.find(value => value.productionIndex === index)
+    selectedBuildings.value = [...(binding?.machineIndices ?? [])]
+    requestFocus(selectedBuildings.value[0])
   }
   const onBuildingSelect = ({index}: {index: number | null}): void => {
     if (previewStale.value || quantStale.value) return
-    selectedBuilding.value = index
+    selectedBuildings.value = index === null ? [] : [index]
     selectedProductions.value = index === null ? [] : (generated.value?.bindings ?? []).filter(binding => binding.buildingIndices.includes(index)).map(binding => binding.productionIndex)
   }
   const onPreviewReady = ({buildingCount}: {buildingCount: number}): void => {
@@ -458,13 +520,14 @@ export const useQuantWorkspace = () => {
     for (const zone of zones.value) for (const index of zone.productionIndices) map.set(index, zone)
     return map
   })
-  const focusZone = (key: string | null): void => {
+  const focusZone = (key: string | null, focus = false): void => {
     activeZone.value = activeZone.value === key ? null : key
     const zone = zones.value.find(value => value.key === activeZone.value)
     if (!zone || previewStale.value || quantStale.value) return
     const binding = generated.value?.bindings?.find(value => zone.productionIndices.includes(value.productionIndex))
     selectedProductions.value = [...zone.productionIndices]
-    selectedBuilding.value = binding?.machineIndices?.[0] ?? null
+    selectedBuildings.value = binding?.machineIndices?.length ? [binding.machineIndices[0]] : []
+    if (focus) requestFocus(selectedBuildings.value[0])
   }
   const targetFor = (id: number): WorkspaceTarget | undefined => targets.value.find(target => target.itemId === id)
   const setTargetRate = (id: number, rate: number): void => { const target = targetFor(id); if (target) target.ratePerMinute = rate }
@@ -499,7 +562,7 @@ export const useQuantWorkspace = () => {
   watch(() => [plan.value?.planId, generationSignature.value], () => scheduleGenerate())
   watch(autoRun, value => { if (value) { scheduleSolve(); scheduleGenerate(0) } else { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer) } })
   watch(mode, value => { if (![1, 2, 3, 4].includes(value)) mode.value = 1 })
-  watch(generationSignature, () => { if (generating.value) { progressWriter.cancel(); generationProgress.value = '参数已变化，等待重新生成' }; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuilding.value = null; selectedProductions.value = [] } })
+  watch(generationSignature, () => { if (generating.value) { progressWriter.cancel(); generationProgress.value = '参数已变化，等待重新生成' }; if (code.value && !replay.value) { previewState.value = 'stale'; selectedBuildings.value = []; selectedProductions.value = [] } })
   watch(datasetKey, () => { if (initialized) void loadDataset() })
   watch(() => route.query.itemId, value => { if (initialized && typeof value === 'string' && value) void loadLibraryItem(value) })
   onMounted(async () => {
@@ -508,8 +571,8 @@ export const useQuantWorkspace = () => {
   })
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
-  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; progressWriter.cancel(); stopGenerationObservations(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {generationTaskId, machineChoices, selectedMachine, selectMachine, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuilding, selectedProductions, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal}
+  onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; progressWriter.cancel(); stopGenerationObservations(); discardActivePreview(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
+  return {generationTaskId, machineChoices, selectedMachine, selectMachine, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, miningSpeed, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal, registerPreviewApi, discardActivePreview}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。

@@ -199,7 +199,7 @@ const targetIds = computed(() => new Set(props.w.targets.map(target => target.it
       </div>
       <!-- 多目标分区图例：与预览分区同色，点击聚焦对应节点流 -->
       <div v-if="w.zones.length > 1 && !w.replay" class="zone-legend" role="group" aria-label="目标分区">
-        <button v-for="zone in w.zones" :key="zone.key" type="button" class="zone-chip" :class="{'is-active': w.activeZone === zone.key, 'is-muted': w.activeZone && w.activeZone !== zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key)"><i />{{ zone.label }}<span>{{ zone.productionIndices.length }}</span></button>
+        <button v-for="zone in w.zones" :key="zone.key" type="button" class="zone-chip" :class="{'is-active': w.activeZone === zone.key, 'is-muted': w.activeZone && w.activeZone !== zone.key}" :style="{'--zone': zone.color}" :aria-pressed="w.activeZone === zone.key" @click="w.focusZone(zone.key, true)"><i />{{ zone.label }}<span>{{ zone.productionIndices.length }}</span></button>
       </div>
 
       <VueFlow v-if="nodes.length" :id="flowId" :nodes="nodes" :edges="edges" :min-zoom=".2" :max-zoom="1.6" :nodes-connectable="false" :edges-updatable="false" :elements-selectable="true" :snap-to-grid="true" :snap-grid="[20, 20]" :default-viewport="{zoom: .8, x: 40, y: 200}" class="flow-canvas" @node-click="onNodeClick" @pane-click="onPaneClick" @node-drag-stop="onNodeDragStop">

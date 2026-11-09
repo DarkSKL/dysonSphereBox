@@ -1,76 +1,20 @@
 <script setup lang="ts">
-import * as Vue from 'vue'
 import {nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
-import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview, shareBlueprintScriptLoad} from '../../../pages/services/dysonSphere/blueprint-preview-host'
-import {enableBlueprintPreviewRotation} from '../../../pages/services/dysonSphere/blueprint-preview-interaction'
+import {BLUEPRINT_PREVIEW_BUILDING_LIMIT, claimBlueprintPreview} from '../../../pages/services/dysonSphere/blueprint-preview-host'
+import {enableBlueprintPreviewInteraction} from '../../../pages/services/dysonSphere/blueprint-preview-interaction'
 import {useThemeMode, type ThemeMode} from '../../../composables/useThemeMode'
-import blueprintEditorScriptUrl from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.js?url'
+import type {BlueprintViewer as BlueprintViewerInstance} from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js'
 
-type BlueprintViewerTheme = ThemeMode | 'auto'
+type BlueprintEditorModule = typeof import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
 
 interface BlueprintViewerPanelProps {
   code: string
   interactive?: boolean
-  selectedIndex?: number | null
+  selectedBuildings?: number[]
+  focusIndex?: number | null
+  focusRevision?: number
   maxBuildings?: number
   revision?: number
-}
-
-interface BlueprintViewerConstructorOptions {
-  container: HTMLElement
-  theme?: BlueprintViewerTheme
-  width?: number
-  height?: number
-}
-
-interface BlueprintViewerInstance {
-  loadBlueprint: (code: string) => void
-  resetCamera: () => void
-  setSize: (width: number, height: number) => void
-  setTheme?: (theme: BlueprintViewerTheme) => void
-  dispose: () => void
-  selectBuilding: (index: number | null) => void
-  getBlueprintData: () => { buildings: unknown[] } | null
-  getCanvas?: () => HTMLCanvasElement
-  toDataURL?: () => string
-}
-
-interface DspBlueprintEditorGlobal {
-  BlueprintViewer: new (options: BlueprintViewerConstructorOptions, callbacks?: {onBuildingSelect?: (index: number | null) => void}) => BlueprintViewerInstance
-}
-
-interface MinimalVueI18nGlobal {
-  t: (key: string) => string
-}
-
-interface MinimalVueI18n {
-  createI18n: () => {
-    global: MinimalVueI18nGlobal
-  }
-  useI18n: () => {
-    t: MinimalVueI18nGlobal['t']
-  }
-}
-
-interface BlueprintViewerWindow extends Window {
-  DSPBlueprintEditor?: DspBlueprintEditorGlobal
-  Vue?: typeof Vue
-  VueI18n?: MinimalVueI18n
-  exports?: {
-    DSPBlueprintEditor?: DspBlueprintEditorGlobal
-  }
-  module?: {
-    exports?: DspBlueprintEditorGlobal | {
-      DSPBlueprintEditor?: DspBlueprintEditorGlobal
-    }
-  }
-  define?: unknown
-}
-
-declare global {
-  interface Window {
-    DSPBlueprintEditor?: DspBlueprintEditorGlobal
-  }
 }
 
 interface AppThemeSnapshot {
@@ -78,9 +22,9 @@ interface AppThemeSnapshot {
   readonly blueprintEditorStoredTheme: string | null
 }
 
-const props = withDefaults(defineProps<BlueprintViewerPanelProps>(), {interactive: false, selectedIndex: null, maxBuildings: BLUEPRINT_PREVIEW_BUILDING_LIMIT, revision: 0})
+const props = withDefaults(defineProps<BlueprintViewerPanelProps>(), {interactive: false, selectedBuildings: () => [], focusIndex: null, focusRevision: 0, maxBuildings: BLUEPRINT_PREVIEW_BUILDING_LIMIT, revision: 0})
 const emit = defineEmits<{
-  (event: 'ready', value: {buildingCount: number}): void
+  (event: 'ready', value: {buildingCount: number; blank?: boolean}): void
   (event: 'select', value: {index: number | null}): void
   (event: 'error', value: {code: string; message: string}): void
 }>()
@@ -104,6 +48,35 @@ let releaseHost: (() => void) | null = null
 let releaseInteraction: (() => void) | null = null
 const buildingCount = ref(0)
 const blueprintEditorThemeStorageKey = 'dsp-editor-theme'
+
+// =============== 空白蓝图 ===============
+// 说明：仅包含星球主体、没有任何建筑的合法蓝图；预览器首次加载与增量预览前清场都用它。
+// 边界：加载失败时正式场景可能仍是旧蓝图，调用方必须终止后续预览动作。
+const BLANK_BLUEPRINT = 'BLUEPRINT:1,10,0,0,0,0,0,0,639273500692970000,0.10.35.29104,%E6%96%B0%E8%93%9D%E5%9B%BE,,,,"H4sIAAAAAAAAA2NiYGDgAGJmBggQAGI2KJuR4T8DwwmoMBtUCAgA9wEkuTQAAAA="7FFF389CC152F6E763D8B8B72DF4D44A'
+
+// =============== 增量预览快照 ===============
+// 说明：库的 beginPreview 不会清空正式场景（保留上一次成功结果）。为避免旧蓝图与预览层叠加，
+//       这里在 beginPreview 前保存旧蓝图编码与建筑数，用空白蓝图清场；commitPreview 后丢弃快照，
+//       discardPreview 时用快照恢复旧蓝图。
+// 边界：只在 viewer 实例就绪时操作；快照随 commit/discard 清除，组件卸载时 disposeViewer 兜底。
+interface PreviewSnapshot {
+  code: string
+  buildingCount: number
+}
+let previewSnapshot: PreviewSnapshot | null = null
+// commitPreview 成功后正式场景已替换为新蓝图，code 变化触发的全量重载应跳过，避免闪白与多余加载遮罩
+let skipNextCodeReload = false
+// 说明：把正式场景切回空白蓝图；返回是否成功，失败已上报 PREVIEW_E_CLEAR。
+// 边界：调用方在返回 false 时不得继续 beginPreview 或写选中态。
+const loadBlankBlueprint = (): boolean => {
+  if (!viewer.value) return false
+  const outcome = withAppThemeIsolation(() => viewer.value!.loadBlueprint(BLANK_BLUEPRINT))
+  if (!outcome.ok) {
+    emit('error', {code: 'PREVIEW_E_CLEAR', message: outcome.error.message})
+    return false
+  }
+  return true
+}
 
 // =============== 应用主题隔离 ===============
 // 说明：第三方蓝图库加载时会写入 html[data-theme]，这里在每次外部调用后恢复盒子当前主题。
@@ -145,169 +118,109 @@ const withAppThemeIsolation = <T>(operation: () => T): T => {
   }
 }
 
-const withAsyncAppThemeIsolation = async <T>(operation: () => Promise<T>): Promise<T> => {
-  const snapshot = captureAppThemeSnapshot()
+// =============== 预览器模块加载 ===============
+// 说明：按需导入本地 ESM 产物；库以 import.meta.url 定位同目录的 models/、img/，开发期无需额外配置。
+// 边界：模块只导入一次且不触碰 window 全局；不再通过 ?url 注入脚本或兼容 exports/module。
+const ensureBlueprintEditor = (): Promise<BlueprintEditorModule> =>
+  import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
+
+// 说明：组件挂载即预加载预览器 ESM，不等蓝图编码就绪，缩短首次渲染的等待时间。
+// 边界：只负责模块加载；实例创建仍由 loadCurrentBlueprint 在 code 就绪后执行，失败报错由该流程承担。
+const preloadBlueprintEditor = async (): Promise<void> => {
   try {
-    return await operation()
-  } finally {
-    restoreAppThemeSnapshot(snapshot)
+    await ensureBlueprintEditor()
+  } catch {
+    // 加载失败不在这里上报：code 就绪后 loadCurrentBlueprint 会走 error 事件。
   }
-}
-
-// =============== 预览器脚本加载 ===============
-// 说明：按需加载 dsp-blueprint-editor 的 UMD 资源，复用库对外暴露的 BlueprintViewer 构造函数。
-// 边界：脚本只加载一次；兼容 Wails/WebView 注入 exports 或 module 导致 UMD 未挂到 window 的情况。
-const loadBlueprintEditor = async (): Promise<DspBlueprintEditorGlobal> => {
-  const loadedEditor = resolveBlueprintEditorGlobal()
-  if (loadedEditor) {
-    cleanupBlueprintEditorGlobalStyles()
-    document.documentElement.dataset.theme = themeMode.value
-    document.documentElement.style.colorScheme = themeMode.value
-    return loadedEditor
-  }
-
-  await withAsyncAppThemeIsolation(() => new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      `script[data-dsp-blueprint-editor="true"]`,
-    )
-    if (existingScript) {
-      existingScript.remove()
-    }
-
-    const script = document.createElement('script')
-    script.src = blueprintEditorScriptUrl
-    script.async = true
-    script.dataset.dspBlueprintEditor = 'true'
-    const existingStyleNodes = new Set<HTMLStyleElement>(
-      Array.from(document.head.querySelectorAll<HTMLStyleElement>('style')),
-    )
-    const maskedGlobals = prepareBlueprintEditorGlobals()
-    script.addEventListener('load', () => {
-      restoreBlueprintEditorGlobals(maskedGlobals)
-      cleanupBlueprintEditorInjectedStyles(existingStyleNodes)
-      document.documentElement.dataset.theme = themeMode.value
-      document.documentElement.style.colorScheme = themeMode.value
-      resolve()
-    }, {once: true})
-    script.addEventListener('error', () => {
-      restoreBlueprintEditorGlobals(maskedGlobals)
-      cleanupBlueprintEditorInjectedStyles(existingStyleNodes)
-      document.documentElement.dataset.theme = themeMode.value
-      document.documentElement.style.colorScheme = themeMode.value
-      reject(new Error('蓝图预览脚本加载失败。'))
-    }, {once: true})
-    document.head.appendChild(script)
-  }))
-
-  const editor = resolveBlueprintEditorGlobal()
-  if (!editor) {
-    throw new Error('蓝图预览器未暴露 BlueprintViewer。')
-  }
-
-  window.DSPBlueprintEditor = editor
-  return editor
-}
-
-const blueprintI18nFallback: MinimalVueI18n = {
-  createI18n: () => ({
-    global: {
-      t: (key: string) => key,
-    },
-  }),
-  useI18n: () => ({
-    t: (key: string) => key,
-  }),
-}
-
-const resolveBlueprintEditorGlobal = (): DspBlueprintEditorGlobal | null => {
-  const globalWindow = window as BlueprintViewerWindow
-  const candidates = [
-    globalWindow.DSPBlueprintEditor,
-    globalWindow.exports?.DSPBlueprintEditor,
-    globalWindow.module?.exports,
-    (globalWindow.module?.exports as {DSPBlueprintEditor?: DspBlueprintEditorGlobal} | undefined)
-      ?.DSPBlueprintEditor,
-  ]
-
-  return candidates.find((candidate): candidate is DspBlueprintEditorGlobal => (
-    Boolean(candidate && 'BlueprintViewer' in candidate && candidate.BlueprintViewer)
-  )) ?? null
-}
-
-const prepareBlueprintEditorGlobals = (): Partial<BlueprintViewerWindow> => {
-  const globalWindow = window as BlueprintViewerWindow
-  const snapshot: Partial<BlueprintViewerWindow> = {
-    Vue: globalWindow.Vue,
-    VueI18n: globalWindow.VueI18n,
-    exports: globalWindow.exports,
-    module: globalWindow.module,
-    define: globalWindow.define,
-  }
-
-  globalWindow.Vue = Vue
-  globalWindow.VueI18n = globalWindow.VueI18n ?? blueprintI18nFallback
-  globalWindow.exports = undefined
-  globalWindow.module = undefined
-  globalWindow.define = undefined
-  return snapshot
-}
-
-const restoreBlueprintEditorGlobals = (snapshot: Partial<BlueprintViewerWindow>): void => {
-  const globalWindow = window as BlueprintViewerWindow
-  globalWindow.Vue = snapshot.Vue
-  globalWindow.VueI18n = snapshot.VueI18n
-  globalWindow.exports = snapshot.exports
-  globalWindow.module = snapshot.module
-  globalWindow.define = snapshot.define
-}
-
-const cleanupBlueprintEditorInjectedStyles = (existingStyleNodes: Set<HTMLStyleElement>): void => {
-  document.head.querySelectorAll<HTMLStyleElement>('style').forEach((styleNode) => {
-    // 应用自身样式（开发期 Vite 注入的 style 带 data-vite-dev-id）永不删除，避免文本特征误伤同名类的组件样式。
-    if (existingStyleNodes.has(styleNode) || styleNode.hasAttribute('data-vite-dev-id')) {
-      return
-    }
-    if (isBlueprintEditorGlobalStyle(styleNode.textContent ?? '')) {
-      styleNode.remove()
-    }
-  })
-}
-
-const cleanupBlueprintEditorGlobalStyles = (): void => {
-  cleanupBlueprintEditorInjectedStyles(new Set<HTMLStyleElement>())
-}
-
-const isBlueprintEditorGlobalStyle = (styleText: string): boolean => {
-  const editorStyleSignatures = [
-    'body{margin:0;background:var(--bg-body)',
-    '.sidebar-wrap',
-    '.editor-root{width:100%;height:100%}',
-    '/* ── Theme Variables ── */',
-    '.icon-select',
-    '.building-params',
-    '.fleet-grid',
-    '.station-storage',
-    '.bp-icon',
-  ]
-
-  return editorStyleSignatures.some((signature) => styleText.includes(signature))
 }
 
 // =============== 预览器生命周期 ===============
 // 说明：初始化、加载蓝图和同步尺寸都集中在这里，详情切换时复用实例刷新模型。
 // 边界：容器不可用或编码为空时不创建实例；组件卸载时释放 WebGL 资源。
-const ensureBlueprintEditor = (): Promise<DspBlueprintEditorGlobal> => shareBlueprintScriptLoad(loadBlueprintEditor)
 
-const selectBuilding = (index: number | null): void => {
-  if (index !== null && (!Number.isInteger(index) || index < 0 || index >= buildingCount.value)) return
-  withAppThemeIsolation(() => viewer.value?.selectBuilding(index))
+// =============== 多建筑选中 ===============
+// 说明：预览库提供 selectedBuildings 批量高亮，这里只过滤越界下标并转调；空数组等价取消选中。
+// 边界：库在任一建筑找不到时整次调用失败并保持原选中，因此必须先按建筑总数过滤。
+const selectBuildings = (indices: number[]): void => {
+  const next = [...new Set(indices)].filter(index => Number.isInteger(index) && index >= 0 && index < buildingCount.value)
+  withAppThemeIsolation(() => viewer.value?.selectedBuildings(next.length ? next : null))
 }
+// 重置相机
 const resetCamera = (): void => { withAppThemeIsolation(() => viewer.value?.resetCamera()) }
+// 捕获当前视图
 const captureImage = (): string | null => withAppThemeIsolation(() => viewer.value?.toDataURL?.() ?? null)
-defineExpose({selectBuilding, resetCamera, captureImage})
 
-// 说明：当前库反复 loadBlueprint 会保留已上传的纹理；通过公开 dispose/getCanvas 释放整个旧实例及 WebGL 上下文，再建立新实例。
-// 边界：不修改第三方包；停止其渲染循环后才丢失上下文，避免隐藏页继续持有 GPU 资源。
+// 聚焦建筑
+const focusBuilding = (index: number | null): void => {
+  withAppThemeIsolation(() => viewer.value?.focusBuilding(index))
+}
+// 上半部分触发的聚焦：选中态已由 selectBuildings 处理，这里只移动镜头
+const focusRequestedBuilding = (): void => {
+  const index = props.focusIndex
+  if (index === null || !Number.isInteger(index) || index < 0 || index >= buildingCount.value) return
+  withAppThemeIsolation(() => viewer.value?.focusBuilding(index, {select: false}))
+}
+// 设置渲染参数
+const setRenderSettings = (showRealModels: boolean, maxInstancesPerModel: number): void => {
+  withAppThemeIsolation(() => viewer.value?.setRenderSettings({showRealModels, maxInstancesPerModel}))
+}
+
+// =============== 增量预览 API ===============
+// 说明：对接后端 preview-delta 事件流；所有调用走主题隔离，避免第三方库写入 html[data-theme]。
+// 边界：调用顺序由上层协调层负责（beginPreview → 提交生成 → applyPreviewDelta → commitPreview/discardPreview）。
+//       beginPreview 前保存并清空旧正式场景；commitPreview 后丢弃快照；discardPreview 恢复旧场景。
+const beginPreview = (): void => {
+  if (!viewer.value) return
+  // 保存旧蓝图快照（编码 + 建筑数），供 discardPreview 恢复
+  previewSnapshot = {code: props.code, buildingCount: buildingCount.value}
+  // 清空正式场景：库的 beginPreview 保留旧场景，这里用空白蓝图清场，避免与预览层叠加
+  // 关键：清空失败时正式场景还是旧蓝图，不能继续 beginPreview
+  if (!loadBlankBlueprint()) {
+    previewSnapshot = null
+    return
+  }
+  buildingCount.value = 0
+  withAppThemeIsolation(() => viewer.value?.beginPreview())
+}
+const applyPreviewDelta = (event: unknown): boolean => {
+  // 后端 FactoryGenerationProgress 与库 PreviewDeltaEvent 结构兼容，协议层已校验 kind/protocolVersion/operations，这里直接透传。
+  return withAppThemeIsolation(() => viewer.value?.applyPreviewDelta(event as Parameters<typeof viewer.value.applyPreviewDelta>[0]) ?? false)
+}
+const commitPreview = (blueprint: string): unknown => {
+  const outcome = withAppThemeIsolation(() => viewer.value?.commitPreview(blueprint))
+  const ok = outcome && typeof outcome === 'object' && 'ok' in outcome && outcome.ok === true
+  if (ok) {
+    // commitPreview 内部先建后换，正式场景已替换为新蓝图；跳过 code 变化触发的全量重载
+    skipNextCodeReload = true
+    buildingCount.value = viewer.value?.getBlueprintData()?.buildings.length ?? 0
+    previewSnapshot = null
+    if (buildingCount.value > props.maxBuildings) emit('error', {code: 'PREVIEW_E_LIMIT', message: `共 ${buildingCount.value} 个建筑，模型交互可能较慢`})
+    emit('ready', {buildingCount: buildingCount.value})
+  }
+  // commit 失败：不设跳过标记，code 变化会触发全量重载作为兜底
+  return outcome
+}
+const discardPreview = (): void => {
+  withAppThemeIsolation(() => viewer.value?.discardPreview())
+  // 恢复旧蓝图快照：重新加载旧编码（无编码时回退空白蓝图）、还原建筑数与选中态
+  const snapshot = previewSnapshot
+  previewSnapshot = null
+  if (snapshot && viewer.value) {
+    const restoreCode = snapshot.code || BLANK_BLUEPRINT
+    withAppThemeIsolation(() => viewer.value!.loadBlueprint(restoreCode))
+    buildingCount.value = viewer.value?.getBlueprintData()?.buildings.length ?? snapshot.buildingCount
+    selectBuildings(props.selectedBuildings)
+    emit('ready', {buildingCount: buildingCount.value})
+  }
+}
+// 内部 viewer 实例是否就绪（ESM 已加载且实例已创建）；未就绪时增量预览调用全部静默失败
+const isReady = (): boolean => viewer.value !== null
+const getPreviewing = (): boolean => viewer.value?.previewing ?? false
+const getPreviewStats = () => withAppThemeIsolation(() => viewer.value?.previewStats() ?? null)
+// 暴露 API
+defineExpose({selectBuildings, focusBuilding, resetCamera, captureImage, setRenderSettings, beginPreview, applyPreviewDelta, commitPreview, discardPreview, isReady, getPreviewing, getPreviewStats})
+
+// 释放预览器实例
 const releaseViewerInstance = (): void => {
   const canvas = viewer.value?.getCanvas?.() ?? containerRef.value?.querySelector('canvas')
   releaseInteraction?.()
@@ -317,7 +230,7 @@ const releaseViewerInstance = (): void => {
   const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl')
   context?.getExtension('WEBGL_lose_context')?.loseContext()
 }
-
+// 释放预览器实例
 const disposeViewer = (): void => {
   loadVersion++
   if (pendingLoadFrame) window.cancelAnimationFrame(pendingLoadFrame)
@@ -331,39 +244,68 @@ const disposeViewer = (): void => {
   releaseViewerInstance()
   releaseHost?.()
   releaseHost = null
+  previewSnapshot = null
+  skipNextCodeReload = false
   isLoadingViewer.value = false
 }
 
+// 蓝图加载器入口：无编码时先加载空白蓝图渲染星球主体，真实编码到达后由 watch 重新加载
 const loadCurrentBlueprint = async (): Promise<void> => {
-  if (!active || !containerRef.value || !props.code) return
+  // 检查状态
+  if (!active || !containerRef.value) return
   if (!hasRenderableSize()) return
+  const blank = !props.code
+
   const version = ++loadVersion
   isLoadingViewer.value = true
   viewerError.value = ''
   let phase: 'load' | 'render' = 'load'
+
   try {
-    const editor = await ensureBlueprintEditor()
+    // 加载蓝图编辑器
+    const {BlueprintViewer} = await ensureBlueprintEditor()
+    // 检查状态
     if (!active || version !== loadVersion || !containerRef.value) return
     phase = 'render'
+    // 清理旧实例
     releaseViewerInstance()
+    // 创建新实例
     if (!viewer.value) {
+      // 登记释放函数
       releaseHost = claimBlueprintPreview(disposeViewer)
-      viewer.value = withAppThemeIsolation(() => new editor.BlueprintViewer({container: containerRef.value!, theme: themeMode.value}, {
-        onBuildingSelect: (index) => withAppThemeIsolation(() => {
-          if (active && props.interactive) emit('select', {index})
+      // 
+      viewer.value = withAppThemeIsolation(() => new BlueprintViewer({container: containerRef.value!, theme: themeMode.value}, {
+        // 注册建筑选择事件
+        onBuildingSelect: (pick) => withAppThemeIsolation(() => {
+          if (active && props.interactive) emit('select', {index: pick?.index ?? null})
         }),
       }))
+      // 获取画布
       const canvas = viewer.value.getCanvas?.()
-      if (canvas) releaseInteraction = enableBlueprintPreviewRotation(viewer.value, canvas)
+      // 启用预览交互
+      if (canvas) releaseInteraction = enableBlueprintPreviewInteraction(viewer.value, canvas)
     }
-    withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
+    setRenderSettings(false,1024)
+    // 加载蓝图模型：无编码时用空白蓝图先渲染星球主体，保证预览器先于流程图出画面
+    if (blank) {
+      if (!loadBlankBlueprint()) return
+    } else {
+      withAppThemeIsolation(() => viewer.value?.loadBlueprint(props.code))
+    }
     buildingCount.value = viewer.value.getBlueprintData()?.buildings.length ?? 0
+    // 强制重置尺寸
     lastSize = {width: 0, height: 0}
+    // 同步画布尺寸
     applyViewerSize()
+    // 重置相机
     resetCamera()
-    selectBuilding(props.selectedIndex)
+    // 回填选中态
+    selectBuildings(props.selectedBuildings)
+    // 设置渲染参数
+    setRenderSettings(true,1024)
+    // 提示建筑数量
     if (buildingCount.value > props.maxBuildings) emit('error', {code: 'PREVIEW_E_LIMIT', message: `共 ${buildingCount.value} 个建筑，模型交互可能较慢`})
-    emit('ready', {buildingCount: buildingCount.value})
+    emit('ready', {buildingCount: buildingCount.value, blank})
   } catch (error) {
     if (!active || version !== loadVersion) return
     viewerError.value = error instanceof Error ? error.message : String(error || '蓝图模型渲染失败。')
@@ -420,23 +362,28 @@ const activate = async (): Promise<void> => {
   await nextTick()
   if (!active) return
   if (!resizeObserver) {
-    resizeObserver = new ResizeObserver(() => { if (!viewer.value && props.code && hasRenderableSize()) void loadCurrentBlueprint(); else resizeViewer() })
+    resizeObserver = new ResizeObserver(() => { if (!viewer.value && hasRenderableSize()) void loadCurrentBlueprint(); else resizeViewer() })
     if (containerRef.value) resizeObserver.observe(containerRef.value)
   }
+  // 先启动预览器模块预加载，再加载蓝图（无编码时加载空白蓝图渲染星球主体）
+  void preloadBlueprintEditor()
   await loadCurrentBlueprint()
 }
 onMounted(() => { void activate() })
 onActivated(() => { if (!viewer.value) void activate() })
 onDeactivated(() => { active = false; disposeViewer() })
-watch(() => props.selectedIndex, selectBuilding)
+watch(() => props.selectedBuildings, selectBuildings)
+watch(() => props.focusRevision, focusRequestedBuilding)
 
 watch(() => [props.code, props.revision], () => {
   if (!props.code) { disposeViewer(); buildingCount.value = 0; return }
+  // commitPreview 成功后正式场景已替换为新蓝图，跳过此次全量重载，避免闪白与加载遮罩
+  if (skipNextCodeReload) { skipNextCodeReload = false; return }
   void loadCurrentBlueprint()
 })
 
 watch(themeMode, (mode) => {
-  if (!viewer.value?.setTheme) {
+  if (!viewer.value) {
     return
   }
 
@@ -456,7 +403,7 @@ onBeforeUnmount(() => { active = false; disposeViewer() })
   <section class="blueprint-viewer-panel">
     <div class="blueprint-viewer-canvas">
       <div ref="containerRef" class="blueprint-viewer-mount" />
-      <span v-if="!isLoadingViewer && !viewerError && buildingCount" class="blueprint-viewer-hint">左键拖动旋转 · 滚轮缩放</span>
+      <span v-if="!isLoadingViewer && !viewerError && buildingCount" class="blueprint-viewer-hint">左键拖动平移 · 右键拖动旋转 · 滚轮缩放</span>
 
       <div v-if="isLoadingViewer" class="blueprint-viewer-overlay">
         <n-spin size="small" />
@@ -545,4 +492,3 @@ onBeforeUnmount(() => { active = false; disposeViewer() })
   }
 }
 </style>
-
