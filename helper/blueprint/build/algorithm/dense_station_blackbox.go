@@ -15,6 +15,13 @@ import (
 
 // denseStationBlackboxCandidate 职责：把已验证直连核心与实际外部塔组成同一次完整候选；使用：塔模式比较；边界：原请求模式、等级、产量和选区始终保留。
 func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request, dataset *quant.Dataset, config contract.StationConfig, variant int, previews ...*generationPreview) (*builder, error) {
+	if variant >= denseStationSharedInputVariantOffset {
+		variant -= denseStationSharedInputVariantOffset
+		ctx = context.WithValue(ctx, denseStationSharedInputsKey{}, true)
+		if root, _ := ctx.Value(densityPolarRootKey{}).(bool); root {
+			ctx = context.WithValue(ctx, densityPrototypeFootprintKey{}, true)
+		}
+	}
 	if variant >= 10 {
 		ctx = context.WithValue(ctx, refineryCollinearKey{}, true)
 		variant -= 3
@@ -254,6 +261,7 @@ func finalizeDenseStationBlackbox(ctx context.Context, b *builder, records []blu
 	}
 	used := map[*stationTransportLink]float64{}
 	shared := map[*stationTransportLink]*denseStationSprayGroup{}
+	sharedMaterials := map[*stationTransportLink]*transportRoute{}
 	matchedOwner := map[*stationTransportLink]bool{}
 	internal := 0
 	for _, route := range b.transportRoutes {
@@ -281,12 +289,21 @@ func finalizeDenseStationBlackbox(ctx context.Context, b *builder, records []blu
 		if b.denseStationSprayNetwork != nil {
 			group = b.denseStationSprayNetwork.byRoute[route]
 		}
-		if group == nil {
+		materialSource, err := b.denseStationSharedInputSource(route, link)
+		if err != nil {
+			return err
+		}
+		if group == nil && materialSource != nil {
+			if shared[link] != nil || used[link] > 0 && sharedMaterials[link] != materialSource {
+				return transportAllocationError(route.edge, route.rate, "原料塔口被不同的物理供给或供剂角色重复使用")
+			}
+			sharedMaterials[link] = materialSource
+		} else if group == nil {
 			if used[link] > 0 || owner.owner != link.owner || math.Abs(link.rate-route.rate) > 1e-6 {
 				return transportAllocationError(route.edge, route.rate, "独立塔带口被重复分配或改变份额")
 			}
 		} else {
-			if group.physical.start != head || group.physical.boundary != link.tower || used[link] > 0 && shared[link] != group || math.Abs(group.physical.rate-link.rate) > 1e-6 {
+			if materialSource != nil || sharedMaterials[link] != nil || group.physical.start != head || group.physical.boundary != link.tower || used[link] > 0 && shared[link] != group || math.Abs(group.physical.rate-link.rate) > 1e-6 {
 				return transportAllocationError(route.edge, route.rate, "共享供剂份额未绑定到已验证的同一真实串供口")
 			}
 			shared[link] = group
@@ -301,6 +318,9 @@ func finalizeDenseStationBlackbox(ctx context.Context, b *builder, records []blu
 		if !matchedOwner[link] || math.Abs(rate-link.rate) > 1e-6 {
 			return &blueprint.Error{Code: "GEN_E_FLOW", Message: "黑盒实际塔口聚合份额或来源归属不守恒"}
 		}
+	}
+	if len(sharedMaterials) > 0 {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-station-shared-inputs", Status: "passed", Message: fmt.Sprintf("%d个真实原料塔口共享给同物料消费轨，规范份额完整映射到同一物理供给；真实串供链和配置满负荷带宽由公共物流终检逐组复算", len(sharedMaterials))})
 	}
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-station-blackbox", Status: "passed", Message: fmt.Sprintf("%d条内部lane采用真实传送带，%d条外部lane逐一连接真实库存/带口；全部规范边随后统一验证方向、共享带能力和流量守恒", internal, len(used))})
 	return nil

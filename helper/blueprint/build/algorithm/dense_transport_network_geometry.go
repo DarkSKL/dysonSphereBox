@@ -78,6 +78,16 @@ func (b *builder) prepareDenseMaterialNetworkGeometry(ctx context.Context, units
 		return nil, err
 	}
 	for _, group := range plan.groups {
+		sharedExternal := false
+		if b.sharesDenseStationInputs(ctx) {
+			for _, source := range plan.physical {
+				members := plan.members[source]
+				if source.from == nil && len(members) > 0 && plan.bindings[members[0]].group == group {
+					sharedExternal = true
+					break
+				}
+			}
+		}
 		for _, row := range group.rows {
 			index := denseMaterialInputIndex(row, group.item)
 			if row.line == nil || index < 0 || index >= len(row.line.inputs) || row.inputEndpoint(group.item, recipeInputRole) == nil {
@@ -89,6 +99,12 @@ func (b *builder) prepareDenseMaterialNetworkGeometry(ctx context.Context, units
 			}
 			if track[len(track)-1].output != nil {
 				return nil, &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "共享消费轨末端已被其它物理线路占用"}
+			}
+			if sharedExternal && !group.tapped && row != group.rows[len(group.rows)-1] {
+				track, err = b.extendDenseMaterialTail(units, row, index, track)
+				if err != nil {
+					return nil, err
+				}
 			}
 			group.entries = append(group.entries, row.inputEndpoint(group.item, recipeInputRole))
 			group.exits = append(group.exits, track[len(track)-1])

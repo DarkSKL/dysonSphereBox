@@ -14,18 +14,18 @@ import (
 	"math"
 )
 
-// betterDenseStationCandidate 职责：让新增同线轨候选同时改善空间与真实线长的综合代价；使用：完成终检且塔数相同的候选比较；边界：既有候选之间沿用原评分，不能用小幅面积收益换取大量绕线。
+// betterDenseStationCandidate 职责：让新增密铺物流候选同时改善空间与真实线长的综合代价；使用：完成终检且塔数相同的候选比较；边界：既有候选之间沿用原评分，不能用小幅面积收益换取大量绕线。
 func betterDenseStationCandidate(a, c *LogisticsSummary) bool {
 	if !betterDenseCandidate(a.Metrics, c.Metrics) {
 		return false
 	}
-	collinear := false
+	combinedCost := false
 	for _, summary := range []*LogisticsSummary{a, c} {
 		for _, check := range summary.Checks {
-			collinear = collinear || check.RuleID == "refinery-collinear-lanes"
+			combinedCost = combinedCost || check.RuleID == "refinery-collinear-lanes" || check.RuleID == "dense-station-shared-inputs"
 		}
 	}
-	if collinear {
+	if combinedCost {
 		if a.Metrics.EnvelopeArea > c.Metrics.EnvelopeArea {
 			return false
 		}
@@ -91,6 +91,18 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			break
 		}
 	}
+	// 共享原料使用独立候选；保留既有成功方案，按实际塔数、占地及线长比较完成终检的结果。
+	if len(req.Plan.RawInputs) > 0 {
+		base := 4
+		if blackboxIndices[len(blackboxIndices)-1] >= 10 {
+			base = 10
+		} else if blackboxIndices[len(blackboxIndices)-1] >= 7 {
+			base = 7
+		}
+		for variant := base; variant < base+3; variant++ {
+			blackboxIndices = append(blackboxIndices, denseStationSharedInputVariantOffset+variant)
+		}
+	}
 	blackboxBudget = len(blackboxIndices)
 	budget = fieldBudget + blackboxBudget
 	allPreviews := b.planCandidatePreviews(budget)
@@ -118,6 +130,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			}
 			street := candidate != nil && candidate.denseStreetCandidate
 			parameters := fmt.Sprintf("externalStationsOnly=true;internalDirect=true;continuousStreet=%t;variant=%d", street, variant)
+			if variant >= denseStationSharedInputVariantOffset {
+				parameters += ";sharedExternalInputs=true"
+			}
 			if candidate != nil && candidate.denseLatitudeSpan > 0 {
 				parameters += fmt.Sprintf(";materialNeighbors=true;sharedInputTracks=true;latitudeWorkBudget=%.0f", candidate.denseLatitudeSpan)
 			}

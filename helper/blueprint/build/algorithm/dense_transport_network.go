@@ -70,6 +70,7 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 	if !enabled || !b.denseSpatial || b.adapter == nil || b.adapter.mode < 1 || b.adapter.mode > 4 {
 		return nil
 	}
+	sharedStationInputs := b.sharesDenseStationInputs(ctx)
 	type demand struct {
 		row              *transportRow
 		planned, maximum float64
@@ -95,7 +96,7 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 			external := len(flows) > 0 && flows[0].from == nil
 			for _, route := range flows {
 				if external {
-					if b.adapter.mode != 1 || route.from != nil || route.edge.FlowKind != "external-input" || productionSprayItem(row.info) != 0 {
+					if b.adapter.mode != 1 && !sharedStationInputs || route.from != nil || route.edge.FlowKind != "external-input" || productionSprayItem(row.info) != 0 {
 						valid = false
 						break
 					}
