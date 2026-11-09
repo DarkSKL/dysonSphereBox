@@ -15,6 +15,11 @@ import (
 
 // denseStationBlackboxCandidate 职责：把已验证直连核心与实际外部塔组成同一次完整候选；使用：塔模式比较；边界：原请求模式、等级、产量和选区始终保留。
 func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request, dataset *quant.Dataset, config contract.StationConfig, variant int, previews ...*generationPreview) (*builder, error) {
+	if variant >= denseBalancedFrameVariantOffset {
+		variant -= denseBalancedFrameVariantOffset
+		ctx = denseBalancedFrameContext(ctx)
+		ctx = context.WithValue(ctx, denseUnitPowerRequestedKey{}, req.Setting.NeedPower == nil || *req.Setting.NeedPower)
+	}
 	if variant >= denseStationSharedInputVariantOffset {
 		variant -= denseStationSharedInputVariantOffset
 		ctx = context.WithValue(ctx, denseStationSharedInputsKey{}, true)

@@ -103,6 +103,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			blackboxIndices = append(blackboxIndices, denseStationSharedInputVariantOffset+variant)
 		}
 	}
+	if denseBalancedFrameEligible(ctx, req) && len(req.Plan.RawInputs) > 0 {
+		blackboxIndices = append(blackboxIndices, denseBalancedFrameVariantOffset+blackboxIndices[len(blackboxIndices)-1])
+	}
 	blackboxBudget = len(blackboxIndices)
 	budget = fieldBudget + blackboxBudget
 	allPreviews := b.planCandidatePreviews(budget)
@@ -116,6 +119,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		indices := blackboxIndices
 		previews := allPreviews[:blackboxBudget]
 		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
+			if variant >= denseBalancedFrameVariantOffset {
+				ctx = denseBalancedFrameContext(ctx)
+			}
 			ctx, finishPerformance := beginCandidatePerformance(ctx, "dense-station-blackbox", variant)
 			defer func() { finishPerformance(evaluation.err) }()
 			var failures []error
@@ -135,6 +141,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			}
 			if candidate != nil && candidate.denseLatitudeSpan > 0 {
 				parameters += fmt.Sprintf(";materialNeighbors=true;sharedInputTracks=true;latitudeWorkBudget=%.0f", candidate.denseLatitudeSpan)
+			}
+			if variant >= denseBalancedFrameVariantOffset {
+				parameters += ";balancedNativeFrame=true"
 			}
 			if out.SurfacePlan != nil {
 				parameters += fmt.Sprintf(";nativeArea=%dx%d", out.SurfacePlan.LayoutWidth, out.SurfacePlan.LayoutHeight)

@@ -54,6 +54,8 @@ func (b *builder) preparePolarRootEncoding(ctx context.Context, layout *SurfaceL
 		b.polarFrame.longitudeStep = surfacePasteLongitudeStep(float32(b.polarFrame.start) * b.polarFrame.latitudeStep)
 	}
 	low, high := bounds(b.all)
+	// 仅消除仿射运算的浮点尾差，真实建造盒纬界仍由正式终检复核。
+	low.y, high.y = normalizeDenseLatitudeRoundoff(b.all, low.y, high.y)
 	if low.y < 0 {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "极区线路越过原生南侧边界"}
 	}

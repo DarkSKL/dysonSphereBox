@@ -20,6 +20,8 @@ type densePolarFrame struct {
 	longitudeBudget float64
 	// position 职责：保存非极区矩形从中心或南北边缘展开的顺序；使用：大厂球面装箱；边界：空值保留极区既有顺序。
 	position string
+	// compactLongitude 职责：跨纬度比较最短经向右界；使用：独立均衡矩形候选；边界：既有候选不改变扫描顺序。
+	compactLongitude bool
 }
 
 // longitudeLimit 职责：预留主Area整数边界与两侧八格接线预算；使用：极区单元装箱及路由共享范围；边界：不增加整圈容量，不把跨缝实体藏到区域之外。
@@ -120,10 +122,18 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 			}
 		}
 	}
+	compact := denseBalancedFrameEnabled(ctx) && selection.tier < 5 && len(units) >= 64
+	if compact {
+		if err := b.reserveDenseUnitPower(ctx, units); err != nil {
+			return err
+		}
+	}
 	height := budget.high - budget.low + 1
 	low, high := bounds(b.all)
 	// 按实体包络加接线余量定位，不能因借用较大搜索预算而偏离所选中心或边缘。
-	height = min(height, int(math.Ceil(high.y-low.y))+5)
+	if !compact {
+		height = min(height, int(math.Ceil(high.y-low.y))+5)
+	}
 	start := (bands[0].low + bands[len(bands)-1].high - height + 1) / 2
 	if selection.position == "south" {
 		start = bands[0].low
@@ -142,12 +152,13 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 	}
 	// 寻路采用覆盖区最细的经向格网；若直接沿南极带头的粗网格，靠赤道一侧一步便可能超过合法带长。
 	// 写出前统一换算回主Area原生格距，保持同一球面位置。
-	frame := &densePolarFrame{start: start, height: height, segments: segments, latitudeStep: step, longitudeStep: float32(2*float32(math.Pi)) / float32(segments*5), flipHemisphere: flipHemisphere}
+	frame := &densePolarFrame{start: start, height: height, segments: segments, latitudeStep: step, longitudeStep: float32(2*float32(math.Pi)) / float32(segments*5), flipHemisphere: flipHemisphere, compactLongitude: compact}
 	if selection.tier < 5 {
 		frame.position = selection.position
 		frame.longitudeBudget = denseTargetLongitudeBudget(frame, units)
 	}
-	if high.y-low.y+1 > float64(height) {
+	// 均衡候选将逐单元重新装箱；临时平面整体高度不代表最终纬向容量。
+	if !compact && high.y-low.y+1 > float64(height) {
 		return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "极区单元排向超过预留纬向容量"}
 	}
 	center := (low.x + high.x) / 2

@@ -25,7 +25,7 @@ type polarUnitOccupancy struct {
 	low, high    vector
 }
 
-// polarStationOccupancy 职责：保存独立物流塔的世界中心及原型；使用：跨单元最小塔距；边界：不能用模型盒互不重叠代替游戏塔距。
+// polarStationOccupancy 职责：保存物流塔或电力节点的世界中心及原型；使用：跨单元设施间距；边界：两类设施分别按真实规则检查，不能只检查模型盒。
 type polarStationOccupancy struct {
 	point placement.Vector
 	item  int16
@@ -170,7 +170,7 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				return part, err
 			}
 			point := b.polarFrame.world(p.a, 0)
-			if surfaceIsStation(p.record.ItemID) {
+			if surfaceIsStation(p.record.ItemID) || surfaceIsPowerNode(p.record.ItemID) {
 				part.stations = append(part.stations, polarStationOccupancy{point, p.record.ItemID})
 			}
 			for _, shape := range shapes {
@@ -239,6 +239,9 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 	armBoxIndex := &polarSpatialIndex{}
 	for _, seed := range parts {
 		found := false
+		// 保存当前最短右界的完整单元状态；后续纬度只读已提交占位，最后提交一次。
+		var bestCommit func()
+		bestRight := math.Inf(1)
 		latitudeCount := 1
 		if flexibleLatitude {
 			latitudeCount = b.polarFrame.height
@@ -307,7 +310,7 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				}
 				if flexibleLatitude {
 					dx = float64(attempt) / 4
-					if part.high.x+dx >= b.polarFrame.longitudeLimit() {
+					if part.high.x+dx >= b.polarFrame.longitudeLimit() || part.high.x+dx >= bestRight {
 						break
 					}
 				}
@@ -320,7 +323,15 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 					point := rotatePolarPoint(station.point, s, c)
 					for _, other := range stations {
 						delta := point.Sub(other.point)
-						if delta.Dot(delta) < float64(surfaceStationDistanceLimit(station.item, other.item)) {
+						limit := float64(0)
+						if surfaceIsStation(station.item) && surfaceIsStation(other.item) {
+							limit = float64(surfaceStationDistanceLimit(station.item, other.item))
+						}
+						if surfaceIsPowerNode(station.item) && surfaceIsPowerNode(other.item) {
+							d := math.Sqrt(float64(surfacePowerDistanceLimit(station.item, other.item))) + 1e-4
+							limit = d * d
+						}
+						if delta.Dot(delta) < limit {
 							stationConflict = true
 							break
 						}
@@ -424,33 +435,54 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				if conflict {
 					continue
 				}
-				shift(part.unit.entities, dx, 0, 0)
-				for _, box := range rotatedBoxes {
-					low, high := box.Bounds()
-					boxIndex.add(low, high)
+				commit := func() {
+					shift(part.unit.entities, dx, 0, 0)
+					for _, box := range rotatedBoxes {
+						low, high := box.Bounds()
+						boxIndex.add(low, high)
+					}
+					for _, point := range rotatedNodes {
+						nodeIndex.add(point.center, point.center)
+					}
+					for _, arm := range rotatedArms {
+						low, high := polarSpanBounds(arm, 0)
+						armIndex.add(low, high)
+						verifiedArms = append(verifiedArms, part.verifiedArms)
+					}
+					for _, box := range rotatedArmBoxes {
+						low, high := box.Bounds()
+						armBoxIndex.add(low, high)
+					}
+					boxes = append(boxes, rotatedBoxes...)
+					nodes = append(nodes, rotatedNodes...)
+					arms = append(arms, rotatedArms...)
+					armBoxes = append(armBoxes, rotatedArmBoxes...)
+					for _, station := range part.stations {
+						stations = append(stations, polarStationOccupancy{rotatePolarPoint(station.point, s, c), station.item})
+					}
+					found = true
 				}
-				for _, point := range rotatedNodes {
-					nodeIndex.add(point.center, point.center)
+				if flexibleLatitude && b.polarFrame.compactLongitude {
+					bestRight = part.high.x + dx
+					snapshot := map[*placed]placed{}
+					for _, p := range part.unit.entities {
+						snapshot[p] = *p
+					}
+					bestCommit = func() {
+						for p, old := range snapshot {
+							*p = old
+						}
+						commit()
+					}
+				} else {
+					commit()
 				}
-				for _, arm := range rotatedArms {
-					low, high := polarSpanBounds(arm, 0)
-					armIndex.add(low, high)
-					verifiedArms = append(verifiedArms, part.verifiedArms)
-				}
-				for _, box := range rotatedArmBoxes {
-					low, high := box.Bounds()
-					armBoxIndex.add(low, high)
-				}
-				boxes = append(boxes, rotatedBoxes...)
-				nodes = append(nodes, rotatedNodes...)
-				arms = append(arms, rotatedArms...)
-				armBoxes = append(armBoxes, rotatedArmBoxes...)
-				for _, station := range part.stations {
-					stations = append(stations, polarStationOccupancy{rotatePolarPoint(station.point, s, c), station.item})
-				}
-				found = true
+
 				break
 			}
+		}
+		if !found && bestCommit != nil {
+			bestCommit()
 		}
 		if !found {
 			return &seed.unit, &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: "极区球面单元在本次经纬位置搜索内未找到无冲突位置"}

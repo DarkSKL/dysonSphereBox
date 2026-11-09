@@ -23,6 +23,8 @@ type connectedPowerObstacle struct {
 	first  placement.Vector
 	second placement.Vector
 	radius float64
+	// nodeProbe 职责：保存正式节点球与缩短胶囊；使用：均衡候选供电净空；边界：不影响既有粗筛候选。
+	nodeProbe *surfaceBeltNodeProbe
 }
 
 // connectedPowerIndex 职责：索引已固定的全局占位及已登记电塔；使用：避免每个消费者扫描全部实体；边界：新增电塔必须同步登记，线段覆盖其经过的全部平面桶。
@@ -40,6 +42,9 @@ type connectedPowerIndex struct {
 	coverRadius float64
 	clearance   float64
 	rejected    map[vector]bool
+	// nodeInputs/nodeMembers 职责：按最终记录顺序解析实际带邻居；使用：精确节点几何；边界：仅引用当前实体。
+	nodeInputs  map[*placed]*placed
+	nodeMembers map[*placed]bool
 }
 
 // connectedPowerConsumer 职责：保留真实耗电中心及失败定位身份；使用：补电枚举和有限约束求解；边界：中心不随求解改变，分拣器和堆叠规则由统一解析负责。
@@ -224,9 +229,31 @@ func newConnectedPowerIndexForEncoding(ctx context.Context, b *builder, encoding
 		encoding = newPlanarRuleEncoding()
 	}
 	index := &connectedPowerIndex{builder: b, ctx: ctx, catalog: catalog, encoding: encoding, positions: map[vector]placement.Vector{}, cells: map[[2]int][]int{}, poles: map[[2]int][]*placed{}, poleWorlds: map[*placed]placement.Vector{}, rejected: map[vector]bool{}, poleShapes: shapes, coverRadius: radius}
+	if reserve, _ := ctx.Value(denseUnitPowerReserveKey{}).(bool); reserve {
+		index.coverRadius *= .9
+	}
 	if b.connectedGlobalPower && encoding.planar {
 		// 平面兼容候选保留原额外预排余量；真实球面候选直接执行原型盒，不重复补偿纬向投影。
 		index.clearance = .05
+	}
+	if denseBalancedFrameEnabled(ctx) && usesDenseBeltCollisions(ctx) {
+		index.nodeInputs = map[*placed]*placed{}
+		index.nodeMembers = map[*placed]bool{}
+		for _, p := range b.all {
+			if surfaceIsBelt(p.record.ItemID) {
+				index.nodeMembers[p] = true
+			}
+		}
+		for _, p := range b.all {
+			if index.nodeMembers[p] && index.nodeMembers[p.input] {
+				index.nodeInputs[p] = p.input
+			}
+		}
+		for _, p := range b.all {
+			if index.nodeMembers[p] && index.nodeMembers[p.output] {
+				index.nodeInputs[p.output] = p
+			}
+		}
 	}
 	for _, entity := range b.all {
 		if err := index.add(entity); err != nil {
@@ -318,13 +345,37 @@ func (index *connectedPowerIndex) add(entity *placed) error {
 	if index.ctx.Err() != nil {
 		return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全局供电占位索引已取消或超时"}
 	}
+	// 同批预览中分拣器与非分拣器互免；分拣器仍由消费者集合执行真实供电校验。
+	if denseBalancedFrameEnabled(index.ctx) && usesDenseBeltCollisions(index.ctx) && entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
+		return nil
+	}
 	obstacle := connectedPowerObstacle{entity: entity}
 	first, err := index.world(entity.a)
 	if err != nil {
 		return err
 	}
 	low, high := first, first
-	if surfaceIsBelt(entity.record.ItemID) || entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
+	if index.nodeInputs != nil && surfaceIsBelt(entity.record.ItemID) {
+		before, after := first, first
+		previous := index.nodeInputs[entity]
+		through := previous != nil && index.nodeMembers[entity.output]
+		if through {
+			before, err = index.world(previous.a)
+			if err != nil {
+				return err
+			}
+			after, err = index.world(entity.output.a)
+			if err != nil {
+				return err
+			}
+		}
+		probe := index.encoding.beltNodeProbe(first, before, after, through)
+		obstacle.nodeProbe = &probe
+		for axis := range low {
+			low[axis] = probe.center[axis] - surfaceBeltNodeRadius
+			high[axis] = probe.center[axis] + surfaceBeltNodeRadius
+		}
+	} else if surfaceIsBelt(entity.record.ItemID) || entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
 		obstacle.first, obstacle.second, obstacle.radius = first, first, .25
 		if surfaceIsBelt(entity.record.ItemID) && entity.output != nil && surfaceIsBelt(entity.output.record.ItemID) {
 			obstacle.second, err = index.world(entity.output.a)
@@ -449,7 +500,7 @@ func (index *connectedPowerIndex) poleGeometry(point vector) (placement.Vector, 
 	return world, boxes, nil
 }
 
-// available 职责：按与 addFlyPower 相同的间距、静态盒及胶囊规则检查候选；使用：局部空间桶窄相位；边界：不按首端十格裁剪，负坐标、大盒及跨桶长臂必须被完整检测。
+// available 职责：按设施间距、静态盒和当前候选的带臂规则检查塔位；使用：局部空间桶窄相位；边界：既有候选保留粗筛，均衡候选使用正式节点形状和同批分拣器互免，不省略静态盒或真实供电终检。
 func (index *connectedPowerIndex) available(point vector) (bool, error) {
 	if index.rejected[point] || !index.insideArea(point) {
 		return false, nil
@@ -488,6 +539,10 @@ func (index *connectedPowerIndex) available(point vector) (bool, error) {
 					}
 				}
 				for _, box := range boxes {
+					if obstacle.nodeProbe != nil && obstacle.nodeProbe.overlapsBox(box) {
+						index.rejected[point] = true
+						return false, nil
+					}
 					if obstacle.radius > 0 && box.SegmentDistanceSquared(obstacle.first, obstacle.second) < obstacle.radius*obstacle.radius {
 						index.rejected[point] = true
 						return false, nil
