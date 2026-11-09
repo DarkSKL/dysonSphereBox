@@ -8,6 +8,7 @@ import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
 import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
 import {useQuantWorkspace, type FactoryPreviewApi, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
+import {useBlueprintPreviewFeed} from '../../composables/dysonSphere/useBlueprintPreviewFeed'
 import {generationDebugOptions} from '../../composables/dysonSphere/useGenerationTimeline'
 import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
 
@@ -58,6 +59,8 @@ watch(viewer, (panel) => {
     w.registerPreviewApi(undefined)
   }
 }, {immediate: true})
+// 转发层：按协议版本把生成事件拆为单场景差量；v4 只跟踪一个候选并重写对象 ID。生命周期仍由工作区负责。
+const previewFeed = useBlueprintPreviewFeed(w, () => viewer.value)
 const previewLabels: Record<PreviewState, string> = {idle: '等待生成', loading: '正在加载预览模型', ready: '实时预览', stale: '等待刷新', error: '预览不可用', empty: '没有建筑'}
 const previewStatus = computed(() => {
   if (w.generating) return {state: 'loading', text: w.generationProgress || '正在准备生成'}
@@ -188,7 +191,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
     <!-- ~ 最右侧：生成事件时间流（调试） -->
     <!-- * 说明：纵跨网格与预览两层，实时列出蓝图生成事件卡片，点击查看原始消息 -->
     <!-- * 边界：只旁路观察事件，不影响生成、预览与任务过滤；仅在检查面板开启调试模式时挂载，关闭后记录随之清空 -->
-    <div v-if="generationDebugOptions.debugMode" class="bench-timeline"><EventTimeline :can-generate="Boolean(w.plan && !w.quantStale && !w.solving && !w.importing)" :generating="w.generating" @generate="w.generate" /></div>
+    <div v-if="generationDebugOptions.debugMode" class="bench-timeline"><EventTimeline :feed="previewFeed" :can-generate="Boolean(w.plan && !w.quantStale && !w.solving && !w.importing)" :generating="w.generating" @generate="w.generate" /></div>
 
     <n-modal v-model:show="w.importVisible" preset="card" title="导入蓝图并反算" class="import-modal" style="width: min(680px, 92vw)"><p class="muted">只读识别建筑和理论产出，保留原始蓝图供预览与导出。</p><n-input v-model:value="w.importText" type="textarea" :rows="9" placeholder="粘贴 BLUEPRINT: 开头的蓝图串" class="type-mono" /><div class="import-actions"><input ref="fileInput" type="file" accept=".txt,.dspbp" hidden @change="onFile" /><n-button @click="fileInput?.click()">选择文本文件</n-button><n-button type="primary" :loading="w.importing" :disabled="!w.importText.trim()" @click="w.loadCode(w.importText, '导入的蓝图')">严格解析并预览</n-button></div><n-alert v-if="w.error" type="error">{{ w.error.message }}</n-alert></n-modal>
   </section>

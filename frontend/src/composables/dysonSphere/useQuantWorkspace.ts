@@ -16,6 +16,7 @@ import {algorithmFollow, algorithmFollowKey} from './useAlgorithmFeed'
 // 职责：预览库六动作契约；使用：页面把 BlueprintViewerPanel 暴露的方法注册进来；边界：只描述协调层需要的最小集合。
 export interface FactoryPreviewApi {
   beginPreview(): void
+  /** 只接受单候选单场景差量（页面转发层已按候选1 过滤、重写对象 ID 并剥离候选字段）；v4 多候选过滤不在本层。 */
   applyPreviewDelta(event: FactoryGenerationProgress): boolean
   commitPreview(blueprint: string): unknown
   discardPreview(): void
@@ -298,38 +299,44 @@ export const useQuantWorkspace = () => {
     const debugDeltas = generationDebugOptions.debugMode && generationDebugOptions.emitPreviewDeltas
     const followKey = algorithmFollowKey(mode.value, density.value)
     const followDeltas = algorithmFollow.active && !algorithmFollow.unsupported.has(followKey)
+    const wantDeltas = debugDeltas || followDeltas
+    // 协议版本与差量发射同源：只要本次请求要推进蓝图过程预览（调试差量或算法可视化跟随），就必须请求 v4。
+    // v3 的多候选共用同一预览通知器，差量是"每个候选依次全量替换"的合并流，蓝图无法只留一个候选。
+    const requestV4 = wantDeltas
     // 阶段事件每秒可达数十条：只保留最新文案，每帧写入一次响应式状态
     progressWriter.cancel()
     const onProgress = (progress: FactoryGenerationProgress): void => {
         if (progress.taskId && progress.taskId !== generationTaskId.value) return
       if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
-      if (progress.kind === 'building-batch' && progress.previewBatch) {
-        const moduleName = progress.previewBatch.module.name || '共享设施'
-        progressWriter.push(`${progress.message} · ${moduleName} ${progress.current}/${progress.total}`)
-      } else {
-        progressWriter.push(progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message)
-      }
+      // v4 的候选事件与 v3 差量都可能不带文案；空文案不得覆盖当前阶段提示
+      const text = progress.kind === 'building-batch' && progress.previewBatch
+        ? `${progress.message} · ${progress.previewBatch.module.name || '共享设施'} ${progress.current}/${progress.total}`
+        : progress.total > 0 ? `${progress.message} · ${progress.current}/${progress.total}` : progress.message
+      if (text) progressWriter.push(text)
     }
-      const run = (emitPreviewDeltas: boolean): Promise<build.Result> => generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, density: density.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas, previewProtocolVersion: followDeltas ? 4 : 3}), onProgress, observer.signal, taskId => { generationTaskId.value = taskId })
+      const run = (emitPreviewDeltas: boolean): Promise<build.Result> => generateFactory(new build.Request({plan: sourcePlan, mode: mode.value, density: density.value, setting: requestLayout.value, surfaceLayout: requestSurfaceLayout.value, name: name.value, emitPreviewDeltas, previewProtocolVersion: requestV4 && emitPreviewDeltas ? 4 : 3, emitBlueprintProgress: requestV4 ? false : undefined}), onProgress, observer.signal, taskId => { generationTaskId.value = taskId })
     // =============== 第一步：先开预览，再提交请求 ===============
     // 顺序不能颠倒——后端会在生成过程中陆续推 preview-delta，请求发出后开头的差量会在 beginPreview 前到达，漏掉会导致画面缺一块。
-    // emitDeltas 是请求字段与预览层开关的唯一有效值：调试模式开启且允许差量时才发送/接收，避免请求不发差量而预览层空开。
-    const emitDeltas = generationDebugOptions.debugMode && generationDebugOptions.emitPreviewDeltas
-    // 仅当 viewer 内部实例就绪时才走增量预览链路；未就绪时 beginPreview/applyPreviewDelta 全部静默失败，回退静态预览
-    const useLivePreview = Boolean(previewApi && previewApi.isReady() && emitDeltas)
-    if (useLivePreview) {
+    // 生命周期与调试开关、协议版本解耦：viewer 就绪且本次请求会推进预览（v4 单候选过程）时，
+    // 先 beginPreview 保存快照，成功时 commitPreview 原子替换，避免 code 变化触发全量重载闪白。
+    const usePreviewLifecycle = Boolean(previewApi && previewApi.isReady() && wantDeltas)
+    if (usePreviewLifecycle) {
       try { previewApi!.beginPreview() } catch { /* Viewer 未就绪或已释放：继续走旧链路 */ }
     }
     try {
       if (denseLatitudeError.value) throw new FactoryError('GEN_E_DENSITY_REGION', denseLatitudeError.value)
       let result: build.Result
       try {
-        result = await run(debugDeltas || followDeltas)
+        result = await run(wantDeltas)
       } catch (caught) {
-        // 可视化跟随不得改变生成成败：该组合缺少完整过程快照时记下，并改为普通生成重试一次
-        const previewOnly = followDeltas && !debugDeltas && caught instanceof FactoryError && caught.code === 'GEN_E_PROGRESS_PREVIEW'
+        // 过程预览不得改变生成成败：该组合缺少完整过程快照时记录并改为普通生成（v3、无差量）重试一次。
+        // 之后同一模式/密度组合不再请求 v4，蓝图只剩 begin/commit 生命周期，无 delta 也不会闪白。
+        const previewOnly = wantDeltas && caught instanceof FactoryError && caught.code === 'GEN_E_PROGRESS_PREVIEW'
         if (!previewOnly || disposed || generationObserver !== observer || observer.signal.aborted) throw caught
         algorithmFollow.unsupported.add(followKey)
+        // 降级重试：先丢弃过程预览并恢复旧画面，避免整段重试期间停留在空场景；
+        // 正式结果仍由下方 commitPreview 原子替换，成功后不会闪白，失败则由 catch 统一 discard。
+        if (usePreviewLifecycle && previewApi) { try { previewApi.discardPreview() } catch { /* 忽略 */ } }
         result = await run(false)
       }
       if (disposed || generationObserver !== observer) return
@@ -347,7 +354,7 @@ export const useQuantWorkspace = () => {
       selectedProductions.value = []
       // 先置为 loading；commitPreview 成功后 emit('ready') 会置为 ready，失败则靠 code 变化触发的全量重载 emit ready
       resetPreviewState(result.buildingCount)
-      if (useLivePreview && previewApi) {
+      if (usePreviewLifecycle && previewApi) {
         // commitPreview 内部先建后换，不会闪白。commit 成功后预览层自动切换为正式场景，旧 temp 层被清掉。
         try { previewApi.commitPreview(result.blueprint) } catch { /* commit 失败不影响数据，只是画面回退到临时层 */ }
       }
@@ -355,7 +362,7 @@ export const useQuantWorkspace = () => {
       previewRevision.value++
     } catch (caught) {
       // =============== 第四步：失败 / 中止 → 丢弃预览层，保留上次成功画面 ===============
-      if (useLivePreview && previewApi && currentTaskToken === taskToken) {
+      if (usePreviewLifecycle && previewApi && currentTaskToken === taskToken) {
         try { previewApi.discardPreview() } catch { /* 忽略 */ }
       }
       if (caught instanceof FactoryError && caught.code === 'GEN_E_CANCELED') {

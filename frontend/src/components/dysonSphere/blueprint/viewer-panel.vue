@@ -183,6 +183,10 @@ const beginPreview = (): void => {
   withAppThemeIsolation(() => viewer.value?.beginPreview())
 }
 const applyPreviewDelta = (event: unknown): boolean => {
+  // 防御：仍带候选维度（candidateId）或显式 v4 标记的事件说明页面转发层漏过滤。
+  // 此时返回 true 表示"已由上层处理"，但不交给底层库，避免多候选对象污染单场景镜像。
+  const value = event as {candidateId?: unknown; protocolVersion?: unknown} | null
+  if (value && (value.candidateId !== undefined || value.protocolVersion === 4)) return true
   // 后端 FactoryGenerationProgress 与库 PreviewDeltaEvent 结构兼容，协议层已校验 kind/protocolVersion/operations，这里直接透传。
   return withAppThemeIsolation(() => viewer.value?.applyPreviewDelta(event as Parameters<typeof viewer.value.applyPreviewDelta>[0]) ?? false)
 }
