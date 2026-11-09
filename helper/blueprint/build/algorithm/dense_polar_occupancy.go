@@ -14,12 +14,15 @@ import (
 
 // polarUnitOccupancy 职责：保存单元的原生静态盒、带节点与分拣器端点；使用：经向位置搜索；边界：不把包络矩形当作独占区域。
 type polarUnitOccupancy struct {
-	unit      denseSpatialUnit
-	boxes     []placement.Box
-	nodes     []surfaceBeltNodeProbe
-	arms      []surfaceBeltSpan
-	stations  []polarStationOccupancy
-	low, high vector
+	unit  denseSpatialUnit
+	boxes []placement.Box
+	nodes []surfaceBeltNodeProbe
+	arms  []surfaceBeltSpan
+	// armBoxes/verifiedArms 职责：保存完整单元经正式槽位修正后的动态盒；使用：细化阶段替代双端点粗略胶囊；边界：待接线单元仍沿用粗筛。
+	armBoxes     []placement.Box
+	verifiedArms bool
+	stations     []polarStationOccupancy
+	low, high    vector
 }
 
 // polarStationOccupancy 职责：保存独立物流塔的世界中心及原型；使用：跨单元最小塔距；边界：不能用模型盒互不重叠代替游戏塔距。
@@ -132,7 +135,7 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 	}
 	// 大厂在每个单元内完整搜索纬度，避免已落位单元被反复移动而耗尽重排预算。
 	flexibleLatitude := len(units) >= 64
-	makePart := func(unit denseSpatialUnit) (polarUnitOccupancy, error) {
+	makePart := func(unit denseSpatialUnit, dynamic bool) (polarUnitOccupancy, error) {
 		part := polarUnitOccupancy{unit: unit}
 		part.low, part.high = bounds(unit.entities)
 		members := make(map[*placed]bool, len(unit.entities))
@@ -178,11 +181,17 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				part.boxes = append(part.boxes, box)
 			}
 		}
+		if preciseNodes && dynamic {
+			part.armBoxes, part.verifiedArms, err = b.polarUnitInserterBoxes(ctx, unit)
+			if err != nil {
+				return part, err
+			}
+		}
 		return part, nil
 	}
 	parts := make([]polarUnitOccupancy, 0, len(units))
 	for _, unit := range units {
-		part, err := makePart(unit)
+		part, err := makePart(unit, false)
 		if err != nil {
 			return nil, err
 		}
@@ -197,9 +206,9 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				dx = limit - part.high.x - .001
 			}
 			shift(unit.entities, dx, 0, 0)
-			part, err = makePart(unit)
+			part, err = makePart(unit, true)
 			if err != nil {
-				return nil, err
+				return &unit, err
 			}
 		}
 		parts = append(parts, part)
@@ -223,8 +232,11 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 	boxes := []placement.Box{}
 	nodes := []surfaceBeltNodeProbe{}
 	arms := []surfaceBeltSpan{}
+	verifiedArms := []bool{}
+	armBoxes := []placement.Box{}
 	stations := []polarStationOccupancy{}
 	boxIndex, nodeIndex, armIndex := &polarSpatialIndex{}, &polarSpatialIndex{}, &polarSpatialIndex{}
+	armBoxIndex := &polarSpatialIndex{}
 	for _, seed := range parts {
 		found := false
 		latitudeCount := 1
@@ -273,14 +285,18 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 					continue
 				}
 				shift(seed.unit.entities, -low.x, 0, 0)
-				part, err = makePart(seed.unit)
+				part, err = makePart(seed.unit, true)
 				if err != nil {
+					if ctx.Err() == nil && denseNativeGeometryFailure(err) {
+						continue
+					}
 					return nil, err
 				}
 			}
 			rotatedBoxes := make([]placement.Box, len(part.boxes))
 			rotatedNodes := make([]surfaceBeltNodeProbe, len(part.nodes))
 			rotatedArms := make([]surfaceBeltSpan, len(part.arms))
+			rotatedArmBoxes := make([]placement.Box, len(part.armBoxes))
 			for attempt := 0; attempt <= b.polarFrame.segments*40; attempt++ {
 				if err := ctx.Err(); err != nil {
 					return nil, err
@@ -328,6 +344,13 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				}
 				for i, a := range part.arms {
 					rotatedArms[i] = surfaceBeltSpan{ends: [2]placement.Vector{rotatePolarPoint(a.ends[0], s, c), rotatePolarPoint(a.ends[1], s, c)}}
+				}
+				for i, box := range part.armBoxes {
+					box.Center = rotatePolarPoint(box.Center, s, c)
+					for axis := range box.Axes {
+						box.Axes[axis] = rotatePolarPoint(box.Axes[axis], s, c)
+					}
+					rotatedArmBoxes[i] = box
 				}
 				conflict := false
 				for _, a := range rotatedBoxes {
@@ -378,7 +401,22 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				}
 				for _, a := range rotatedArms {
 					low, high := polarSpanBounds(a, .5)
-					conflict = armIndex.any(low, high, func(i int) bool { return surfaceSpanDistanceSquared(a, arms[i]) < .5*.5 })
+					conflict = armIndex.any(low, high, func(i int) bool {
+						if part.verifiedArms && verifiedArms[i] {
+							return false
+						}
+						return surfaceSpanDistanceSquared(a, arms[i]) < .5*.5
+					})
+					if conflict {
+						break
+					}
+				}
+				if conflict {
+					continue
+				}
+				for _, box := range rotatedArmBoxes {
+					low, high := box.Bounds()
+					conflict = armBoxIndex.any(low, high, func(i int) bool { return box.Overlaps(armBoxes[i]) })
 					if conflict {
 						break
 					}
@@ -397,10 +435,16 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				for _, arm := range rotatedArms {
 					low, high := polarSpanBounds(arm, 0)
 					armIndex.add(low, high)
+					verifiedArms = append(verifiedArms, part.verifiedArms)
+				}
+				for _, box := range rotatedArmBoxes {
+					low, high := box.Bounds()
+					armBoxIndex.add(low, high)
 				}
 				boxes = append(boxes, rotatedBoxes...)
 				nodes = append(nodes, rotatedNodes...)
 				arms = append(arms, rotatedArms...)
+				armBoxes = append(armBoxes, rotatedArmBoxes...)
 				for _, station := range part.stations {
 					stations = append(stations, polarStationOccupancy{rotatePolarPoint(station.point, s, c), station.item})
 				}

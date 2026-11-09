@@ -96,23 +96,33 @@ func (encoding *surfaceEncoding) surfaceInserterBoxes(ctx context.Context, recor
 
 // surfaceInserterBoxesMeasured 职责：在同一端口修正流程中记录游戏实际跨格参数；使用：球面重定位后的能力一致性复核；边界：任一规则失败时调用方不得使用部分结果。
 func (encoding *surfaceEncoding) surfaceInserterBoxesMeasured(ctx context.Context, records []blueprint.Building, spans map[int32]int32) ([]placement.OwnedBox, error) {
-	catalog, err := placement.LoadCatalog()
-	if err != nil {
-		return nil, err
-	}
 	first, err := encoding.surfaceWorldPositions(records)
 	if err != nil {
 		return nil, err
 	}
 	secondary := append([]blueprint.Building(nil), records...)
-	byIndex := make(map[int32]int, len(records))
 	for i := range secondary {
 		secondary[i].LocalOffset = records[i].LocalOffset2
-		byIndex[records[i].Index] = i
 	}
 	second, err := encoding.surfaceWorldPositions(secondary)
 	if err != nil {
 		return nil, err
+	}
+	return encoding.surfaceInserterBoxesAtWorld(ctx, records, first, second, spans)
+}
+
+// surfaceInserterBoxesAtWorld 职责：用明确世界端点执行正式分拣器槽位、方向、跨度及动态盒计算；使用：最终编码记录与原生单元落位共用；边界：端点须与记录一一对应，不修改实体姿态、碰撞原型或规则阈值。
+func (encoding *surfaceEncoding) surfaceInserterBoxesAtWorld(ctx context.Context, records []blueprint.Building, first, second []vector, spans map[int32]int32) ([]placement.OwnedBox, error) {
+	if len(first) != len(records) || len(second) != len(records) {
+		return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "分拣器世界端点与建筑记录数量不一致"}
+	}
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		return nil, err
+	}
+	byIndex := make(map[int32]int, len(records))
+	for i, record := range records {
+		byIndex[record.Index] = i
 	}
 	boxes := []placement.OwnedBox{}
 	for i, record := range records {
