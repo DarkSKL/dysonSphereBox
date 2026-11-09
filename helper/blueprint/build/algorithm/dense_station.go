@@ -57,7 +57,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	if err != nil {
 		return Result{}, err
 	}
-	if needsLocalRecycle {
+	// 塔场路径尚未建立原生单元坐标；根球面候选即使完成平面接线，也会被最终编码明确拒绝。
+	// 提前排除不具备目标坐标能力的候选，把同一总时限留给实际可编码的黑盒与后续单环搜索。
+	if needsLocalRecycle || req.SurfaceLayout != nil && req.SurfaceLayout.polarRoot {
 		fieldBudget = 0
 	}
 	blackboxBudget := 4

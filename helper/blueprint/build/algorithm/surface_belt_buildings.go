@@ -150,7 +150,7 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 			boxes = append(boxes, placement.OwnedBox{Owner: i, Geometry: box})
 		}
 	}
-	const radius = .23
+	const radius = surfaceBeltNodeRadius
 	for i, record := range records {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "传送带建筑占用检查已取消或超时"}
@@ -159,22 +159,16 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 			continue
 		}
 		point := placement.Vector{positions[i].x, positions[i].y, positions[i].z}
-		radial := encoding.localUp(point).Scale(.2)
-		center, first, second := point.Add(radial), point, point
 		input, hasInput := byIndex[record.InputObjIdx]
 		output, hasOutput := byIndex[record.OutputObjIdx]
-		if hasInput && hasOutput && surfaceIsBelt(records[input].ItemID) && surfaceIsBelt(records[output].ItemID) {
-			first = point.Add(placement.Vector{positions[input].x, positions[input].y, positions[input].z}.Sub(point).Scale(.65))
-			second = point.Add(placement.Vector{positions[output].x, positions[output].y, positions[output].z}.Sub(point).Scale(.65))
-			delta := second.Sub(first).Scale(.45)
-			if encoding.planar {
-				first, second = first.Add(delta), second.Sub(delta)
-			} else {
-				length := math.Sqrt(point.Dot(point))
-				first, second = surfaceUnit(first.Add(delta)).Scale(length), surfaceUnit(second.Sub(delta)).Scale(length)
-			}
+		before, after := point, point
+		through := hasInput && hasOutput && surfaceIsBelt(records[input].ItemID) && surfaceIsBelt(records[output].ItemID)
+		if through {
+			before = placement.Vector{positions[input].x, positions[input].y, positions[input].z}
+			after = placement.Vector{positions[output].x, positions[output].y, positions[output].z}
 		}
-		first, second = first.Add(radial), second.Add(radial)
+		probe := encoding.beltNodeProbe(point, before, after, through)
+		center, first, second := probe.center, probe.span.ends[0], probe.span.ends[1]
 		seen := map[int]bool{}
 		for x := int(math.Floor((center[0] - radius) / 8)); x <= int(math.Floor((center[0]+radius)/8)); x++ {
 			for y := int(math.Floor((center[1] - radius) / 8)); y <= int(math.Floor((center[1]+radius)/8)); y++ {
