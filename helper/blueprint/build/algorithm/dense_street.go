@@ -299,33 +299,44 @@ func (b *builder) buildDenseStreetRows(ctx context.Context, p quant.Production, 
 		var accepted bool
 		var lastError error
 		seam := denseStreetSeam{group: group, rotated: rotated, street: number / perStreet, baseY: baseY}
-		for step := 0; step <= 20 && !accepted; step++ {
-			gap := float64(step) * .05
-			if len(street.seams) == 0 && step > 0 {
-				break
+		// 先保留已验收的小接缝；短容量组无解时，再搜索一个机器周期，仍保留全部采样节点与真实臂姿态。
+		for pass := 0; pass < 2 && !accepted; pass++ {
+			steps := 20
+			if pass == 1 {
+				steps = int(math.Ceil(pitch / .05))
+				phases = append(phases, .6, -.6, .7, -.7, .8, -.8, .9, -.9, 1, -1)
 			}
-			shift(l.all, gap-currentGap, 0, 0)
-			currentGap = gap
-			for _, phase := range phases {
-				if err := work.checkGeneration("街道断口与独立节点相位"); err != nil {
-					return nil, err
-				}
-				shiftDenseStreetBelts(l, phase-currentPhase)
-				currentPhase = phase
-				lastError = denseStreetNodeSeparation(work.all, l.all)
-				if lastError != nil {
-					continue
-				}
-				lastError = work.validateDenseStreetCore(ctx, attachments)
-				if lastError == nil {
-					accepted = true
-					seam.gap, seam.phase = gap, phase
+			for step := 0; step <= steps && !accepted; step++ {
+				gap := math.Min(float64(step)*.05, pitch)
+				if len(street.seams) == 0 && step > 0 {
 					break
+				}
+				shift(l.all, gap-currentGap, 0, 0)
+				currentGap = gap
+				for _, phase := range phases {
+					if pass == 1 && gap <= 1 && math.Abs(phase) <= .5 {
+						continue
+					}
+					if err := work.checkGeneration("街道断口与独立节点相位"); err != nil {
+						return nil, err
+					}
+					shiftDenseStreetBelts(l, phase-currentPhase)
+					currentPhase = phase
+					lastError = denseStreetNodeSeparation(work.all, l.all)
+					if lastError != nil {
+						continue
+					}
+					lastError = work.validateDenseStreetCore(ctx, attachments)
+					if lastError == nil {
+						accepted = true
+						seam.gap, seam.phase = gap, phase
+						break
+					}
 				}
 			}
 		}
 		if !accepted {
-			return nil, &blueprint.Error{Code: "GEN_E_DENSITY_STREET_SEAM", Message: fmt.Sprintf("容量组%d在1格额外间距及±0.5格带相位内未通过；保留必要采样节点，末次错误：%v", group, lastError)}
+			return nil, &blueprint.Error{Code: "GEN_E_DENSITY_STREET_SEAM", Message: fmt.Sprintf("容量组%d在紧凑接缝及一个机器周期、±1格带相位的扩展搜索内未通过；保留必要采样节点，末次错误：%v", group, lastError)}
 		}
 		street.groups[group] = l
 		street.seams = append(street.seams, seam)
