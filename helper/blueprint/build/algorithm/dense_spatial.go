@@ -227,6 +227,8 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
 	selection, selected := densityLatitudeSelectionFor(zone)
 	polarRoot, _ := ctx.Value(densityPolarRootKey{}).(bool)
+	// 原生球面只固定纬向预算，经向另按实体占地估算；不能把较宽纬带误限成等宽正方形。
+	strictHeight = strictHeight || polarRoot
 	// 窄纬只限制纬向容量，经向预算按实体总占地估算；普通共享布局保留原策略。
 	if selected && selection.tier >= 3 && (b.adapter == nil || b.adapter.density == densityDense) {
 		strictHeight = true

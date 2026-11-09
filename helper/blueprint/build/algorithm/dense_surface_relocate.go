@@ -110,6 +110,11 @@ func validateRelocatedSurface(ctx context.Context, req Request, encoding *surfac
 	if err := encoding.validateStaticColliders(ctx, records); err != nil {
 		return err
 	}
+	if req.Density == densityDense {
+		if err := encoding.validateDenseStaticLatitude(ctx, req.SurfaceLayout, records); err != nil {
+			return err
+		}
+	}
 	if err := encoding.validateDynamicFacilities(ctx, records); err != nil {
 		return err
 	}

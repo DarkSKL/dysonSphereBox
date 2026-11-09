@@ -17,6 +17,9 @@ func (b *builder) trimConnectedTails() error {
 	lines := []*line{}
 	required, removed := map[*placed]bool{}, map[*placed]bool{}
 	preserveDenseCargoNeighborhoods(b.all, required)
+	if err := preserveFlowMonitorHosts(b.all, required); err != nil {
+		return err
+	}
 	b.preserveDenseMaterialNetworkTracks(required)
 	for _, route := range b.denseStreetRoutes {
 		required[route.start], required[route.end] = true, true

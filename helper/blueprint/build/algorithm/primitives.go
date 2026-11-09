@@ -22,6 +22,8 @@ type vector struct{ x, y, z float64 }
 
 // placed 职责：以指针维护建筑连接；使用：合并重排；边界：最终 index 与数组映射独立赋值。
 type placed struct {
+	// flowMonitorHost 职责：保留监测器实际宿主的实体身份；使用：裁剪与最终物料核验；边界：不是带连接，不依赖尚未全场排布的重复局部坐标。
+	flowMonitorHost *placed
 	// densityCargo 职责：保存参考臂实际取放目标与独立物料轨道；使用：最终货物采样重绑；边界：值类型元数据及只读轨道切片可随候选快照安全复制。
 	densityCargo denseCargoTarget
 	// nativeInserterSpan 职责：保存当前原生端点实测跨度；使用：已通过完整几何的本地能力复核；边界：仅高纬适配事务写入。

@@ -176,6 +176,7 @@ func (b *builder) detachDenseStreetAccessories(l *line, group int) ([]*denseStre
 			for _, monitor := range monitors {
 				host := row[1]
 				monitor.a, monitor.b = host.a, host.a
+				monitor.flowMonitorHost = host
 				monitor.record.Yaw, monitor.record.Yaw2 = host.record.Yaw, host.record.Yaw
 				last = max(last, 3)
 			}

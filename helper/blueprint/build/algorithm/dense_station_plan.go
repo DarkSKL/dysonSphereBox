@@ -165,6 +165,9 @@ func (b *builder) denseStationStreetEligible(production quant.Production, recipe
 func (b *builder) trimDenseStationTails(rows []*denseStationRow, routes []denseStationRoute) error {
 	required, removed := map[*placed]bool{}, map[*placed]bool{}
 	preserveDenseCargoNeighborhoods(b.all, required)
+	if err := preserveFlowMonitorHosts(b.all, required); err != nil {
+		return err
+	}
 	for _, entity := range b.all {
 		required[entity.input] = true
 		if !surfaceIsBelt(entity.record.ItemID) {

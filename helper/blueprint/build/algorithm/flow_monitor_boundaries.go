@@ -17,6 +17,10 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 	if !b.setting.EnableFlowMonitor || mode != 1 && b.directBoundaryUnits == nil {
 		return nil
 	}
+	monitorFootprint, err := prototypeLayoutFootprint(2030, b.models["2030"])
+	if err != nil {
+		return err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -138,6 +142,8 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 				}
 				begin := len(b.all)
 				monitor := b.make(2030, host.a.x, host.a.y, host.a.z)
+				monitor.flowMonitorHost = host
+				monitor.layoutFootprint = monitorFootprint
 				monitor.record.Yaw, monitor.record.Yaw2 = host.record.Yaw, host.record.Yaw
 				if powerErr = b.coverBoundaryFlowMonitor(host); powerErr != nil {
 					b.all = b.all[:begin]

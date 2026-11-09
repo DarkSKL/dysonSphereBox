@@ -67,6 +67,9 @@ func (b *builder) validateFinalMonitorIntegrity(ctx context.Context, req Request
 		if selected == nil {
 			return fail(fmt.Sprintf("监测器%d缺少最终同区、同点、同向且无额外连接的真实宿主带", record.Index))
 		}
+		if monitor.flowMonitorHost != nil && monitor.flowMonitorHost != selected {
+			return fail(fmt.Sprintf("监测器%d的最终宿主与原始物料带不一致", record.Index))
+		}
 		if covered[selected] {
 			return fail(fmt.Sprintf("监测器%d与另一监测器重复占据同一真实宿主", record.Index))
 		}

@@ -135,6 +135,11 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	}
 	prepared.builder.beginPreview()
 	generated, err := adapter.generate(ctx, prepared.builder, prepared.request, prepared.dataset)
+	if err != nil && ctx.Err() == nil && denseNativeLayoutRetryable(prepared.request, err) {
+		prepared.builder.rollbackPreview()
+		reportProgress(ctx, "dense-native-retry", "正在按所选纬带的真实球面重新排布与接线", 0, 0)
+		return generateDensePolar(ctx, prepared.request, adapter)
+	}
 	return publishFinalBlueprintProgress(ctx, prepared.request, prepared.dataset, generated, err)
 }
 
@@ -351,6 +356,11 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	}
 	if err := validateDensityLatitudePlan(req.SurfaceLayout, surfacePlan); err != nil {
 		return result, err
+	}
+	if req.Density == densityDense && surface != nil {
+		if err := surface.validateDenseStaticLatitude(ctx, req.SurfaceLayout, records); err != nil {
+			return result, err
+		}
 	}
 	reportProgress(ctx, "rules", "正在核验最终建筑、路线、槽位和供电规则", 0, 0)
 	if err := b.rebindReferenceCargo(ctx, surface, records); err != nil {

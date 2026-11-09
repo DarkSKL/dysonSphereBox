@@ -5,7 +5,6 @@ package build
 
 import (
 	"DysonSphereBox/helper/blueprint"
-	"DysonSphereBox/helper/blueprint/build/placement"
 	"DysonSphereBox/helper/blueprint/density"
 	"DysonSphereBox/helper/quant"
 	"fmt"
@@ -264,28 +263,7 @@ func refineryTrackPoints(start, end, y, step float64) []vector {
 
 // refineryLayoutFootprint 职责：从实际建造盒提取Yaw零度外包；使用：长轴已旋转的炼油厂宽高预算；边界：查表失败拒绝装配，不使用旧横向模板的短纬向估算。
 func (b *builder) refineryLayoutFootprint() (*[2]vector, error) {
-	catalog, err := placement.LoadCatalog()
-	if err != nil {
-		return nil, err
-	}
-	shapes, err := catalog.Shapes(2308, b.models["2308"])
-	if err != nil {
-		return nil, err
-	}
-	low, high := vector{math.Inf(1), math.Inf(1), 0}, vector{math.Inf(-1), math.Inf(-1), 0}
-	encoding := newPlanarRuleEncoding()
-	for _, shape := range shapes {
-		box, err := encoding.colliderBox(vector{0, .2, 0}, 0, shape)
-		if err != nil {
-			return nil, err
-		}
-		a, c := box.Bounds()
-		low.x = math.Min(low.x, a[0]/planarGridLength)
-		low.y = math.Min(low.y, a[2]/planarGridLength)
-		high.x = math.Max(high.x, c[0]/planarGridLength)
-		high.y = math.Max(high.y, c[2]/planarGridLength)
-	}
-	return &[2]vector{low, high}, nil
+	return prototypeLayoutFootprint(2308, b.models["2308"])
 }
 
 // layoutDenseSpatialRows 职责：使用实际获选局部模板的重复节距细分容量组；使用：直连、配送和塔候选；边界：各原单带组独立守恒，不改变产线总数或带速。

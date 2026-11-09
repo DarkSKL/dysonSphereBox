@@ -318,6 +318,19 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 
 // finishLocalLine 职责：为已装配机器单元补齐设施、供电与容量证据；使用：普通和参考密铺共同出口；边界：不重新排列机器或改写参考臂姿态。
 func (b *builder) finishLocalLine(l *line, conf geometry, p quant.Production, mode, lineIndex int, last bool, start int) (*line, error) {
+	if b.adapter != nil && b.adapter.density == densityDense && b.generationCtx != nil {
+		root, _ := b.generationCtx.Value(densityPolarRootKey{}).(bool)
+		precise, _ := b.generationCtx.Value(densityPrototypeFootprintKey{}).(bool)
+		if root && precise {
+			footprint, err := prototypeLayoutFootprint(int16(p.MachineID), b.models[itoa(p.MachineID)])
+			if err != nil {
+				return nil, err
+			}
+			for _, machine := range l.machines {
+				machine.layoutFootprint = footprint
+			}
+		}
+	}
 	b.previewCheckpoint("assembly")
 	if b.adapter != nil && b.adapter.lineAssembly.useFlyTransport {
 		if err := b.prepareFlyInletCoaters(l); err != nil {
@@ -360,6 +373,10 @@ func (b *builder) finishLocalLine(l *line, conf geometry, p quant.Production, mo
 // addLineFlowMonitors 在每条独立物料带上选取空闲节点安装监测器。
 // 使用：buildLine 已创建机器、分拣器和物料带后调用；边界：监测器与宿主带同点共存，不更改带链和过滤参数。
 func (b *builder) addLineFlowMonitors(l *line, begin int) error {
+	monitorFootprint, err := prototypeLayoutFootprint(2030, b.models["2030"])
+	if err != nil {
+		return err
+	}
 	rows := append(append([][]*placed{}, l.inputs...), l.outputRows()...)
 	seen := map[*placed]bool{}
 	for _, row := range rows {
@@ -384,6 +401,8 @@ func (b *builder) addLineFlowMonitors(l *line, begin int) error {
 			return &blueprint.Error{Code: "GEN_E_COLLISION", Message: "产线物料带没有可安全安装流速监测器的空闲节点"}
 		}
 		monitor := b.make(2030, selected.a.x, selected.a.y, selected.a.z)
+		monitor.flowMonitorHost = selected
+		monitor.layoutFootprint = monitorFootprint
 		monitor.record.Yaw = selected.record.Yaw
 		monitor.record.Yaw2 = selected.record.Yaw
 		seen[selected] = true
