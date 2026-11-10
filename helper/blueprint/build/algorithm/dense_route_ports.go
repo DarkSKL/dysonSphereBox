@@ -19,6 +19,9 @@ const denseRouteMaximumSpan = 2.15
 
 // denseRoutePortIndex 职责：索引当前真实静态盒和带节点；使用：分数接驳及整数边检查；边界：普通模式额外检查带段交叉，超密度保留原路由规则。
 type denseRoutePortIndex struct {
+	// footprintLow/High 职责：保存接线前实体包络；使用：外绕软代价；边界：新增路线不扩大此基准，空索引不启用。
+	footprintLow, footprintHigh vector
+	footprintReady              bool
 	// polarFrame 职责：令所有距离及静态盒使用同一原生球面；使用：跨子环接线；边界：nil仍用既有平面预检。
 	polarFrame *densePolarFrame
 	boxes      []connectedPackingShape
@@ -46,6 +49,10 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 		return nil, err
 	}
 	index := &denseRoutePortIndex{strictBelts: b.adapter != nil && b.adapter.density == densityStandard, cells: map[[3]int][]int{}, nodes: map[[3]int][]*placed{}, previous: map[*placed][]*placed{}, edges: map[[2]vector]bool{}, registered: map[*placed]bool{}, beltCells: map[[3]int][]int{}, beltEdges: map[[2]*placed]bool{}}
+	if len(b.all) > 0 {
+		index.footprintLow, index.footprintHigh = bounds(b.all)
+		index.footprintReady = true
+	}
 	encoding := newPlanarRuleEncoding()
 	if b.polarFrame != nil {
 		frame := *b.polarFrame
@@ -500,7 +507,7 @@ func (env *transportEnvironment) densePathClear(points []vector, source, target 
 	return true
 }
 
-// findDenseTransportPath 职责：把连续端口前后缀和整数A*合成为真实路径；使用：密铺直连及配送；边界：返回包含复用目标但不包含源的路径，合流索引始终对应原完整尾链。
+// findDenseTransportPath 职责：按完整端口路线代价比较最低可行源高度层；使用：密铺直连及配送；边界：返回不含源且包含复用目标的路径，合流索引保持原尾链身份，取消丢弃未提交结果。
 func (env *transportEnvironment) findDenseTransportPath(ctx context.Context, route *transportRoute, tail []*placed, incoming map[*placed]int, preferred vector) (points []vector, tailIndex, expanded, maximum, searches int) {
 	tailIndex = -1
 	source, target := route.start, route.end
@@ -510,87 +517,37 @@ func (env *transportEnvironment) findDenseTransportPath(ctx context.Context, rou
 		if route.to != nil {
 			fallback = denseRotateVector(fallback, route.to.quarterTurns)
 		}
-		// 裸带回收边界保持既有东向入口；塔/箱黑盒边界由其真实内侧邻居决定接驳方向。
+		// 裸带回收边界保持既有东向入口；塔/箱黑盒由真实内侧邻居确定方向。
 		targetPortals = env.densePortals(target, source, target, fallback, false, route.to == nil && route.edge.FlowKind == "leftover" && route.boundary == route.end)
 	}
-	// 一个整数高度层内的全部半层候选必须一起排序，才能保留全量枚举的原有优先级。
-	// 低层已连通时不构造更高前缀；失败时仍逐层覆盖原先的全部高度，目标集合保持完整。
 	tried := map[vector]bool{}
-	// 既有端点可能略高于搜索顶层；仍保留全量枚举允许的向下短接，搜索上限只限制新增节点。
 	initialHeight := math.Min(transportMaxHeight, math.Max(0, math.Ceil(source.a.z)))
 	for height := initialHeight; height <= transportMaxHeight; height++ {
-		if ctx.Err() != nil {
-			return
-		}
+		var best []vector
+		bestIndex, bestLength, bestCost := -1, math.MaxInt, math.Inf(1)
 		for _, prefix := range env.densePortals(source, source, target, preferred, true, false, height) {
 			if ctx.Err() != nil {
-				return
+				return nil, -1, expanded, maximum, searches
 			}
 			start := prefix.points[len(prefix.points)-1]
 			if tried[start] {
 				continue
 			}
 			tried[start] = true
-			// 临时占位让整数搜索避开自身的分数前缀；查询结束恢复原占位版本。
-			added := map[vector]bool{}
-			for _, point := range prefix.points[1 : len(prefix.points)-1] {
-				cells := map[vector]bool{}
-				env.densePorts.blockNode(cells, point)
-				for cell := range cells {
-					if cell != start && !env.blocked[cell] {
-						env.blocked[cell], added[cell] = true, true
-					}
-				}
-			}
-			restore := func() {
-				for point := range added {
-					delete(env.blocked, point)
-				}
-			}
-			if len(tail) > 0 {
-				path, selected, steps := env.findTransportMergePath(ctx, start, tail, source, target, incoming)
-				expanded, maximum, searches = expanded+steps, max(maximum, steps), searches+1
-				restore()
-				if selected >= 0 {
-					full := append(append([]vector{}, prefix.points[:len(prefix.points)-1]...), path...)
-					if env.densePathClear(full, source, tail[selected]) {
-						return full[1:], selected, expanded, maximum, searches
-					}
-				}
+			if env.transportPathCost(prefix.points) > bestCost {
 				continue
 			}
-			goals := make([]vector, 0, len(targetPortals))
-			byGoal := map[vector]denseRoutePortal{}
-			for _, suffix := range targetPortals {
-				goal := suffix.points[len(suffix.points)-1]
-				if !env.blocked[goal] {
-					goals, byGoal[goal] = append(goals, goal), suffix
-				}
+			full, selected, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, route, tail, incoming, prefix, targetPortals)
+			expanded, maximum, searches = expanded+steps, max(maximum, peak), searches+calls
+			if len(full) > 0 && (cost < bestCost || cost == bestCost && length < bestLength) {
+				best, bestIndex, bestCost, bestLength = full, selected, cost, length
 			}
-			// 从低到高提供目标，路径仍由同一次多目标搜索在固定预算内选择。
-			for attempts := 0; attempts < 4 && len(goals) > 0; attempts++ {
-				path, goal, steps := env.findTransportDestinationPath(ctx, start, goals, source, target)
-				expanded, maximum, searches = expanded+steps, max(maximum, steps), searches+1
-				if len(path) == 0 {
-					break
-				}
-				full := append(append([]vector{}, prefix.points[:len(prefix.points)-1]...), path...)
-				suffix := byGoal[goal].points
-				for i := len(suffix) - 2; i >= 0; i-- {
-					full = append(full, suffix[i])
-				}
-				if env.densePathClear(full, source, target) {
-					restore()
-					return full[1:], -1, expanded, maximum, searches
-				}
-				for i, candidate := range goals {
-					if candidate == goal {
-						goals = append(goals[:i], goals[i+1:]...)
-						break
-					}
-				}
-			}
-			restore()
+		}
+		if ctx.Err() != nil {
+			return nil, -1, expanded, maximum, searches
+		}
+		if len(best) > 0 {
+			return best[1:], bestIndex, expanded, maximum, searches
 		}
 	}
 	return

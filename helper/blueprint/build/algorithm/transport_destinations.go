@@ -1,7 +1,7 @@
 package build
 
 // 文件职责：在一次有界搜索中比较消费端所有合法邻格，避免重复展开同一片三维空间。
-// 使用：走廊复用策略的未合流入口；边界：优化至接驳邻格的代价与节点数，不含连接最终端口的末步，不宣称完整路线全局最优；端口权限和固定展开预算不变。
+// 使用：普通邻格及密铺完整接驳选择；边界：显式计入调用方提供的真实后缀，不改变端口权限或固定展开预算。
 
 import (
 	"container/heap"
@@ -27,9 +27,34 @@ func (q transportDestinationQueue) Less(i, j int) bool {
 	return a.order < b.order
 }
 
-// findTransportDestinationPath 职责：一次搜索选出消费端最优合法接驳邻格；使用：独立物料带首次接入；边界：只接受实际空闲邻格，取消不返回部分路线，不复用单终点缓存。
-// 逻辑流：1. 筛选合法目标 => 2. 共用平面势场与两个一致下界 => 3. 按代价/长度展开 => 4. 首个完整目标回溯真实逐格路径。
+// transportDestination 职责：把整数接驳点与其真实后缀代价绑定；使用：完整端口及合流路线比较；边界：length只计接驳点之后的节点，reused只允许在目标处复用已有带。
+type transportDestination struct {
+	// point 职责：指定整数接驳点；使用：主路搜索目标；边界：不替代真实端口。
+	point vector
+	// cost 职责：保存接驳点到真实端口的后缀成本；使用：完整路线比较；边界：必须有限且非负。
+	cost float64
+	// length 职责：保存接驳点之后的真实节点数；使用：同成本择短；边界：不重复计接驳点。
+	length int
+	// reused 职责：许可目标处复用指定已有带；使用：合流锚点；边界：不能经此穿行其它目标。
+	reused *placed
+}
+
+// findTransportDestinationPath 职责：保留普通消费端邻格选择语义；使用：既有未合流入口；边界：不含最终端口末步，目标仍必须空闲，取消不返回部分路线。
 func (env *transportEnvironment) findTransportDestinationPath(ctx context.Context, start vector, candidates []vector, source, target *placed) ([]vector, vector, int) {
+	goals := make([]transportDestination, len(candidates))
+	for i, candidate := range candidates {
+		goals[i].point = candidate
+	}
+	path, selected, steps := env.findTransportDestinationPathWithSuffix(ctx, start, goals, source, target)
+	if selected < 0 {
+		return nil, vector{}, steps
+	}
+	return path, candidates[selected], steps
+}
+
+// findTransportDestinationPathWithSuffix 职责：在一次有界搜索中比较到真实端口的完整代价和节点数；使用：密铺分数后缀及既有合流尾链；边界：返回原候选索引，重复接驳点按后缀择优，已有带目标不能作为穿行节点。
+// 逻辑流：1. 筛选并合并目标 => 2. 将后缀计入一致下界 => 3. 更新完整路线并继续比较更优下界 => 4. 回溯获选接驳路径，取消时丢弃结果。
+func (env *transportEnvironment) findTransportDestinationPathWithSuffix(ctx context.Context, start vector, candidates []transportDestination, source, target *placed) ([]vector, int, int) {
 	env.searchCalls++
 	steps := 0
 	defer func() {
@@ -37,21 +62,35 @@ func (env *transportEnvironment) findTransportDestinationPath(ctx context.Contex
 		env.maxExpanded = max(env.maxExpanded, steps)
 		recordPerformanceSearch(ctx, steps, false)
 	}()
-	allowed := func(v vector) bool {
-		return v.x >= env.minimum.x && v.x <= env.maximum.x && v.y >= env.minimum.y && v.y <= env.maximum.y && v.z >= 0 && v.z <= transportMaxHeight && (!env.blocked[beltCell(v)] || v == start) && !env.reservedByOther(v, source, target)
+	inside := func(v vector) bool {
+		return v.x >= env.minimum.x && v.x <= env.maximum.x && v.y >= env.minimum.y && v.y <= env.maximum.y && v.z >= 0 && v.z <= transportMaxHeight && !env.reservedByOther(v, source, target)
 	}
-	if ctx.Err() != nil || !allowed(start) {
-		return nil, vector{}, 0
+	if ctx.Err() != nil || !inside(start) {
+		return nil, -1, 0
 	}
 	goals := make([]vector, 0, len(candidates))
-	goalSet := make(map[vector]bool, len(candidates))
-	for _, candidate := range candidates {
-		if !env.blocked[beltCell(candidate)] && allowed(candidate) && !goalSet[candidate] {
-			goals, goalSet[candidate] = append(goals, candidate), true
+	goalSet := make(map[vector]int, len(candidates))
+	for i, candidate := range candidates {
+		if !inside(candidate.point) || candidate.cost < 0 || math.IsNaN(candidate.cost) || math.IsInf(candidate.cost, 0) || candidate.length < 0 || env.blocked[beltCell(candidate.point)] && (candidate.reused == nil || candidate.reused.a != candidate.point) {
+			continue
+		}
+		old, exists := goalSet[candidate.point]
+		if !exists {
+			goals = append(goals, candidate.point)
+		}
+		if !exists || candidate.cost < candidates[old].cost || candidate.cost == candidates[old].cost && candidate.length < candidates[old].length {
+			goalSet[candidate.point] = i
 		}
 	}
 	if len(goals) == 0 {
-		return nil, vector{}, 0
+		return nil, -1, 0
+	}
+	allowed := func(v vector) bool {
+		if !inside(v) {
+			return false
+		}
+		goal, exists := goalSet[v]
+		return !env.blocked[beltCell(v)] || v == start || exists && candidates[goal].reused != nil
 	}
 	env.prepareTransportHeuristic(ctx, goals[0])
 	// 相邻目标共用势场；预取目标势能，避免每个三维节点重复查询五次目标。
@@ -72,13 +111,14 @@ func (env *transportEnvironment) findTransportDestinationPath(ctx context.Contex
 			potential, hasPotential = field.distanceAt(point)
 		}
 		for i, goal := range goals {
+			suffix := candidates[goalSet[goal]]
 			horizontal := math.Abs(point.x-goal.x) + math.Abs(point.y-goal.y)
 			vertical := math.Abs(point.z - goal.z)
-			length = min(length, int(math.Ceil(horizontal+vertical)))
+			length = min(length, int(math.Ceil(horizontal+vertical))+suffix.length)
 			if hasPotential && goalHasPotential[i] {
 				horizontal = math.Max(horizontal, math.Abs(potential-goalPotentials[i]))
 			}
-			cost = math.Min(cost, horizontal+1.5*vertical)
+			cost = math.Min(cost, horizontal+env.transportElevationLowerBound(point, goal)+suffix.cost)
 		}
 		return cost, length
 	}
@@ -87,19 +127,28 @@ func (env *transportEnvironment) findTransportDestinationPath(ctx context.Contex
 	queue := &transportDestinationQueue{transportPathQueue{first}}
 	seen := map[vector]*transportPathNode{start: first}
 	serial := 0
+	var best *transportPathNode
+	bestGoal, bestLength, bestCost := -1, math.MaxInt, math.Inf(1)
 	for queue.Len() > 0 && steps < transportSearchLimit {
 		if ctx.Err() != nil {
-			return nil, vector{}, steps
+			return nil, -1, steps
+		}
+		// 几何目标不是虚拟汇点：只有剩余队列的完整下界不能改善时才能结束。
+		if best != nil && (queue.transportPathQueue[0].score > bestCost || queue.transportPathQueue[0].score == bestCost && queue.transportPathQueue[0].lengthEstimate >= bestLength) {
+			break
 		}
 		current := heap.Pop(queue).(*transportPathNode)
 		current.closed = true
 		steps++
-		if goalSet[current.point] {
-			path := make([]vector, current.length)
-			for node, i := current, len(path)-1; node != nil; node, i = node.parent, i-1 {
-				path[i] = node.point
+		if selected, exists := goalSet[current.point]; exists {
+			suffix := candidates[selected]
+			cost, length := current.distance+suffix.cost, current.length+suffix.length
+			if cost < bestCost || cost == bestCost && length < bestLength {
+				best, bestGoal, bestCost, bestLength = current, selected, cost, length
 			}
-			return path, current.point, steps
+			if env.blocked[beltCell(current.point)] && current.point != start {
+				continue
+			}
 		}
 		for _, delta := range []vector{{-1, 0, 0}, {0, 1, 0}, {1, 0, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
 			point := vector{current.point.x + delta.x, current.point.y + delta.y, current.point.z + delta.z}
@@ -124,5 +173,12 @@ func (env *transportEnvironment) findTransportDestinationPath(ctx context.Contex
 			heap.Push(queue, node)
 		}
 	}
-	return nil, vector{}, steps
+	if ctx.Err() != nil || best == nil {
+		return nil, -1, steps
+	}
+	path := make([]vector, best.length)
+	for node, i := best, len(path)-1; node != nil; node, i = node.parent, i-1 {
+		path[i] = node.point
+	}
+	return path, bestGoal, steps
 }
