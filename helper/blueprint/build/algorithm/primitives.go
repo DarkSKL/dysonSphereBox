@@ -141,6 +141,8 @@ type flyTransportEndpoint struct {
 
 // builder 职责：收集单次装配；使用：六种模式；边界：不做文件写入。
 type builder struct {
+	// denseStationOutputs 职责：保存独立候选的共享输出塔口及规范成员；使用：构造和终检；边界：不跨builder共享。
+	denseStationOutputs *denseStationOutputPlan
 	// preview 职责：共享任务内旁路通知器；使用：真实提交和回退；边界：普通生成为空，不参与算法决策。
 	preview *generationPreview
 	// previewActive 职责：区分真实候选与内部几何探测；使用：决定检查点是否可见；边界：新建试装 Builder 默认不发布。

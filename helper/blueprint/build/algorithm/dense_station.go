@@ -14,29 +14,26 @@ import (
 	"math"
 )
 
+// denseStationPairedOutputVariantOffset 职责：独立比较二三去向的双侧过滤布局；使用：塔候选内部组合；边界：不替换原单侧候选或公开模式编号。
+const denseStationPairedOutputVariantOffset = 1600
+
 // betterDenseStationCandidate 职责：让新增密铺物流候选同时改善空间与真实线长的综合代价；使用：完成终检且塔数相同的候选比较；边界：既有候选之间沿用原评分，不能用小幅面积收益换取大量绕线。
 func betterDenseStationCandidate(a, c *LogisticsSummary) bool {
-	if !betterDenseCandidate(a.Metrics, c.Metrics) {
-		return false
-	}
 	combinedCost := false
 	for _, summary := range []*LogisticsSummary{a, c} {
 		for _, check := range summary.Checks {
-			combinedCost = combinedCost || check.RuleID == "refinery-collinear-lanes" || check.RuleID == "dense-station-shared-inputs"
+			combinedCost = combinedCost || check.RuleID == "refinery-collinear-lanes" || check.RuleID == "dense-station-shared-inputs" || check.RuleID == "dense-spatial-translation-compact" || check.RuleID == "dense-short-paired-filtered-outputs"
 		}
 	}
 	if combinedCost {
-		if a.Metrics.EnvelopeArea > c.Metrics.EnvelopeArea {
-			return false
-		}
-		// 乘积按相对比例比较两种代价，不混加米与格面积，也保留既有长条惩罚。
+		// 先比较同量纲比例乘积，不能先按面积淘汰以微小面积代价大幅缩短线路的候选；仍保留长条惩罚。
 		first := denseLayoutShapeObjective(a.Metrics) * math.Max(1, a.Metrics.TotalBeltLengthMeters)
 		second := denseLayoutShapeObjective(c.Metrics) * math.Max(1, c.Metrics.TotalBeltLengthMeters)
 		if math.Abs(first-second) > 1e-6 {
 			return first < second
 		}
 	}
-	return true
+	return betterDenseCandidate(a.Metrics, c.Metrics)
 }
 
 // generateDenseStationField 职责：比较共享塔库存、矩形全场占位与实际路由的有限候选；使用：密铺塔入口；边界：不以失败布局或普通闭合组冒充成功。
@@ -106,6 +103,28 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	if denseBalancedFrameEligible(ctx, req) && len(req.Plan.RawInputs) > 0 {
 		blackboxIndices = append(blackboxIndices, denseBalancedFrameVariantOffset+blackboxIndices[len(blackboxIndices)-1])
 	}
+	// 共享出口同时保留基础容量候选，避免最后一个特殊布局失败时失去全部共享出口方案。
+	lastLayout := blackboxIndices[len(blackboxIndices)-1]
+	sharedBase := 4
+	if len(req.Plan.RawInputs) > 0 {
+		sharedBase += denseStationSharedInputVariantOffset
+	}
+	blackboxIndices = append(blackboxIndices, denseStationSharedOutputVariantOffset+lastLayout)
+	if lastLayout != sharedBase {
+		blackboxIndices = append(blackboxIndices, denseStationSharedOutputVariantOffset+sharedBase)
+	}
+	if req.Density == densityDense {
+		// 较短单元必须同时比较共享输入/输出，避免仅因分组变细而增加塔数；原成功候选继续保留。
+		for variant := sharedBase; variant < sharedBase+3; variant++ {
+			blackboxIndices = append(blackboxIndices, denseSpatialCompactVariantOffset+variant, denseSpatialCompactVariantOffset+denseStationSharedOutputVariantOffset+variant)
+		}
+		if lastLayout < sharedBase || lastLayout >= sharedBase+3 {
+			blackboxIndices = append(blackboxIndices, denseSpatialCompactVariantOffset+lastLayout, denseSpatialCompactVariantOffset+denseStationSharedOutputVariantOffset+lastLayout)
+		}
+		for variant := sharedBase; variant < sharedBase+3; variant++ {
+			blackboxIndices = append(blackboxIndices, denseStationPairedOutputVariantOffset+variant, denseStationPairedOutputVariantOffset+denseSpatialCompactVariantOffset+denseStationSharedOutputVariantOffset+variant)
+		}
+	}
 	blackboxBudget = len(blackboxIndices)
 	budget = fieldBudget + blackboxBudget
 	allPreviews := b.planCandidatePreviews(budget)
@@ -119,7 +138,24 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		indices := blackboxIndices
 		previews := allPreviews[:blackboxBudget]
 		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
-			if variant >= denseBalancedFrameVariantOffset {
+			baseVariant := variant
+			pairedOutputs := baseVariant >= denseStationPairedOutputVariantOffset
+			if pairedOutputs {
+				ctx = context.WithValue(ctx, denseShortPairedOutputsKey{}, true)
+				baseVariant -= denseStationPairedOutputVariantOffset
+			}
+			compacted := baseVariant >= denseSpatialCompactVariantOffset
+			if compacted {
+				ctx = context.WithValue(ctx, denseSpatialCompactKey{}, true)
+				baseVariant -= denseSpatialCompactVariantOffset
+			}
+			sharedOutputs := baseVariant >= denseStationSharedOutputVariantOffset
+			if baseVariant >= denseStationSharedOutputVariantOffset {
+				ctx = context.WithValue(ctx, denseStationSharedOutputsKey{}, true)
+				baseVariant -= denseStationSharedOutputVariantOffset
+			}
+			balanced := baseVariant >= denseBalancedFrameVariantOffset
+			if balanced {
 				ctx = denseBalancedFrameContext(ctx)
 			}
 			ctx, finishPerformance := beginCandidatePerformance(ctx, "dense-station-blackbox", variant)
@@ -136,17 +172,32 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			}
 			street := candidate != nil && candidate.denseStreetCandidate
 			parameters := fmt.Sprintf("externalStationsOnly=true;internalDirect=true;continuousStreet=%t;variant=%d", street, variant)
-			if variant >= denseStationSharedInputVariantOffset {
+			if baseVariant >= denseBalancedFrameVariantOffset {
+				baseVariant -= denseBalancedFrameVariantOffset
+			}
+			if baseVariant >= denseStationSharedInputVariantOffset {
 				parameters += ";sharedExternalInputs=true"
 			}
 			if candidate != nil && candidate.denseLatitudeSpan > 0 {
 				parameters += fmt.Sprintf(";materialNeighbors=true;sharedInputTracks=true;latitudeWorkBudget=%.0f", candidate.denseLatitudeSpan)
 			}
-			if variant >= denseBalancedFrameVariantOffset {
+			if balanced {
 				parameters += ";balancedNativeFrame=true"
+			}
+			if sharedOutputs {
+				parameters += ";sharedExternalOutputs=true"
+			}
+			if compacted {
+				parameters += ";spatialTranslationCompact=true"
+			}
+			if pairedOutputs {
+				parameters += ";shortPairedOutputs=true"
 			}
 			if out.SurfacePlan != nil {
 				parameters += fmt.Sprintf(";nativeArea=%dx%d", out.SurfacePlan.LayoutWidth, out.SurfacePlan.LayoutHeight)
+			}
+			if err == nil && candidate != nil && out.LogisticsSummary != nil {
+				parameters += fmt.Sprintf(";towers=%d;area=%.3f;beltMeters=%.3f", denseStationFacilityCount(candidate), out.LogisticsSummary.Metrics.EnvelopeArea, out.LogisticsSummary.Metrics.TotalBeltLengthMeters)
 			}
 			if candidate != nil {
 				diagnostics = appendSearchCandidateDiagnostics(diagnostics, newSearchCandidateDiagnostic("dense-station-blackbox", variant, parameters, stage, err), candidate.logistics)

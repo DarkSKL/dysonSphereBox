@@ -389,6 +389,11 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 		packing.high, packing.ready = bestHigh, true
 		reportProgress(ctx, "dense-placement", "正在按真实占位交错排布生产设备", number+1, len(ordered))
 	}
+	if enabled, _ := ctx.Value(denseSpatialCompactKey{}).(bool); enabled {
+		if err := b.compactDenseSpatialUnits(ctx, ordered, heightLimit); err != nil {
+			return err
+		}
+	}
 	if b.logistics != nil {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-global-occupancy", Status: "passed", Message: "使用全场实体轮廓与四向姿态搜索，取消产线矩形独占和固定行列间隔；局部空隙可交错利用，全部跨线运输仍需统一布线与最终检查"})
 	}

@@ -675,7 +675,7 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 			}
 			continue
 		}
-		if b.densePairedOutputs && !recycled && densePairedOutputEligible(row) {
+		if !recycled && b.usesDensePairedOutputs(row) {
 			var err error
 			cursor, err = b.attachDensePairedOutputs(row, group.belts, group.routes, cursor)
 			if err != nil {
