@@ -53,6 +53,14 @@ func (b *builder) validateDenseMaterialNetworks() error {
 				return fail("一个消费者的规范份额没有完整保留")
 			}
 		}
+		if group.splitInput != nil {
+			configured, err := b.validateDenseInputSplitters(group, alive)
+			if err != nil {
+				return err
+			}
+			maxConfigured = math.Max(maxConfigured, configured)
+			continue
+		}
 		if group.tapped {
 			configured, err := b.validateDenseMaterialTapNetwork(group, alive)
 			if err != nil {
@@ -160,7 +168,7 @@ func (b *builder) validateDenseMaterialNetworks() error {
 			}
 		}
 	}
-	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-material-network-capacity", Status: "passed", Message: fmt.Sprintf("最终逐指针复核共享消费轨、来源合流及规范份额；每组保守累计所有消费者配置毛需求，最高%.3f/min，不超过所选单带%.3f/min，未省略本行输入负载或允许未登记汇入", maxConfigured, b.logistics.BeltCapacityPerMinute)})
+	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-material-network-capacity", Status: "passed", Message: fmt.Sprintf("最终逐指针复核共享消费轨、外供切片、分流/合流及原始规范边贡献；逐入口或串供组保守累计配置毛需求，最高%.3f/min，不超过所选单带%.3f/min，实际带段均累计下游毛负载，未省略本行输入或允许未登记汇入", maxConfigured, b.logistics.BeltCapacityPerMinute)})
 	return nil
 }
 

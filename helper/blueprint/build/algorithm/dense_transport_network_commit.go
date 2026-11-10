@@ -56,9 +56,9 @@ func (b *builder) commitDenseMaterialNetworks() error {
 	for _, entity := range b.all {
 		alive[entity] = true
 	}
-	crossRecipes, tapped, maxConfigured := 0, 0, 0.
+	crossRecipes, tapped, splitInputs, maxConfigured := 0, 0, 0, 0.
 	for _, group := range plan.groups {
-		if len(group.entries) != len(group.rows) || !group.tapped && len(group.joins)+1 != len(group.rows) || group.tapped && len(group.taps) != len(group.rows) {
+		if len(group.entries) != len(group.rows) || group.splitInput == nil && !group.tapped && len(group.joins)+1 != len(group.rows) || group.splitInput == nil && group.tapped && len(group.taps) != len(group.rows) || group.splitInput != nil && len(group.splitInput.branches) < len(group.rows) {
 			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "共享消费轨缺少实际端口或串接路线"}
 		}
 		recipes := map[int]bool{}
@@ -82,7 +82,7 @@ func (b *builder) commitDenseMaterialNetworks() error {
 			}
 			group.tracks = append(group.tracks, path)
 			load := 0.
-			if group.tapped {
+			if group.tapped || group.splitInput != nil {
 				load = group.planned[i]
 			} else {
 				for _, rate := range group.planned[i:] {
@@ -95,7 +95,9 @@ func (b *builder) commitDenseMaterialNetworks() error {
 		if len(recipes) > 1 {
 			crossRecipes++
 		}
-		if group.tapped {
+		if group.splitInput != nil {
+			splitInputs++
+		} else if group.tapped {
 			tapped++
 		}
 	}
@@ -107,6 +109,14 @@ func (b *builder) commitDenseMaterialNetworks() error {
 		group, source := binding.group, binding.source
 		if source.from == nil {
 			route.boundary = source.boundary
+		}
+		if group.splitInput != nil {
+			branch := group.splitInput.branches[binding.splitBranch]
+			route.start, route.end = branch.route.start, group.entries[binding.target]
+			route.path = denseInputSplitConsumerPath(group, branch)
+			route.filters = nil
+			route.sharedPath = denseInputSplitSharedPath(source, group, binding.splitBranch)
+			continue
 		}
 		if group.tapped {
 			tap := group.taps[binding.target]
@@ -145,6 +155,6 @@ func (b *builder) commitDenseMaterialNetworks() error {
 		}
 	}
 	b.transportRoutes, plan.committed = plan.canonical, true
-	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-material-consumer-networks", Status: "passed", Message: fmt.Sprintf("%d组同物料共享网络，其中%d组输入轨串供、%d组共享主干经真实过滤支路送到原喷涂前入口，%d组跨配方；物理供给%d条对应原%d份规范路线，另有%d条真实辅助连接。最大整组配置毛需求%.3f/min，普通带没有T分支，喷涂计量和回流保持原合同；最终仍逐段核验", len(plan.groups), len(plan.groups)-tapped, tapped, crossRecipes, len(plan.physical), len(plan.canonical), len(plan.joins), maxConfigured)})
+	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-material-consumer-networks", Status: "passed", Message: fmt.Sprintf("%d组同物料共享网络，其中%d组输入轨串供、%d组共享主干过滤支路、%d组外供真实四向分流及合流，%d组跨配方；物理供给%d条对应%d份规范路线，另有%d条真实辅助连接。最大网络总配置毛需求%.3f/min，外供按单入口容量切片；普通带没有T分支，喷涂计量和回流保持原合同；最终仍逐段核验", len(plan.groups), len(plan.groups)-tapped-splitInputs, tapped, splitInputs, crossRecipes, len(plan.physical), len(plan.canonical), len(plan.joins), maxConfigured)})
 	return nil
 }

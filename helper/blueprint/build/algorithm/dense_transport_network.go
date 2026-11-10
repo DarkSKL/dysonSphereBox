@@ -1,7 +1,7 @@
 package build
 
-// 文件职责：把同物料的多个消费者组织为真实单向串供轨，保留规范净流与物理供给的分别登记。
-// 使用：独立密铺内部物流候选；边界：无喷涂原料串轨、喷涂原料保留原喷涂前入口并用真实过滤取料，禁止普通带T分支及替代回流，整组配置毛需求不得超过一条带。
+// 文件职责：把同物料消费者组织为真实共享供给，分别登记规范净流与物理供给。
+// 使用：密铺外供容量切片及独立内部串供候选；边界：外供按每个入口毛负载切片、串供按整组毛负载核验，保留原喷涂及回流，禁止普通带T分支。
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 // denseMaterialNetworksKey 职责：显式启用独立共享消费轨候选；使用：候选context；边界：不修改普通模式或未启用的密铺拓扑。
 type denseMaterialNetworksKey struct{}
 
-// denseMaterialNetworkPlan 职责：保留规范份额、聚合后的真实供给及串供连接；使用：装配和终检交接；边界：物理聚合路线不得代替最终规范边账。
+// denseMaterialNetworkPlan 职责：保留规范份额、聚合后的真实供给及分流/串供连接；使用：装配和终检交接；边界：规范边可以拆份但总额和消费者不变，物理聚合路线不得代替最终规范边账。
 type denseMaterialNetworkPlan struct {
 	canonical, physical []*transportRoute
 	groups              []*denseMaterialNetwork
@@ -27,7 +27,7 @@ type denseMaterialNetworkPlan struct {
 	committed           bool
 }
 
-// denseMaterialNetwork 职责：表示同物料的一条连续消费干线；使用：输入轨串接和保守毛流上界；边界：每台机器仍属于原产线，消费者只在本行轨上取料。
+// denseMaterialNetwork 职责：表示同物料的一组真实共享供给；使用：输入轨串接、外供四向分流和保守毛流上界；边界：每台机器仍属于原产线，消费者只在本行轨上取料。
 type denseMaterialNetwork struct {
 	id, item                     int
 	rows                         []*transportRow
@@ -42,6 +42,8 @@ type denseMaterialNetwork struct {
 	// tapped 职责：为需要保留各行喷涂的消费者使用共享原料主干及真实末端过滤；使用：不改供剂角色的共享候选；边界：不会把更多物料直接穿过首个消费者的喷涂机。
 	tapped bool
 	taps   []*denseMaterialTap
+	// splitInput 职责：保留外供共入口的真实四向分流树；使用：超密度直连带原料；边界：不串过消费者，不替代所选带宽核验。
+	splitInput *denseInputSplitNetwork
 }
 
 // denseMaterialTap 职责：保留原料主干到一个消费者的真实过滤组；使用：喷涂兼容共享；边界：所有并联臂均使用所选等级，并按消费者配置满负荷需求规划。
@@ -56,6 +58,8 @@ type denseMaterialNetworkBinding struct {
 	group  *denseMaterialNetwork
 	source *transportRoute
 	target int
+	// splitBranch 职责：定位容量切片中的真实供给支路；使用：同一消费者跨多个入口时；边界：只在splitInput网络中解释。
+	splitBranch int
 }
 
 // denseMaterialInputKey 职责：唯一标识一个消费者原料轨；使用：按物品收集全部真实供给；边界：供剂用途不能混入配方原料。
@@ -64,10 +68,10 @@ type denseMaterialInputKey struct {
 	item int
 }
 
-// planDenseMaterialNetworks 职责：按真实配置毛需求组合有限共享组，并合并同来源同组的物理出货；使用：机器行几何创建之前；边界：直连无喷涂原料可共享入口但保留规范份额，机器回流保持原拓扑，喷涂组仅共享喷涂前的原料供给。
+// planDenseMaterialNetworks 职责：按真实配置毛需求组合有限共享组，并合并同来源同组的物理出货；使用：机器行几何创建之前；边界：直连原料通过真实四向分流共享入口并保留规范份额，机器回流保持原拓扑，喷涂组仅共享喷涂前的原料供给。
 func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transportRow) error {
 	enabled, _ := ctx.Value(denseMaterialNetworksKey{}).(bool)
-	if !enabled || !b.denseSpatial || b.adapter == nil || b.adapter.mode < 1 || b.adapter.mode > 4 {
+	if !b.denseSpatial || b.adapter == nil || b.adapter.mode < 1 || b.adapter.mode > 4 || !enabled && b.adapter.mode != 1 {
 		return nil
 	}
 	sharedStationInputs := b.sharesDenseStationInputs(ctx)
@@ -94,9 +98,15 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 			flows := incoming[denseMaterialInputKey{row, item}]
 			valid, planned := len(flows) > 0, 0.
 			external := len(flows) > 0 && flows[0].from == nil
+			if external && b.adapter.mode == 1 {
+				continue
+			}
+			if !enabled && !external {
+				continue
+			}
 			for _, route := range flows {
 				if external {
-					if b.adapter.mode != 1 && !sharedStationInputs || route.from != nil || route.edge.FlowKind != "external-input" || productionSprayItem(row.info) != 0 {
+					if b.adapter.mode != 1 && !sharedStationInputs || route.from != nil || route.edge.FlowKind != "external-input" || b.adapter.mode != 1 && productionSprayItem(row.info) != 0 {
 						valid = false
 						break
 					}
@@ -121,6 +131,11 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 		}
 	}
 	plan := &denseMaterialNetworkPlan{canonical: append([]*transportRoute{}, b.transportRoutes...), bindings: map[*transportRoute]denseMaterialNetworkBinding{}, members: map[*transportRoute][]*transportRoute{}, originalOutputs: map[*transportRow][]*transportRoute{}, physicalOutputs: map[*transportRow][]*transportRoute{}}
+	if b.adapter.mode == 1 {
+		if err := b.planDenseInputSlices(plan, rows, incoming); err != nil {
+			return err
+		}
+	}
 	items := make([]int, 0, len(byItem))
 	for item := range byItem {
 		items = append(items, item)
@@ -183,6 +198,9 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 	}
 	aggregates := map[supplyKey]*transportRoute{}
 	for _, route := range plan.canonical {
+		if _, sliced := plan.bindings[route]; sliced {
+			continue
+		}
 		binding, grouped := targets[denseMaterialInputKey{route.to, route.edge.ItemID}]
 		if !grouped || route.inputRole != recipeInputRole {
 			plan.physical = append(plan.physical, route)
