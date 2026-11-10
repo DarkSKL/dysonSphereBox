@@ -118,6 +118,10 @@ func validateRelocatedSurface(ctx context.Context, req Request, encoding *surfac
 	if err := encoding.validateDynamicFacilities(ctx, records); err != nil {
 		return err
 	}
+	// 建议锚点和逐个公布起点共享完整选择体积规则，不能只在最终建议点验一次。
+	if err := encoding.validateSplitterClearance(ctx, records); err != nil {
+		return err
+	}
 	spans := map[int32]int32{}
 	if _, err := encoding.surfaceInserterBoxesMeasured(ctx, records, spans); err != nil {
 		return err
@@ -354,7 +358,7 @@ func (b *builder) finalizeDenseRelocationRange(ctx context.Context, req Request,
 		if encoding.relocation == nil || encoding.relocation.orthogonal {
 			rule, method = "dense-surface-orthogonal", "保持建筑朝向并补偿横向格距"
 		}
-		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: rule, Status: "passed", Message: fmt.Sprintf("球面几何从纬圈%d到%d，%s；机器、带臂、塔距和真实线路重新校验；%d个带侧端点的固定offset及完整取货窗口、跨度能力和供电已核验连续起点%d..%d，范围外不承诺可用", nativeSourceAnchor(encoding), anchor, method, len(scopes), safe[0], safe[len(safe)-1])})
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: rule, Status: "passed", Message: fmt.Sprintf("球面几何从纬圈%d到%d，%s；逐起点复核机器、经槽位修正拉伸的臂盒、分流器完整选择净空、塔距及真实线路；%d个带侧端点的固定offset及完整取货窗口、跨度能力和供电已核验连续起点%d..%d，范围外不承诺可用", nativeSourceAnchor(encoding), anchor, method, len(scopes), safe[0], safe[len(safe)-1])})
 	}
 	return nil
 }

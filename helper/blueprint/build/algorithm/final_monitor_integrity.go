@@ -1,7 +1,7 @@
 package build
 
 // 文件职责：在最终存活记录上证明所请求的机器物料监测及直连外供监测均有真实宿主。
-// 使用：前四种模式编码前共同终检；边界：默认监测器不设置报警速率阈值，物料及计划速率来自其实际覆盖的物料链，允许合法同段复用。
+// 使用：前四种模式编码前共同终检；边界：均不启用报警，普通监测器保持默认，mode1独立交付监测另核整组净产量期望，允许合法同段复用。
 
 import (
 	"context"
@@ -46,9 +46,14 @@ func (b *builder) validateFinalMonitorIntegrity(ctx context.Context, req Request
 	covered := map[*placed]bool{}
 	for _, monitor := range monitors {
 		record := records[indices[monitor]]
-		// 当前公开开关只创建默认的全物料实测监测器；不能把任意筛选或阈值数组当成已配置的正确计划。
-		if record.FilterID != 0 || record.RecipeID != 0 || len(record.Parameters) != 0 || record.InputObjIdx >= 0 || record.OutputObjIdx >= 0 {
+		// 普通监测保持默认；交付组仅允许独立重算的一分钟净产量期望，不能借此夹带筛选、报警或沙盒配置。
+		if record.FilterID != 0 || record.RecipeID != 0 || monitor.deliveryMonitor == nil && len(record.Parameters) != 0 || record.InputObjIdx >= 0 || record.OutputObjIdx >= 0 {
 			return fail(fmt.Sprintf("监测器%d的物料过滤、速率参数或连接与请求的默认监测配置不符", record.Index))
+		}
+		if monitor.deliveryMonitor != nil {
+			if err := b.validateMode1DeliveryMonitorRecord(monitor, record); err != nil {
+				return err
+			}
 		}
 		var selected *placed
 		for _, host := range beltsAt[monitor.a] {
@@ -148,6 +153,23 @@ func (b *builder) validateFinalMonitorIntegrity(ctx context.Context, req Request
 			requirements = append(requirements, requirement{hosts: hosts, item: route.edge.ItemID, rate: route.rate, label: "独立外供入口"})
 		}
 	}
+	if b.mode1Deliveries != nil {
+		for _, group := range b.mode1Deliveries.groups {
+			count := 0
+			for _, monitor := range monitors {
+				if monitor.flowMonitorHost == group.head || monitor.flowMonitorHost == group.end {
+					count++
+					if monitor.deliveryMonitor != group || monitor != group.monitor {
+						return fail("合并交付尾带的监测器没有绑定完整交付组")
+					}
+				}
+			}
+			if count != 1 {
+				return fail("每根合并交付尾带必须且只能有一个聚合期望监测器")
+			}
+			requirements = append(requirements, requirement{hosts: []*placed{group.head, group.end}, item: group.item, rate: group.planned, label: "独立合并交付口"})
+		}
+	}
 	for _, demand := range requirements {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "最终监测物料覆盖检查已取消或超时"}
@@ -164,7 +186,7 @@ func (b *builder) validateFinalMonitorIntegrity(ctx context.Context, req Request
 		}
 	}
 	if b.logistics != nil && len(requirements) > 0 {
-		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "final-flow-monitor-coverage", Status: "passed", Message: fmt.Sprintf("最终%d条机器物料轨道/独立外供需求由存活的默认监测器覆盖；已核对真实同区宿主、朝向及单物料身份，允许合法同段复用；未配置报警速率阈值", len(requirements))})
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "final-flow-monitor-coverage", Status: "passed", Message: fmt.Sprintf("最终%d条机器物料轨道/独立边界需求由存活监测器覆盖；已核对真实同区宿主、朝向及单物料身份，允许合法同段复用；合并交付另核整组净产量期望，均未启用报警", len(requirements))})
 	}
 	return nil
 }

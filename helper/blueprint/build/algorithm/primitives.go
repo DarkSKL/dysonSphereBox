@@ -22,6 +22,12 @@ type vector struct{ x, y, z float64 }
 
 // placed 职责：以指针维护建筑连接；使用：合并重排；边界：最终 index 与数组映射独立赋值。
 type placed struct {
+	// deliveryMonitor 职责：绑定同物品合并交付口的唯一监测器；使用：聚合期望速率和最终记录核验；边界：其它监测器仍保持默认参数合同。
+	deliveryMonitor *mode1DeliveryGroup
+	// splitterPortLink 职责：保留共同门真实槽点与过渡带的受保护身份；使用：旋转、原生比例和最终独立校验；边界：不替代实体连接或profile事实。
+	splitterPortLink *splitterGatePortLink
+	// splitterGate 职责：为共同门本体保留构造和端口角色证明；使用：原料/产物树共享验证；边界：旧设施不伪造此元数据。
+	splitterGate *splitterGateAssembly
 	// flowMonitorHost 职责：保留监测器实际宿主的实体身份；使用：裁剪与最终物料核验；边界：不是带连接，不依赖尚未全场排布的重复局部坐标。
 	flowMonitorHost *placed
 	// densityCargo 职责：保存参考臂实际取放目标与独立物料轨道；使用：最终货物采样重绑；边界：值类型元数据及只读轨道切片可随候选快照安全复制。
@@ -141,6 +147,10 @@ type flyTransportEndpoint struct {
 
 // builder 职责：收集单次装配；使用：六种模式；边界：不做文件写入。
 type builder struct {
+	// mode1Deliveries 职责：保存独立左侧成品/副产物交付组和被冻结的真实末端；使用：mode1路由、裁尾与终检；边界：不接管塔、配送或混带边界。
+	mode1Deliveries *mode1DeliveryPlan
+	// denseProducerSplits 职责：保存单产物出货树及规范份额身份；使用：独立密铺候选；边界：不跨候选共享，不替代机器取放臂或原回流结构。
+	denseProducerSplits *denseProducerSplitPlan
 	// denseStationOutputs 职责：保存独立候选的共享输出塔口及规范成员；使用：构造和终检；边界：不跨builder共享。
 	denseStationOutputs *denseStationOutputPlan
 	// preview 职责：共享任务内旁路通知器；使用：真实提交和回退；边界：普通生成为空，不参与算法决策。
@@ -178,6 +188,8 @@ type builder struct {
 	denseStreetGroupLimit int
 	// densePairedOutputs 职责：启用真实多去向双侧过滤候选；使用：缩短单侧长干线；边界：每个抓取点及所选等级过滤臂仍独立。
 	densePairedOutputs bool
+	// denseCapacityFill 职责：为mode1密铺独立候选优先填满单带能力组；使用：本候选原料规划及真实几何；边界：默认均衡，不继承到其它模式或修改请求带臂/研究站层数。
+	denseCapacityFill bool
 	// directBoundaryUnits 职责：为内部直连的黑盒候选提供真实边界设施；使用：机器端口建成后、全场占位前；边界：普通模式为空，回调必须给每条外部边分配真实端点。
 	directBoundaryUnits func(context.Context, []*transportRow) ([]denseSpatialUnit, error)
 	// directBoundaryCommit 职责：在内部共享网络恢复规范路线后提交独立边界网络；使用：真实全图路由完成且未裁尾/补电前；边界：只能改其拥有的规范份额，不覆盖其它网络恢复结果。

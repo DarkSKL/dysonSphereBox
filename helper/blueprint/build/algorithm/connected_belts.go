@@ -16,11 +16,13 @@ func (b *builder) trimConnectedTails() error {
 	seen := map[*line]bool{}
 	lines := []*line{}
 	required, removed := map[*placed]bool{}, map[*placed]bool{}
+	b.preserveMode1Deliveries(required)
 	preserveDenseCargoNeighborhoods(b.all, required)
 	if err := preserveFlowMonitorHosts(b.all, required); err != nil {
 		return err
 	}
 	b.preserveDenseMaterialNetworkTracks(required)
+	b.preserveDenseProducerSplits(required)
 	for _, route := range b.denseStreetRoutes {
 		required[route.start], required[route.end] = true, true
 		for _, node := range route.path {

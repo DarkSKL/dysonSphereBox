@@ -30,13 +30,11 @@ func (b *builder) validateDenseInputSplitters(group *denseMaterialNetwork, alive
 	fragments := map[*transportRoute]bool{}
 	maxConfigured, totalFull, totalSlices := 0., 0., 0.
 	for _, gate := range network.gates {
-		if !alive[gate] || gates[gate] || gate.record.ItemID != 2020 || gate.record.ModelIndex != 38 || math.Mod(float64(gate.record.Yaw), 90) != 0 || len(gate.record.Parameters) != 6 || gate.record.FilterID != 0 || gate.input != nil || gate.output != nil {
-			return fail("不是已核对的无优先级地面四向分流器")
+		if !alive[gate] || gates[gate] || gate.splitterGate == nil {
+			return fail("缺少唯一真实共同门保护身份")
 		}
-		for _, p := range gate.record.Parameters {
-			if p != 0 {
-				return fail("分流器优先或过滤参数被更改")
-			}
+		if err := b.validateSplitterGateAssembly(gate.splitterGate, alive); err != nil {
+			return 0, err
 		}
 		gates[gate] = true
 		allowed[gate] = true
@@ -234,19 +232,17 @@ func (b *builder) validateDenseInputSplitters(group *denseMaterialNetwork, alive
 	return maxConfigured, nil
 }
 
-// denseInputSplitPortMatches 职责：按已核对Model38槽位和原生经向补偿核对首带；使用：分流树终检；边界：只支持同高一格接驳，不按最近方向猜槽。
+// denseInputSplitPortMatches 职责：按共同门的模型端口角色及保护身份核对直接接头；使用：分流树终检；边界：位置、高度和原生比例已由共同profile重算，不按最近方向猜槽。
 func (b *builder) denseInputSplitPortMatches(belt, gate *placed, slot int8) bool {
-	directions := [4]vector{{x: 1}, {y: -1}, {x: -1}, {y: 1}}
-	angle := (float64(gate.record.Yaw) - 90) * math.Pi / 180
-	delta := directions[slot]
-	x := delta.x*math.Cos(angle) + delta.y*math.Sin(angle)
-	y := -delta.x*math.Sin(angle) + delta.y*math.Cos(angle)
-	if b.nativeLatitudeScaled {
-		scale := b.nativeLongitudeScale
-		if gate.nativeUnitScale > 0 {
-			scale = gate.nativeUnitScale
-		}
-		x *= scale
+	if gate == nil || gate.splitterGate == nil || slot < 0 || slot > 3 {
+		return false
 	}
-	return math.Abs(belt.a.x-gate.a.x-x) < 1e-5 && math.Abs(belt.a.y-gate.a.y-y) < 1e-5 && math.Abs(belt.a.z-gate.a.z) < 1e-5
+	link := gate.splitterGate.links[slot]
+	if link == nil || len(link.nodes) != 3 || belt.splitterPortLink != link {
+		return false
+	}
+	if link.input {
+		return belt == link.nodes[len(link.nodes)-1] && belt.output == gate && belt.record.OutputToSlot == slot
+	}
+	return belt == link.nodes[0] && belt.input == gate && belt.record.InputFromSlot == slot
 }

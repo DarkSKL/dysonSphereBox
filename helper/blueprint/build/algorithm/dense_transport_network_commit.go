@@ -58,6 +58,11 @@ func (b *builder) commitDenseMaterialNetworks() error {
 	}
 	crossRecipes, tapped, splitInputs, maxConfigured := 0, 0, 0, 0.
 	for _, group := range plan.groups {
+		if group.splitInput != nil {
+			if err := refreshDenseInputSplitterPrefixes(group); err != nil {
+				return err
+			}
+		}
 		if len(group.entries) != len(group.rows) || group.splitInput == nil && !group.tapped && len(group.joins)+1 != len(group.rows) || group.splitInput == nil && group.tapped && len(group.taps) != len(group.rows) || group.splitInput != nil && len(group.splitInput.branches) < len(group.rows) {
 			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "共享消费轨缺少实际端口或串接路线"}
 		}

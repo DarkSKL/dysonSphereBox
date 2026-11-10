@@ -16,6 +16,12 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 		return nil, &blueprint.Error{Code: "GEN_E_FLOW", Message: "缺少统一物流规划"}
 	}
 	summary := b.logistics
+	if err := b.validateMode1Deliveries(); err != nil {
+		return nil, err
+	}
+	if err := b.validateDenseProducerSplits(); err != nil {
+		return nil, err
+	}
 	if err := b.validateDenseMaterialNetworks(); err != nil {
 		return nil, err
 	}
@@ -53,6 +59,19 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 			}
 			if surfaceIsBelt(p.record.ItemID) {
 				sharedBeltRates[p] += route.rate
+			}
+		}
+		if b.denseProducerLeafFor(route) != nil {
+			seen := map[int]bool{}
+			for _, index := range lane.BuildingIndices {
+				seen[index] = true
+			}
+			for _, p := range route.sharedPath {
+				index := indices[p]
+				if !seen[index] {
+					lane.BuildingIndices = append(lane.BuildingIndices, index)
+					seen[index] = true
+				}
 			}
 		}
 		if policy.validateConnectedRoutes {
@@ -104,6 +123,10 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 				externalInputs[route.boundary] = true
 			}
 		}
+	}
+	b.aggregateMode1DeliveryPorts(summary)
+	if plan := b.mode1Deliveries; plan != nil {
+		summary.Checks = append(summary.Checks, LogisticsCheck{RuleID: "left-boundary-shared-deliveries", Status: "passed", Message: fmt.Sprintf("%d条对外规范份额按物品及所选带实际毛容量合并为%d根独立西向交付带；已核对真实来源、共享尾链、原料隔离及聚合净产量标注", len(plan.identities), len(plan.groups))})
 	}
 	if err := b.validateMachineRecycles(indices, sharedBeltRates); err != nil {
 		return nil, err

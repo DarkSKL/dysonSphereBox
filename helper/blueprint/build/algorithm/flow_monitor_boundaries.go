@@ -167,7 +167,10 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 			return boundaryFlowMonitorError(route, "独立原料带在合流前没有满足全布局建造盒与分拣器净空的监测节点")
 		}
 	}
-	if lanes == 0 {
+	if err = b.completeMode1DeliveryMonitors(ctx, monitorFootprint); err != nil {
+		return err
+	}
+	if lanes == 0 && b.mode1Deliveries == nil {
 		return nil
 	}
 	if err = b.validateBoundaryFlowMonitorLayout(ctx); err != nil {

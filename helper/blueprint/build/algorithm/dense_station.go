@@ -17,12 +17,15 @@ import (
 // denseStationPairedOutputVariantOffset 职责：独立比较二三去向的双侧过滤布局；使用：塔候选内部组合；边界：不替换原单侧候选或公开模式编号。
 const denseStationPairedOutputVariantOffset = 1600
 
+// denseStationProducerVariantOffset 职责：独立比较紧凑双层分流树；使用：已核对的Model39塔候选；边界：保留原过滤/共享出口方案，仍先满足最少真实塔及完整物流证明。
+const denseStationProducerVariantOffset = 3200
+
 // betterDenseStationCandidate 职责：让新增密铺物流候选同时改善空间与真实线长的综合代价；使用：完成终检且塔数相同的候选比较；边界：既有候选之间沿用原评分，不能用小幅面积收益换取大量绕线。
 func betterDenseStationCandidate(a, c *LogisticsSummary) bool {
 	combinedCost := false
 	for _, summary := range []*LogisticsSummary{a, c} {
 		for _, check := range summary.Checks {
-			combinedCost = combinedCost || check.RuleID == "refinery-collinear-lanes" || check.RuleID == "dense-station-shared-inputs" || check.RuleID == "dense-spatial-translation-compact" || check.RuleID == "dense-short-paired-filtered-outputs"
+			combinedCost = combinedCost || check.RuleID == "refinery-collinear-lanes" || check.RuleID == "dense-station-shared-inputs" || check.RuleID == "dense-spatial-translation-compact" || check.RuleID == "dense-short-paired-filtered-outputs" || check.RuleID == "dense-producer-splitters" || check.RuleID == "dense-station-shared-outputs"
 		}
 	}
 	if combinedCost {
@@ -124,6 +127,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		for variant := sharedBase; variant < sharedBase+3; variant++ {
 			blackboxIndices = append(blackboxIndices, denseStationPairedOutputVariantOffset+variant, denseStationPairedOutputVariantOffset+denseSpatialCompactVariantOffset+denseStationSharedOutputVariantOffset+variant)
 		}
+		for variant := sharedBase; variant < sharedBase+3; variant++ {
+			blackboxIndices = append(blackboxIndices, denseStationProducerVariantOffset+denseSpatialCompactVariantOffset+variant, denseStationProducerVariantOffset+denseSpatialCompactVariantOffset+denseStationSharedOutputVariantOffset+variant)
+		}
 	}
 	blackboxBudget = len(blackboxIndices)
 	budget = fieldBudget + blackboxBudget
@@ -139,6 +145,12 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		previews := allPreviews[:blackboxBudget]
 		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
 			baseVariant := variant
+			producerSplits := baseVariant >= denseStationProducerVariantOffset
+			if producerSplits {
+				ctx = context.WithValue(ctx, denseProducerSplittersKey{}, true)
+				ctx = context.WithValue(ctx, splitterGateModelKey{}, int16(39))
+				baseVariant -= denseStationProducerVariantOffset
+			}
 			pairedOutputs := baseVariant >= denseStationPairedOutputVariantOffset
 			if pairedOutputs {
 				ctx = context.WithValue(ctx, denseShortPairedOutputsKey{}, true)
@@ -192,6 +204,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			}
 			if pairedOutputs {
 				parameters += ";shortPairedOutputs=true"
+			}
+			if producerSplits {
+				parameters += ";producerSplits=true;splitterModel=39"
 			}
 			if out.SurfacePlan != nil {
 				parameters += fmt.Sprintf(";nativeArea=%dx%d", out.SurfacePlan.LayoutWidth, out.SurfacePlan.LayoutHeight)

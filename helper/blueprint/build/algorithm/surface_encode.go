@@ -201,6 +201,9 @@ func (encoding *surfaceEncoding) validateAnchorCandidates(ctx context.Context, r
 		if lastError == nil {
 			lastError = encoding.validateDynamicFacilities(ctx, records)
 		}
+		if lastError == nil {
+			lastError = encoding.validateSplitterClearance(ctx, records)
+		}
 		if lastError == nil || !surfaceAnchorRetryable(lastError) {
 			return lastError
 		}

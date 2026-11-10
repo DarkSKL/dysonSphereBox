@@ -131,7 +131,8 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 
 // routeTransportWithStrategy 职责：以相同实体端点选择走廊软代价；使用：公开默认策略与同布局回归比较；边界：仅改变寻路目标，不改变物料图、硬约束或预算，不新增用户配置。
 func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions []vector, preferCorridor bool) error {
-	routes := append([]*transportRoute{}, b.transportRoutes...)
+	routes := append([]*transportRoute{}, b.denseProducerSplitRoutes()...)
+	routes = append(routes, b.transportRoutes...)
 	routes = append(routes, b.denseStreetRoutes...)
 	routes = append(routes, b.denseMaterialNetworkRoutes()...)
 	for _, recycle := range b.machineRecycles {
@@ -236,7 +237,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			if i == 0 && route.from == nil {
 				direction = 1
 			}
-			if i == 1 && route.to == nil && route.edge.FlowKind == "leftover" {
+			if i == 1 && route.to == nil && (route.edge.FlowKind == "leftover" || b.mode1DeliveryGroup(route) != nil) {
 				direction = 1
 			}
 			offset := vector{x: direction}
@@ -295,8 +296,8 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			start.y += offset.y
 		}
 		end := vector{route.end.a.x - 1, route.end.a.y, route.end.a.z}
-		if route.to == nil && route.edge.FlowKind == "leftover" {
-			// 副产物从原料区向西出货，最后一段由东侧进入，避免把回收口变成朝机器的反向出口。
+		if route.to == nil && (route.edge.FlowKind == "leftover" || b.mode1DeliveryGroup(route) != nil) {
+			// 独立交付从原料区向西出货，最后一段由东侧进入，避免把交付口变成朝机器的反向出口。
 			end.x = route.end.a.x + 1
 		}
 		if route.to != nil {
@@ -468,7 +469,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	if env.preferCorridor {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "stacked-corridor-routing", Status: "passed", Message: "独立传送带优先复用既有带的平面走廊，以不同高度区分并在端点真实逐格升降；走廊水平代价1、外扩1.25、升降1.5，不强制空场高架；平面下界预计算最多300000格，碰撞、端口权限、高度32和单次三维300000预算不变"})
 	}
-	return nil
+	return b.commitMode1Deliveries()
 }
 
 // reservedByOther 职责：在路径终点筛选前排除未来端口的垂直净空；使用：同物品 lane 寻路；边界：仅放行当前 route 自己拥有的端点柱。

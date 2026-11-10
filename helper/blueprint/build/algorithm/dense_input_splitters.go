@@ -5,12 +5,14 @@ package build
 
 import (
 	"DysonSphereBox/helper/quant"
+	"context"
 	"fmt"
 )
 
 // denseInputSplitNetwork 职责：保存一种原料的容量切片和全部真实支路；使用：刚性排布及终检；边界：每个切片只有一个外供口，消费者可由多个切片共同供给。
 type denseInputSplitNetwork struct {
 	gates     []*placed
+	modules   []*splitterGateAssembly
 	branches  []*denseInputSplitBranch
 	slices    []*denseInputSlice
 	bySource  map[*transportRoute]*denseInputSlice
@@ -23,6 +25,8 @@ type denseInputSlice struct {
 	configured float64
 	branches   []*denseInputSplitBranch
 	head       *placed
+	modules    []*splitterGateAssembly
+	joins      []*transportRoute
 }
 
 // denseInputConsumer 职责：保存消费者跨入口取料的独立合流缓冲；使用：避免机器cargo邻域直接多路合流；边界：单一来源沿用原入口，不补造无用设施。
@@ -35,6 +39,7 @@ type denseInputConsumer struct {
 // denseInputSplitBranch 职责：记录一个容量切片对指定消费者的真实贡献；使用：净流展开及配置毛负荷守恒；边界：每条规范碎片绑定原始边，不把同消费者的多个来源当成独立需求。
 type denseInputSplitBranch struct {
 	target              int
+	gateIndex           int
 	planned, configured float64
 	source              *transportRoute
 	route               *transportRoute
@@ -42,7 +47,7 @@ type denseInputSplitBranch struct {
 	contributions       map[*transportRoute]*transportRoute
 }
 
-// prepareDenseInputSplitters 职责：给多源消费者创建独立合流区，给多去向入口创建Model38分流树；使用：机器轨道固定后、全场排布前；边界：所有设施及端口进入真实建造盒排布，单去向入口保留普通单向带。
+// prepareDenseInputSplitters 职责：给多源消费者创建独立合流区，给多去向入口创建模型驱动真实分流树；使用：机器轨道固定后、全场排布前；边界：所有设施及端口进入真实建造盒排布，单去向入口保留普通单向带。
 func (b *builder) prepareDenseInputSplitters(group *denseMaterialNetwork, units []denseSpatialUnit) ([]denseSpatialUnit, error) {
 	owner := b.owner
 	b.owner = -1
@@ -66,7 +71,7 @@ func (b *builder) prepareDenseInputSplitters(group *denseMaterialNetwork, units 
 		}
 		network.consumers = append(network.consumers, consumer)
 	}
-	for _, slice := range network.slices {
+	for sliceIndex, slice := range network.slices {
 		if len(slice.branches) == 1 {
 			branch := slice.branches[0]
 			consumer := network.consumers[branch.target]
@@ -75,44 +80,61 @@ func (b *builder) prepareDenseInputSplitters(group *denseMaterialNetwork, units 
 			branch.route = slice.source
 			continue
 		}
-		begin := len(b.all)
-		intake := b.byPath([]vector{{-3, 0, 0}, {-2, 0, 0}, {-1, 0, 0}})
-		slice.head = intake[0]
-		group.intake = append(group.intake, intake...)
+
+		ctx := b.generationCtx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		for index := 0; index < len(slice.branches)-1; index++ {
+			spec, err := defaultSplitterGateSpec(ctx, 2)
+			if err != nil {
+				return nil, err
+			}
+			module, err := b.buildSplitterGate(ctx, spec)
+			if err != nil {
+				return nil, err
+			}
+			network.gates = append(network.gates, module.gate)
+			network.modules = append(network.modules, module)
+			slice.modules = append(slice.modules, module)
+			ports := []denseStreetPort{{item: group.item, input: true, head: module.input[0], inner: module.input[1]}}
+			group.intake = append(group.intake, module.input...)
+			for _, slot := range module.outputSlots {
+				path := module.outputs[slot]
+				group.intake = append(group.intake, path...)
+				ports = append(ports, denseStreetPort{item: group.item, head: path[len(path)-1], inner: path[len(path)-2]})
+			}
+			units = append(units, denseSpatialUnit{entities: module.entities, ports: ports})
+		}
+		slice.head = slice.modules[0].input[0]
 		proxy := &transportRow{owner: -1, inputs: map[int]*placed{group.item: slice.head}}
 		slice.source.to = proxy
-		ports := []denseStreetPort{{item: group.item, input: true, head: intake[0], inner: intake[1]}}
-		prefix := append([]*placed{}, intake...)
-		previous := intake[len(intake)-1]
-		for index := 0; index < len(slice.branches)-1; index++ {
-			x := float64(index * 4)
-			gate := b.make(2020, x, 0, 0)
-			gate.record.ModelIndex = 38
-			gate.record.Parameters = make([]int32, 6)
-			previous.output, previous.record.OutputToSlot = gate, 2
-			network.gates = append(network.gates, gate)
-			prefix = append(prefix, gate)
-			appendBranch := func(part int, side float64, slot int8) {
+		for index, module := range slice.modules {
+			appendBranch := func(part int, slot int8) {
 				branch := slice.branches[part]
-				track := b.byPath([]vector{{x, side, 0}, {x, side * 2, 0}, {x, side * 3, 0}})
-				track[0].input, track[0].record.InputFromSlot = gate, slot
-				branch.prefix = append([]*placed{}, prefix...)
-				branch.route = &transportRoute{edge: quant.FlowEdge{ID: fmt.Sprintf("external-split:%d:%d:%d", group.id, len(units), part), ItemID: group.item, FlowKind: "internal"}, rate: branch.planned, from: proxy, to: group.rows[branch.target], start: track[len(track)-1], end: network.consumers[branch.target].head, path: track}
+				track := module.outputs[slot]
+				branch.gateIndex = index
+				branch.prefix = append(append([]*placed{}, slice.modules[0].input...), slice.modules[0].gate)
+				branch.route = &transportRoute{edge: quant.FlowEdge{ID: fmt.Sprintf("external-split:%d:%d:%d", group.id, sliceIndex, part), ItemID: group.item, FlowKind: "internal"}, rate: branch.planned, from: proxy, to: group.rows[branch.target], start: track[len(track)-1], end: network.consumers[branch.target].head, path: append([]*placed{}, track...)}
 				b.denseMaterialNetworks.joins = append(b.denseMaterialNetworks.joins, branch.route)
-				ports = append(ports, denseStreetPort{item: group.item, head: branch.route.start, inner: track[len(track)-2]})
 			}
-			appendBranch(index, 1, 3)
-			if index == len(slice.branches)-2 {
-				appendBranch(index+1, -1, 1)
-				break
+			if index == len(slice.modules)-1 {
+				appendBranch(index, module.outputSlots[0])
+				appendBranch(index+1, module.outputSlots[1])
+				continue
 			}
-			continuation := b.byPath([]vector{{x + 1, 0, 0}, {x + 2, 0, 0}, {x + 3, 0, 0}})
-			continuation[0].input, continuation[0].record.InputFromSlot = gate, 0
-			prefix = append(prefix, continuation...)
-			group.intake = append(group.intake, continuation...)
-			previous = continuation[len(continuation)-1]
+			appendBranch(index, module.outputSlots[1])
+			continuation := module.outputs[module.outputSlots[0]]
+			next := slice.modules[index+1]
+			rate := 0.
+			for _, part := range slice.branches[index+1:] {
+				rate += part.planned
+			}
+			target := &transportRow{owner: -1, inputs: map[int]*placed{group.item: next.input[0]}}
+			join := &transportRoute{edge: quant.FlowEdge{ID: fmt.Sprintf("external-gate-join:%d:%d:%d", group.id, sliceIndex, index), ItemID: group.item, FlowKind: "internal"}, rate: rate, from: proxy, to: target, start: continuation[len(continuation)-1], end: next.input[0], path: []*placed{continuation[len(continuation)-1]}}
+			slice.joins = append(slice.joins, join)
+			b.denseMaterialNetworks.joins = append(b.denseMaterialNetworks.joins, join)
 		}
-		units = append(units, denseSpatialUnit{entities: b.all[begin:], ports: ports})
 	}
 	return units, nil
 }
@@ -137,4 +159,35 @@ func denseInputSplitSharedPath(source *transportRoute, group *denseMaterialNetwo
 		path = append(path, branch.prefix[1:]...)
 	}
 	return append(path, group.tracks[branch.target][1:]...)
+}
+
+// refreshDenseInputSplitterPrefixes 职责：把已真实路由的门间连接展开到各消费者共享前缀；使用：规范份额提交之前；边界：不同门分别落位，不能跳过接线或按旧固定门距直接连接。
+func refreshDenseInputSplitterPrefixes(group *denseMaterialNetwork) error {
+	for _, slice := range group.splitInput.slices {
+		if len(slice.branches) == 1 {
+			continue
+		}
+		if len(slice.modules)+1 != len(slice.branches) || len(slice.joins)+1 != len(slice.modules) {
+			return transportAllocationError(slice.source.edge, slice.source.rate, "真实分流树缺少共同门或门间接线")
+		}
+		for _, branch := range slice.branches {
+			if branch.gateIndex < 0 || branch.gateIndex >= len(slice.modules) {
+				return transportAllocationError(slice.source.edge, slice.source.rate, "分流支路没有有效真实门")
+			}
+			prefix := append(append([]*placed{}, slice.modules[0].input...), slice.modules[0].gate)
+			for index := 0; index < branch.gateIndex; index++ {
+				module, next, join := slice.modules[index], slice.modules[index+1], slice.joins[index]
+				outlet := module.outputs[module.outputSlots[0]]
+				if len(join.path) < 2 || join.path[0] != outlet[len(outlet)-1] || join.path[len(join.path)-1] != next.input[0] {
+					return transportAllocationError(slice.source.edge, slice.source.rate, "分流门之间没有完整真实接线")
+				}
+				prefix = append(prefix, outlet...)
+				prefix = append(prefix, join.path[1:]...)
+				prefix = append(prefix, next.input[1:]...)
+				prefix = append(prefix, next.gate)
+			}
+			branch.prefix = prefix
+		}
+	}
+	return nil
 }

@@ -41,6 +41,8 @@ func betterDenseCandidate(a, c LayoutMetrics) bool {
 
 // denseSpatialUnit 职责：保存有局部连接约束的实体集合；使用：全场位置搜索；边界：集合外包矩形不是独占区，内部空隙可以容纳其它集合。
 type denseSpatialUnit struct {
+	// bent 职责：标记同生产者短run形成的凹形复合单元；使用：分别维护各run累计朝向与端口；边界：不冻结凹角矩形，也不代表已经全局接线。
+	bent bool
 	// entities 职责：保留实际机器、带和臂；使用：整体姿态变换；边界：不包括尚未创建的全局路线。
 	entities []*placed
 	// row 职责：保留逐物料端口及份额；使用：邻近关联产线与旋转出口；边界：闭合设施集合可以为空。
@@ -73,7 +75,7 @@ func (b *builder) denseSpatialUnitWires(unit denseSpatialUnit, placedEntities ma
 		members[entity] = true
 	}
 	wires := []denseSpatialWire{}
-	for _, routes := range [][]*transportRoute{b.transportRoutes, b.denseStreetRoutes, b.denseMaterialNetworkRoutes()} {
+	for _, routes := range [][]*transportRoute{b.transportRoutes, b.denseStreetRoutes, b.denseMaterialNetworkRoutes(), b.denseProducerSplitRoutes()} {
 		for _, route := range routes {
 			if route.start == nil || route.end == nil {
 				continue
@@ -193,6 +195,13 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 			shape.gridPort = true
 			contour.shapes = append(contour.shapes, shape)
 		}
+	}
+	if unit.bent {
+		ports, err := b.denseBentPortShapes(ctx, unit, turns)
+		if err != nil {
+			return contour, err
+		}
+		contour.shapes = append(contour.shapes, ports...)
 	}
 	for _, port := range unit.ports {
 		direction := port.outward()

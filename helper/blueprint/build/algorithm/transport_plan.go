@@ -110,7 +110,8 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 		if _, err := productionMaterialFlows(p, r); err != nil {
 			return nil, err
 		}
-		counts, err := layoutLineCounts(p, r, b.setting, dataset.ByID[p.MachineID].Speed, req.Density)
+		capacityFill := b.denseCapacityFill && b.denseSpatial && req.Mode == 1 && req.Density == densityDense && b.adapter != nil && b.adapter.mode == 1
+		counts, err := layoutLineCountsWithStrategy(p, r, b.setting, dataset.ByID[p.MachineID].Speed, req.Density, capacityFill)
 		if err != nil {
 			return nil, err
 		}
@@ -119,6 +120,9 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 			if err != nil {
 				return nil, err
 			}
+		}
+		if capacityFill {
+			b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-capacity-fill-grouping", Status: "passed", Message: fmt.Sprintf("配方%d保留%d台机器及原带/臂/层数设置，按真实单带毛能力优先填满并接受本候选跨度约束，实际分组%v；仍须完整路线、货物采样和最终规则核验", p.RecipeID, p.MachineCount, counts)})
 		}
 		// 分拣器在机器行内按真实空槽并联和堆叠高度规划，不能在实体方案形成前按旧单臂布局拒绝。
 		for _, count := range counts {

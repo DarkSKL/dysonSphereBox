@@ -78,6 +78,34 @@ func (encoding *surfaceEncoding) validateSplitterClearance(ctx context.Context, 
 	if left >= 0 {
 		return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("建筑%d与%d侵占分流器保守选择体积；该净空在原生细分建造盒之外独立保留", left, right)}
 	}
+	// 选择包络是额外排布约束，不沿用原生同批次分拣器/静态物体互免。
+	// 必须使用游戏slot修正和belt端拉伸后的OBB，原始记录轴线不能证明臂体净空。
+	arms, err := encoding.surfaceInserterBoxes(ctx, original)
+	if err != nil {
+		return err
+	}
+	for _, arm := range arms {
+		seen := map[int]bool{}
+		var collision error
+		connectedShapeCells(connectedBoxShape("inserter", arm.Geometry), func(cell [3]int) bool {
+			for _, number := range cells[cell] {
+				if seen[number] {
+					continue
+				}
+				seen[number] = true
+				selection := selections[number]
+				if arm.Geometry.Overlaps(selection.Geometry) {
+					gate := records[selection.Owner]
+					collision = &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("分拣器%d经真实槽位修正和长度拉伸的建造盒侵占分流器%d（模型%d）的保守选择体积", arm.Owner, gate.Index, gate.ModelIndex)}
+					return false
+				}
+			}
+			return true
+		})
+		if collision != nil {
+			return collision
+		}
+	}
 	world := func(i int) placement.Vector {
 		position := placement.Vector{positions[i].x, positions[i].y, positions[i].z}
 		return position.Add(encoding.localUp(position).Scale(.2))

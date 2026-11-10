@@ -30,13 +30,18 @@ func densePairRecipe(p quant.Production, recipe quant.Recipe) bool {
 
 // layoutLineCounts 职责：按局部单元的实际排数拆分容量；使用：四种模式的布局准备；边界：每排仍遵守用户机器数上限，共用物料带容量不翻倍。
 func layoutLineCounts(p quant.Production, recipe quant.Recipe, setting Setting, speed float64, density string) ([]int, error) {
+	return layoutLineCountsWithStrategy(p, recipe, setting, speed, density, false)
+}
+
+// layoutLineCountsWithStrategy 职责：在真实局部排数预算内选择容量分组策略；使用：mode1密铺候选规划；边界：普通模式强制原均衡策略，不翻倍共带能力或请求行上限。
+func layoutLineCountsWithStrategy(p quant.Production, recipe quant.Recipe, setting Setting, speed float64, density string, capacityFill bool) ([]int, error) {
 	if density == densityDense && (densePairRecipe(p, recipe) && densePairPortsSupported(p, recipe, setting) || referenceLowRecipe(p, recipe) && referenceSingleArmsSufficient(p, recipe, setting.InserterLv)) {
 		setting.MaxMachineInALine = min(10000, setting.MaxMachineInALine*2)
 		setting.SmelterMaxCount = min(10000, setting.SmelterMaxCount*2)
 		setting.WorkbenchMaxCount = min(10000, setting.WorkbenchMaxCount*2)
 		setting.ChemicalMaxCount = min(10000, setting.ChemicalMaxCount*2)
 	}
-	return lineCounts(p, recipe, setting, speed)
+	return lineCountsWithStrategy(p, recipe, setting, speed, capacityFill && density == densityDense)
 }
 
 // completeDensePair 职责：增加相向机器排与连续 U 形输入，共用已存在的独立产物带；使用：首排机器臂创建之后；边界：旋转机器与臂后按真实坐标重绑带引用，最后由完整终检验证。

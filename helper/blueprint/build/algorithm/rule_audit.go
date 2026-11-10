@@ -101,7 +101,7 @@ func validateFinalPlanetRules(ctx context.Context, req Request, encoding *surfac
 		audit.Profile.Version += "-dense-single-paste"
 	}
 	for _, check := range []LogisticsCheck{
-		{RuleID: "splitter-conservative-clearance", Status: "passed", Message: "三形态分流器在原生细分建造盒之外独立保留真实选择体积净空，仅对正确槽位、方向和高度上的短接头开放；属于保守生成约束"},
+		{RuleID: "splitter-conservative-clearance", Status: "passed", Message: "三形态分流器在原生细分建造盒之外独立保留完整选择体积，检查静态设施、实际带段及经槽位修正和长度拉伸的分拣器OBB；仅正确槽位、方向和高度的短接头开放，属于保守生成约束"},
 		{RuleID: "final-references", Status: "passed", Message: "最终 float32 坐标、编号和引用闭合"},
 		{RuleID: "pasted-connection-slots", Status: "passed", Message: "按游戏粘贴顺序重放独占连接槽，所有声明的带、分拣器和设施连接在后续写入后仍存续"},
 		{RuleID: "static-build-colliders", Status: "passed", Message: "已核对原型 OBB 与三维空间索引，无未知静态模型"},
