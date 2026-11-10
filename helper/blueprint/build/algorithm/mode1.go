@@ -836,7 +836,7 @@ func (b *builder) connectedBlockShape(ctx context.Context, row *transportRow, bl
 		if p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
 			continue
 		}
-		shapes, err := catalog.Shapes(p.record.ItemID, p.record.ModelIndex)
+		shapes, err := splitterClearanceShapes(catalog, p.record.ItemID, p.record.ModelIndex)
 		if err != nil {
 			return out, &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 		}

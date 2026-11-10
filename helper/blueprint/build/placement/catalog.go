@@ -48,6 +48,10 @@ type Pose struct {
 
 // PrefabGeometry 职责：保存 PrefabDesc 从 SlotConfig 解析出的端口与附加区域；使用：动态建筑几何预检；边界：缺少该目录或字段时必须按未验证处理。
 type PrefabGeometry struct {
+	// SelectCenter 职责：保存原生选择体积中心；使用：分流器保守净空；边界：不是原生建造碰撞盒。
+	SelectCenter [3]float32 `json:"selectCenter,omitempty"`
+	// SelectSize 职责：保存原生选择体积全尺寸；使用：分流器保守排布；边界：未提取时为零，不冒充零占位。
+	SelectSize [3]float32 `json:"selectSize,omitempty"`
 	// PortPoses 职责：保存建筑物流端口；使用：端口连接和极点姿态核对；边界：顺序对应游戏 slot index。
 	PortPoses []Pose `json:"portPoses"`
 	// SlotPoses 职责：保存分拣器插入端口；使用：分拣器端点修正；边界：顺序对应游戏 slot index。
@@ -67,6 +71,8 @@ type catalogModel struct {
 	Items           []int      `json:"items"`
 	MappingVerified bool       `json:"mappingVerified"`
 	Colliders       []Collider `json:"buildColliders"`
+	// BuildEnvelope 职责：保存整体建造包络；使用：分流器形态说明；边界：不能替代细分建造盒或选择体积。
+	BuildEnvelope Collider `json:"buildCollider"`
 	// Geometry 职责：绑定 PrefabDesc 端口数据；使用：动态对象验证；边界：空值表示当前原型未提取端口数据。
 	Geometry *PrefabGeometry `json:"prefabGeometry,omitempty"`
 }

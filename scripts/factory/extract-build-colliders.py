@@ -367,6 +367,8 @@ class Assets:
         name_length = struct.unpack_from("<i", raw, p)[0]
         p += 4 + name_length
         p = (p + 3) & ~3
+        select_center = f32v(struct.unpack_from("<fff", raw, p))
+        select_size = f32v(struct.unpack_from("<fff", raw, p + 12))
         p += 48  # selectCenter、selectSize 以及 SlotConfig 的 6 个标量字段。
 
         def pointer_array():
@@ -393,6 +395,8 @@ class Assets:
             raise ValueError(f"SlotConfig 解析结束于 {p}，原始长度 {len(raw)}，字段布局与游戏版本不符")
 
         return {
+            "selectCenter": select_center,
+            "selectSize": select_size,
             "portPoses": [self.transform_pose(go_obj, pointer, slot_source_file) for pointer in slot_pointers],
             "slotPoses": [self.transform_pose(go_obj, pointer, slot_source_file) for pointer in insert_pointers],
             "addonAreaColPoses": [self.transform_pose(go_obj, pointer, slot_source_file) for pointer in addon_pointers],

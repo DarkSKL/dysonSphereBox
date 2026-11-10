@@ -66,7 +66,7 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 		if surfaceIsBelt(entity.record.ItemID) || entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
 			continue
 		}
-		shapes, err := catalog.Shapes(entity.record.ItemID, entity.record.ModelIndex)
+		shapes, err := splitterClearanceShapes(catalog, entity.record.ItemID, entity.record.ModelIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -243,7 +243,11 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 				}
 				seen[n] = true
 				if n < len(index.owners) {
-					allowed := links[index.owners[n]]
+					owner := index.owners[n]
+					allowed := links[owner]
+					if owner.record.ItemID == 2020 && !index.splitterRouteSpanAllowed(owner, first, second, allowed) {
+						allowed = [2]bool{}
+					}
 					if (allowed[0] || allowed[1]) && (allowed[0] || index.boxes[n].box.SegmentDistanceSquared(a, a) >= .23*.23-1e-6) && (allowed[1] || index.boxes[n].box.SegmentDistanceSquared(c, c) >= .23*.23-1e-6) {
 						continue
 					}

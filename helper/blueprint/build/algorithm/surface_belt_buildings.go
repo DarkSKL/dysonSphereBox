@@ -12,8 +12,12 @@ import (
 	"DysonSphereBox/helper/blueprint/build/placement"
 )
 
-// surfaceBeltBuildingLink 职责：识别游戏预览支持的三跳塔口连接及两跳堆叠分流器连接；使用：带与建筑盒相交后的豁免；边界：只沿 input 或 output 同向追溯，不做无界连通分量豁免。
+// surfaceBeltBuildingLink 职责：识别非分流器建筑的原生三跳连接及监测器宿主；使用：带与建筑盒相交后的豁免；边界：只沿input或output同向追溯，分流器必须另按真实槽位几何复核。
 func surfaceBeltBuildingLink(belt, building int, records []blueprint.Building, byIndex map[int32]int) bool {
+	// 分流器另按真实模型槽位、方向及高度复核短接头，不继承此通用三跳规则。
+	if records[building].ItemID == 2020 {
+		return false
+	}
 	// 流速监测器按游戏规则直接落在宿主带节点；只豁免同 Area、同坐标且同朝向的这一对实体。
 	if records[building].ItemID == 2030 {
 		host := records[building]
@@ -34,9 +38,6 @@ func surfaceBeltBuildingLink(belt, building int, records []blueprint.Building, b
 				break
 			}
 			if next == building {
-				return true
-			}
-			if hop <= 2 && records[building].ItemID == 2020 && (records[building].InputObjIdx == index || records[building].OutputObjIdx == index) {
 				return true
 			}
 			if !surfaceIsBelt(records[next].ItemID) {
@@ -185,7 +186,15 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 							continue
 						}
 						narrow++
-						if box.Geometry.SegmentDistanceSquared(first, second) >= radius*radius-1e-6 || surfaceBeltBuildingLink(i, box.Owner, records, byIndex) {
+						linked := surfaceBeltBuildingLink(i, box.Owner, records, byIndex)
+						if records[box.Owner].ItemID == 2020 {
+							end := i
+							if hasOutput && surfaceIsBelt(records[output].ItemID) {
+								end = output
+							}
+							linked = encoding.splitterShortConnectionAllowed(i, box.Owner, end, records, positions, byIndex)
+						}
+						if box.Geometry.SegmentDistanceSquared(first, second) >= radius*radius-1e-6 || linked {
 							continue
 						}
 						if geometry, exists := geometries[box.Owner]; exists && encoding.surfaceAddonBeltPass(i, box.Owner, records, positions, byIndex, geometry) {

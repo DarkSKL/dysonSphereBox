@@ -50,5 +50,5 @@ func verifiedRuleProfile() (RuleProfile, error) {
 	if catalog.Version() != "0.10.35.29151" {
 		return RuleProfile{}, fmt.Errorf("游戏规则版本与碰撞目录不匹配：%s", catalog.Version())
 	}
-	return RuleProfile{Version: "vanilla-25955035-rules-v1", GameVersion: catalog.Version(), SteamBuildID: "25955035", AssemblySHA256: "ef314425dade51f529f184f07be136cd3c2660a6a81515603c7226fbe7ab1d8c", ResourcesSHA256: "8343173562b15b06a400d70cb1510a106d7654f96342857e5925ded5fd1900d1"}, nil
+	return RuleProfile{Version: "vanilla-25955035-rules-v2", GameVersion: catalog.Version(), SteamBuildID: "25955035", AssemblySHA256: "ef314425dade51f529f184f07be136cd3c2660a6a81515603c7226fbe7ab1d8c", ResourcesSHA256: "8343173562b15b06a400d70cb1510a106d7654f96342857e5925ded5fd1900d1"}, nil
 }
