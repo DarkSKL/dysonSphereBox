@@ -110,8 +110,55 @@ func (b *builder) planDenseBoundaries(ctx context.Context, positions []vector, l
 	if err != nil {
 		return nil, err
 	}
+	if err := b.compactDenseGroundBoundary(ctx, plan, result, low.x); err != nil {
+		return nil, err
+	}
 	b.denseBoundary = plan
 	return result, nil
+}
+
+// compactDenseGroundBoundary 职责：为可在地面接入的接口去掉大型分层接入预留；使用：联合槽位已确定、端口尚未创建；边界：先按真实静态盒及节点核验所有新短带和交付尾带，不可行时保持原三层方案。
+func (b *builder) compactDenseGroundBoundary(ctx context.Context, plan *denseBoundaryLayout, inputs []vector, productionLeft float64) error {
+	for _, p := range inputs {
+		if p.z != 0 {
+			return nil
+		}
+	}
+	index, err := b.newDenseRoutePortIndex(ctx)
+	if err != nil {
+		return err
+	}
+	left := math.Floor(productionLeft) - 3
+	positions := append([]vector(nil), inputs...)
+	for _, p := range plan.outputs {
+		positions = append(positions, p)
+	}
+	for _, p := range positions {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		// 两格短接包含即将进入厂区的第一步；不因缩短接口而让源端埋入模型盒。
+		previous := vector{left, p.y, 0}
+		if !index.nodeClear(previous, nil) {
+			return nil
+		}
+		for step := 1.; step <= 2; step++ {
+			next := vector{left + step, p.y, 0}
+			if !index.nodeClear(next, nil) || !index.spanClear(previous, next) {
+				return nil
+			}
+			previous = next
+		}
+	}
+	plan.minimumX, plan.handoffX, plan.levelLimitX = left, left+1, left+1.5
+	for i := range inputs {
+		inputs[i].x = left
+	}
+	for group, p := range plan.outputs {
+		p.x = left
+		plan.outputs[group] = p
+	}
+	return nil
 }
 
 // matchDenseBoundarySlots 职责：以保序动态规划最小化纬向偏移和升层代价；使用：输入端一维有序槽位匹配；边界：每个槽只使用一次，保留路线原顺序，最多三层且不越过地面输出预留。

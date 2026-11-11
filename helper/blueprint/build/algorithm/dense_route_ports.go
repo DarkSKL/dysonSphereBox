@@ -461,6 +461,14 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 			return len(a.points) < len(c.points)
 		}
 		x, y := a.points[len(a.points)-1], c.points[len(c.points)-1]
+		// 外供接口同距离先保留直出，避免被两条侧移挤掉形成 U 形绕路；厂内接驳及目标端保留原有候选次序。
+		if sourceSide && index.boundarySegment(endpoint.a, endpoint.a) {
+			forwardA := (x.x-endpoint.a.x)*outward.x + (x.y-endpoint.a.y)*outward.y
+			forwardC := (y.x-endpoint.a.x)*outward.x + (y.y-endpoint.a.y)*outward.y
+			if math.Abs(forwardA-forwardC) > 1e-6 {
+				return forwardA > forwardC
+			}
+		}
 		if x.x != y.x {
 			return x.x < y.x
 		}
