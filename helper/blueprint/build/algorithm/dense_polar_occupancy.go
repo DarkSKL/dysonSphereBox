@@ -344,28 +344,14 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				if stationConflict {
 					continue
 				}
-				for i, box := range part.boxes {
-					box.Center = rotatePolarPoint(box.Center, s, c)
-					for j := range box.Axes {
-						box.Axes[j] = rotatePolarPoint(box.Axes[j], s, c)
-					}
-					rotatedBoxes[i] = box
-				}
-				for i, p := range part.nodes {
-					rotatedNodes[i] = surfaceBeltNodeProbe{center: rotatePolarPoint(p.center, s, c), span: surfaceBeltSpan{ends: [2]placement.Vector{rotatePolarPoint(p.span.ends[0], s, c), rotatePolarPoint(p.span.ends[1], s, c)}}}
-				}
-				for i, a := range part.arms {
-					rotatedArms[i] = surfaceBeltSpan{ends: [2]placement.Vector{rotatePolarPoint(a.ends[0], s, c), rotatePolarPoint(a.ends[1], s, c)}}
-				}
-				for i, box := range part.armBoxes {
-					box.Center = rotatePolarPoint(box.Center, s, c)
-					for axis := range box.Axes {
-						box.Axes[axis] = rotatePolarPoint(box.Axes[axis], s, c)
-					}
-					rotatedArmBoxes[i] = box
-				}
 				conflict := false
-				for _, a := range rotatedBoxes {
+				// 按既有检测次序惰性变换；早期碰撞时不旋转本次位置中尚未检查的实体。
+				for i, a := range part.boxes {
+					a.Center = rotatePolarPoint(a.Center, s, c)
+					for axis := range a.Axes {
+						a.Axes[axis] = rotatePolarPoint(a.Axes[axis], s, c)
+					}
+					rotatedBoxes[i] = a
 					low, high := a.Bounds()
 					conflict = boxIndex.any(low, high, func(i int) bool { return a.Overlaps(boxes[i]) })
 					if !conflict {
@@ -388,7 +374,9 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				if conflict {
 					continue
 				}
-				for _, p := range rotatedNodes {
+				for i, p := range part.nodes {
+					p = surfaceBeltNodeProbe{center: rotatePolarPoint(p.center, s, c), span: surfaceBeltSpan{ends: [2]placement.Vector{rotatePolarPoint(p.span.ends[0], s, c), rotatePolarPoint(p.span.ends[1], s, c)}}}
+					rotatedNodes[i] = p
 					radius := .25
 					if preciseNodes {
 						radius = surfaceBeltNodeRadius
@@ -411,7 +399,9 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				if conflict {
 					continue
 				}
-				for _, a := range rotatedArms {
+				for i, a := range part.arms {
+					a = surfaceBeltSpan{ends: [2]placement.Vector{rotatePolarPoint(a.ends[0], s, c), rotatePolarPoint(a.ends[1], s, c)}}
+					rotatedArms[i] = a
 					low, high := polarSpanBounds(a, .5)
 					conflict = armIndex.any(low, high, func(i int) bool {
 						if part.verifiedArms && verifiedArms[i] {
@@ -426,7 +416,12 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				if conflict {
 					continue
 				}
-				for _, box := range rotatedArmBoxes {
+				for i, box := range part.armBoxes {
+					box.Center = rotatePolarPoint(box.Center, s, c)
+					for axis := range box.Axes {
+						box.Axes[axis] = rotatePolarPoint(box.Axes[axis], s, c)
+					}
+					rotatedArmBoxes[i] = box
 					low, high := box.Bounds()
 					conflict = armBoxIndex.any(low, high, func(i int) bool { return box.Overlaps(armBoxes[i]) })
 					if conflict {

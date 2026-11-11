@@ -17,6 +17,8 @@ type polarSpatialIndex struct {
 	cells    map[[3]int][]int
 	marks    []uint32
 	sequence uint32
+	// bounds 职责：保存已登记对象的世界包围盒；使用：桶命中后先排除不相交对象；边界：与 marks 同序，只用于宽相位，不能代替精确碰撞。
+	bounds [][2]placement.Vector
 }
 
 // polarSpatialCells 职责：遍历包围盒覆盖的全部桶；使用：登记和查询；边界：边界桶也包含在内，visit返回false时提前停止。
@@ -40,6 +42,7 @@ func (index *polarSpatialIndex) add(low, high placement.Vector) {
 	}
 	id := len(index.marks)
 	index.marks = append(index.marks, 0)
+	index.bounds = append(index.bounds, [2]placement.Vector{low, high})
 	polarSpatialCells(low, high, func(cell [3]int) bool { index.cells[cell] = append(index.cells[cell], id); return true })
 }
 
@@ -54,13 +57,18 @@ func (index *polarSpatialIndex) any(low, high placement.Vector, conflict func(in
 		index.sequence = 1
 	}
 	margin := placement.Vector{.001, .001, .001}
+	low, high = low.Sub(margin), high.Add(margin)
 	found := false
-	polarSpatialCells(low.Sub(margin), high.Add(margin), func(cell [3]int) bool {
+	polarSpatialCells(low, high, func(cell [3]int) bool {
 		for _, id := range index.cells[cell] {
 			if index.marks[id] == index.sequence {
 				continue
 			}
 			index.marks[id] = index.sequence
+			bounds := &index.bounds[id]
+			if high[0] < bounds[0][0] || low[0] > bounds[1][0] || high[1] < bounds[0][1] || low[1] > bounds[1][1] || high[2] < bounds[0][2] || low[2] > bounds[1][2] {
+				continue
+			}
 			if conflict(id) {
 				found = true
 				return false
