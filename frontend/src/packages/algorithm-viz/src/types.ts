@@ -132,7 +132,7 @@ export interface AlgoVizOptions {
    * 游戏只把材质颜色染在遮罩标出的涂装区；未提供时，带原生颜色的材质整体染色。
    */
   maskUrls?: Readonly<Record<string, string>>;
-  /** 场景对象上限，超出的新增操作被忽略，默认 12000 */
+  /** 可选的自定义对象上限；默认不限制数量，完整展示建筑。应用无需传入此选项。 */
   maxObjects?: number;
   /** 空场景提示文案 */
   emptyText?: string;

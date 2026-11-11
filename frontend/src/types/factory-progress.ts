@@ -5,6 +5,7 @@ export interface FactoryGenerationProgress {
   readonly taskId?: string
   readonly stage: string
   readonly message: string
+  readonly detail?: string
   readonly current: number
   readonly total: number
   readonly protocolVersion?: number

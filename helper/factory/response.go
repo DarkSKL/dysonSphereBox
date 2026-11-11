@@ -20,7 +20,7 @@ func Status(err error) contract.Status {
 	}
 	var b *blueprint.Error
 	if errors.As(err, &b) {
-		return contract.Status{Code: b.Code, Message: b.Message}
+		return generationFailureStatus(b.Code, b.Message, err)
 	}
 	return contract.Status{Code: "Q_E_INTERNAL", Message: "引擎执行失败，请查看日志"}
 }

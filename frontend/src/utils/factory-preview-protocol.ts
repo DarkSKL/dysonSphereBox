@@ -79,6 +79,7 @@ const hasBuildingBatch = (value: unknown): boolean => {
 export const isFactoryGenerationProgressEvent = (value: unknown): value is FactoryGenerationProgressEvent => {
   if (!isRecord(value) || typeof value.taskId !== 'string' || !value.taskId
     || typeof value.stage !== 'string' || typeof value.message !== 'string'
+    || !isOptionalIdentity(value.detail)
     || !isIntegerAtLeast(value.current, 0) || !isIntegerAtLeast(value.total, 0)
     || value.total < value.current) return false
   if (value.protocolVersion === undefined && value.kind === undefined) return true

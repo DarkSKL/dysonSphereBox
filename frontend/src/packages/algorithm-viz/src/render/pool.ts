@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /**
  * 实例池：一个几何体 + 一个材质对应一个 InstancedMesh，按槽位分配给场景对象。
  *
- * - 槽位释放后写入零缩放矩阵（不可见），并进入空闲表复用；count 只覆盖到最高已用槽位
+ * - 活动槽位连续存放；释放时用末端实例补位，调用方同步迁移后的对象引用，绘制数量等于活动数量
  * - 容量不足时翻倍重建 InstancedMesh，并拷贝全部实例数据
  * - 自定义的逐实例属性（状态、颜色索引、长度等）挂在池自有的几何体上，基础网格属性共享
  */
@@ -21,7 +21,6 @@ export class InstancePool {
   mesh: THREE.InstancedMesh;
   private capacity: number;
   private used = 0;
-  private readonly free = new Set<number>();
   private readonly arrays = new Map<string, Float32Array>();
   private matrixLow = Infinity;
   private matrixHigh = -1;
@@ -42,15 +41,14 @@ export class InstancePool {
     parent.add(this.mesh);
   }
 
-  /** 已用槽位数（含空洞） */
+  /** 活动槽位数，与GPU绘制数量一致。 */
   get size(): number {
-    return this.used - this.free.size;
+    return this.used;
   }
 
   /** 无过渡重建时整池归零，保留 GPU 容量复用；新槽位由 alloc 重置，不逐个遍历旧建筑。 */
   clear(): void {
     this.used = 0;
-    this.free.clear();
     this.mesh.count = 0;
     this.matrixLow = Infinity;
     this.matrixHigh = -1;
@@ -58,8 +56,7 @@ export class InstancePool {
   }
 
   alloc(): number {
-    const slot = this.free.size ? this.free.values().next().value! : this.used++;
-    this.free.delete(slot);
+    const slot = this.used++;
     if (slot >= this.capacity) this.grow(Math.max(this.capacity * 2, slot + 1));
     for (const spec of this.specs) {
       const array = this.arrays.get(spec.name) as Float32Array;
@@ -72,18 +69,21 @@ export class InstancePool {
     return slot;
   }
 
-  release(slot: number): void {
-    if (slot < 0 || slot >= this.used || this.free.has(slot)) return;
-    this.mesh.setMatrixAt(slot, ZERO);
-    this.markMatrix(slot);
-    if (slot === this.used - 1) {
-      this.used--;
-      // 收缩尾部连续的空闲槽位，减少无效绘制
-      while (this.used > 0 && this.free.delete(this.used - 1)) this.used--;
-      this.mesh.count = this.used;
-    } else {
-      this.free.add(slot);
+  /** 释放并压实实例；返回补位实例原槽号，调用方必须更新其身份映射。释放末槽或无效槽不产生迁移。 */
+  release(slot: number): number | undefined {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= this.used) return;
+    const last = --this.used;
+    if (slot !== last) {
+      this.mesh.instanceMatrix.array.copyWithin(slot * 16, last * 16, last * 16 + 16);
+      this.markMatrix(slot);
+      for (const spec of this.specs) {
+        const array = this.arrays.get(spec.name) as Float32Array;
+        array.copyWithin(slot * spec.itemSize, last * spec.itemSize, (last + 1) * spec.itemSize);
+        this.markAttribute(spec.name, slot * spec.itemSize, spec.itemSize);
+      }
     }
+    this.mesh.count = this.used;
+    return slot !== last ? last : undefined;
   }
 
   setMatrix(slot: number, matrix: THREE.Matrix4): void {

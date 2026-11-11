@@ -66,7 +66,7 @@ viz.finishCandidate('candidate-1', 'rejected');
 
 包只管理视觉队列。应用层的 v4 事件订阅在队列积压约 20000 项时通过后端过程日志延迟消费，保留真实历史；日志最近两次任务、每任务最多 64 MiB、有效期十分钟，日志不足时明确提示并降级到正式结果。暂停不阻塞后端计算，`flush()` 可跳过已入队动画。
 
-`flush()` 跳过动画直接应用全部待播操作。
+`flush()` 跳过动画，按共享帧预算持续应用全部待播操作。积压期间减少中间画面的GPU重绘，数据处理结束立即绘制完整结果。
 
 批次的 `stage` 与上一批不同时，播放到该批会显示阶段标题；`caption(title, detail)` 可随时显示标题。
 
@@ -91,7 +91,7 @@ viz.finishCandidate('candidate-1', 'rejected');
 | `failSearch()` | 无获选结果时让所有候选分别退场 |
 | `caption(title, detail?)` | 显示阶段标题 |
 | `reset({ animate? })` | 清空场景与队列；`animate` 时由内向外依次撤下 |
-| `flush()` | 跳过动画，立即应用全部待播操作 |
+| `flush()` | 跳过动画，按帧预算持续处理至完整最终状态 |
 | `setSpeed(n)` / `getSpeed()` | 播放速度 0.25 ~ 8 |
 | `setPaused(b)` / `isPaused()` | 暂停出队与动画，视角仍可操作 |
 | `setTheme(theme, immediate?)` / `getTheme()` | `'dark' \| 'light'`，默认约 450ms 渐变 |
@@ -109,7 +109,7 @@ interface AlgoVizOptions {
   speed?: number;                            // 默认 1
   modelUrls?: Record<string, string>;        // 模型键 → GLB 地址，键见 ALGORITHM_VIZ_MODEL_KEYS
   transcoderUrls?: { js: string; wasm: string }; // Basis 转码器地址；构建工具重命名资源时必须提供
-  maxObjects?: number;                       // 单平台回放默认 12000；多候选不截断完整建筑
+  maxObjects?: number;                       // 默认无限制；只有显式传入时才限制单平台对象数
   emptyText?: string;                        // 空场景提示
   viewPaddingTop?: number;                   // 顶部被外部工具栏覆盖的像素，取景时让出
   injectStyles?: boolean;                    // 默认 true；false 时自行插入 ALGORITHM_VIZ_CSS

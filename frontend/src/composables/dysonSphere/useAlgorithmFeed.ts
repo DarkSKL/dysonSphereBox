@@ -6,6 +6,7 @@ import {observeFactoryGenerationEvents} from '../../pages/services/dysonSphere/f
 import type {FactoryPreviewArea, FactoryPreviewOperation} from '../../types/factory-progress'
 import {isFactoryGenerationProgressEvent} from '../../utils/factory-preview-protocol'
 import {createFrameCoalescer} from '../../utils/frame-coalescer'
+import {ALGORITHM_REPLAY_CHUNK as CHUNK, prepareAlgorithmReplay, yieldAlgorithmReplay, type AlgorithmMirrorEntry} from '../../utils/algorithm-replay'
 import type {QuantWorkspace} from './useQuantWorkspace'
 
 // =============== 算法可视化数据源 ===============
@@ -33,30 +34,12 @@ export interface AlgorithmPhase {
   readonly message: string
   readonly current: number
   readonly total: number
-}
-
-/** 场景镜像条目：记录已发送给场景的建筑，用于后续差量比较 */
-interface MirrorEntry {
-  building: AlgoVizBuilding
-  index?: number
+  readonly detail?: string
 }
 
 export type AlgorithmFeedSource = 'idle' | 'live' | 'replay'
 
-/** 单批操作上限：结果回放按批入队，便于场景按阶段节奏播放 */
-const CHUNK = 512
-/** 场景对象上限，与可视化包默认值一致 */
-export const ALGORITHM_VIZ_LIMIT = 12000
-
 const LIVE_STAGE_LABELS: Record<string, string> = {layout: '布局装配', assembly: '装配机器行', routing: '连接物料路线'}
-
-const sameBuilding = (a: AlgoVizBuilding, b: AlgoVizBuilding): boolean => {
-  const near = (p?: number, q?: number): boolean => Math.abs((p ?? 0) - (q ?? 0)) < 1e-3
-  return a.itemId === b.itemId && a.modelIndex === b.modelIndex && a.areaIndex === b.areaIndex && a.group === b.group
-    && Boolean(a.temporary) === Boolean(b.temporary) && a.outputId === b.outputId
-    && near(a.x, b.x) && near(a.y, b.y) && near(a.z, b.z) && near(a.x2, b.x2) && near(a.y2, b.y2) && near(a.z2, b.z2)
-    && Math.abs((a.yaw ?? 0) - (b.yaw ?? 0)) < 0.01
-}
 
 const liveAreas = (areas?: readonly FactoryPreviewArea[]): AlgoVizArea[] | undefined => areas?.length
   ? areas.map(area => ({index: area.index, parentIndex: area.parentIndex, anchorX: area.anchorLocalOffset.x, anchorY: area.anchorLocalOffset.y, width: area.size.x, height: area.size.y}))
@@ -73,7 +56,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
   const phase = ref<AlgorithmPhase | null>(null)
   // 阶段事件高频到达：每帧只写一次响应式状态，清空时先取消挂起的写入，避免旧阶段回写
   const phaseWriter = createFrameCoalescer<AlgorithmPhase>(value => { phase.value = value })
-  const mirror = new Map<string, MirrorEntry>()
+  const mirror = new Map<string, AlgorithmMirrorEntry>()
   let liveTask = ''
   let liveComplete = false
   let liveWinner = ''
@@ -97,8 +80,10 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     getViz()?.enqueue({...options, operations})
   }
   const clearScene = (animate: boolean): void => {
+    // 大场景切换来源时直接复用实例池，避免给旧建筑再安排大量退场动画；当前蓝图的记录仍全部保留。
+    const transition = animate && mirror.size <= CHUNK
     mirror.clear()
-    getViz()?.reset({animate})
+    getViz()?.reset({animate: transition})
   }
 
   // =============== 实时差量 ===============
@@ -154,6 +139,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
         candidateSequences.clear()
         snapshots.clear()
         decodeVersion++
+        decoding.value = false
         source.value = 'live'
         return
       }
@@ -236,6 +222,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
         liveTask = event.taskId
         liveComplete = false
         decodeVersion++
+        decoding.value = false
         lastSourceKey = 'gen'
         clearScene(true)
       }
@@ -251,7 +238,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     }
     if (event.kind !== undefined && event.kind !== 'phase') return
     if (!event.message || !w.generating) return
-    phaseWriter.push({message: event.message, current: event.current, total: event.total})
+    phaseWriter.push({message: event.message, current: event.current, total: event.total, detail: event.detail})
     // 已收到本任务差量时，阶段标题由播放进度给出，避免与落后约 1 秒的画面不一致
     if (event.taskId === liveTask) return
     if (event.taskId !== phaseTask) {
@@ -265,7 +252,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
 
   // =============== 结果回放 ===============
   // 说明：解码当前蓝图，与镜像按记录下标比较；撤销先于替换，替换先于新增，新增按记录顺序（算法装配顺序）。
-  // 边界：导入蓝图与生成结果互不比较，切换来源时先清空舞台；超过对象上限时只展示前 ALGORITHM_VIZ_LIMIT 个建筑。
+  // 边界：导入蓝图与生成结果互不比较，切换来源时先清空舞台；全部建筑分批准备和提交，旧任务不能覆盖新结果。
   const groupsOf = (document: blueprint.Document): Map<number, number> => {
     const groups = new Map<number, number>()
     // 生成结果的产线归属：bindings 记录的是建筑数组下标，生成器保证其等于记录下标
@@ -289,6 +276,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     const code = w.code
     if (!getViz()) return
     if (!code) {
+      decoding.value = false
       if (liveV4 && liveTask && !w.replay) return
       if (mirror.size) clearScene(true)
       source.value = 'idle'
@@ -317,52 +305,36 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
       document = await decodeFactoryBlueprint(code, false)
     } catch (caught) {
       if (version === decodeVersion) notice.value = `蓝图解码失败，无法回放：${caught instanceof Error ? caught.message : String(caught)}`
-      return
-    } finally {
       if (version === decodeVersion) decoding.value = false
+      return
     }
-    if (version !== decodeVersion || code !== w.code || !getViz()) return
+    const isCurrent = (): boolean => version === decodeVersion && code === w.code && getViz() !== null
+    if (!isCurrent()) return
     const sourceKey = w.replay ? `import:${w.previewRevision}` : 'gen'
     if (sourceKey !== lastSourceKey) {
       if (mirror.size) clearScene(true)
       lastSourceKey = sourceKey
     }
-    const buildings = (document.buildings ?? []).slice(0, ALGORITHM_VIZ_LIMIT)
-    if ((document.buildings?.length ?? 0) > ALGORITHM_VIZ_LIMIT) notice.value = `建筑超过 ${ALGORITHM_VIZ_LIMIT} 个，仅展示前 ${ALGORITHM_VIZ_LIMIT} 个`
-    const groups = groupsOf(document)
-    const idOfIndex = new Map<number, string>()
-    for (const [id, entry] of mirror) if (entry.index !== undefined) idOfIndex.set(entry.index, id)
-    for (const building of buildings) if (!idOfIndex.has(building.index)) idOfIndex.set(building.index, `bp:${building.index}`)
-
-    const removes: AlgoVizOperation[] = []
-    const replaces: AlgoVizOperation[] = []
-    const adds: AlgoVizOperation[] = []
-    const seen = new Set<string>()
-    for (const record of buildings) {
-      const id = idOfIndex.get(record.index) as string
-      seen.add(id)
-      const building: AlgoVizBuilding = {
-        itemId: record.itemId, modelIndex: record.modelIndex, x: record.localOffset.x, y: record.localOffset.y, z: record.localOffset.z,
-        x2: record.localOffset2.x, y2: record.localOffset2.y, z2: record.localOffset2.z, yaw: record.yaw, areaIndex: record.areaIndex,
-        group: groups.get(record.index) ?? -1, temporary: false,
-        outputId: record.outputObjIdx >= 0 ? idOfIndex.get(record.outputObjIdx) : undefined, index: record.index,
+    try {
+      const buildings = document.buildings ?? []
+      const groups = groupsOf(document)
+      const diff = await prepareAlgorithmReplay(buildings, mirror, groups, isCurrent)
+      if (!diff) return
+      const {removes, replaces, adds} = diff
+      const viz = getViz()
+      if (!viz || removes.length + replaces.length + adds.length === 0) return
+      if (source.value !== 'live' || !liveComplete) source.value = 'replay'
+      const fresh = mirror.size === 0
+      viz.caption(fresh ? (w.replay ? '回放导入的蓝图' : '按装配顺序回放生成结果') : '比较新旧方案', fresh ? `${adds.length} 个建筑` : `撤下 ${removes.length} · 替换 ${replaces.length} · 新增 ${adds.length}`)
+      const areas = documentAreas(document.areas)
+      const operations = [...removes, ...replaces, ...adds]
+      const stage = fresh ? '逐个落位' : '应用方案差异'
+      for (let i = 0; i < operations.length; i += CHUNK) {
+        if (!isCurrent()) return
+        commit(operations.slice(i, i + CHUNK), {coordinates: 'area', areas, stage: i === 0 ? stage : undefined, pace: 'replay'})
+        await yieldAlgorithmReplay()
       }
-      const previous = mirror.get(id)
-      if (!previous) adds.push({type: 'add', id, building})
-      else if (!sameBuilding(previous.building, building)) replaces.push({type: 'replace', id, building})
-    }
-    for (const id of mirror.keys()) if (!seen.has(id)) removes.push({type: 'remove', id})
-    const viz = getViz()
-    if (!viz || removes.length + replaces.length + adds.length === 0) return
-    if (source.value !== 'live' || !liveComplete) source.value = 'replay'
-    const fresh = mirror.size === 0
-    viz.caption(fresh ? (w.replay ? '回放导入的蓝图' : '按装配顺序回放生成结果') : '比较新旧方案', fresh ? `${adds.length} 个建筑` : `撤下 ${removes.length} · 替换 ${replaces.length} · 新增 ${adds.length}`)
-    const areas = documentAreas(document.areas)
-    const operations = [...removes, ...replaces, ...adds]
-    const stage = fresh ? '逐个落位' : '应用方案差异'
-    for (let i = 0; i < operations.length; i += CHUNK) {
-      commit(operations.slice(i, i + CHUNK), {coordinates: 'area', areas, stage: i === 0 ? stage : undefined, pace: 'replay'})
-    }
+    } finally { if (version === decodeVersion) decoding.value = false }
   }
 
   // =============== 生命周期 ===============
@@ -381,6 +353,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     candidateSequences.clear()
     snapshots.clear()
     decodeVersion++
+    decoding.value = false
   }, {flush: 'sync'})
   watch(() => [w.previewRevision, w.code] as const, () => { void replay() })
   watch(() => w.generating, generating => {

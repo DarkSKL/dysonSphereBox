@@ -4,15 +4,21 @@ import type {FactoryGenerationProgress} from '../../../types/factory-progress'
 import {observeFactoryGeneration} from './factory-progress'
 
 // 职责：统一稳定错误码和大对象分片；使用：量化工作区；边界：不在浏览器重算配方或拼装蓝图。
+export interface FactoryFailure {
+  readonly code: string
+  readonly message: string
+  readonly suggestion?: string
+  readonly detail?: string
+}
 export class FactoryError extends Error {
-  constructor(readonly code: string, message: string) { super(message) }
+  constructor(readonly code: string, message: string, readonly suggestion?: string, readonly detail?: string) { super(message) }
 }
 const ready = (): void => {
   const bridge = window as Window & {go?: {factory?: {Service?: unknown}}}
   if (!bridge.go?.factory?.Service) throw new FactoryError('BRIDGE_UNAVAILABLE', '请在戴森球盒子桌面应用中使用量化计算器；单独打开网页没有本机计算服务。')
 }
-const unwrap = <T>(response: {code: string; message: string; data?: T | null}): T => {
-  if (response.code !== 'OK' || response.data == null) throw new FactoryError(response.code, response.message)
+const unwrap = <T>(response: FactoryFailure & {data?: T | null}): T => {
+  if (response.code !== 'OK' || response.data == null) throw new FactoryError(response.code, response.message, response.suggestion, response.detail)
   return response.data
 }
 // =============== 大对象与取消边界 ===============

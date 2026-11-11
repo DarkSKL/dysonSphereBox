@@ -1,9 +1,10 @@
-import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch, type UnwrapNestedRefs} from 'vue'
+import {computed, h, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch, type UnwrapNestedRefs} from 'vue'
 import {useDialog, useMessage} from 'naive-ui'
 import {useRoute, useRouter} from 'vue-router'
 import {build, factorycontract, quant} from '../../../wailsjs/go/models'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
-import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, renameFactoryBlueprint, solveFactory} from '../../pages/services/dysonSphere/factory'
+import {FactoryError, describeFactoryDataset, exportFactoryBlueprint, exportFactoryWorkspace, generateFactory, inspectFactoryBlueprint, listFactoryDatasets, renameFactoryBlueprint, solveFactory, type FactoryFailure} from '../../pages/services/dysonSphere/factory'
+import GenerationError from '../../components/dysonSphere/factory/generation-error.vue'
 import {enableGeneratedEnvironmentBlueprint, getEnvironmentBlueprintDetail, saveGeneratedEnvironmentBlueprint} from '../../pages/services/dysonSphere/environment'
 import {requestBlueprintLibrary} from '../../pages/services/dysonSphere/blueprint-navigation'
 import {createFrameCoalescer} from '../../utils/frame-coalescer'
@@ -66,7 +67,7 @@ export const useQuantWorkspace = () => {
   const progressWriter = createFrameCoalescer<string>(text => { generationProgress.value = text })
   const importing = ref(false)
   const saving = ref(false)
-  const error = ref<{code: string; message: string; source?: 'generation'} | null>(null)
+  const error = ref<(FactoryFailure & {source?: 'generation'}) | null>(null)
   const previewState = ref<PreviewState>('idle')
   const previewRevision = ref(0)
   const previewNotice = ref('')
@@ -139,10 +140,10 @@ export const useQuantWorkspace = () => {
   const updateWidth = (): void => { narrow.value = media?.matches ?? false }
   // 生成操作在长结果列表下方；失败时就地保留详情，并弹窗通知，缓存页失活后不再打断其它页面。
   const report = (caught: unknown, source?: 'generation'): void => {
-    const failure = caught instanceof FactoryError ? {code: caught.code, message: caught.message} : {code: 'REQUEST_FAILED', message: caught instanceof Error ? caught.message : String(caught)}
+    const failure: FactoryFailure = caught instanceof FactoryError ? {code: caught.code, message: caught.message, suggestion: caught.suggestion, detail: caught.detail} : {code: 'REQUEST_FAILED', message: caught instanceof Error ? caught.message : String(caught)}
     error.value = {...failure, source}
     if (source === 'generation' && active.value && !disposed) {
-      dialog.error({title: '蓝图生成失败', content: failure.message, positiveText: '知道了'})
+      dialog.error({title: '蓝图生成失败', content: () => h(GenerationError, {failure}), positiveText: '知道了'})
     }
   }
   const number = (value: number | undefined): string => (value ?? 0).toLocaleString('zh-CN', {maximumFractionDigits: effectiveFixedNum.value})
@@ -262,6 +263,8 @@ export const useQuantWorkspace = () => {
     const onProgress = (progress: FactoryGenerationProgress): void => {
         if (progress.taskId && progress.taskId !== generationTaskId.value) return
       if (disposed || generationObserver !== observer || signature !== generationSignature.value || plan.value?.planId !== source) return
+      // 预览差量只负责画面更新，不能覆盖真实算法阶段或把候选开始误显示成整次任务状态。
+      if (progress.kind && progress.kind !== 'phase' && progress.kind !== 'building-batch') return
       if (progress.kind === 'building-batch' && progress.previewBatch) {
         const moduleName = progress.previewBatch.module.name || '共享设施'
         progressWriter.push(`${progress.message} · ${moduleName} ${progress.current}/${progress.total}`)

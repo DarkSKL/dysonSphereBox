@@ -42,6 +42,8 @@ type Progress struct {
 	Stage string `json:"stage"`
 	// Message 职责：提供中文阶段描述；使用：状态栏展示；边界：不包含计数。
 	Message string `json:"message"`
+	// Detail 职责：保留阶段原始诊断；使用：界面展开或悬停查看候选失败原因；边界：不在状态栏铺开技术信息，不包含预览建筑数据。
+	Detail string `json:"detail,omitempty"`
 	// Current 职责：标记当前处理项；使用：和 Total 展示真实序号；边界：无计数阶段为零。
 	Current int `json:"current"`
 	// Total 职责：标记本阶段项数；使用：描述产线或连接数量；边界：不是整个生成流程的工作量。
@@ -91,7 +93,8 @@ func WithProgress(ctx context.Context, observer func(Progress)) context.Context 
 // reportProgress 职责：发布实际到达的工作阶段；使用：生成检查点；边界：取消后不再通知，未订阅时不影响生成。
 func reportProgress(ctx context.Context, stage, message string, current, total int) {
 	recordPerformanceStage(ctx, stage, total)
-	publishProgress(ctx, Progress{Kind: ProgressKindPhase, Stage: stage, Message: message, Current: current, Total: total})
+	text, detail := progressPresentation(stage, message)
+	publishProgress(ctx, Progress{Kind: ProgressKindPhase, Stage: stage, Message: text, Detail: detail, Current: current, Total: total})
 }
 
 // publishProgress 职责：统一补齐协议版本和序号后同步通知观察者；使用：阶段与预览事件；边界：取消或未订阅时静默跳过。

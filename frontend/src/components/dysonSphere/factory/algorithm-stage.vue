@@ -6,7 +6,7 @@ import basisTranscoderWasm from 'three/examples/jsm/libs/basis/basis_transcoder.
 import {ALGORITHM_VIZ_MODEL_KEYS, createAlgorithmViz, type AlgorithmVizController, type AlgoVizBuilding, type AlgoVizProgress, type AlgoVizSelection} from '../../../packages/algorithm-viz/src'
 import {recordAlgorithmActivity, resetAlgorithmActivity} from '../../../composables/dysonSphere/useAlgorithmActivity'
 import {useThemeMode} from '../../../composables/useThemeMode'
-import {ALGORITHM_VIZ_LIMIT, algorithmFollow, algorithmFollowKey, useAlgorithmFeed} from '../../../composables/dysonSphere/useAlgorithmFeed'
+import {algorithmFollow, algorithmFollowKey, useAlgorithmFeed} from '../../../composables/dysonSphere/useAlgorithmFeed'
 import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
 
 const props = defineProps<{w: QuantWorkspace; active: boolean}>()
@@ -75,7 +75,6 @@ onMounted(async () => {
     maskUrls,
     transcoderUrls: {js: basisTranscoderJs, wasm: basisTranscoderWasm},
     speed: speed.value,
-    maxObjects: ALGORITHM_VIZ_LIMIT,
     viewPaddingTop: 64,
     describe,
     onProgress: value => { progress.value = value; recordAlgorithmActivity(value) },
@@ -169,7 +168,7 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
         <n-tooltip placement="bottom-start"><template #trigger><span class="algo-source" :class="`is-${decoding ? 'busy' : feedSource}`"><i />{{ sourceLabel }}</span></template>{{ sourceHint }}</n-tooltip>
       </div>
       <!-- 算法实时阶段：直接取自生成过程的阶段事件，与画面播放进度无关；生成结束后隐藏 -->
-      <p v-if="phaseText" class="algo-phase" role="status" aria-live="polite"><i aria-hidden="true" />{{ phaseText }}</p>
+      <p v-if="phaseText" class="algo-phase" :title="phase?.detail" role="status" aria-live="polite"><i aria-hidden="true" />{{ phaseText }}</p>
     </div>
 
     <!-- 右上：算法、播放与视角控制 -->

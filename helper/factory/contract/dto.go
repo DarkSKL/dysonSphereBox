@@ -12,8 +12,12 @@ import (
 type Status struct {
 	// Code 职责：保存OK 或稳定错误码；使用：类型化传递；边界：不隐式访问文件。
 	Code string `json:"code"`
-	// Message 职责：保存中文诊断；使用：类型化传递；边界：不隐式访问文件。
+	// Message 职责：保存简短中文原因；使用：界面正文；边界：技术诊断另放Detail，不隐式访问文件。
 	Message string `json:"message"`
+	// Suggestion 职责：提供用户可执行的处理建议；使用：失败提示正文；边界：建议不表示更换设置必然成功。
+	Suggestion string `json:"suggestion,omitempty"`
+	// Detail 职责：保留原始引擎诊断；使用：用户展开技术详情及反馈；边界：不替代简短正文或在界面默认铺开。
+	Detail string `json:"detail,omitempty"`
 }
 
 // DatasetDetail 职责：承载桥接边界；使用：生成器服务；边界：具体验证由服务执行。

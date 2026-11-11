@@ -26,6 +26,7 @@ declare module 'vue' {
     DysonSphereFactoryFactoryNode: typeof import('./components/dysonSphere/factory/factory-node.vue')['default']
     DysonSphereFactoryFlowCanvas: typeof import('./components/dysonSphere/factory/flow-canvas.vue')['default']
     DysonSphereFactoryFlowEdge: typeof import('./components/dysonSphere/factory/flow-edge.vue')['default']
+    DysonSphereFactoryGenerationError: typeof import('./components/dysonSphere/factory/generation-error.vue')['default']
     DysonSphereFactoryIconSelect: typeof import('./components/dysonSphere/factory/icon-select.vue')['default']
     DysonSphereFactoryInspectorPanel: typeof import('./components/dysonSphere/factory/inspector-panel.vue')['default']
     DysonSphereFactoryItemIcon: typeof import('./components/dysonSphere/factory/item-icon.vue')['default']

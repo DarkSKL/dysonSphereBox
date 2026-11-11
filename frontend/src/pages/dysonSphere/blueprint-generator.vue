@@ -4,6 +4,7 @@ import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw,
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import AlgorithmHeatmap from '../../components/dysonSphere/factory/algorithm-heatmap.vue'
 import AlgorithmStage from '../../components/dysonSphere/factory/algorithm-stage.vue'
+import GenerationError from '../../components/dysonSphere/factory/generation-error.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
 import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
@@ -78,7 +79,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <n-button size="small" quaternary aria-label="导出方案" :title="'导出方案'" :disabled="!w.plan || w.quantStale || w.solving || w.generating" :loading="w.saving" @click="w.exportWorkspace"><template #icon><FileJson :size="14" /></template>导出方案</n-button>
       </div>
     </header>
-    <n-alert v-if="w.error" type="error" closable class="bench-alert" @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
+    <n-alert v-if="w.error" type="error" closable class="bench-alert" @close="w.error = null"><GenerationError :failure="w.error" /></n-alert>
 
     <!-- ~ 上层：网格节点图 -->
     <div class="bench-graph">
