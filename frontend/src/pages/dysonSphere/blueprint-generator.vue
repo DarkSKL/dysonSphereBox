@@ -9,6 +9,7 @@ import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel
 import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
 import {useQuantWorkspace, type FactoryPreviewApi, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
 import {useBlueprintPreviewFeed} from '../../composables/dysonSphere/useBlueprintPreviewFeed'
+import {useBlueprintPreviewTabs, type PreviewTab} from '../../composables/dysonSphere/useBlueprintPreviewTabs'
 import {generationDebugOptions} from '../../composables/dysonSphere/useGenerationTimeline'
 import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
 
@@ -85,13 +86,10 @@ const selectedData = computed(() => {
 })
 
 // =============== 预览标签页 ===============
-// 说明：下层卡片在「蓝图预览」与「算法可视化」间切换；切走时预览只隐藏不卸载，避免重建 WebGL 视图。
-// 算法可视化在首次切换时挂载，之后同样只隐藏，渲染循环随容器不可见自动暂停。
-type PreviewTab = 'preview' | 'algorithm'
-const previewTabs: {key: PreviewTab, label: string}[] = [{key: 'preview', label: '蓝图预览'}, {key: 'algorithm', label: '算法可视化'}]
-const previewTab = ref<PreviewTab>('preview')
-const algorithmMounted = ref(false)
-watch(previewTab, tab => { if (tab === 'algorithm') algorithmMounted.value = true })
+// 说明：标签状态与切换命令集中在 useBlueprintPreviewTabs；数据层收到候选数据时会命令切到算法可视化。
+// 切走时预览只隐藏不卸载，避免重建 WebGL 视图；算法可视化在首次切换时挂载，之后同样只隐藏。
+const {tab: previewTab, algorithmMounted, previewTabs, showPreviewTab, showAlgorithmTab} = useBlueprintPreviewTabs()
+const showTab = (key: PreviewTab): void => { if (key === 'preview') showPreviewTab(); else showAlgorithmTab() }
 
 // =============== 上下分栏 ===============
 // 说明：拖动分隔条调整网格与预览高度，比例限制在 30%–80%；双击分隔条恢复默认。
@@ -150,7 +148,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
     <section class="bench-preview" aria-label="蓝图预览">
       <header class="preview-bar">
         <div class="preview-tabs" role="tablist" aria-label="预览视图">
-          <button v-for="tab in previewTabs" :id="`preview-tab-${tab.key}`" :key="tab.key" type="button" role="tab" class="preview-tab" :class="{'is-active': previewTab === tab.key}" :aria-selected="previewTab === tab.key" :aria-controls="`preview-panel-${tab.key}`" @click="previewTab = tab.key">{{ tab.label }}</button>
+          <button v-for="tab in previewTabs" :id="`preview-tab-${tab.key}`" :key="tab.key" type="button" role="tab" class="preview-tab" :class="{'is-active': previewTab === tab.key}" :aria-selected="previewTab === tab.key" :aria-controls="`preview-panel-${tab.key}`" @click="showTab(tab.key)">{{ tab.label }}</button>
         </div>
         <span class="bar-divider" aria-hidden="true" />
         <!-- 算法活动热力图：仅在「算法可视化」下显示，占满标签右侧到操作区之间的空间 -->

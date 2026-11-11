@@ -66,6 +66,12 @@ interface PreviewSnapshot {
 let previewSnapshot: PreviewSnapshot | null = null
 // commitPreview 成功后正式场景已替换为新蓝图，code 变化触发的全量重载应跳过，避免闪白与多余加载遮罩
 let skipNextCodeReload = false
+// =============== 量差动画提交闸门 ===============
+// 说明：量差动画播放期间到达的 commitPreview（完整蓝图）先缓存，等预览转发层在动画收尾时调用 finishPreviewReplay 再原子提交；
+//       动画期间到达的 code 变化同理跳过，避免整份蓝图提前覆盖动画画面。
+// 边界：没有播放过差量时 commitPreview 立即提交，行为与之前一致；beginPreview / discardPreview / 释放实例都会清空缓存。
+let replayingDeltas = false
+let pendingCommitBlueprint: string | null = null
 // 说明：把正式场景切回空白蓝图；返回是否成功，失败已上报 PREVIEW_E_CLEAR。
 // 边界：调用方在返回 false 时不得继续 beginPreview 或写选中态。
 const loadBlankBlueprint = (): boolean => {
@@ -171,6 +177,9 @@ const setRenderSettings = (showRealModels: boolean, maxInstancesPerModel: number
 //       beginPreview 前保存并清空旧正式场景；commitPreview 后丢弃快照；discardPreview 恢复旧场景。
 const beginPreview = (): void => {
   if (!viewer.value) return
+  // 新一轮量差动画：清空上一轮缓存的待提交蓝图与动画标记
+  replayingDeltas = false
+  pendingCommitBlueprint = null
   // 保存旧蓝图快照（编码 + 建筑数），供 discardPreview 恢复
   previewSnapshot = {code: props.code, buildingCount: buildingCount.value}
   // 清空正式场景：库的 beginPreview 保留旧场景，这里用空白蓝图清场，避免与预览层叠加
@@ -188,9 +197,13 @@ const applyPreviewDelta = (event: unknown): boolean => {
   const value = event as {candidateId?: unknown; protocolVersion?: unknown} | null
   if (value && (value.candidateId !== undefined || value.protocolVersion === 4)) return true
   // 后端 FactoryGenerationProgress 与库 PreviewDeltaEvent 结构兼容，协议层已校验 kind/protocolVersion/operations，这里直接透传。
-  return withAppThemeIsolation(() => viewer.value?.applyPreviewDelta(event as Parameters<typeof viewer.value.applyPreviewDelta>[0]) ?? false)
+  const applied = withAppThemeIsolation(() => viewer.value?.applyPreviewDelta(event as Parameters<typeof viewer.value.applyPreviewDelta>[0]) ?? false)
+  // 差量已被接受：标记量差动画进行中，后续到达的完整蓝图要缓存到动画收尾
+  if (applied) replayingDeltas = true
+  return applied
 }
-const commitPreview = (blueprint: string): unknown => {
+// 完整蓝图原子替换：成功后正式场景即新蓝图，跳过 code 变化触发的全量重载
+const commitBlueprint = (blueprint: string): unknown => {
   const outcome = withAppThemeIsolation(() => viewer.value?.commitPreview(blueprint))
   const ok = outcome && typeof outcome === 'object' && 'ok' in outcome && outcome.ok === true
   if (ok) {
@@ -204,8 +217,29 @@ const commitPreview = (blueprint: string): unknown => {
   // commit 失败：不设跳过标记，code 变化会触发全量重载作为兜底
   return outcome
 }
+const commitPreview = (blueprint: string): unknown => {
+  // 量差动画仍在播放：只缓存完整蓝图，等 finishPreviewReplay 在动画播完后提交，避免整份蓝图提前覆盖动画
+  if (replayingDeltas) {
+    pendingCommitBlueprint = blueprint
+    skipNextCodeReload = true
+    return {ok: true}
+  }
+  return commitBlueprint(blueprint)
+}
+// 量差动画收尾：预览转发层在重放结束（含被打断）时调用，此刻才加载动画期间缓存的完整蓝图
+const finishPreviewReplay = (): void => {
+  replayingDeltas = false
+  const blueprint = pendingCommitBlueprint
+  pendingCommitBlueprint = null
+  if (blueprint !== null) commitBlueprint(blueprint)
+  // 动画期间的 code 变化已在 watch 中跳过，这里清掉跳过标记，保证后续导入等加载照常执行
+  skipNextCodeReload = false
+}
 const discardPreview = (): void => {
   withAppThemeIsolation(() => viewer.value?.discardPreview())
+  // 丢弃待提交的完整蓝图与动画标记，避免悬挂状态吞掉下一次 code 变化
+  replayingDeltas = false
+  pendingCommitBlueprint = null
   // 恢复旧蓝图快照：重新加载旧编码（无编码时回退空白蓝图）、还原建筑数与选中态
   const snapshot = previewSnapshot
   previewSnapshot = null
@@ -222,7 +256,7 @@ const isReady = (): boolean => viewer.value !== null
 const getPreviewing = (): boolean => viewer.value?.previewing ?? false
 const getPreviewStats = () => withAppThemeIsolation(() => viewer.value?.previewStats() ?? null)
 // 暴露 API
-defineExpose({selectBuildings, focusBuilding, resetCamera, captureImage, setRenderSettings, beginPreview, applyPreviewDelta, commitPreview, discardPreview, isReady, getPreviewing, getPreviewStats})
+defineExpose({selectBuildings, focusBuilding, resetCamera, captureImage, setRenderSettings, beginPreview, applyPreviewDelta, commitPreview, finishPreviewReplay, discardPreview, isReady, getPreviewing, getPreviewStats})
 
 // 释放预览器实例
 const releaseViewerInstance = (): void => {
@@ -250,6 +284,8 @@ const disposeViewer = (): void => {
   releaseHost = null
   previewSnapshot = null
   skipNextCodeReload = false
+  replayingDeltas = false
+  pendingCommitBlueprint = null
   isLoadingViewer.value = false
 }
 
@@ -381,8 +417,9 @@ watch(() => props.focusRevision, focusRequestedBuilding)
 
 watch(() => [props.code, props.revision], () => {
   if (!props.code) { disposeViewer(); buildingCount.value = 0; return }
-  // commitPreview 成功后正式场景已替换为新蓝图，跳过此次全量重载，避免闪白与加载遮罩
-  if (skipNextCodeReload) { skipNextCodeReload = false; return }
+  // commitPreview 成功后正式场景已替换为新蓝图，跳过此次全量重载，避免闪白与加载遮罩；
+  // 量差动画播放期间同理：完整蓝图已缓存，等 finishPreviewReplay 在动画收尾时替换场景。
+  if (skipNextCodeReload || replayingDeltas) { skipNextCodeReload = false; return }
   void loadCurrentBlueprint()
 })
 

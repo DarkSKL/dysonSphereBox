@@ -1,26 +1,27 @@
-import {onBeforeUnmount, reactive, watch} from 'vue'
-import {observeFactoryGenerationEvents} from '../../pages/services/dysonSphere/factory-progress'
-import type {FactoryGenerationProgress, FactoryPreviewOperation} from '../../types/factory-progress'
-import type {QuantWorkspace} from './useQuantWorkspace'
+import { onBeforeUnmount, reactive, watch } from 'vue'
+import { observeFactoryGenerationEvents } from '../../pages/services/dysonSphere/factory-progress'
+import type { FactoryGenerationProgress, FactoryPreviewOperation } from '../../types/factory-progress'
+import type { QuantWorkspace } from './useQuantWorkspace'
+import { showAlgorithmTab } from './useBlueprintPreviewTabs'
 
-// =============== 蓝图单候选转发层 ===============
-// 职责：把生成事件流按协议版本分发为单场景差量；只跟踪候选1，重写对象身份后喂给 viewer。
+// =============== 蓝图候选缓存分发层 ===============
+// 职责：全量缓存生成期间的所有候选差量；在 preview-complete 时根据 winnerCandidateId 取出对应数据，
+//       重写对象身份后全量下发（Replay）给 viewer，发送完成后清理缓存。
 // 使用：量化与蓝图页面在 setup 中调用，退订随组件卸载；返回的状态供调试侧栏观测。
-// 边界：v3 是多候选共用同一通知器的合并流（每个候选依次全量替换），一律不转发；
-//       不消费 preview-snapshot 分块与 preview-complete 的正式数据（算法可视化的职责）；
-//       不切换候选，不参与生成成败；最终画面始终由 useQuantWorkspace 的 commitPreview 决定。
+// 边界：v3 不参与；不消费 preview-snapshot 分块；最终画面仍由 commitPreview 提交，但推迟到本层重放动画结束后执行。
 
-/** 转发目标：viewer-panel 参与增量预览所需的最小动作 */
 export interface BlueprintPreviewTarget {
   applyPreviewDelta(event: FactoryGenerationProgress): boolean
   discardPreview(): void
   isReady(): boolean
+  /** 量差动画收尾（播放完毕或被中断）；预览层在此刻才加载动画期间缓存的完整蓝图。 */
+  finishPreviewReplay?(): void
   getPreviewStats?(): unknown
 }
 
-type FeedPhase = 'idle' | 'tracking' | 'wait-result'
+// 注意这里扩充了 'buffering' 和 'replaying'，兼容旧代码的 'tracking' 等
+export type FeedPhase = 'idle' | 'tracking' | 'wait-result' | 'buffering' | 'replaying'
 
-/** 渲染侧计数：来自预览库 previewStats()，仅用于调试核对。 */
 export interface BlueprintPreviewStats {
   events?: number
   operations?: number
@@ -35,49 +36,45 @@ export interface BlueprintPreviewStats {
   coordinateSystem?: string | null
 }
 
-/** 调试状态：转发层当前阶段与最近一次渲染计数。 */
+// 完美保留旧 UI 所需字段，同时增加缓存池所需的字段
 export interface BlueprintPreviewFeedState {
   phase: FeedPhase
-  /** 固定跟踪的候选序号：蓝图只渲染候选1。 */
-  target: number
-  tracked: string
-  expected: number
+  /** 旧字段：应用计数（重放阶段会批量增加） */
   applied: number
+  /** 旧字段：放弃计数 */
   discarded: number
+  /** 旧字段：最后应用时间 */
   lastAppliedAt: number
+  
+  /** 新增字段：当前选中的候选 ID（重放阶段使用） */
+  activeCandidateId: string
+  /** 新增字段：缓存池中的候选列表 */
+  cachedCandidates: string[]
+  /** 新增字段：缓存的事件总数 */
+  cachedEventsCount: number
+  
   stats: BlueprintPreviewStats | null
 }
 
-/** 转发层对外句柄：状态给调试侧栏，refreshStats 用于手动刷新渲染计数。 */
 export interface BlueprintPreviewFeed {
   state: BlueprintPreviewFeedState
   refreshStats(): void
 }
 
-/** 跟踪候选序号：蓝图预览固定只渲染候选 1，不随差量到达顺序变化。 */
-const TARGET_ORDINAL = 1
-
-/** 从候选身份解析序号；后端身份形如 candidate-3，序号与 candidateOrdinal 同源。 */
-const ordinalOf = (candidateId: string | undefined): number => {
-  const value = Number((candidateId ?? '').replace(/^candidate-/, ''))
-  return Number.isFinite(value) ? value : 0
-}
-
-const isTargetCandidate = (event: FactoryGenerationProgress): boolean => (event.candidateOrdinal || ordinalOf(event.candidateId)) === TARGET_ORDINAL
-
-/** 跟踪候选长时间没有新差量（或迟迟没有正式结果）时放弃过程预览，等待 generate 收尾的 commitPreview 原子替换。 */
-const TRACK_TIMEOUT = 5 * 60 * 1000
-
-/** 重写操作的 objectId 并同步内部引用，保证单场景内跨候选不撞名。 */
+/** 重写操作的 objectId 并同步内部引用 */
 const rewriteOperation = (prefix: string, operation: FactoryPreviewOperation): FactoryPreviewOperation => {
   const objectId = prefix + operation.objectId
-  if (operation.type === 'remove') return {type: 'remove', objectId}
+  if (operation.type === 'remove') return { type: 'remove', objectId }
   const building = operation.building
   const reference = (value: string | undefined): string | undefined => (value ? prefix + value : value)
-  return {type: operation.type, objectId, building: {...building, inputObjectId: reference(building.inputObjectId), outputObjectId: reference(building.outputObjectId)}}
+  return { 
+    type: operation.type, 
+    objectId, 
+    building: { ...building, inputObjectId: reference(building.inputObjectId), outputObjectId: reference(building.outputObjectId) } 
+  }
 }
 
-/** 剥离候选维度，只保留单场景 viewer 需要的差量字段；保留全局 sequence 供预览库做重复事件去重。 */
+/** 剥离候选维度，保留单场景 viewer 需要的差量字段 */
 const singleSceneDelta = (candidateId: string, event: FactoryGenerationProgress): FactoryGenerationProgress => {
   const prefix = `${candidateId}:`
   return {
@@ -95,105 +92,182 @@ const singleSceneDelta = (candidateId: string, event: FactoryGenerationProgress)
 }
 
 export const useBlueprintPreviewFeed = (w: QuantWorkspace, target: () => BlueprintPreviewTarget | null): BlueprintPreviewFeed => {
-  const state = reactive<BlueprintPreviewFeedState>({phase: 'idle', target: TARGET_ORDINAL, tracked: '', expected: 0, applied: 0, discarded: 0, lastAppliedAt: 0, stats: null})
+  // 初始化 state，补齐旧 UI 需要的基础字段
+  const state = reactive<BlueprintPreviewFeedState>({
+    phase: 'idle', 
+    applied: 0, 
+    discarded: 0, 
+    lastAppliedAt: 0, 
+    
+    activeCandidateId: '',
+    cachedCandidates: [],
+    cachedEventsCount: 0,
+    
+    stats: null
+  })
+
+  // 缓存池：候选 ID -> 该候选的差量事件数组
+  const cachePool = new Map<string, FactoryGenerationProgress[]>()
   let phase: FeedPhase = 'idle'
-  let tracked = ''
-  let expected = 0
-  let timer: number | undefined
+
+  // 新增：用于打断异步重放的令牌。每次 reset 或重新开始重放时自增。
+  let replayGeneration = 0
+  // 每轮生成只自动切一次算法可视化；用户切回蓝图预览后不再被后续数据夺回。
+  let autoSwitched = false
+
   const viewer = (): BlueprintPreviewTarget | null => {
     const value = target()
     return value && value.isReady() ? value : null
   }
-  // 调试：拉取预览库的摄入计数（未知对象删除/替换、被节流过滤等），用于核对 ID 重写与镜像连续性。
-  // 只在预览仍在进行时覆盖；commit 后预览层被清空，保留最后一次计数供事后核对。
+
   const refreshStats = (): void => {
     try {
       const value = (target()?.getPreviewStats?.() ?? null) as BlueprintPreviewStats | null
       if (value) state.stats = value
     } catch { /* 预览层已释放 */ }
   }
-  const sync = (): void => {
+
+  const syncState = (): void => {
     state.phase = phase
-    state.tracked = tracked
-    state.expected = expected
+    state.cachedCandidates = Array.from(cachePool.keys())
+    state.cachedEventsCount = Array.from(cachePool.values()).reduce((acc, list) => acc + list.length, 0)
   }
-  const stopTimer = (): void => {
-    if (timer !== undefined) window.clearTimeout(timer)
-    timer = undefined
-  }
+
   const reset = (): void => {
-    stopTimer()
+    replayGeneration++ // 打断当前正在执行的异步循环
+    autoSwitched = false
+    // 动画被打断时也让预览层收尾（提交已缓存的完整蓝图），避免悬挂的待提交状态吞掉后续 code 变化
+    viewer()?.finishPreviewReplay?.()
     phase = 'idle'
-    tracked = ''
-    expected = 0
-    state.stats = null
+    state.activeCandidateId = ''
+    cachePool.clear()
     state.applied = 0
-    state.discarded = 0
     state.lastAppliedAt = 0
-    sync()
+    state.stats = null
+    syncState()
   }
-  const wait = (): void => {
-    stopTimer()
-    phase = 'wait-result'
-    tracked = ''
-    expected = 0
-    sync()
-  }
-  const abandon = (): void => {
-    try { viewer()?.discardPreview() } catch { /* 预览层已释放 */ }
-    state.discarded++
-    wait()
-    refreshStats()
-  }
-  const arm = (): void => {
-    stopTimer()
-    timer = window.setTimeout(() => { if (phase === 'tracking') wait() }, TRACK_TIMEOUT)
-  }
-  // 只转发固定候选的 v4 差量；v3 是多候选共享单场景的合并流，一律不渲染。
-  const applyDelta = (event: FactoryGenerationProgress): void => {
+
+  /** 核心：将选中的候选数据全量下发给 Viewer */
+/** 核心：将选中的候选数据全量下发给 Viewer（每个差量延迟 100ms） */
+  const flushToViewer = async (candidateId: string): Promise<void> => {
     const panel = viewer()
-    if (!panel || !event.operations?.length) return
-    if (event.protocolVersion !== 4 || !isTargetCandidate(event)) return
-    if (phase === 'wait-result') return
-    const sequence = event.candidateSequence ?? 0
-    if (!sequence) return
-    if (phase === 'idle') {
-      // 自举：候选1 的首条差量决定起点；序号从该候选自身序列接续（通常为 2，1 被 candidate-start 占用）。
-      tracked = event.candidateId ?? ''
-      expected = sequence + 1
-      phase = 'tracking'
-    } else if (sequence !== expected) {
-      // 断流：临时层已缺对象，继续接收会让 remove 指向不存在的对象；直接放弃过程预览。
-      abandon()
+    const events = cachePool.get(candidateId)
+    
+    if (!panel || !events || events.length === 0) {
+      reset()
       return
-    } else {
-      expected++
     }
-    if (panel.applyPreviewDelta(singleSceneDelta(tracked, event))) {
-      state.applied++
-      state.lastAppliedAt = Date.now()
-      arm()
+
+    const currentGen = ++replayGeneration
+    phase = 'replaying'
+    state.activeCandidateId = candidateId
+    syncState()
+
+    // 1. 按顺序重写并应用全量事件，每个间隔 100ms
+    for (let i = 0; i < events.length; i++) {
+      // 在每次循环前检查令牌，如果被 reset 或被新任务覆盖则直接退出
+      if (currentGen !== replayGeneration) return
+      
+      // 检查 viewer 是否依然就绪（防止中途切走页面或销毁）
+      const currentPanel = viewer()
+      if (!currentPanel) break
+
+      const event = events[i]
+      if (currentPanel.applyPreviewDelta(singleSceneDelta(candidateId, event))) {
+        state.applied++
+        state.lastAppliedAt = Date.now()
+      }
+
+      // 如果这不是最后一个事件，等待 100ms 再执行下一个
+      if (i < events.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
     }
-    sync()
-    refreshStats()
+
+    // 2. 重放完成后，确认没有被外部打断，再通知预览层收尾并清理
+    if (currentGen === replayGeneration) {
+      // 量差动画已播完：此刻才让预览层加载动画期间缓存的完整蓝图，避免整份蓝图提前覆盖动画画面
+      viewer()?.finishPreviewReplay?.()
+      refreshStats()
+      cachePool.clear()
+      
+      phase = 'idle'
+      state.activeCandidateId = ''
+      syncState()
+    }
   }
+
   const onEvent = (event: FactoryGenerationProgress): void => {
-    // 本地事件由订阅封装派发，不含协议版本；incomplete 终止不完整过程，end 表示不会再有过程事件。
-    if (event.stage === 'preview-stream-incomplete') { abandon(); return }
-    if (event.stage === 'preview-stream-end') { if (phase === 'tracking') wait(); return }
     if (event.protocolVersion !== 4) return
-    if (event.kind === 'search-start') { reset(); return }
-    if (event.kind === 'candidate-finish') {
-      if (isTargetCandidate(event) && event.candidateStatus !== 'valid') abandon()
+
+    // 1. 任务开始，重置状态并进入缓冲
+    if (event.kind === 'search-start') {
+      reset()
+      phase = 'buffering'
+      syncState()
       return
     }
-    if (event.kind === 'preview-complete') { wait(); return }
-    if (event.kind === 'search-failed') { reset(); return }
-    // candidate-plan / candidate-start 不参与自举：蓝图固定跟候选1，其余候选的事件一律丢弃。
-    if (event.kind === 'preview-delta') applyDelta(event)
+
+    if (event.kind === 'search-failed') {
+      reset()
+      return
+    }
+
+    // 2. 持续写入缓存
+    if (event.kind === 'preview-delta' && event.operations?.length && phase === 'buffering') {
+      const cid = event.candidateId ?? 'unknown'
+
+      // 收到候选数据：命令切到算法可视化，方便跟随生成过程；切回蓝图预览保留标签上的手动入口。
+      if (!autoSwitched) {
+        autoSwitched = true
+        showAlgorithmTab()
+      }
+
+      if (!cachePool.has(cid)) {
+        cachePool.set(cid, [])
+      }
+      cachePool.get(cid)!.push(event)
+      syncState()
+      return
+    }
+
+    // 3. 完成：根据 winnerCandidateId 触发重放
+    if (event.kind === 'preview-complete') {
+      const winnerId = (event as any).winnerCandidateId as string | undefined
+      if (winnerId) {
+        // 异步执行，不阻塞事件循环
+        void flushToViewer(winnerId)
+      } else {
+        reset()
+      }
+      return
+    }
+
+    // 兜底：处理中断
+    if (event.stage === 'preview-stream-incomplete') {
+      state.discarded++ 
+      reset()
+      return
+    }
+    if (event.stage === 'preview-stream-end') {
+      if (phase === 'buffering') {
+        phase = 'idle'
+        syncState()
+      }
+      return
+    }
   }
+
   const stop = observeFactoryGenerationEvents(onEvent, () => true, () => w.generationTaskId)
-  watch(() => w.generationTaskId, reset, {flush: 'sync'})
-  onBeforeUnmount(() => { stop(); stopTimer() })
-  return {state, refreshStats}
+  
+  watch(() => w.generationTaskId, reset, { flush: 'sync' })
+  
+  onBeforeUnmount(() => { 
+    stop() 
+  })
+
+  return {
+    state,
+    refreshStats
+  }
 }

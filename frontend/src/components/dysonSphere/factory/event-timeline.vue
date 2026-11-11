@@ -15,7 +15,11 @@ const testActive = ref(false)
 const props = defineProps<{canGenerate: boolean; generating: boolean; feed: BlueprintPreviewFeed}>()
 const emit = defineEmits<{generate: []}>()
 // 调试：转发层阶段的中文标签；未跟踪候选时显示"—"。
-const phaseLabels: Record<BlueprintPreviewFeedState['phase'], string> = {'idle': '等待首个差量', 'tracking': '跟踪单候选', 'wait-result': '等待正式结果'}
+const phaseLabels: Record<BlueprintPreviewFeedState['phase'], string> = {
+  'idle': '等待首个差量', 'tracking': '跟踪单候选', 'wait-result': '等待正式结果',
+  buffering: '',
+  replaying: ''
+}
 const phaseText = computed(() => phaseLabels[props.feed.state.phase] ?? props.feed.state.phase)
 
 // =============== 差量采集入口 ===============
@@ -111,14 +115,11 @@ const saveDetail = (): void => {
       <small v-else-if="testActive && !deltaCount && entries.length && !generating">本次未收到 preview-delta，可切换查看全部事件定位阶段</small>
     </div>
 
-    <!-- 转发层观测：阶段、跟踪候选、序号推进，以及预览库的摄入计数（未知对象删除/替换是 ID 重写的直接判据） -->
+    <!-- 转发层观测：阶段、应用计数，以及预览库的摄入计数（未知对象删除/替换是 ID 重写的直接判据） -->
     <div v-if="!collapsed" class="timeline-feed">
       <div class="feed-head"><span>预览转发</span><n-button size="tiny" quaternary @click="feed.refreshStats()">刷新计数</n-button></div>
       <dl class="feed-grid type-mono">
         <dt>阶段</dt><dd>{{ phaseText }}</dd>
-        <dt>目标</dt><dd>candidate-{{ feed.state.target }}</dd>
-        <dt>已跟踪</dt><dd>{{ feed.state.tracked || '—' }}</dd>
-        <dt>下一序号</dt><dd>{{ feed.state.expected || '—' }}</dd>
         <dt>应用/放弃</dt><dd>{{ feed.state.applied }} / {{ feed.state.discarded }}</dd>
         <template v-if="feed.state.stats">
           <dt>摄入</dt><dd>事件 {{ feed.state.stats.events ?? 0 }} · 操作 {{ feed.state.stats.operations ?? 0 }} · 存活 {{ feed.state.stats.alive ?? 0 }}</dd>
