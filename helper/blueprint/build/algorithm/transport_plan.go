@@ -49,7 +49,17 @@ type transportRoute struct {
 	// sharedPath 职责：记录同一产物各份额在分支前共用的干线；使用：聚合共享带容量；边界：不同产物不共用机器输出带，也不作为单条lane的端到端路径。
 	sharedPath []*placed
 	start, end *placed
-	boundary   *placed
+	// routingEntry 职责：在边界固定前缀末端开始全局搜索；使用：原料直入短带；边界：start 和 boundary 仍保留唯一真实外供头，不改规范容量身份。
+	routingEntry *placed
+	boundary     *placed
+}
+
+// transportSource 职责：取得真实全局接线起点；使用：几何寻路及提交；边界：没有固定前缀时保持原来的 start，容量和外部接口仍读取 start/boundary。
+func (route *transportRoute) transportSource() *placed {
+	if route.routingEntry != nil {
+		return route.routingEntry
+	}
+	return route.start
 }
 
 // rowFlow 职责：记录某机器行尚未分配的物料；使用：稳定贪心配对；边界：只消耗当前规范节点内的供需。

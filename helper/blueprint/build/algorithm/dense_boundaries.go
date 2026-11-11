@@ -17,8 +17,23 @@ func denseExternalStep(route *transportRoute) vector {
 	return route.entryDirection
 }
 
-// denseInputPositions 职责：在西侧边界搜索与消费者齐平的独立输入口；使用：密铺空间固定后；边界：有副产物时保留已验证的同侧回收接口，端口至少相距两格。
+// denseInputPositions 职责：按真实消费者生成西侧入口草案；使用：密铺空间固定后；边界：直连模式交给联合三层规划分配独立槽，其它模式保留既有两格入口搜索。
 func (b *builder) denseInputPositions(low, high vector) []vector {
+	if b.adapter != nil && b.adapter.mode == 1 {
+		positions := []vector{}
+		for _, route := range b.transportRoutes {
+			if route.from != nil {
+				continue
+			}
+			point := vector{math.Floor(low.x) - 5, low.y, 0}
+			if route.end != nil {
+				point.y = route.end.a.y
+			}
+			route.entryDirection = vector{x: 1}
+			positions = append(positions, point)
+		}
+		return positions
+	}
 	fallback := func() []vector {
 		for _, route := range b.transportRoutes {
 			route.entryDirection = vector{}
@@ -69,20 +84,14 @@ func (b *builder) denseInputPositions(low, high vector) []vector {
 	return positions
 }
 
-// fitDenseInputHeight 职责：外供口超过实际球面或窄环高度时在左侧分层接入，保留地面副产物出口。
-// 使用：原料位置已规划、实体尚未创建；边界：原生候选使用实际frame局部区间，不合并物料或改变份额、带等级及内部目标。
-// 逻辑流：1. 原生直连按最终交付组预留地面槽并重排原料 => 2. 其它原生球面按绝对局部边界检查 => 3. 旧高纬沿用包络跨度检查；入口带链和监测器由后续路由在获选位置创建。
+// fitDenseInputHeight 职责：将直连接口约束在生产实体纬向范围内，联合安排最多三层入口和独立地面出口。
+// 使用：入口草案完成、实体尚未创建；边界：不合并物料或改变份额、带等级及内部目标，其它模式保持原生球面适配。
 func (b *builder) fitDenseInputHeight(ctx context.Context, positions []vector, low, high vector) ([]vector, error) {
 	if len(positions) == 0 || b.adapter == nil || b.adapter.density != densityDense {
 		return positions, nil
 	}
-	if b.polarFrame != nil && b.adapter.mode == 1 {
-		groups, err := b.planMode1DeliveryGroups(ctx)
-		if err != nil {
-			return nil, err
-		}
-		// 交付组i固定占地面y=2*i；即使原入口已在frame内，也须避开这些最终出口槽。
-		return fitDenseInputRows(positions, 0, float64(b.polarFrame.height-1), len(groups))
+	if b.adapter.mode == 1 && len(b.all) > 0 {
+		return b.planDenseBoundaries(ctx, positions, low, high)
 	}
 	leftovers := 0
 	for _, r := range b.transportRoutes {

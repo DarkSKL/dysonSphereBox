@@ -91,8 +91,22 @@ func (b *builder) planMode1DeliveryGroups(ctx context.Context) ([]*mode1Delivery
 	return groups, nil
 }
 
-// mode1DeliveryPositions 职责：分配原料同侧的独立地面交付槽；使用：交付实体创建之前；边界：原生frame使用与原料预留一致的两格槽，不把高层入口当成地面占位，容量不足明确失败。
+// mode1DeliveryPositions 职责：分配原料同侧的独立地面交付槽；使用：交付实体创建之前；边界：密铺读取联合边界计划，其它布局保留原有独立槽，不把高层入口当成地面占位。
 func (b *builder) mode1DeliveryPositions(ctx context.Context, groups []*mode1DeliveryGroup, inputs []vector) ([]vector, error) {
+	if b.denseBoundary != nil {
+		positions := make([]vector, len(groups))
+		if len(b.denseBoundary.outputs) != len(groups) {
+			return nil, &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "交付组与联合边界规划不一致"}
+		}
+		for i, group := range groups {
+			position, ok := b.denseBoundary.outputs[group.members[0]]
+			if !ok {
+				return nil, &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "交付组与联合边界规划不一致"}
+			}
+			positions[i] = position
+		}
+		return positions, nil
+	}
 	low, _ := bounds(b.all)
 	x := math.Floor(low.x) - 5
 	if len(inputs) > 0 {

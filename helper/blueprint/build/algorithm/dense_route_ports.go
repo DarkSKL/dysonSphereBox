@@ -27,9 +27,11 @@ type denseRoutePortIndex struct {
 	boxes      []connectedPackingShape
 	// strictBelts 职责：普通布局寻路时禁止与已提交的独立带段相交；使用：共享塔/配送全场候选；边界：超密度保留原带段规则，最终仍统一验收。
 	strictBelts bool
-	belts       []surfaceBeltSpan
-	beltCells   map[[3]int][]int
-	beltEdges   map[[2]*placed]bool
+	// boundary 职责：为左侧输入输出区启用严格带段规则；使用：三层独立接口；边界：厂内密铺不因本字段变成普通碰撞模式。
+	boundary  *denseBoundaryLayout
+	belts     []surfaceBeltSpan
+	beltCells map[[3]int][]int
+	beltEdges map[[2]*placed]bool
 	// origins 职责：保存每个静态盒所属建筑的切平面原点；使用：临界高架顶部的局部球面投影；边界：不修改模型盒尺寸。
 	origins  []placement.Vector
 	owners   []*placed
@@ -133,9 +135,9 @@ func (index *denseRoutePortIndex) addNode(p *placed) {
 	index.nodes[cell] = append(index.nodes[cell], p)
 }
 
-// addBeltSpan 职责：增量登记真实有向带段；使用：普通全场候选每次提交路线后；边界：仅供寻路避碰，不改变实体连接或密铺模式。
+// addBeltSpan 职责：增量登记真实有向带段；使用：普通全场与密铺外部接口寻路；边界：仅供带段避碰，不改变实体连接或厂内密铺规则。
 func (index *denseRoutePortIndex) addBeltSpan(p *placed) {
-	if !index.strictBelts || p.output == nil || !surfaceIsBelt(p.output.record.ItemID) {
+	if p.output == nil || !surfaceIsBelt(p.output.record.ItemID) || !index.strictBelts && !index.boundarySegment(p.a, p.output.a) {
 		return
 	}
 	key := [2]*placed{p, p.output}
@@ -153,9 +155,9 @@ func (index *denseRoutePortIndex) addBeltSpan(p *placed) {
 	})
 }
 
-// beltSpanClear 职责：普通模式拒绝穿越已存在带段的新增边；使用：低轨接驳及整数寻路；边界：共同端点由连通性检查处理，静态净空另行检查。
+// beltSpanClear 职责：拒绝普通布局及密铺接口区的独立带段交叉；使用：低轨接驳及整数寻路；边界：共同端点由节点身份/连通性检查处理，静态净空另行检查。
 func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
-	if !index.strictBelts {
+	if !index.strictBelts && !index.boundarySegment(first, second) {
 		return true
 	}
 	a, c := index.world(first), index.world(second)
@@ -209,6 +211,9 @@ func (index *denseRoutePortIndex) spanClear(first, second vector) bool {
 
 // spanClearWithLinks 职责：只为真实原生端口的有限连接跳数应用逐端点豁免；使用：portal端部；边界：无端口身份时仍按完整静态带段检查，许可不进入无权限缓存。
 func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links map[*placed][2]bool) bool {
+	if !index.boundarySpanAllowed(first, second) {
+		return false
+	}
 	slot, shift := -1, uint(0)
 	if len(links) == 0 {
 		slot, shift = index.integerEdges.slot(first, second)
@@ -512,7 +517,7 @@ func (env *transportEnvironment) densePathClear(points []vector, source, target 
 // findDenseTransportPath 职责：按完整端口路线代价比较最低可行源高度层；使用：密铺直连及配送；边界：返回不含源且包含复用目标的路径，合流索引保持原尾链身份，取消丢弃未提交结果。
 func (env *transportEnvironment) findDenseTransportPath(ctx context.Context, route *transportRoute, tail []*placed, incoming map[*placed]int, preferred vector) (points []vector, tailIndex, expanded, maximum, searches int) {
 	tailIndex = -1
-	source, target := route.start, route.end
+	source, target := route.transportSource(), route.end
 	var targetPortals []denseRoutePortal
 	if len(tail) == 0 {
 		fallback := vector{x: -1}

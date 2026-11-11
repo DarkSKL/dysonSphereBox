@@ -11,7 +11,7 @@ import (
 // findDenseTransportPrefixPath 职责：按当前搜索权重与预算比较完整合法目标；使用：密铺前缀比较；边界：合流只返回至锚点的新链，代价包含完整旧尾链，每次搜索仍受固定展开上限约束，不宣称整厂全局最优。
 func (env *transportEnvironment) findDenseTransportPrefixPath(ctx context.Context, route *transportRoute, tail []*placed, incoming map[*placed]int, prefix denseRoutePortal, portals []denseRoutePortal) (full []vector, tailIndex int, cost float64, length, expanded, maximum, searches int) {
 	tailIndex, cost = -1, math.Inf(1)
-	source, target := route.start, route.end
+	source, target := route.transportSource(), route.end
 	start := prefix.points[len(prefix.points)-1]
 	added := map[vector]bool{}
 	for _, point := range prefix.points[1 : len(prefix.points)-1] {
