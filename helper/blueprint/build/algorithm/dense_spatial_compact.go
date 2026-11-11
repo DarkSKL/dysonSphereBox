@@ -22,6 +22,8 @@ type denseCompactPosition struct {
 	delta vector
 	// shape/area/wire 职责：保存包络形状、面积和受影响真实流边长度；使用：单调择优；边界：不代替最终接线结果。
 	shape, area, wire float64
+	// hole 职责：记录生产设备和塔的最大空矩形；使用：独立填洞候选排序；边界：旧平移候选不启用该评分。
+	hole float64
 }
 
 // denseCompactObjective 职责：按当前全厂格包络计算与最终密铺一致的形状目标；使用：试探和提交比较；边界：不以增加带节点填充空白获得奖励。
@@ -148,6 +150,8 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 	if len(units) < 2 || len(b.all) == 0 {
 		return nil
 	}
+	fillSpan, _ := ctx.Value(denseSpatialHolesKey{}).(float64)
+	fillHoles := fillSpan > 0
 	// 保存两端点而非逆向累加浮点位移，确保失败恢复与原布局逐值一致。
 	type savedPosition struct {
 		entity *placed
@@ -175,6 +179,12 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 		}
 	}()
 	frozen := make([]bool, len(units))
+	if fillHoles {
+		for i, unit := range units {
+			// 先保持长街道、塔与共享附件原位，仅让独立非低轨短行填洞；避免为局部空洞重新挤压全部已可建核心。
+			frozen[i] = !unit.bent && (unit.row == nil || referenceLowRecipe(unit.row.info, unit.row.recipe))
+		}
+	}
 	for _, entity := range b.all {
 		owner, owned := owners[entity]
 		for _, linked := range []*placed{entity.input, entity.output} {
@@ -231,6 +241,13 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 		}
 	}
 	originalLow, originalHigh := bounds(b.all)
+	var holeField *denseEquipmentField
+	if fillHoles {
+		holeField, err = newDenseEquipmentField(b.all, originalLow, originalHigh)
+		if err != nil {
+			return err
+		}
+	}
 	maximumY := originalHigh.y
 	if b.denseLatitudeSpan > 0 {
 		maximumY = math.Min(maximumY, heightLimit-1)
@@ -288,8 +305,26 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 			globalLow, globalHigh := bounds(b.all)
 			shape, area := denseCompactObjective(globalLow, globalHigh)
 			current := denseCompactPosition{shape: shape, area: area, wire: denseSpatialWireCost(wires, 0, 0)}
+			hole := denseEquipmentHole{}
+			if fillHoles {
+				hole = holeField.hole(nil, vector{})
+				current.hole = hole.area
+			}
 			candidates := []denseCompactPosition{}
-			for _, delta := range denseCompactCandidates(contours[i], others, low, high, fixedLow, fixedHigh, wires) {
+			deltas := denseCompactCandidates(contours[i], others, low, high, fixedLow, fixedHigh, wires)
+			if fillHoles {
+				// 最大空洞九点与真实边缘的少量双轴组合优先，仍共用原96次/单元和4096次总几何预算。
+				aligned := denseHoleAlignments(hole, low, high)
+				xEdges := denseCompactEdges(others, 0, 4)
+				yEdges := denseCompactEdges(others, 2, 4)
+				for _, x := range xEdges {
+					for _, y := range yEdges {
+						aligned = append(aligned, vector{x: math.Round((x-low.x)*4) / 4, y: math.Round((y-low.y)*4) / 4})
+					}
+				}
+				deltas = append(aligned, deltas...)
+			}
+			for _, delta := range deltas {
 				if low.x+delta.x < originalLow.x-1e-7 || low.y+delta.y < originalLow.y-1e-7 || high.x+delta.x > originalHigh.x+1e-7 || high.y+delta.y > maximumY+1e-7 {
 					continue
 				}
@@ -297,9 +332,34 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 				hi := vector{x: math.Max(fixedHigh.x, high.x+delta.x), y: math.Max(fixedHigh.y, high.y+delta.y)}
 				shape, area := denseCompactObjective(lo, hi)
 				candidate := denseCompactPosition{delta: delta, shape: shape, area: area, wire: denseSpatialWireCost(wires, delta.x, delta.y)}
-				if denseCompactBetter(candidate, current) {
+				if fillHoles {
+					if candidate.area <= current.area+1e-7 && candidate.shape <= current.shape+1e-7 && candidate.wire <= current.wire+math.Max(4, current.wire*.03) {
+						candidates = append(candidates, candidate)
+					}
+				} else if denseCompactBetter(candidate, current) {
 					candidates = append(candidates, candidate)
 				}
+			}
+			if fillHoles {
+				// 网格只对有限的不同平移评分，避免边缘轴笛卡尔积转化为无界设备栅格评估。
+				scored, seen := make([]denseCompactPosition, 0, 96), map[vector]bool{}
+				for _, candidate := range candidates {
+					if err = b.checkGeneration("设备空矩形有限评分"); err != nil {
+						return err
+					}
+					if seen[candidate.delta] {
+						continue
+					}
+					seen[candidate.delta] = true
+					if len(seen) > 96 {
+						break
+					}
+					candidate.hole = holeField.hole(members, candidate.delta).area
+					if candidate.hole <= current.hole+1e-7 && (candidate.hole < current.hole-1e-7 || denseCompactBetter(candidate, current)) {
+						scored = append(scored, candidate)
+					}
+				}
+				candidates = scored
 			}
 			sort.SliceStable(candidates, func(a, c int) bool {
 				left, right := candidates[a], candidates[c]
@@ -308,6 +368,9 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 				}
 				if left.area != right.area {
 					return left.area < right.area
+				}
+				if fillHoles && left.hole != right.hole {
+					return left.hole < right.hole
 				}
 				if left.wire != right.wire {
 					return left.wire < right.wire
@@ -347,7 +410,11 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 		return previewContextError(ctx.Err())
 	}
 	if b.logistics != nil {
-		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-spatial-translation-compact", Status: "passed", Message: fmt.Sprintf("装箱后按全部真实轮廓纯平移压缩：%d次有效移动、%d次位置检查；保留单元连接和朝向，包络形状、面积与真实流边距离均不增加", moves, checks)})
+		message := fmt.Sprintf("装箱后按全部真实轮廓纯平移压缩：%d次有效移动、%d次位置检查；保留单元连接和朝向，包络形状、面积与真实流边距离均不增加", moves, checks)
+		if fillHoles {
+			message = fmt.Sprintf("设备空洞引导的纯平移：%d次有效移动、%d次真实位置检查；包络与最大设备空矩形不增加，每步受影响流边只允许至多3%%或4格的有限增长；不按新增带/臂奖励填充，完整结果仍比较实际带长", moves, checks)
+		}
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-spatial-translation-compact", Status: "passed", Message: message})
 	}
 	return nil
 }

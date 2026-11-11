@@ -268,6 +268,12 @@ func (b *builder) refineryLayoutFootprint() (*[2]vector, error) {
 
 // layoutDenseSpatialRows 职责：使用实际获选局部模板的重复节距细分容量组；使用：直连、配送和塔候选；边界：各原单带组独立守恒，不改变产线总数或带速。
 func (b *builder) layoutDenseSpatialRows(p quant.Production, r quant.Recipe, counts []int, maxSpan float64) ([]int, error) {
+	if b.generationCtx != nil && !referenceLowRecipe(p, r) {
+		if shortSpan, _ := b.generationCtx.Value(denseSpatialHolesKey{}).(float64); shortSpan > 0 {
+			// 低轨连续街道保留原容量组；独立机器行才细分，以免全厂短行化增加大量接头。
+			maxSpan = math.Min(maxSpan, shortSpan)
+		}
+	}
 	if b.referenceChemicalFourEligible(p, r) {
 		pitch, err := referenceLineSpacing(p.MachineType, b.setting.extraSpace(p.MachineType))
 		if err != nil {
@@ -291,7 +297,12 @@ func (b *builder) layoutDenseSpatialRows(p quant.Production, r quant.Recipe, cou
 		return result, nil
 	}
 	if !b.denseRefineryEligible(p, r) {
-		return denseSpatialRowCounts(p, r, b.setting, counts, maxSpan)
+		wholeColumns := false
+		if b.generationCtx != nil {
+			span, _ := b.generationCtx.Value(denseSpatialHolesKey{}).(float64)
+			wholeColumns = span > 0
+		}
+		return denseSpatialRowCounts(p, r, b.setting, counts, maxSpan, wholeColumns)
 	}
 	limit := max(1, int(math.Floor(maxSpan/(denseRefineryPitch+float64(b.setting.RefineryOtherSpace))))+1)
 	result := []int{}

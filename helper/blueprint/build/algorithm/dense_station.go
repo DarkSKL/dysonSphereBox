@@ -130,6 +130,19 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		for variant := sharedBase; variant < sharedBase+3; variant++ {
 			blackboxIndices = append(blackboxIndices, denseStationProducerVariantOffset+denseSpatialCompactVariantOffset+variant, denseStationProducerVariantOffset+denseSpatialCompactVariantOffset+denseStationSharedOutputVariantOffset+variant)
 		}
+		// 保留最长街道的基础布局，仅在独立机器行确实改变时比较20格整列短行和18格真实L/U接角。
+		for _, option := range []struct {
+			offset int
+			span   float64
+		}{{denseSpatialHolesVariantOffset, 20}, {denseSpatialHolesBentVariantOffset, 18}} {
+			eligible, err := b.denseStationHoleEligible(req, dataset, option.span)
+			if err != nil {
+				return Result{}, err
+			}
+			if eligible {
+				blackboxIndices = append(blackboxIndices, option.offset+denseStationSharedOutputVariantOffset+sharedBase+2)
+			}
+		}
 	}
 	blackboxBudget = len(blackboxIndices)
 	budget = fieldBudget + blackboxBudget
@@ -145,6 +158,20 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		previews := allPreviews[:blackboxBudget]
 		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
 			baseVariant := variant
+			shortSpan := 0.
+			if baseVariant >= denseSpatialHolesBentVariantOffset {
+				baseVariant -= denseSpatialHolesBentVariantOffset
+				shortSpan = 18
+			} else if baseVariant >= denseSpatialHolesVariantOffset {
+				baseVariant -= denseSpatialHolesVariantOffset
+				shortSpan = 20
+			}
+			fillHoles := shortSpan > 0
+			if fillHoles {
+				ctx = context.WithValue(ctx, denseSpatialHolesKey{}, shortSpan)
+				ctx = context.WithValue(ctx, denseBentRowsKey{}, shortSpan == 18)
+				ctx = context.WithValue(ctx, denseSpatialCompactKey{}, true)
+			}
 			producerSplits := baseVariant >= denseStationProducerVariantOffset
 			if producerSplits {
 				ctx = context.WithValue(ctx, denseProducerSplittersKey{}, true)
@@ -207,6 +234,9 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			}
 			if producerSplits {
 				parameters += ";producerSplits=true;splitterModel=39"
+			}
+			if fillHoles {
+				parameters += fmt.Sprintf(";equipmentHoleCompact=true;independentMaxSpan=%.0f;optionalBentRows=%t", shortSpan, shortSpan == 18)
 			}
 			if out.SurfacePlan != nil {
 				parameters += fmt.Sprintf(";nativeArea=%dx%d", out.SurfacePlan.LayoutWidth, out.SurfacePlan.LayoutHeight)

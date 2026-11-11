@@ -15,6 +15,19 @@ import (
 
 // denseStationBlackboxCandidate 职责：把已验证直连核心与实际外部塔组成同一次完整候选；使用：塔模式比较；边界：原请求模式、等级、产量和选区始终保留。
 func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request, dataset *quant.Dataset, config contract.StationConfig, variant int, previews ...*generationPreview) (*builder, error) {
+	shortSpan := 0.
+	if variant >= denseSpatialHolesBentVariantOffset {
+		variant -= denseSpatialHolesBentVariantOffset
+		shortSpan = 18
+	} else if variant >= denseSpatialHolesVariantOffset {
+		variant -= denseSpatialHolesVariantOffset
+		shortSpan = 20
+	}
+	if shortSpan > 0 {
+		ctx = context.WithValue(ctx, denseSpatialHolesKey{}, shortSpan)
+		ctx = context.WithValue(ctx, denseBentRowsKey{}, shortSpan == 18)
+		ctx = context.WithValue(ctx, denseSpatialCompactKey{}, true)
+	}
 	if variant >= denseStationProducerVariantOffset {
 		variant -= denseStationProducerVariantOffset
 		ctx = context.WithValue(ctx, denseProducerSplittersKey{}, true)
@@ -119,6 +132,9 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
 		}
 		candidate.directBoundaryAttach = candidate.attachDenseStationSprayExits
 		candidate.directBoundaryCommit = candidate.commitDenseStationSprayNetwork
+	}
+	if span, _ := ctx.Value(denseSpatialHolesKey{}).(float64); span > 0 {
+		candidate.denseMaxSpan = 32
 	}
 	candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 	candidate.warnings = append([]string(nil), b.warnings...)

@@ -158,9 +158,18 @@ func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transpo
 			if chosen[0].external {
 				maximumGroup = 32
 			}
+			fillSpan, _ := ctx.Value(denseSpatialHolesKey{}).(float64)
+			shortConsumer := fillSpan > 0 && !chosen[0].external && !referenceLowRecipe(chosen[0].row.info, chosen[0].row.recipe)
+			if shortConsumer {
+				// 同一生产者拆短后仍在原单带毛容量内串供；四行只是搜索分组上限，不能把细分行数变成额外上游出货口。
+				maximumGroup = 12
+			}
 			for len(chosen) < maximumGroup {
 				best := -1
 				for i, candidate := range pending {
+					if shortConsumer && candidate.row.owner != chosen[0].row.owner {
+						continue
+					}
 					if candidate.external != chosen[0].external || load+candidate.maximum > capacity+1e-6 {
 						continue
 					}

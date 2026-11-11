@@ -119,6 +119,9 @@ func (b *builder) prepareDenseBentRows(ctx context.Context, units []denseSpatial
 		}
 	}
 	if runs == 0 {
+		if span, _ := ctx.Value(denseSpatialHolesKey{}).(float64); span > 0 {
+			return units, nil
+		}
 		return nil, &blueprint.Error{Code: "GEN_I_DENSITY_EQUIVALENT", Message: "本折行候选没有可组成L/U的完整短机器组，保留独立直线候选"}
 	}
 	result := make([]denseSpatialUnit, 0, len(units)-runs+lShapes+uShapes)
