@@ -125,6 +125,7 @@ func (p *generationPreview) finish(status string) {
 	}
 	p.finished = true
 	p.publish(Progress{Kind: "candidate-finish", CandidateStatus: status})
+	p.notifier.Discard()
 }
 
 // previewFromContext 职责：读取单任务预览会话；使用：Builder 初始化和最终提交；边界：未启用时返回 nil。

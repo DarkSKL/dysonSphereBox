@@ -57,6 +57,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
   // 阶段事件高频到达：每帧只写一次响应式状态，清空时先取消挂起的写入，避免旧阶段回写
   const phaseWriter = createFrameCoalescer<AlgorithmPhase>(value => { phase.value = value })
   const mirror = new Map<string, AlgorithmMirrorEntry>()
+  const candidateObjects = new Map<string, Set<string>>()
   let liveTask = ''
   let liveComplete = false
   let liveWinner = ''
@@ -73,9 +74,14 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
   // 说明：每批操作先写入镜像再入队，保证镜像始终等于场景最终状态。
   const commit = (operations: AlgoVizOperation[], options: Omit<AlgoVizBatch, 'operations'>): void => {
     if (!operations.length) return
+    let objects: Set<string> | undefined
+    if (options.candidateId) {
+      objects = candidateObjects.get(options.candidateId)
+      if (!objects) candidateObjects.set(options.candidateId, (objects = new Set()))
+    }
     for (const op of operations) {
-      if (op.type === 'remove') mirror.delete(op.id)
-      else mirror.set(op.id, {building: op.building, index: op.building.index})
+      if (op.type === 'remove') { mirror.delete(op.id); objects?.delete(op.id) }
+      else { mirror.set(op.id, {building: op.building, index: op.building.index}); objects?.add(op.id) }
     }
     getViz()?.enqueue({...options, operations})
   }
@@ -83,6 +89,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     // 大场景切换来源时直接复用实例池，避免给旧建筑再安排大量退场动画；当前蓝图的记录仍全部保留。
     const transition = animate && mirror.size <= CHUNK
     mirror.clear()
+    candidateObjects.clear()
     getViz()?.reset({animate: transition})
   }
 
@@ -162,14 +169,15 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
         candidateSequences.set(event.candidateId, event.candidateSequence)
       }
       if (event.kind === 'candidate-plan' && event.candidates) {
-        for (const candidate of event.candidates) viz.beginCandidate(candidate.id, candidate.ordinal)
+        // 计划只声明身份；实际开始时才创建平台，未派发的候选不占渲染资源。
       } else if (event.kind === 'candidate-start' && event.candidateId) {
         viz.beginCandidate(event.candidateId, event.candidateOrdinal ?? 1)
       } else if (event.kind === 'candidate-finish' && event.candidateId && event.candidateStatus) {
         viz.finishCandidate(event.candidateId, event.candidateStatus)
         if (event.candidateStatus !== 'valid') {
-          const prefix = `t:${event.taskId}:${event.candidateId}:`
-          for (const id of mirror.keys()) if (id.startsWith(prefix)) mirror.delete(id)
+          for (const id of candidateObjects.get(event.candidateId) ?? []) mirror.delete(id)
+          candidateObjects.delete(event.candidateId)
+          snapshots.delete(event.candidateId)
         }
       } else if (event.kind === 'preview-snapshot' && event.candidateId && event.operations) {
         const revision = event.snapshotRevision ?? 0
@@ -204,6 +212,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
         }
         const operations = records.map(operation => liveOperation(`${event.taskId}:${candidateId}`, operation))
         mirror.clear()
+        candidateObjects.clear()
         commit(operations, {candidateId, coordinates: 'area', areas: snapshot.areas, pace: 'cinematic', snapshot: true})
         snapshots.clear()
         liveComplete = true
@@ -340,7 +349,8 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
   // =============== 生命周期 ===============
   // 说明：新结果或导入（previewRevision 变化）触发回放；每次生成开始时重置跟随状态；
   //       生成结束但实时差量未完成（失败、取消或改为普通生成重试）时，按结果恢复场景。
-  const stop = observeFactoryGenerationEvents(onEvent, () => (getViz()?.getProgress().pending ?? 0) < 20000, () => w.generationTaskId)
+  // 控制事件必须及时读取，否则“已淘汰”会被旧动画积压挡在后面；绘制节奏由场景的帧预算独立控制。
+  const stop = observeFactoryGenerationEvents(onEvent, () => true, () => w.generationTaskId)
   watch(() => w.generationTaskId, () => {
     if (getViz()?.getProgress().candidates) {
       clearScene(false)

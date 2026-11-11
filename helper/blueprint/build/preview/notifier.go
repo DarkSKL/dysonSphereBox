@@ -93,3 +93,11 @@ func (n *Notifier) BatchCount() int {
 	}
 	return n.batches
 }
+
+// Discard 职责：释放已终结候选的差量比较缓存；使用：协议4候选finish之后；边界：不发撤销事件，保留批次数，正式获选快照由生成器独立持有。
+func (n *Notifier) Discard() {
+	if n == nil {
+		return
+	}
+	n.current, n.order, n.frame = nil, nil, Frame{}
+}

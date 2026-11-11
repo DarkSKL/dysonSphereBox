@@ -129,6 +129,9 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 					return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
 				}
 				last = err
+				if ctx.Err() != nil {
+					return Result{}, err
+				}
 				retryFootprints = retryFootprints || denseNativeGeometryFailure(err)
 				reportProgress(ctx, "polar-rejected", fmt.Sprintf("目标球面%d行候选（对称=%t，同侧炼油=%t）未通过：%v", extent, opposite, sameSide, err), 0, 0)
 			}
@@ -159,6 +162,9 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 				return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
 			}
 			last = err
+			if ctx.Err() != nil {
+				return Result{}, err
+			}
 			retryFootprints = retryFootprints || denseNativeGeometryFailure(err)
 			reportProgress(ctx, "polar-rejected", fmt.Sprintf("原生子环%d..%d（同侧炼油=%t）未通过：%v", band.low, band.high, sameSide, err), 0, 0)
 		}

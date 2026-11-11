@@ -151,7 +151,7 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 		if feasibleWave != nil {
 			executionCtx = feasibleWave.ctx
 		}
-		waveErr := search.Waves(ctx, indices, workers, func(_ context.Context, localIndex int, candidateIndex int) (evaluation connectedEvaluation) {
+		execute := func(_ context.Context, localIndex int, candidateIndex int) (evaluation connectedEvaluation) {
 			ctx := executionCtx
 			ctx, finishPerformance := beginCandidatePerformance(ctx, "connected", candidateIndex)
 			defer func() { finishPerformance(evaluation.err) }()
@@ -257,12 +257,8 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 			evaluation.dense = candidate.denseSpatial
 			evaluation.key = diagnostic.Key
 			return
-		}, func(index int, evaluation connectedEvaluation) (reduceErr error) {
-			defer func() {
-				if reduceErr == nil {
-					reduceErr = feasibleWave.stopAtWaveEnd(index, workers, layouts, best != nil)
-				}
-			}()
+		}
+		reduce := func(_ int, evaluation connectedEvaluation) error {
 			evaluated++
 			searchCandidates = append(searchCandidates, evaluation.diagnostics...)
 			if evaluation.err != nil {
@@ -288,9 +284,15 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 				bestKey = evaluation.key
 			}
 			return nil
-		})
+		}
+		var waveErr error
+		if feasibleWave != nil {
+			waveErr = search.Stream(ctx, executionCtx, indices, workers, execute, reduce)
+		} else {
+			waveErr = search.Waves(ctx, indices, workers, execute, reduce)
+		}
 		feasibleWave.close()
-		if waveErr == errConnectedFeasibleWaveComplete {
+		if waveErr == nil && feasibleWave != nil && best != nil {
 			stoppedAfterFeasibleWave = true
 			break
 		}
@@ -328,7 +330,7 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 		}
 	}
 	if stoppedAfterFeasibleWave {
-		searchMessage += "；大型原生直连在首个完整可行波次内顺序择优，首个完整候选通过终检后最多等待5秒；临近父截止时预留5秒返回，未完成候选取消且不作为部分蓝图返回"
+		searchMessage += "；大型原生直连连续复用空闲计算槽，首个完整候选通过终检后最多比较5秒，并按原索引归约所有已完成候选；临近父截止时预留5秒返回，未完成候选取消且不作为部分蓝图返回"
 	}
 	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: searchMessage})
 	return *best, nil

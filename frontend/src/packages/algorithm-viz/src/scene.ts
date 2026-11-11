@@ -159,6 +159,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private readonly beltInputs = new Map<string, Set<VizObject>>();
   private queue = new OperationQueue();
   private readonly candidates = new Map<string, CandidateStage>();
+  /** 淘汰身份在任务内保留，防止迟到批次重新创建已经退场的候选。 */
+  private readonly retiredCandidates = new Set<string>();
   private readonly objectCandidates = new Map<string, string>();
   private memberships = new WeakMap<VizObject, CandidateStage>();
   /** 模型就绪时只迁移对应占位体，分帧复用同一工作预算。 */
@@ -258,6 +260,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
 
   enqueue(batch: AlgoVizBatch): void {
     if (this.disposed || !this.supported || !batch?.operations?.length) return;
+    if (batch.candidateId && this.retiredCandidates.has(batch.candidateId)) return;
     const coordinates = batch.coordinates ?? this.lastCoordinates;
     if (batch.areas) this.lastOffsets = areaOffsets(batch.areas);
     this.lastCoordinates = coordinates;
@@ -273,7 +276,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   beginCandidate(id: string, ordinal: number): void {
-    if (!this.supported || this.disposed || this.candidates.has(id)) return;
+    if (!this.supported || this.disposed || this.candidates.has(id) || this.retiredCandidates.has(id)) return;
     const island = new IslandLayer(this.uniforms);
     this.scene.add(island.group);
     this.candidates.set(id, {id, ordinal, island, objects: new Set(), queue: new OperationQueue(), budget: 0, x: 0, z: 0, targetX: 0, targetZ: 0, positioned: false, y: 0, age: 0, failMix: 0, falling: -1});
@@ -284,13 +287,17 @@ export class AlgorithmVizScene implements AlgorithmVizController {
 
   finishCandidate(id: string, status: 'valid' | 'rejected' | 'pruned'): void {
     const candidate = this.candidates.get(id);
-    if (candidate) candidate.status = status;
+    if (candidate) {
+      candidate.status = status;
+      if (status !== 'valid') this.retireCandidate(candidate);
+    }
     this.touch();
   }
 
   finalizeSearch(winnerId: string): void {
     this.winnerId = winnerId;
     this.settled = true;
+    for (const candidate of this.candidates.values()) if (candidate.id !== winnerId) this.retireCandidate(candidate);
     if (this.skipping) {
       const winner = this.candidates.get(winnerId);
       if (winner) {
@@ -306,7 +313,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   failSearch(): void {
     this.winnerId = '';
     this.settled = true;
-    for (const candidate of this.candidates.values()) candidate.status = 'rejected';
+    for (const candidate of this.candidates.values()) { candidate.status = 'rejected'; this.retireCandidate(candidate); }
     if (this.skipping) {
       for (const candidate of this.candidates.values()) { candidate.age = 100; candidate.shownAt = 0; }
     }
@@ -316,6 +323,18 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   caption(title: string, detail?: string): void {
     if (this.disposed || !this.supported || !title) return;
     this.overlay.showCaption(title, detail);
+  }
+
+  /** 后端明确淘汰后立即丢弃待播数据并开始下坠，当前已显示对象仍按共享帧预算回收。 */
+  private retireCandidate(candidate: CandidateStage): void {
+    if (this.retiredCandidates.has(candidate.id)) return;
+    this.retiredCandidates.add(candidate.id);
+    candidate.queue.clear();
+    candidate.snapshot = undefined;
+    candidate.budget = 0;
+    if (candidate.falling < 0) candidate.falling = 0;
+    this.settleReadyAt = -1;
+    this.touch();
   }
 
   reset(options: { animate?: boolean } = {}): void {
@@ -328,6 +347,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       candidate.island.dispose();
     }
     this.candidates.clear();
+    this.retiredCandidates.clear();
     this.objectCandidates.clear();
     this.winnerId = '';
     this.settled = false;
@@ -515,6 +535,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         candidate.island.dispose();
         }
       this.candidates.clear();
+      this.retiredCandidates.clear();
       this.backdrop.dispose();
       this.unitBox.dispose();
       this.buildingMaterial.dispose();
@@ -1390,7 +1411,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   /** 候选轮询共用整帧预算，剩余队列与快照原序留到下帧；平台运动只更新所属对象。 */
-  private updateCandidates(dt: number, work = new FrameWorkBudget()): void {
+  private updateCandidates(dt: number, work = new FrameWorkBudget(), playing = true): void {
     const originalQueue = this.queue;
     const originalBudget = this.budget;
     let release = false;
@@ -1405,6 +1426,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     try {
       for (let offset = 0; offset < stages.length; offset++) {
         const candidate = stages[(first + offset) % stages.length];
+        if (!playing && !this.retiredCandidates.has(candidate.id)) continue;
         const moving = Math.abs(candidate.x - candidate.targetX) + Math.abs(candidate.z - candidate.targetZ) > 0.001;
         const blend = this.reducedMotion.matches || this.skipping ? 1 : 1 - Math.exp(-dt * 7);
         candidate.x = lerp(candidate.x, candidate.targetX, blend);
@@ -1416,7 +1438,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         if (candidate.falling < 0) this.processQueue(dt, work);
         candidate.budget = this.budget;
         if (!candidate.queue.length && candidate.snapshot && (candidate.snapshot.started || !this.candidateAnimating(candidate))) this.applyCandidateSnapshot(candidate, this.skipping, work);
-        const failed = (candidate.status === 'rejected' || candidate.status === 'pruned') && !candidate.queue.length && !candidate.snapshot && !this.candidateAnimating(candidate);
+        const failed = (candidate.status === 'rejected' || candidate.status === 'pruned') && (this.retiredCandidates.has(candidate.id) || !candidate.queue.length && !candidate.snapshot && !this.candidateAnimating(candidate));
         const failGoal = failed ? 1 : 0;
         if (candidate.failMix !== failGoal) {
           const step = this.reducedMotion.matches || this.skipping ? 1 : dt * 3;
@@ -1725,6 +1747,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (!this.paused || this.skipping) {
       this.processQueue(elapsed, work);
       this.updateCandidates(dt, work);
+    } else if (Array.from(this.candidates.values()).some(candidate => candidate.falling >= 0)) {
+      // 暂停只冻结有效候选的演示，不能阻止后端已淘汰候选释放资源。
+      this.updateCandidates(dt, work, false);
     }
     if (this.animating.size) {
       for (const obj of this.animating) {

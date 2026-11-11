@@ -133,7 +133,7 @@ const sourceLabel = computed(() => decoding.value ? '解析结果' : feedSource.
   ? props.w.generating ? '计算中 · 候选演示' : progress.value && (progress.value.pending || progress.value.animating || progress.value.falling || progress.value.candidates > 1) ? '计算完成 · 演示中' : feedNotice.value ? '本次演示已结束' : '已保留获选方案'
   : feedSource.value === 'replay' ? '结果回放' : '等待结果')
 const sourceHint = computed(() => feedSource.value === 'live'
-  ? '所有候选完整铺开，按独立视觉速度展示真实装配过程；失败候选播至失败节点即下坠，最终只保留获选方案。计算完成后演示可继续，可调速、暂停或跳过'
+  ? '正在计算的候选按需展示；后端明确淘汰后立即下坠并释放待播队列，新的候选继续进入。最终只保留获选方案，可调速、暂停或跳过'
   : followUnsupported.value
     ? '当前模式与密度暂不提供完整的过程快照，已改为结果回放：生成完成后按装配顺序重建'
     : '显示的是打开本页前生成或导入的结果，按装配顺序回放；点击「重新运行算法」可从头跟随计算过程')

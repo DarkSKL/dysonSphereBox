@@ -52,7 +52,7 @@ viz.dispose(); // 卸载时必须调用
 
 ### 多候选平台
 
-先按后端候选计划调用 `beginCandidate(id, ordinal)`，所有实际候选均完整铺开，不按平台数量截断建筑。未执行的条件回退组不创建假候选；启用新候选组时追加平台。每个候选的对象与连接 ID 均须带任务和候选前缀，避免跨平台串线。
+收到实际 `candidate-start` 时调用 `beginCandidate(id, ordinal)`；候选计划只声明身份，未派发的候选不占平台或建筑资源。活动候选不按平台数量截断建筑。每个候选的对象与连接 ID 均须带任务和候选前缀，避免跨平台串线。
 
 ```ts
 viz.beginCandidate('candidate-1', 1);
@@ -60,9 +60,9 @@ viz.enqueue({candidateId: 'candidate-1', pace: 'cinematic', operations});
 viz.finishCandidate('candidate-1', 'rejected');
 ```
 
-`finishCandidate` 记录计算结果，不越过待播放过程。失败或剪枝候选在队列与建筑动画播放完毕后独立坠落；首次非空画面至少保留约 1.2 个视觉秒。可行候选暂留等待最终结果。
+`finishCandidate` 收到失败或剪枝结果后立即清空该候选待播队列及快照，启动下坠并按帧预算释放已显示对象；暂停播放也不阻止这项回收。同一任务内忽略该候选的迟到入队，防止复活。可行候选保留完整队列并暂留等待最终结果。
 
-最终快照必须先完整组装并校验，再以 `enqueue({...batch, candidateId, snapshot: true})` 提交。快照等待该候选此前的操作和动画结束，再一次性更新全部正式姿态。只有正式生成调用成功且获选身份一致后，才调用 `finalizeSearch(winnerId)`；各落选平台分别退场，最终获选平台平滑归中。`failSearch()` 让本任务所有平台按各自时间线退场，不伪造获选方案。
+最终快照必须先完整组装并校验，再以 `enqueue({...batch, candidateId, snapshot: true})` 提交。快照等待该候选此前的操作和动画结束，再一次性更新全部正式姿态。只有正式生成调用成功且获选身份一致后，才调用 `finalizeSearch(winnerId)`；各落选平台立即丢弃待播内容并退场，最终获选平台平滑归中。`failSearch()` 立即清空本任务所有候选的待播内容并退场，不伪造获选方案。
 
 包只管理视觉队列。应用层的 v4 事件订阅在队列积压约 20000 项时通过后端过程日志延迟消费，保留真实历史；日志最近两次任务、每任务最多 64 MiB、有效期十分钟，日志不足时明确提示并降级到正式结果。暂停不阻塞后端计算，`flush()` 可跳过已入队动画。
 
@@ -86,7 +86,7 @@ viz.finishCandidate('candidate-1', 'rejected');
 | `supported` | WebGL 是否可用；不可用时显示降级提示，其余方法安全空转 |
 | `enqueue(batch)` | 入队一批操作 |
 | `beginCandidate(id, ordinal)` | 创建候选完整平台，已存在时幂等 |
-| `finishCandidate(id, status)` | 标记 valid / rejected / pruned，等待本候选播放完成 |
+| `finishCandidate(id, status)` | 保留 valid 待播内容；rejected / pruned 立即清队列并退场 |
 | `finalizeSearch(winnerId)` | 正式结果确认后确定唯一获选平台 |
 | `failSearch()` | 无获选结果时让所有候选分别退场 |
 | `caption(title, detail?)` | 显示阶段标题 |
