@@ -59,13 +59,17 @@ func (b *builder) validateMode1Deliveries() error {
 		if !alive[g.head] || !alive[g.end] || g.head == g.end || g.head.output != g.end || g.end.output != nil || math.Abs(g.head.a.x-g.end.a.x-step) > 1e-5 || math.Abs(g.head.a.y-g.end.a.y) > 1e-5 || math.Abs(g.head.a.z) > 1e-5 || math.Abs(g.end.a.z) > 1e-5 {
 			return fail("预定尾链不再是独立地面向西交付")
 		}
+		if b.polarFrame != nil && (g.end.a.y < 0 || g.end.a.y > float64(b.polarFrame.height-1)) {
+			return fail("交付尾链越出原生球面纬向边界")
+		}
 		for _, marker := range []*placed{g.head, g.end} {
 			if len(marker.record.Parameters) != 2 || int(marker.record.Parameters[0]) != g.item || int(marker.record.Parameters[1]) != int(math.Ceil(g.planned)) {
 				return fail("合并交付尾链缺少聚合净流标注")
 			}
 		}
 		for _, input := range p.inputs {
-			if !alive[input] || input == g.end || math.Abs(input.a.x-g.end.a.x) > 1e-5 || math.Abs(input.a.y-g.end.a.y) < 2-1e-5 {
+			sameHeight := b.polarFrame == nil || math.Abs(input.a.z-g.end.a.z) < 1e-5
+			if !alive[input] || input == g.end || math.Abs(input.a.x-g.end.a.x) > 1e-5 || sameHeight && math.Abs(input.a.y-g.end.a.y) < 2-1e-5 {
 				return fail("交付口没有与原料入口保持独立同侧边界")
 			}
 		}

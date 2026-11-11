@@ -85,6 +85,11 @@ func (env *transportEnvironment) findTransportDestinationPathWithSuffix(ctx cont
 	if len(goals) == 0 {
 		return nil, -1, 0
 	}
+	// 去重后的目标及获选后缀在本次搜索内固定；按原目标顺序预取，避免每个节点重复哈希同一组浮点坐标。
+	goalSuffixes := make([]transportDestination, len(goals))
+	for i, goal := range goals {
+		goalSuffixes[i] = candidates[goalSet[goal]]
+	}
 	allowed := func(v vector) bool {
 		if !inside(v) {
 			return false
@@ -111,7 +116,7 @@ func (env *transportEnvironment) findTransportDestinationPathWithSuffix(ctx cont
 			potential, hasPotential = field.distanceAt(point)
 		}
 		for i, goal := range goals {
-			suffix := candidates[goalSet[goal]]
+			suffix := goalSuffixes[i]
 			horizontal := math.Abs(point.x-goal.x) + math.Abs(point.y-goal.y)
 			vertical := math.Abs(point.z - goal.z)
 			length = min(length, int(math.Ceil(horizontal+vertical))+suffix.length)

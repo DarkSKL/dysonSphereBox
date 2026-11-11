@@ -125,6 +125,7 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 	var lastError error
 	var searchCandidates []SearchCandidateDiagnostic
 	evaluated, rejected := 0, 0
+	stoppedAfterFeasibleWave := false
 	type connectedEvaluation struct {
 		out         Result
 		dense       bool
@@ -144,12 +145,25 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 			indices[index] = group*layouts + index
 		}
 		previews := b.planCandidatePreviews(layouts)
-		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, layouts), func(ctx context.Context, localIndex int, candidateIndex int) (evaluation connectedEvaluation) {
+		workers := b.candidateWorkers(ctx, layouts)
+		feasibleWave := newConnectedFeasibleWave(ctx, req)
+		executionCtx := ctx
+		if feasibleWave != nil {
+			executionCtx = feasibleWave.ctx
+		}
+		waveErr := search.Waves(ctx, indices, workers, func(_ context.Context, localIndex int, candidateIndex int) (evaluation connectedEvaluation) {
+			ctx := executionCtx
 			ctx, finishPerformance := beginCandidatePerformance(ctx, "connected", candidateIndex)
 			defer func() { finishPerformance(evaluation.err) }()
 			var lastError error
 			var searchCandidates []SearchCandidateDiagnostic
-			defer func() { evaluation.err = lastError; evaluation.diagnostics = searchCandidates }()
+			defer func() {
+				evaluation.err = lastError
+				evaluation.diagnostics = searchCandidates
+				if lastError == nil && evaluation.out.LogisticsSummary != nil {
+					feasibleWave.complete()
+				}
+			}()
 			legacyInputs := candidateIndex >= layouts
 			layoutIndex := candidateIndex % layouts
 			limit, compact := variants[layoutIndex].Limit, variants[layoutIndex].Compact
@@ -243,7 +257,12 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 			evaluation.dense = candidate.denseSpatial
 			evaluation.key = diagnostic.Key
 			return
-		}, func(_ int, evaluation connectedEvaluation) error {
+		}, func(index int, evaluation connectedEvaluation) (reduceErr error) {
+			defer func() {
+				if reduceErr == nil {
+					reduceErr = feasibleWave.stopAtWaveEnd(index, workers, layouts, best != nil)
+				}
+			}()
 			evaluated++
 			searchCandidates = append(searchCandidates, evaluation.diagnostics...)
 			if evaluation.err != nil {
@@ -270,6 +289,11 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 			}
 			return nil
 		})
+		feasibleWave.close()
+		if waveErr == errConnectedFeasibleWaveComplete {
+			stoppedAfterFeasibleWave = true
+			break
+		}
 		if waveErr != nil {
 			return Result{}, previewContextError(waveErr)
 		}
@@ -302,6 +326,9 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 				searchMessage += "；第3档指定边缘优先选择实际靠边且通过完整校验的候选，再比较空间与线路"
 			}
 		}
+	}
+	if stoppedAfterFeasibleWave {
+		searchMessage += "；大型原生直连在首个完整可行波次内顺序择优，首个完整候选通过终检后最多等待5秒；临近父截止时预留5秒返回，未完成候选取消且不作为部分蓝图返回"
 	}
 	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: searchMessage})
 	return *best, nil

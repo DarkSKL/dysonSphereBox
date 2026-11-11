@@ -69,11 +69,42 @@ func (b *builder) denseInputPositions(low, high vector) []vector {
 	return positions
 }
 
-// fitDenseInputHeight 职责：外供口超过窄环高度时在左侧分层接入，保留地面副产物出口。
-// 使用：原料位置已规划、实体尚未创建；边界：不合并物料、不改变份额、带等级或内部目标，不把外供长尾延伸到相邻纬带。
+// fitDenseInputHeight 职责：外供口超过实际球面或窄环高度时在左侧分层接入，保留地面副产物出口。
+// 使用：原料位置已规划、实体尚未创建；边界：原生候选使用实际frame局部区间，不合并物料或改变份额、带等级及内部目标。
+// 逻辑流：1. 原生直连按最终交付组预留地面槽并重排原料 => 2. 其它原生球面按绝对局部边界检查 => 3. 旧高纬沿用包络跨度检查；入口带链和监测器由后续路由在获选位置创建。
 func (b *builder) fitDenseInputHeight(ctx context.Context, positions []vector, low, high vector) ([]vector, error) {
 	if len(positions) == 0 || b.adapter == nil || b.adapter.density != densityDense {
 		return positions, nil
+	}
+	if b.polarFrame != nil && b.adapter.mode == 1 {
+		groups, err := b.planMode1DeliveryGroups(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// 交付组i固定占地面y=2*i；即使原入口已在frame内，也须避开这些最终出口槽。
+		return fitDenseInputRows(positions, 0, float64(b.polarFrame.height-1), len(groups))
+	}
+	leftovers := 0
+	for _, r := range b.transportRoutes {
+		if r.edge.FlowKind == "leftover" {
+			leftovers++
+		}
+	}
+	minimum, maximum := positions[0].y, positions[0].y
+	insideNative := true
+	for _, p := range positions {
+		minimum = math.Min(minimum, p.y)
+		maximum = math.Max(maximum, p.y)
+		if b.polarFrame != nil && (p.y < 0 || p.y > float64(b.polarFrame.height-1) || p.z < 0 || p.z > transportMaxHeight) {
+			insideNative = false
+		}
+	}
+	span := math.Max(maximum, high.y) - math.Min(minimum, low.y) + 1 + float64(leftovers*2)
+	if b.polarFrame != nil {
+		if insideNative && span <= float64(b.polarFrame.height) {
+			return positions, nil
+		}
+		return fitDenseInputRows(positions, 0, float64(b.polarFrame.height-1), leftovers)
 	}
 	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
 	selection, ok := densityLatitudeSelectionFor(zone)
@@ -84,23 +115,23 @@ func (b *builder) fitDenseInputHeight(ctx context.Context, positions []vector, l
 	if err != nil {
 		return nil, err
 	}
-	leftovers := 0
-	for _, r := range b.transportRoutes {
-		if r.edge.FlowKind == "leftover" {
-			leftovers++
-		}
-	}
-	minimum, maximum := positions[0].y, positions[0].y
-	for _, p := range positions {
-		minimum = math.Min(minimum, p.y)
-		maximum = math.Max(maximum, p.y)
-	}
-	if math.Max(maximum,high.y)-math.Min(minimum,low.y)+1+float64(leftovers*2) <= float64(band.high-band.low+1) {
+	if span <= float64(band.high-band.low+1) {
 		return positions, nil
 	}
 	bottom, top := math.Ceil(low.y), math.Min(math.Floor(high.y), math.Ceil(low.y)+float64(band.high-band.low))
+	if int((top-bottom)/2)+1 <= leftovers {
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "所选窄环缺少独立原料与副产物接入口"}
+	}
+	return fitDenseInputRows(positions, bottom, top, leftovers)
+}
+
+// fitDenseInputRows 职责：在指定局部纬向区间内分配独立分层原料口；使用：原生球面及旧高纬入口适配；边界：保留原两格行距、两层层距、地面交付预留和最高带层，地面恰好满额时原料仍可用上层，容量不足返回错误，不修改原位置切片。
+func fitDenseInputRows(positions []vector, bottom, top float64, leftovers int) ([]vector, error) {
+	if top < bottom {
+		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "所选球面缺少独立原料接入口"}
+	}
 	count := int((top-bottom)/2) + 1
-	if count <= leftovers {
+	if count < leftovers {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "所选窄环缺少独立原料与副产物接入口"}
 	}
 	result := append([]vector(nil), positions...)

@@ -165,7 +165,8 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				part.arms = append(part.arms, surfaceBeltSpan{ends: [2]placement.Vector{b.polarFrame.world(p.a, 0), b.polarFrame.world(p.b, 0)}})
 				continue
 			}
-			shapes, err := catalog.Shapes(p.record.ItemID, p.record.ModelIndex)
+			// 原生装箱与路由共用分流器完整选择体积，只检查跨单元净空，保留同单元真实槽口短接。
+			shapes, err := splitterClearanceShapes(catalog, p.record.ItemID, p.record.ModelIndex)
 			if err != nil {
 				return part, err
 			}

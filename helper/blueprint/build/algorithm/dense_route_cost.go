@@ -56,8 +56,8 @@ func (env *transportEnvironment) findDenseTransportPrefixPath(ctx context.Contex
 	}
 	// 整链几何可能排除某个接驳；保留原四次有限重试，不把失败候选当作可提交结果。
 	for attempts := 0; attempts < 4 && len(goals) > 0; attempts++ {
-		path, selected, steps := env.findTransportDestinationPathWithSuffix(ctx, start, goals, source, target)
-		expanded, maximum, searches = expanded+steps, max(maximum, steps), searches+1
+		path, selected, steps, peak, calls := env.findDenseNativeDestinationPath(ctx, start, goals, source, target)
+		expanded, maximum, searches = expanded+steps, max(maximum, peak), searches+calls
 		if ctx.Err() != nil || len(path) == 0 {
 			return
 		}
