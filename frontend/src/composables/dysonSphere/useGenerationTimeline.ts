@@ -1,6 +1,7 @@
 import {computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef} from 'vue'
 import {observeRawFactoryGenerationEvents} from '../../pages/services/dysonSphere/factory-progress'
 import {isFactoryGenerationProgressEvent} from '../../utils/factory-preview-protocol'
+import {createFrameCoalescer} from '../../utils/frame-coalescer'
 
 // =============== 时间流条目 ===============
 // 说明：每条 Wails 生成事件归档为一张只读卡片；原始载荷原样保留，供调试弹窗查看。
@@ -52,6 +53,22 @@ export const useGenerationTimeline = () => {
   const completeCount = ref(0)
   let nextId = 0
   let stop: (() => void) | undefined
+  // 高频原始事件先写有界缓冲；响应式列表每帧发布一次，仍保留最新500项和完整计数。
+  let pending: GenerationTimelineEntry[] = []
+  let pendingPreviews: GenerationTimelineEntry[] = []
+  let received = 0
+  let deltas = 0
+  let completes = 0
+  const writer = createFrameCoalescer<boolean>(() => {
+    dropped.value += Math.max(0, entries.value.length + received - TIMELINE_LIMIT)
+    entries.value = [...pending.slice(-TIMELINE_LIMIT).reverse(), ...entries.value].slice(0, TIMELINE_LIMIT)
+    if (pendingPreviews.length) previewEntries.value = [...pendingPreviews.slice(-TIMELINE_LIMIT).reverse(), ...previewEntries.value].slice(0, TIMELINE_LIMIT)
+    deltaCount.value += deltas
+    completeCount.value += completes
+    pending = []
+    pendingPreviews = []
+    received = deltas = completes = 0
+  })
 
   const record = (payload: unknown): void => {
     if (paused.value) return
@@ -70,18 +87,24 @@ export const useGenerationTimeline = () => {
       payload,
     }
     if (entry.kind === 'preview-delta' || entry.kind === 'preview-complete') {
-      if (entry.kind === 'preview-delta') deltaCount.value++
-      else completeCount.value++
-      previewEntries.value = [entry, ...previewEntries.value].slice(0, TIMELINE_LIMIT)
+      if (entry.kind === 'preview-delta') deltas++
+      else completes++
+      pendingPreviews.push(entry)
+      if (pendingPreviews.length > TIMELINE_LIMIT * 2) pendingPreviews = pendingPreviews.slice(-TIMELINE_LIMIT)
     }
-    const next = [entry, ...entries.value]
-    if (next.length > TIMELINE_LIMIT) dropped.value += next.length - TIMELINE_LIMIT
-    entries.value = next.slice(0, TIMELINE_LIMIT)
+    pending.push(entry)
+    received++
+    if (pending.length > TIMELINE_LIMIT * 2) pending = pending.slice(-TIMELINE_LIMIT)
+    writer.push(true)
   }
-  const clear = (): void => { entries.value = []; previewEntries.value = []; dropped.value = 0; deltaCount.value = 0; completeCount.value = 0; selected.value = null }
+  const clear = (): void => {
+    writer.cancel()
+    pending = []; pendingPreviews = []; received = deltas = completes = 0
+    entries.value = []; previewEntries.value = []; dropped.value = 0; deltaCount.value = 0; completeCount.value = 0; selected.value = null
+  }
   const taskCount = computed(() => new Set(entries.value.map(entry => entry.taskId)).size)
 
   onMounted(() => { stop = observeRawFactoryGenerationEvents(record) })
-  onBeforeUnmount(() => { stop?.(); stop = undefined })
+  onBeforeUnmount(() => { stop?.(); stop = undefined; writer.cancel(); pending = []; pendingPreviews = [] })
   return {entries, previewEntries, paused, selected, dropped, deltaCount, completeCount, taskCount, clear}
 }

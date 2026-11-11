@@ -21,10 +21,11 @@ export class InstancePool {
   mesh: THREE.InstancedMesh;
   private capacity: number;
   private used = 0;
-  private readonly free: number[] = [];
+  private readonly free = new Set<number>();
   private readonly arrays = new Map<string, Float32Array>();
-  private dirtyMatrix = false;
-  private readonly dirtyAttributes = new Set<string>();
+  private matrixLow = Infinity;
+  private matrixHigh = -1;
+  private readonly dirtyAttributes = new Map<string, {low: number; high: number}>();
 
   constructor(
     readonly key: string,
@@ -43,43 +44,51 @@ export class InstancePool {
 
   /** 已用槽位数（含空洞） */
   get size(): number {
-    return this.used - this.free.length;
+    return this.used - this.free.size;
+  }
+
+  /** 无过渡重建时整池归零，保留 GPU 容量复用；新槽位由 alloc 重置，不逐个遍历旧建筑。 */
+  clear(): void {
+    this.used = 0;
+    this.free.clear();
+    this.mesh.count = 0;
+    this.matrixLow = Infinity;
+    this.matrixHigh = -1;
+    this.dirtyAttributes.clear();
   }
 
   alloc(): number {
-    const slot = this.free.length ? (this.free.pop() as number) : this.used++;
+    const slot = this.free.size ? this.free.values().next().value! : this.used++;
+    this.free.delete(slot);
     if (slot >= this.capacity) this.grow(Math.max(this.capacity * 2, slot + 1));
     for (const spec of this.specs) {
       const array = this.arrays.get(spec.name) as Float32Array;
       for (let i = 0; i < spec.itemSize; i++) array[slot * spec.itemSize + i] = spec.fill?.[i] ?? 0;
-      this.dirtyAttributes.add(spec.name);
+      this.markAttribute(spec.name, slot * spec.itemSize, spec.itemSize);
     }
     this.mesh.setMatrixAt(slot, ZERO);
     this.mesh.count = this.used;
-    this.dirtyMatrix = true;
+    this.markMatrix(slot);
     return slot;
   }
 
   release(slot: number): void {
-    if (slot < 0 || slot >= this.used) return;
+    if (slot < 0 || slot >= this.used || this.free.has(slot)) return;
     this.mesh.setMatrixAt(slot, ZERO);
-    this.dirtyMatrix = true;
+    this.markMatrix(slot);
     if (slot === this.used - 1) {
       this.used--;
       // 收缩尾部连续的空闲槽位，减少无效绘制
-      while (this.used > 0 && this.free.includes(this.used - 1)) {
-        this.free.splice(this.free.indexOf(this.used - 1), 1);
-        this.used--;
-      }
+      while (this.used > 0 && this.free.delete(this.used - 1)) this.used--;
       this.mesh.count = this.used;
     } else {
-      this.free.push(slot);
+      this.free.add(slot);
     }
   }
 
   setMatrix(slot: number, matrix: THREE.Matrix4): void {
     this.mesh.setMatrixAt(slot, matrix);
-    this.dirtyMatrix = true;
+    this.markMatrix(slot);
   }
 
   set(name: string, slot: number, a: number, b = 0, c = 0, d = 0): void {
@@ -91,22 +100,39 @@ export class InstancePool {
     if (size > 1) array[offset + 1] = b;
     if (size > 2) array[offset + 2] = c;
     if (size > 3) array[offset + 3] = d;
-    this.dirtyAttributes.add(name);
+    this.markAttribute(name, offset, size);
   }
 
   /** 把本帧的修改提交到 GPU；包围球失效后由拾取或剔除按需重算 */
   commit(): void {
-    if (this.dirtyMatrix) {
+    if (this.matrixHigh >= 0) {
+      this.mesh.instanceMatrix.addUpdateRange(this.matrixLow * 16, (this.matrixHigh - this.matrixLow + 1) * 16);
       this.mesh.instanceMatrix.needsUpdate = true;
       this.mesh.boundingSphere = null;
       this.mesh.boundingBox = null;
-      this.dirtyMatrix = false;
+      this.matrixLow = Infinity;
+      this.matrixHigh = -1;
     }
-    for (const name of this.dirtyAttributes) {
+    for (const [name, range] of this.dirtyAttributes) {
       const attribute = this.mesh.geometry.getAttribute(name) as THREE.InstancedBufferAttribute | undefined;
-      if (attribute) attribute.needsUpdate = true;
+      if (attribute) {
+        attribute.addUpdateRange(range.low, range.high - range.low);
+        attribute.needsUpdate = true;
+      }
     }
     this.dirtyAttributes.clear();
+  }
+
+  /** 合并本帧改动范围；只上传变更槽位，未渲染的范围由 three.js 在真正上传后清理。 */
+  private markMatrix(slot: number): void {
+    this.matrixLow = Math.min(this.matrixLow, slot);
+    this.matrixHigh = Math.max(this.matrixHigh, slot);
+  }
+
+  private markAttribute(name: string, offset: number, size: number): void {
+    const range = this.dirtyAttributes.get(name);
+    if (range) { range.low = Math.min(range.low, offset); range.high = Math.max(range.high, offset + size); }
+    else this.dirtyAttributes.set(name, {low: offset, high: offset + size});
   }
 
   dispose(): void {
@@ -151,7 +177,6 @@ export class InstancePool {
 
   private grow(capacity: number): void {
     const oldMesh = this.mesh;
-    const oldCapacity = this.capacity;
     this.capacity = capacity;
     for (const spec of this.specs) {
       const next = new Float32Array(capacity * spec.itemSize);
@@ -159,17 +184,12 @@ export class InstancePool {
       this.arrays.set(spec.name, next);
     }
     this.mesh = this.createMesh();
-    const matrix = new THREE.Matrix4();
-    for (let i = 0; i < oldCapacity; i++) {
-      oldMesh.getMatrixAt(i, matrix);
-      this.mesh.setMatrixAt(i, matrix);
-    }
-    for (let i = oldCapacity; i < capacity; i++) this.mesh.setMatrixAt(i, ZERO);
+    this.mesh.instanceMatrix.array.set(oldMesh.instanceMatrix.array);
     this.parent.remove(oldMesh);
     oldMesh.geometry.dispose();
     oldMesh.dispose();
     this.parent.add(this.mesh);
-    this.dirtyMatrix = true;
-    for (const spec of this.specs) this.dirtyAttributes.add(spec.name);
+    if (this.used) { this.markMatrix(0); this.markMatrix(this.used - 1); }
+    for (const spec of this.specs) this.markAttribute(spec.name, 0, this.used * spec.itemSize);
   }
 }

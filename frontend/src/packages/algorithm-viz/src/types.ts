@@ -162,7 +162,7 @@ export interface AlgorithmVizController {
   caption(title: string, detail?: string): void;
   /** 清空场景与队列；animate 为 true 时已有对象播放撤销动画 */
   reset(options?: { animate?: boolean }): void;
-  /** 跳过排队动画，立即应用全部待播操作 */
+  /** 跳过过渡动画；大量操作按整帧预算持续应用，避免跳过按钮阻塞页面。 */
   flush(): void;
   setSpeed(speed: number): void;
   getSpeed(): number;

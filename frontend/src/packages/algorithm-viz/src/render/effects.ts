@@ -37,6 +37,11 @@ export class ShadowLayer {
     this.pool.release(slot);
   }
 
+  /** 无动画整场重建时回收全部投影槽位，避免按候选数量反复释放。 */
+  clear(): void {
+    this.pool.clear();
+  }
+
   /** 写入投影：中心 (x, z)、旋转 yaw、尺寸 (w, d)、强度 */
   set(slot: number, x: number, z: number, yaw: number, w: number, d: number, strength: number): void {
     const c = Math.cos(yaw);
