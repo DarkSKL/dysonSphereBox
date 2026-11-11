@@ -40,6 +40,8 @@ type denseRoutePortIndex struct {
 	// integerEdges 职责：缓存实际边界内无权限整数邻边；使用：避免稀疏缓存饱和后重复实算；边界：动态节点及原生端口权限始终独立判断。
 	integerEdges *denseIntegerEdgeCache
 	registered   map[*placed]bool
+	// staticQuery/beltQuery 职责：分别去重静态盒与动态带段的宽相位结果；使用：串行路由查询；边界：两阶段独立，不缓存动态碰撞结论。
+	staticQuery, beltQuery collisionQueryMarks
 }
 
 // newDenseRoutePortIndex 职责：沿用全场真实轮廓的静态模型建立接驳索引；使用：密铺寻路开始；边界：不把分拣器粗矩形加回密铺障碍。
@@ -158,13 +160,12 @@ func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
 	}
 	a, c := index.world(first), index.world(second)
 	candidate := connectedBeltShape(a, c)
-	seen := map[int]bool{}
+	index.beltQuery.begin(len(index.belts))
 	clear := connectedShapeCells(candidate, func(cell [3]int) bool {
 		for _, number := range index.beltCells[cell] {
-			if seen[number] {
+			if index.beltQuery.seen(number) {
 				continue
 			}
-			seen[number] = true
 			existing := index.belts[number]
 			if a == existing.ends[0] || a == existing.ends[1] || c == existing.ends[0] || c == existing.ends[1] {
 				continue
@@ -235,13 +236,12 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 		span := connectedBeltShape(a, c)
 		// 曲率只可能把擦顶带向对象局部切平面降低；扩大查询范围以发现跨空间桶的临界顶部，不扩大任何碰撞盒。
 		span.low[1] -= .5
-		seen := map[int]bool{}
+		index.staticQuery.begin(len(index.boxes))
 		connectedShapeCells(span, func(cell [3]int) bool {
 			for _, n := range index.cells[cell] {
-				if seen[n] {
+				if index.staticQuery.seen(n) {
 					continue
 				}
-				seen[n] = true
 				if n < len(index.owners) {
 					owner := index.owners[n]
 					allowed := links[owner]

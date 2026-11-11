@@ -16,6 +16,9 @@ import (
 // connectedPowerCellSize 职责：限定米制平面占位桶边长；使用：局部净空和供电查询；边界：高度始终进入三维窄相位，不用二维相邻代替三维覆盖。
 const connectedPowerCellSize = 8.
 
+// connectedPowerObstacleCellSize 职责：让细小感应塔净空只枚举邻近障碍；使用：占位桶登记与查询；边界：覆盖和求解索引仍用原八米桶，跨桶形状完整登记。
+const connectedPowerObstacleCellSize = 2.
+
 // connectedPowerObstacle 职责：缓存单个实体的精确静态盒或带/分拣器线段；使用：候选塔窄相位；边界：电力节点另按原版三维间距检查。
 type connectedPowerObstacle struct {
 	entity *placed
@@ -45,6 +48,8 @@ type connectedPowerIndex struct {
 	// nodeInputs/nodeMembers 职责：按最终记录顺序解析实际带邻居；使用：精确节点几何；边界：仅引用当前实体。
 	nodeInputs  map[*placed]*placed
 	nodeMembers map[*placed]bool
+	// query 职责：复用净空宽相位的形状去重；使用：单候选串行available调用；边界：只去重本轮，不复用动态占位结果。
+	query collisionQueryMarks
 }
 
 // connectedPowerConsumer 职责：保留真实耗电中心及失败定位身份；使用：补电枚举和有限约束求解；边界：中心不随求解改变，分拣器和堆叠规则由统一解析负责。
@@ -340,6 +345,11 @@ func connectedPowerCell(x, y float64) [2]int {
 	return [2]int{int(math.Floor(x / connectedPowerCellSize)), int(math.Floor(y / connectedPowerCellSize))}
 }
 
+// connectedPowerObstacleCell 职责：取得净空专用细桶键；使用：add与available必须成对使用；边界：向负无穷取整，不能用于供电覆盖和求解器的八米桶。
+func connectedPowerObstacleCell(x, y float64) [2]int {
+	return [2]int{int(math.Floor(x / connectedPowerObstacleCellSize)), int(math.Floor(y / connectedPowerObstacleCellSize))}
+}
+
 // add 职责：登记整个静态建造盒或带/分拣器线段经过的桶；使用：首次建索引及每个新增电塔；边界：电力节点的间距范围也并入占位，不只登记首端所在桶。
 func (index *connectedPowerIndex) add(entity *placed) error {
 	if index.ctx.Err() != nil {
@@ -425,7 +435,7 @@ func (index *connectedPowerIndex) add(entity *placed) error {
 	}
 	entry := len(index.obstacles)
 	index.obstacles = append(index.obstacles, obstacle)
-	minimum, maximum := connectedPowerCell(low[0], low[2]), connectedPowerCell(high[0], high[2])
+	minimum, maximum := connectedPowerObstacleCell(low[0], low[2]), connectedPowerObstacleCell(high[0], high[2])
 	for x := minimum[0]; x <= maximum[0]; x++ {
 		if index.ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全局供电跨桶登记已取消或超时"}
@@ -516,16 +526,17 @@ func (index *connectedPowerIndex) available(point vector) (bool, error) {
 			low[axis], high[axis] = math.Min(low[axis], boxLow[axis]), math.Max(high[axis], boxHigh[axis])
 		}
 	}
-	minimum, maximum := connectedPowerCell(low[0], low[2]), connectedPowerCell(high[0], high[2])
-	seen := map[int]bool{}
+	minimum, maximum := connectedPowerObstacleCell(low[0], low[2]), connectedPowerObstacleCell(high[0], high[2])
+	index.query.begin(len(index.obstacles))
+	seenCount := 0
 	for x := minimum[0]; x <= maximum[0]; x++ {
 		for y := minimum[1]; y <= maximum[1]; y++ {
 			for _, number := range index.cells[[2]int{x, y}] {
-				if seen[number] {
+				if index.query.seen(number) {
 					continue
 				}
-				seen[number] = true
-				if len(seen)%64 == 0 && index.ctx.Err() != nil {
+				seenCount++
+				if seenCount%64 == 0 && index.ctx.Err() != nil {
 					return false, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全局供电候选净空检查已取消或超时"}
 				}
 				obstacle := index.obstacles[number]
@@ -543,7 +554,7 @@ func (index *connectedPowerIndex) available(point vector) (bool, error) {
 						index.rejected[point] = true
 						return false, nil
 					}
-					if obstacle.radius > 0 && box.SegmentDistanceSquared(obstacle.first, obstacle.second) < obstacle.radius*obstacle.radius {
+					if obstacle.radius > 0 && collisionSegmentWithinRadius(box, obstacle.first, obstacle.second, obstacle.radius*obstacle.radius) {
 						index.rejected[point] = true
 						return false, nil
 					}

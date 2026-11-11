@@ -70,11 +70,24 @@ func (box Box) Bounds() (Vector, Vector) {
 
 // SegmentDistanceSquared 职责：求闭线段到定向盒的精确最近距离；使用：带节点球和动态胶囊窄相位；边界：盒须有效，距离为零也包括边界接触。
 func (box Box) SegmentDistanceSquared(first, second Vector) float64 {
+	if first == second {
+		relative := first.Sub(box.Center)
+		total := 0.
+		for axis, basis := range box.Axes {
+			gap := max(0, math.Abs(relative.Dot(basis))-box.HalfSize[axis])
+			total += gap * gap
+		}
+		return total
+	}
 	var origin, direction Vector
-	breaks := []float64{0, 1}
+	// 三个轴各至多两个交点，加上线段两端共八个；固定存储保留原断点与排序，不为每次窄相位分配切片。
+	var storage [8]float64
+	breaks := storage[:2]
+	breaks[1] = 1
+	relative, displacement := first.Sub(box.Center), second.Sub(first)
 	for axis := range origin {
-		origin[axis] = first.Sub(box.Center).Dot(box.Axes[axis])
-		direction[axis] = second.Sub(first).Dot(box.Axes[axis])
+		origin[axis] = relative.Dot(box.Axes[axis])
+		direction[axis] = displacement.Dot(box.Axes[axis])
 		if math.Abs(direction[axis]) > 1e-12 {
 			for _, edge := range []float64{-box.HalfSize[axis], box.HalfSize[axis]} {
 				if t := (edge - origin[axis]) / direction[axis]; t > 0 && t < 1 {
