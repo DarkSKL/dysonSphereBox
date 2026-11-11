@@ -116,7 +116,11 @@ func (b *builder) candidateWorkers(ctx context.Context, count int) int {
 	if configured, _ := ctx.Value(candidateConcurrencyKey{}).(int); configured > 0 {
 		return max(1, min(count, configured))
 	}
-	return search.Concurrency(count)
+	workers := search.Concurrency(count)
+	if largeFactoryWorkload(ctx) {
+		workers = min(workers, 4)
+	}
+	return workers
 }
 
 func (p *generationPreview) finish(status string) {

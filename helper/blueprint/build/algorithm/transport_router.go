@@ -409,8 +409,8 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 				b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-long-belt-segments", Status: "passed", Message: fmt.Sprintf("物品%d自由直带采用最长1.5格节点间距，减少%d个带节点；保留端部接驳及转角，实际带速和容量不变，最终球面规则继续核验", route.edge.ItemID, removed)})
 			}
 		}
-		if len(b.all)+len(points) > blueprint.MaxBuildingCount {
-			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "完整物料路线会使建筑超过 20 万，请拆分目标"}
+		if len(b.all)+len(points) > generationBuildingBudget(ctx) {
+			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: fmt.Sprintf("完整物料路线会使建筑超过本次预算 %d，请拆分目标", generationBuildingBudget(ctx))}
 		}
 		b.owner = -1
 		if merge != nil || b.denseSpatial {

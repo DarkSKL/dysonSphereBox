@@ -135,6 +135,8 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 	}
 	// 大厂在每个单元内完整搜索纬度，避免已落位单元被反复移动而耗尽重排预算。
 	flexibleLatitude := len(units) >= 64
+	// 大厂先保护已有物料布局；局部经向避让失败才进入原来的完整经纬扫描，避免把满幅纬向布局挤成长条。
+	seedFirst := flexibleLatitude && largeFactoryWorkload(ctx) && b.adapter != nil && b.adapter.mode == 1 && !b.polarFrame.compactLongitude && b.polarFrame.position != ""
 	makePart := func(unit denseSpatialUnit, dynamic bool) (polarUnitOccupancy, error) {
 		part := polarUnitOccupancy{unit: unit}
 		part.low, part.high = bounds(unit.entities)
@@ -246,16 +248,27 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 		latitudeCount := 1
 		if flexibleLatitude {
 			latitudeCount = b.polarFrame.height
+			if seedFirst {
+				latitudeCount++
+			}
 		}
 		for latitude := 0; latitude < latitudeCount && !found; latitude++ {
 			part := seed
+			seedAttempt := seedFirst && latitude == 0
 			if flexibleLatitude {
 				low, high := bounds(seed.unit.entities)
-				target := float64(latitude)
+				scanLatitude := latitude
+				if seedFirst {
+					scanLatitude--
+				}
+				target := float64(scanLatitude)
 				if b.polarFrame.position != "" {
-					target = b.polarFrame.targetLatitude(latitude, high.y-low.y)
+					target = b.polarFrame.targetLatitude(scanLatitude, high.y-low.y)
 				} else if b.polarFrame.start < 0 {
 					target = float64(b.polarFrame.height-1-latitude) - (high.y - low.y)
+				}
+				if seedAttempt {
+					target = seed.low.y
 				}
 				dy := target - low.y
 				if low.y+dy < 0 || high.y+dy > float64(b.polarFrame.height-1) {
@@ -302,6 +315,9 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 			rotatedArms := make([]surfaceBeltSpan, len(part.arms))
 			rotatedArmBoxes := make([]placement.Box, len(part.armBoxes))
 			for attempt := 0; attempt <= b.polarFrame.segments*40; attempt++ {
+				if seedAttempt && attempt > 128 {
+					break
+				}
 				if err := ctx.Err(); err != nil {
 					return nil, err
 				}
@@ -309,7 +325,9 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				if attempt%2 == 1 {
 					dx = -dx
 				}
-				if flexibleLatitude {
+				if seedAttempt {
+					dx += seed.low.x
+				} else if flexibleLatitude {
 					dx = float64(attempt) / 4
 					if part.high.x+dx >= b.polarFrame.longitudeLimit() || part.high.x+dx >= bestRight {
 						break

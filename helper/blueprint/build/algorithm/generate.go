@@ -91,6 +91,7 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	defer cancel()
 	ctx = context.WithValue(ctx, generationTaskIDKey{}, req.TaskID)
 	ctx = context.WithValue(ctx, candidateConcurrencyKey{}, req.CandidateConcurrency)
+	ctx = context.WithValue(ctx, generationWorkloadKey{}, req.Plan.MachineCount)
 	ctx = withGenerationPreview(ctx, req)
 	defer func() {
 		if generateErr != nil {
@@ -241,8 +242,8 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 			return result, err
 		}
 	}
-	if len(b.all) > blueprint.MaxBuildingCount {
-		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "建筑超过 20 万，请拆分生成"}
+	if len(b.all) > generationBuildingBudget(ctx) {
+		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: fmt.Sprintf("建筑数量超过本次预算 %d，请拆分生成", generationBuildingBudget(ctx))}
 	}
 	if len(b.all) > 100000 {
 		b.warnings = append(b.warnings, "建筑超过 10 万，生成和游戏内粘贴可能较慢；建议按产物拆分，并关闭实时预览")

@@ -130,7 +130,7 @@ func (b *builder) foldSurfaceBus(ctx context.Context, layout *SurfaceLayout) err
 			points = append(points, manhattan(first, second, false)[1:]...)
 			points = append(points, manhattan(second, edge.to.a, false)[1:]...)
 			if len(b.all)+len(points)-2 > blueprint.MaxBuildingCount {
-				return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线折返接驳后超过 20 万建筑，请拆分目标"}
+				return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "总线折返接驳后超过 30 万建筑，请拆分目标"}
 			}
 			bridge := b.byPath(points[1 : len(points)-1])
 			connect(edge.from, bridge[0])

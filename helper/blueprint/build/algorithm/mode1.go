@@ -569,7 +569,7 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			columnWidth = math.Max(columnWidth, placementX-x+width)
 		}
 		if len(b.all) > blueprint.MaxBuildingCount {
-			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "机器和过滤端口超过 20 万建筑，请拆分目标"}
+			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "机器和过滤端口超过 30 万建筑，请拆分目标"}
 		}
 	}
 	if b.denseMaterialNetworks != nil {

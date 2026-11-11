@@ -406,7 +406,8 @@ func (index *connectedPowerIndex) add(entity *placed) error {
 			high[axis] = math.Max(obstacle.first[axis], obstacle.second[axis]) + obstacle.radius
 		}
 	} else {
-		shapes, err := index.catalog.Shapes(entity.record.ItemID, entity.record.ModelIndex)
+		// 补电必须沿用最终出口的完整分流器净空，避免已完成布线后又把电塔放进选择体积。
+		shapes, err := splitterClearanceShapes(index.catalog, entity.record.ItemID, entity.record.ModelIndex)
 		if err != nil {
 			return &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 		}
