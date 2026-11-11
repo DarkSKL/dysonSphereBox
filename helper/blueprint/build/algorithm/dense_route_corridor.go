@@ -8,7 +8,7 @@ import (
 	"math"
 )
 
-// findDenseNativeDestinationPath 职责：复用同一精确A*在较小平面走廊中重试预算不足的长线；使用：原生密铺全域未找到任何路径之后；边界：每次仍受原展开上限，调用及展开如实累计，任何退出均恢复完整边界及启发式缓存。
+// findDenseNativeDestinationPath 职责：复用同一搜索器在较小平面走廊中重试预算不足的长线；使用：原生密铺全域未找到任何路径之后；边界：每次仍受原展开上限，调用及展开如实累计，任何退出均恢复完整边界及启发式缓存。
 func (env *transportEnvironment) findDenseNativeDestinationPath(ctx context.Context, start vector, goals []transportDestination, source, target *placed) (path []vector, selected, expanded, peak, calls int) {
 	path, selected, expanded = env.findTransportDestinationPathWithSuffix(ctx, start, goals, source, target)
 	peak, calls = expanded, 1

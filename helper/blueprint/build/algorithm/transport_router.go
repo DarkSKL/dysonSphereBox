@@ -18,7 +18,7 @@ const transportSearchLimit = 300000
 // transportMaxHeight 职责：限定已经过带距离预检的候选高度层；使用：三维路由；边界：失败不无限堆高规避规则。
 const transportMaxHeight = 32
 
-// transportPathNode 职责：保存三维 A* 候选；使用：稳定最小堆；边界：已关闭节点不会重新展开。
+// transportPathNode 职责：保存三维 A* 候选；使用：稳定最小堆；边界：精确搜索不重开关闭节点，有界引导搜索允许更低代价重新打开。
 type transportPathNode struct {
 	point        vector
 	parent       *transportPathNode
@@ -94,6 +94,8 @@ type transportEnvironment struct {
 	minimum, maximum vector
 	// searchCalls/cacheHits 职责：累计确定性寻路次数和当前占位版本缓存命中；使用：routing-budget 诊断；边界：不包含墙钟时间。
 	searchCalls, cacheHits int
+	// guidedCalls 职责：累计大型原生网格的有界代价搜索次数；使用：获选结果诊断；边界：不改变搜索展开计数或实际带流量。
+	guidedCalls int
 	// totalExpanded/maxExpanded 职责：累计及记录单次最高展开数；使用：检查固定搜索预算；边界：缓存命中为零展开，不因此放宽硬约束。
 	totalExpanded, maxExpanded int
 	// preferCorridor 职责：为直连带优先复用平面走廊；使用：运输A*；边界：不强制升高，不改变碰撞、端口、高度或预算。
@@ -277,6 +279,8 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			incomingCounts[p.output]++
 		}
 	}
+	// 外供端口及球面位置已冻结；之后每条路线只追加带节点并更新源端 output。
+	b.previewCheckpoint("routing")
 	for index, route := range routes {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
@@ -412,6 +416,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		if merge != nil || b.denseSpatial {
 			points = points[:len(points)-1]
 		}
+		previewBase := len(b.all)
 		path := b.byPath(points)
 		for _, point := range path {
 			incomingCounts[point]++
@@ -453,7 +458,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			}
 		}
 		env.version++
-		b.previewCheckpoint("routing")
+		b.previewRouteAppend(previewBase, route.start)
 	}
 	inserterStatus := "passed"
 	inserterMessage := "机器单臂及逐物品过滤分支按实际跨度和已验证保守吞吐检查，不把带容量当作分拣器容量"
@@ -468,6 +473,9 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "routing-budget", Status: "passed", Message: fmt.Sprintf("确定性路线预算：searchCalls=%d，cacheHits=%d，totalExpanded=%d，maxExpanded=%d，perSearchLimit=%d，maxHeight=%d，occupancyVersions=%d；缓存按端口身份、合流权限和占位版本隔离，带等级和高度上限固定于本次环境", env.searchCalls, env.cacheHits, env.totalExpanded, env.maxExpanded, transportSearchLimit, transportMaxHeight, env.version)})
 	if env.preferCorridor {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "stacked-corridor-routing", Status: "passed", Message: "独立传送带优先复用既有带的平面走廊，以不同高度区分并在端点真实逐格升降；走廊水平代价1、外扩1.25、升降1.5，不强制空场高架；平面下界预计算最多300000格，碰撞、端口权限、高度32和单次三维300000预算不变"})
+	}
+	if env.guidedCalls > 0 {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "bounded-native-routing", Status: "passed", Message: fmt.Sprintf("大型原生网格执行%d次有界代价搜索；单次整数主路及目标后缀保留2倍代价界，允许重开节点，碰撞、容量、高度及展开预算不变；不宣称整厂全局最优", env.guidedCalls)})
 	}
 	return b.commitMode1Deliveries()
 }

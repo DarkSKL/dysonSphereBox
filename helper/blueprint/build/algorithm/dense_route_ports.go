@@ -480,6 +480,7 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 func (env *transportEnvironment) densePathClear(points []vector, source, target *placed) bool {
 	firstLinks := env.densePorts.linkedPortBuildings(source, true)
 	lastLinks := env.densePorts.linkedPortBuildings(target, false)
+	self := newDenseRouteSelfIndex(len(points))
 	for i, point := range points {
 		var reused *placed
 		if i == 0 {
@@ -501,11 +502,8 @@ func (env *transportEnvironment) densePathClear(points []vector, source, target 
 				return false
 			}
 		}
-		for j := 0; j < i; j++ {
-			delta := env.densePorts.world(point).Sub(env.densePorts.world(points[j]))
-			if delta.Dot(delta) < denseRouteNodeClearance*denseRouteNodeClearance-1e-9 {
-				return false
-			}
+		if !self.addClear(env.densePorts.world(point)) {
+			return false
 		}
 	}
 	return true

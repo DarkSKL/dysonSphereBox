@@ -19,7 +19,7 @@ func (env *transportEnvironment) transportStepCost(from, to vector) float64 {
 		weight = 1.25
 	}
 	if env.densePorts != nil && !env.densePorts.strictBelts {
-		weight += denseRouteHeightPenalty * math.Max(0, (from.z+to.z)/2)
+		weight += denseRouteHeightPenalty * max(0, (from.z+to.z)/2)
 		weight += denseRouteOuterPenalty * (env.transportFootprintOverflow(from) + env.transportFootprintOverflow(to)) / 2
 	}
 	return horizontal*weight + math.Abs(from.z-to.z)*1.5
@@ -31,7 +31,7 @@ func (env *transportEnvironment) transportFootprintOverflow(point vector) float6
 	if index == nil || !index.footprintReady {
 		return 0
 	}
-	return math.Max(0, index.footprintLow.x-point.x) + math.Max(0, point.x-index.footprintHigh.x) + math.Max(0, index.footprintLow.y-point.y) + math.Max(0, point.y-index.footprintHigh.y)
+	return max(0, index.footprintLow.x-point.x) + max(0, point.x-index.footprintHigh.x) + max(0, index.footprintLow.y-point.y) + max(0, point.y-index.footprintHigh.y)
 }
 
 // transportElevationLowerBound 职责：给出水平高度成本与必要升降的联合一致下界；使用：单目标、多目标及反向合流共用；边界：放松障碍后比较原高度与下到地面，不计外绕罚项，保持可采纳性。
@@ -41,7 +41,7 @@ func (env *transportEnvironment) transportElevationLowerBound(from, to vector) f
 		return vertical
 	}
 	horizontal := math.Abs(from.x-to.x) + math.Abs(from.y-to.y)
-	return math.Min(vertical+denseRouteHeightPenalty*horizontal*math.Min(from.z, to.z), (from.z+to.z)*1.5)
+	return min(vertical+denseRouteHeightPenalty*horizontal*min(from.z, to.z), (from.z+to.z)*1.5)
 }
 
 // beltColumn 职责：获得真实带格的平面投影；使用：跨高度走廊索引；边界：不代替三维碰撞或连接核验。
@@ -56,7 +56,7 @@ func (env *transportEnvironment) transportHeuristic(from, to vector) float64 {
 		left, leftOK := field.distanceAt(from)
 		right, rightOK := field.distanceAt(to)
 		if leftOK && rightOK {
-			horizontal = math.Max(horizontal, math.Abs(left-right))
+			horizontal = max(horizontal, math.Abs(left-right))
 		}
 	}
 	return horizontal + env.transportElevationLowerBound(from, to)

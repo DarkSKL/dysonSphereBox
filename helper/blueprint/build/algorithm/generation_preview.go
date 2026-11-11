@@ -190,6 +190,42 @@ func (b *builder) previewCheckpoint(stage string) {
 	}
 	b.preview.stage = stage
 	b.preview.notifier.Sync(preview.Scene{Objects: objects, Frame: preview.Frame{CoordinateSystem: preview.LayoutCoordinates}})
+	b.previewEntities = ids
+}
+
+// previewRouteAppend 职责：发布一条已提交路线的新带节点及起点连线；使用：routeTransportWithStrategy 的追加事务末端；边界：必须先完整同步全部端口，裁剪、平移和其它更新继续使用完整检查点。
+func (b *builder) previewRouteAppend(base int, source *placed) {
+	if b.preview == nil || !b.previewActive || b.preview.ctx.Err() != nil {
+		return
+	}
+	if base < 0 || base > len(b.all) || len(b.previewEntities) != base || b.previewEntities[source] == "" {
+		b.previewCheckpoint("routing")
+		return
+	}
+	for _, entity := range b.all[base:] {
+		if entity == nil || b.previewEntities[entity] != "" {
+			b.previewCheckpoint("routing")
+			return
+		}
+		b.previewEntities[entity] = b.preview.objectID(entity)
+	}
+	entities := make([]*placed, 1, len(b.all)-base+1)
+	entities[0] = source
+	entities = append(entities, b.all[base:]...)
+	objects := make([]preview.Object, 0, len(entities))
+	for _, entity := range entities {
+		record := entity.record
+		record.Index, record.AreaIndex = -1, 0
+		record.LocalOffset = blueprint.Point{X: float32(entity.a.x), Y: float32(entity.a.y), Z: float32(entity.a.z)}
+		record.LocalOffset2 = blueprint.Point{X: float32(entity.b.x), Y: float32(entity.b.y), Z: float32(entity.b.z)}
+		building := renderPreviewBuilding(record, entity.owner, true)
+		building.InputObjectID, building.OutputObjectID = b.previewEntities[entity.input], b.previewEntities[entity.output]
+		objects = append(objects, preview.Object{ID: b.previewEntities[entity], Building: building})
+	}
+	b.preview.stage = "routing"
+	if !b.preview.notifier.Patch(preview.Frame{CoordinateSystem: preview.LayoutCoordinates}, objects) {
+		b.previewCheckpoint("routing")
+	}
 }
 
 // rollbackPreview 职责：撤下真实失败或被放弃候选的全部临时对象；使用：候选失败边界；边界：不影响实体库存、告警或失败原因。

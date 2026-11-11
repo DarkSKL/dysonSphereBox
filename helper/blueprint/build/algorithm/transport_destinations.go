@@ -9,10 +9,10 @@ import (
 	"math"
 )
 
-// transportDestinationQueue 职责：按至候选邻格的代价和节点数下界字典序展开；使用：多终点A*；边界：两个下界都一致，同坐标只保留代价更低或同价更短的前缀。
+// transportDestinationQueue 职责：按代价估计和节点数下界字典序展开；使用：精确及有界多终点搜索；边界：启发权重由调用方设置，停止条件另行核验。
 type transportDestinationQueue struct{ transportPathQueue }
 
-// Less 职责：先优化平面走廊代价、再优化实际带链长度；使用：稳定堆比较；边界：同价同长度下界仍向终点推进，最终按插入顺序确定。
+// Less 职责：按代价估计、长度下界、已行代价和插入顺序排序；使用：稳定堆比较；边界：排序本身不证明最优性，代价界由搜索器核验。
 func (q transportDestinationQueue) Less(i, j int) bool {
 	a, b := q.transportPathQueue[i], q.transportPathQueue[j]
 	if a.score != b.score {
@@ -55,7 +55,20 @@ func (env *transportEnvironment) findTransportDestinationPath(ctx context.Contex
 // findTransportDestinationPathWithSuffix 职责：在一次有界搜索中比较到真实端口的完整代价和节点数；使用：密铺分数后缀及既有合流尾链；边界：返回原候选索引，重复接驳点按后缀择优，已有带目标不能作为穿行节点。
 // 逻辑流：1. 筛选并合并目标 => 2. 将后缀计入一致下界 => 3. 更新完整路线并继续比较更优下界 => 4. 回溯获选接驳路径，取消时丢弃结果。
 func (env *transportEnvironment) findTransportDestinationPathWithSuffix(ctx context.Context, start vector, candidates []transportDestination, source, target *placed) ([]vector, int, int) {
+	weight := 1.
+	// 大型原生网格的可达状态已超过单次展开预算；采用有界代价引导并保留重新打开节点，避免反复耗尽预算仍得不到完整路线。
+	if env.densePorts != nil && env.densePorts.polarFrame != nil && !env.densePorts.strictBelts && (env.maximum.x-env.minimum.x+1)*(env.maximum.y-env.minimum.y+1) >= 16384 {
+		weight = 2
+	}
+	return env.findTransportDestinationPathWeighted(ctx, start, candidates, source, target, weight)
+}
+
+// findTransportDestinationPathWeighted 职责：在完整后缀代价下执行精确或有界搜索；使用：普通网格权重 1，大型原生网格权重 2；边界：引导搜索允许重开节点，只有队列下界证明代价界或队列耗尽时才交付，预算和硬几何不变。
+func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx context.Context, start vector, candidates []transportDestination, source, target *placed, weight float64) ([]vector, int, int) {
 	env.searchCalls++
+	if weight > 1 {
+		env.guidedCalls++
+	}
 	steps := 0
 	defer func() {
 		env.totalExpanded += steps
@@ -90,6 +103,7 @@ func (env *transportEnvironment) findTransportDestinationPathWithSuffix(ctx cont
 	for i, goal := range goals {
 		goalSuffixes[i] = candidates[goalSet[goal]]
 	}
+	heuristicGoals := transportHeuristicGoals(goalSuffixes)
 	allowed := func(v vector) bool {
 		if !inside(v) {
 			return false
@@ -103,7 +117,8 @@ func (env *transportEnvironment) findTransportDestinationPathWithSuffix(ctx cont
 	goalPotentials := make([]float64, len(goals))
 	goalHasPotential := make([]bool, len(goals))
 	if field != nil && field.version == env.version {
-		for i, goal := range goals {
+		for _, i := range heuristicGoals {
+			goal := goals[i]
 			goalPotentials[i], goalHasPotential[i] = field.distanceAt(goal)
 		}
 	} else {
@@ -115,22 +130,24 @@ func (env *transportEnvironment) findTransportDestinationPathWithSuffix(ctx cont
 		if field != nil {
 			potential, hasPotential = field.distanceAt(point)
 		}
-		for i, goal := range goals {
+		for _, i := range heuristicGoals {
+			goal := goals[i]
 			suffix := goalSuffixes[i]
 			horizontal := math.Abs(point.x-goal.x) + math.Abs(point.y-goal.y)
 			vertical := math.Abs(point.z - goal.z)
 			length = min(length, int(math.Ceil(horizontal+vertical))+suffix.length)
 			if hasPotential && goalHasPotential[i] {
-				horizontal = math.Max(horizontal, math.Abs(potential-goalPotentials[i]))
+				horizontal = max(horizontal, math.Abs(potential-goalPotentials[i]))
 			}
-			cost = math.Min(cost, horizontal+env.transportElevationLowerBound(point, goal)+suffix.cost)
+			cost = min(cost, horizontal+env.transportElevationLowerBound(point, goal)+suffix.cost)
 		}
 		return cost, length
 	}
 	cost, length := heuristic(start)
-	first := &transportPathNode{point: start, score: cost, length: 1, lengthEstimate: 1 + length}
+	first := &transportPathNode{point: start, score: weight * cost, length: 1, lengthEstimate: 1 + length}
 	queue := &transportDestinationQueue{transportPathQueue{first}}
-	seen := map[vector]*transportPathNode{start: first}
+	seen := newTransportSearchIndex(start, env.minimum, env.maximum)
+	seen.set(start, first)
 	serial := 0
 	var best *transportPathNode
 	bestGoal, bestLength, bestCost := -1, math.MaxInt, math.Inf(1)
@@ -157,28 +174,40 @@ func (env *transportEnvironment) findTransportDestinationPathWithSuffix(ctx cont
 		}
 		for _, delta := range []vector{{-1, 0, 0}, {0, 1, 0}, {1, 0, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
 			point := vector{current.point.x + delta.x, current.point.y + delta.y, current.point.z + delta.z}
+			// 精确分支不会重新打开已关闭节点；先读状态，避免为这些邻格重复查询占位、整段净空和软代价。
+			old := seen.get(point)
+			if old != nil && old.closed && weight == 1 {
+				continue
+			}
 			if !allowed(point) || !env.denseTransportStepClear(current.point, point) {
 				continue
 			}
 			distance, length := current.distance+env.transportStepCost(current.point, point), current.length+1
-			old := seen[point]
-			if old != nil && (old.closed || old.distance < distance || old.distance == distance && old.length <= length) {
+			if old != nil && (old.distance < distance || old.distance == distance && old.length <= length) {
 				continue
 			}
 			remainingCost, remainingLength := heuristic(point)
 			if old != nil {
 				old.parent, old.distance, old.length = current, distance, length
-				old.score, old.lengthEstimate = distance+remainingCost, length+remainingLength
-				heap.Fix(queue, old.index)
+				old.score, old.lengthEstimate = distance+weight*remainingCost, length+remainingLength
+				if old.closed {
+					old.closed = false
+					heap.Push(queue, old)
+				} else {
+					heap.Fix(queue, old.index)
+				}
 				continue
 			}
 			serial++
-			node := &transportPathNode{point: point, parent: current, distance: distance, score: distance + remainingCost, order: serial, length: length, lengthEstimate: length + remainingLength}
-			seen[point] = node
+			node := &transportPathNode{point: point, parent: current, distance: distance, score: distance + weight*remainingCost, order: serial, length: length, lengthEstimate: length + remainingLength}
+			seen.set(point, node)
 			heap.Push(queue, node)
 		}
 	}
 	if ctx.Err() != nil || best == nil {
+		return nil, -1, steps
+	}
+	if weight > 1 && queue.Len() > 0 && bestCost > queue.transportPathQueue[0].score {
 		return nil, -1, steps
 	}
 	path := make([]vector, best.length)

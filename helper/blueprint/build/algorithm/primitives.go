@@ -157,6 +157,8 @@ type builder struct {
 	preview *generationPreview
 	// previewActive 职责：区分真实候选与内部几何探测；使用：决定检查点是否可见；边界：新建试装 Builder 默认不发布。
 	previewActive bool
+	// previewEntities 职责：保留最近完整预览的实体身份表；使用：路线仅追加实体时增量发布；边界：完整检查点重建，不能据此推断几何不变。
+	previewEntities map[*placed]string
 	// adapter 职责：保存当前生成组合的阶段实现；使用：统一收尾调用模式钩子；边界：每个 builder 生命周期只绑定一个适配器。
 	adapter *modeAdapter
 	// denseSpatial 职责：启用全场实体占位搜索；使用：超密度及普通模式共享设施候选；边界：具体碰撞与间距仍按适配器密度决定。

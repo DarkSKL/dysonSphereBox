@@ -86,6 +86,49 @@ func (n *Notifier) Sync(scene Scene) {
 	n.frame.Areas = append([]Area(nil), scene.Frame.Areas...)
 }
 
+// Patch 职责：发布明确列出的新增或变更对象，保留其余场景；使用：已确认只有追加实体和局部连线变化的提交；边界：不支持删除或换坐标系，返回 false 时调用方必须完整 Sync。
+func (n *Notifier) Patch(frame Frame, objects []Object) bool {
+	if n == nil {
+		return true
+	}
+	if n.current == nil || n.frame.CoordinateSystem != frame.CoordinateSystem || n.frame.PrimaryAreaIndex != frame.PrimaryAreaIndex || !slices.Equal(n.frame.Areas, frame.Areas) {
+		return false
+	}
+	batch := make([]Operation, 0, BatchSize)
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		copyFrame := frame
+		copyFrame.Areas = append([]Area(nil), frame.Areas...)
+		n.emit(copyFrame, batch)
+		n.batches++
+		batch = make([]Operation, 0, BatchSize)
+	}
+	for _, object := range objects {
+		if object.ID == "" {
+			continue
+		}
+		previous, exists := n.current[object.ID]
+		if exists && previous == object.Building {
+			continue
+		}
+		kind := Replace
+		if !exists {
+			kind = Add
+			n.order = append(n.order, object.ID)
+		}
+		value := object.Building
+		n.current[object.ID] = value
+		batch = append(batch, Operation{Type: kind, ObjectID: object.ID, Building: &value})
+		if len(batch) == BatchSize {
+			flush()
+		}
+	}
+	flush()
+	return true
+}
+
 // BatchCount 职责：返回实际输出批次数；使用：任务级完成标记；边界：空通知器返回零。
 func (n *Notifier) BatchCount() int {
 	if n == nil {
