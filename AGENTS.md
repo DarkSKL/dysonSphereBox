@@ -90,9 +90,9 @@ The V2 progress event is `modDependence:installProgress` (defined under `constan
 
 ### Blueprint and theme integration
 
-`useThemeMode.ts` shares theme state, persists `System/AppTheme`, and updates `html[data-theme]` plus `color-scheme`. The resource detail preview in `components/blueprint/viewer-panel.vue` loads the bundled UMD script from `packages/dsp-blueprint-editor` via Vite `?url`. Its loader handles Wails/WebView `exports`/`module` globals.
+`useThemeMode.ts` shares theme state, persists `System/AppTheme`, and updates `html[data-theme]` plus `color-scheme`. The resource detail preview is split into three layers: `components/dysonSphere/blueprint/viewer-panel.vue` renders the container and maps props/emit, `composables/useBlueprintViewer.ts` supplies Vue glue (lifecycle hooks, watchers, state refs), and `pages/services/dysonSphere/blueprint-editor-bridge.ts` performs all `dsp-blueprint-editor` calls. That bridge dynamic-`import()`s the bundled ESM build from `packages/dsp-blueprint-editor`; it never loads the UMD script via Vite `?url` and never reads `exports`/`module` globals. Type resolution relies on the hand-written companion declaration `dsp-blueprint-editor.esm.d.ts`, which TypeScript matches by file name — without it the module degrades to `any` and `vue-tsc` fails under `strict`. Note the bundled library's own README still documents a UMD `<script>` usage path that this project does not use.
 
-The third-party preview library mutates global theme state and injects styles. Preserve the wrapper's theme snapshot/restore, stylesheet cleanup, and viewer lifecycle handling; removing them can change the entire application's day/night theme. This local viewer is separate from the full tool page in `pages/blueprint-generator.vue`.
+The third-party preview library mutates global theme state. Preserve the bridge's theme snapshot/restore (`isolate()`) and viewer lifecycle handling; removing them can change the entire application's day/night theme. An older stylesheet-cleanup pass (`isBlueprintEditorGlobalStyle`) has already been removed, so `components/dysonSphere/factory/icon-select.vue` still carries a stale comment referring to it. This local viewer is separate from the full tool page in `pages/blueprint-generator.vue`.
 
 ### Tutorials and UI changes
 
