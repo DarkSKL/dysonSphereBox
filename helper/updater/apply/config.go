@@ -4,11 +4,15 @@ package apply
 // 使用：updater 根包调用 ApplyRelease 时传入命令名和 checksum 文件名。
 // 边界：只保存执行参数，不读取项目全局配置、不访问远端 Release、不修改本地文件。
 
+import "DysonSphereBox/helper/updater/progress"
+
 // Config 描述 Release 资产应用流程的稳定配置。
 // 职责：承载压缩包内命令名和校验清单文件名。
 // 使用：ApplyRelease 下载、校验和解压更新资产时读取。
 // 边界：字段为空会导致校验或解压失败，调用方应传入项目配置常量。
 type Config struct {
+	// DownloadProgress 职责：接收主更新包读取进度；使用：应用更新服务注入；边界：可为空，不统计 checksum 下载。
+	DownloadProgress progress.Reporter
 	// CommandName 是压缩包内应用可执行文件的基础名称。
 	// 职责：让解压逻辑在 Release 资产中找到实际命令文件。
 	// 使用：archiveExecutableName 根据平台补齐可执行文件名时读取。

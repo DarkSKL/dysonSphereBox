@@ -111,6 +111,10 @@ export class IconLayer {
     this.pool.commit();
   }
 
+  beginGeneration(): void {
+    this.pool.beginGeneration();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.slots.reset();

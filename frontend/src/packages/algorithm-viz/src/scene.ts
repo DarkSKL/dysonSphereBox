@@ -9,6 +9,7 @@ import { clonePalette, lerpPalette, resolvePalette, type Palette } from './inter
 import { areaOffsets, OperationQueue, type Offset, type QueueFrame, type QueueItem } from './internal/queue';
 import { FrameWorkBudget } from './internal/work-budget';
 import { CandidateSnapshot } from './internal/snapshot';
+import { GenerationCache } from './internal/generation-cache';
 import { BeltFlow, BeltGeometry, BELT_THICKNESS, BELT_WIDTH } from './internal/belts';
 import { BackdropLayer } from './render/backdrop';
 import { RingLayer, ShadowLayer } from './render/effects';
@@ -53,7 +54,7 @@ const DRAG_THRESHOLD = 4;
 const ICON_BELT_SIZE = 1.5;
 const ICON_BUILDING_MIN = 1.9;
 const ICON_BUILDING_MAX = 3.4;
-const CANVAS_LABEL = '蓝图生成算法可视化：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
+const CANVAS_LABEL = '平面预览器（内测版）：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
 const DEFAULT_EMPTY = '产线计算完成后，算法会在这里逐步搭建蓝图';
 const NO_OFFSETS: ReadonlyMap<number, Offset> = new Map();
 
@@ -152,6 +153,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private unitBox!: THREE.BufferGeometry;
   private beltBox!: THREE.BufferGeometry;
   private readonly pools = new Map<string, InstancePool>();
+  private readonly poolUsage = new GenerationCache<string>();
+  private cachePrunePending = false;
   /** 自有材质的模型池：释放场景时一并释放其材质 */
   private readonly ownedPools = new Set<InstancePool>();
   private readonly owners = new Map<string, (VizObject | undefined)[]>();
@@ -354,6 +357,16 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.touch();
   }
 
+  beginGeneration(taskId: string): void {
+    if (this.disposed || !this.supported || !this.poolUsage.begin(taskId)) return;
+    this.models.beginGeneration(taskId);
+    this.pruneGenerationCache();
+    for (const pool of this.pools.values()) pool.beginGeneration();
+    this.shadows.beginGeneration();
+    this.icons.beginGeneration();
+    this.touch();
+  }
+
   reset(options: { animate?: boolean } = {}): void {
     if (this.disposed || !this.supported) return;
     const hadCandidates = this.candidates.size > 0;
@@ -413,6 +426,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.stage = '';
     this.lastStage = '';
     if (!animate) this.rings.clear();
+    this.pruneGenerationCache();
     this.touch();
   }
 
@@ -571,6 +585,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         if (this.ownedPools.has(pool)) pool.disposeMaterials();
       }
       this.pools.clear();
+      this.poolUsage.clear();
       this.ownedPools.clear();
       this.models.dispose();
       this.shadows.dispose();
@@ -737,7 +752,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private showFallback(): void {
     const div = document.createElement('div');
     div.className = 'algoviz-fallback';
-    div.textContent = '当前环境不支持 WebGL，无法显示算法可视化';
+    div.textContent = '当前环境不支持 WebGL，无法显示平面预览器';
     this.container.append(div);
     this.fallback = div;
   }
@@ -1132,6 +1147,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.owners.set(key, []);
       if (owned) this.ownedPools.add(pool);
     }
+    this.poolUsage.touch(key);
     obj.pool = pool;
     obj.slot = pool.alloc();
     (this.owners.get(key) as (VizObject | undefined)[])[obj.slot] = obj;
@@ -1146,7 +1162,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private freeSlot(obj: VizObject): void {
     this.untrackPlaceholder(obj);
     if (!obj.pool || obj.slot < 0) return;
-    const owners = this.owners.get(obj.pool.key);
+    const pool = obj.pool;
+    const owners = this.owners.get(pool.key);
     if (owners && owners[obj.slot] === obj) owners[obj.slot] = undefined;
     const from = obj.pool.release(obj.slot);
     if (owners) {
@@ -1156,6 +1173,27 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     }
     obj.pool = null;
     obj.slot = -1;
+    if (!pool.size) this.cachePrunePending = true;
+  }
+
+  /** 动画退场的旧对象仍占用资源；等最后一个槽位归还后再释放，避免过渡时缺失模型。 */
+  private pruneGenerationCache(): void {
+    this.cachePrunePending = false;
+    for (const key of this.poolUsage.stale()) {
+      const pool = this.pools.get(key);
+      if (pool?.size) continue;
+      if (pool) {
+        pool.dispose();
+        if (this.ownedPools.delete(pool)) pool.disposeMaterials();
+        this.pools.delete(key);
+        this.owners.delete(key);
+      }
+      this.poolUsage.forget(key);
+    }
+    const protectedKeys = new Set(this.pools.keys());
+    for (const key of this.placeholders.keys()) protectedKeys.add(key);
+    this.models.prune(protectedKeys);
+    for (const key of this.readyModels) if (!this.models.peek(key)) this.readyModels.delete(key);
   }
 
   private untrackPlaceholder(obj: VizObject): void {
@@ -1168,7 +1206,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 模型加载回调仅登记待迁移类型，避免冷加载时同步重建整场对象。 */
   private onModelSettled(key: string): void {
     if (this.disposed) return;
-    if (this.models.get(key).status === 'ready') this.readyModels.add(key);
+    if (this.models.peek(key)?.status === 'ready') this.readyModels.add(key);
     this.touch();
   }
 
@@ -1873,6 +1911,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.beltGeometry.beginFrame();
     for (const obj of this.dirty) if (obj.pool) this.writeObject(obj);
     this.dirty.clear();
+    if (this.cachePrunePending) this.pruneGenerationCache();
     for (const pool of this.pools.values()) pool.commit();
     this.shadows.commit();
     this.icons.setView(this.rig.worldPerPixel);

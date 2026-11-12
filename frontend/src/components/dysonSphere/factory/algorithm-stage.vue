@@ -112,6 +112,7 @@ onMounted(async () => {
     onProgress: value => { progress.value = value; recordAlgorithmActivity(value) },
     onSelect,
   })
+  viz.beginGeneration(props.w.generationTaskId)
   viz.setViewLocked(props.w.generating)
   void feed.sync()
 })
@@ -188,7 +189,7 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
 </script>
 
 <template>
-  <!-- ~ 算法可视化 -->
+  <!-- ~ 平面预览器 -->
   <!-- * 说明：在等距视角的浮空平台上播放蓝图生成算法：建筑落位、平移替换、候选回退与正式提交 -->
   <!-- * 交互：左键拖动旋转（松手吸附 90°），右键拖动平移，滚轮缩放，双击空白复位；点击建筑查看详情并联动产线 -->
   <!-- * 依赖：@dyson/algorithm-viz 渲染包、useAlgorithmFeed 数据源、useQuantWorkspace 结果与产线 -->
@@ -206,7 +207,7 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
     </div>
 
     <!-- 右上：算法、播放与视角控制 -->
-    <div class="algo-tools" role="toolbar" aria-label="算法可视化控制">
+    <div class="algo-tools" role="toolbar" aria-label="平面预览器控制">
       <n-tooltip><template #trigger><button type="button" class="tool-button run" :disabled="!canRegenerate" aria-label="重新运行算法" @click="regenerate"><Sparkles :size="13" /><span>重新运行算法</span></button></template>对当前方案重新生成一次，从头跟随算法的计算过程</n-tooltip>
       <span class="tool-divider" />
       <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" :class="{'is-on': paused}" :aria-label="paused ? '继续播放' : '暂停播放'" @click="togglePause"><Play v-if="paused" :size="14" /><Pause v-else :size="14" /></button></template>{{ paused ? '继续播放' : '暂停播放' }}</n-tooltip>

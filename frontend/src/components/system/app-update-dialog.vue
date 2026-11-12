@@ -6,6 +6,7 @@ import {BrowserOpenURL, Quit} from '../../../wailsjs/runtime/runtime'
 import {useAppUpdateState} from '../../composables/system/useAppUpdateState'
 import {formatErrorMessage} from '../../utils/format'
 import {renderReleaseNotes} from '../../utils/release-notes'
+import AppUpdateButton from './app-update-button.vue'
 
 const props = defineProps<{readonly show: boolean}>()
 const emit = defineEmits<{(event: 'update:show', value: boolean): void}>()
@@ -94,10 +95,8 @@ const openReleaseNoteLink = (event: MouseEvent | KeyboardEvent): void => {
           </template>
           退出应用
         </n-button>
-        <n-button
+        <AppUpdateButton
           v-else
-          type="primary"
-          :loading="isUpdatingApp"
           :disabled="!appUpdateInfo?.hasUpdate || !appUpdateInfo.assetName"
           @click="handleUpdate"
         >
@@ -105,7 +104,7 @@ const openReleaseNoteLink = (event: MouseEvent | KeyboardEvent): void => {
             <CloudDownload :size="15" :stroke-width="1.8" />
           </template>
           立即更新
-        </n-button>
+        </AppUpdateButton>
       </div>
     </template>
   </n-modal>

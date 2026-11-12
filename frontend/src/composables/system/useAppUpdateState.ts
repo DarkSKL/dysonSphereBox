@@ -1,6 +1,16 @@
 import {ref} from 'vue'
 import {updater} from '../../../wailsjs/go/models'
 import {CheckAppUpdate, UpdateAppSelf} from '../../../wailsjs/go/system/UpdateService'
+import {EventsOn} from '../../../wailsjs/runtime/runtime'
+
+// =============== 更新包下载进度 ===============
+// 说明：与后端 system:appUpdateProgress 快照对应；大小未知时只展示已下载状态，不伪造百分比。
+export interface AppUpdateProgress {
+  readonly stage: 'downloading' | 'verifying'
+  readonly downloadedBytes: number
+  readonly totalBytes: number
+}
+const appUpdateProgress = ref<AppUpdateProgress | null>(null)
 
 interface AppUpdateCheckOptions {
   readonly force?: boolean
@@ -66,11 +76,21 @@ export const useAppUpdateState = () => {
     }
 
     isUpdatingApp.value = true
+    appUpdateProgress.value = null
+    // 订阅覆盖整个更新调用，页面切换仍保留模块级进度；成功或失败均只清理本次监听。
+    let stopProgress: (() => void) | undefined
     try {
+      stopProgress = EventsOn('system:appUpdateProgress', (progress: AppUpdateProgress) => {
+        if (!progress || !['downloading', 'verifying'].includes(progress.stage)
+          || !Number.isFinite(progress.downloadedBytes) || !Number.isFinite(progress.totalBytes)) return
+        appUpdateProgress.value = progress
+      })
       const result = await UpdateAppSelf()
       appUpdateInfo.value = result.check
       return result
     } finally {
+      stopProgress?.()
+      appUpdateProgress.value = null
       isUpdatingApp.value = false
     }
   }
@@ -80,6 +100,7 @@ export const useAppUpdateState = () => {
     appUpdateCheckedAt,
     isCheckingAppUpdate,
     isUpdatingApp,
+    appUpdateProgress,
     checkAppUpdate,
     updateAppSelf,
   }

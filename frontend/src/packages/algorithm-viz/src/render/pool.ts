@@ -21,6 +21,8 @@ export class InstancePool {
   mesh: THREE.InstancedMesh;
   private capacity: number;
   private used = 0;
+  private generationPeak = 0;
+  private readonly minimumCapacity: number;
   private readonly arrays = new Map<string, Float32Array>();
   private matrixLow = Infinity;
   private matrixHigh = -1;
@@ -36,6 +38,7 @@ export class InstancePool {
     private readonly renderOrder = 0,
   ) {
     this.capacity = Math.max(8, initialCapacity);
+    this.minimumCapacity = this.capacity;
     for (const spec of specs) this.arrays.set(spec.name, new Float32Array(this.capacity * spec.itemSize));
     this.mesh = this.createMesh();
     parent.add(this.mesh);
@@ -55,9 +58,19 @@ export class InstancePool {
     this.dirtyAttributes.clear();
   }
 
+  /** 保留上次任务的容量需求；更早大蓝图留下的空闲缓冲在新任务开始时缩小。 */
+  beginGeneration(): void {
+    const required = Math.max(this.minimumCapacity, this.used, this.generationPeak);
+    let capacity = this.minimumCapacity;
+    while (capacity < required) capacity *= 2;
+    if (capacity < this.capacity) this.resize(capacity);
+    this.generationPeak = 0;
+  }
+
   alloc(): number {
     const slot = this.used++;
-    if (slot >= this.capacity) this.grow(Math.max(this.capacity * 2, slot + 1));
+    this.generationPeak = Math.max(this.generationPeak, this.used);
+    if (slot >= this.capacity) this.resize(Math.max(this.capacity * 2, slot + 1));
     for (const spec of this.specs) {
       const array = this.arrays.get(spec.name) as Float32Array;
       for (let i = 0; i < spec.itemSize; i++) array[slot * spec.itemSize + i] = spec.fill?.[i] ?? 0;
@@ -175,16 +188,19 @@ export class InstancePool {
     return mesh;
   }
 
-  private grow(capacity: number): void {
+  private resize(capacity: number): void {
     const oldMesh = this.mesh;
     this.capacity = capacity;
     for (const spec of this.specs) {
       const next = new Float32Array(capacity * spec.itemSize);
-      next.set(this.arrays.get(spec.name) as Float32Array);
+      next.set((this.arrays.get(spec.name) as Float32Array).subarray(0, next.length));
       this.arrays.set(spec.name, next);
     }
     this.mesh = this.createMesh();
-    this.mesh.instanceMatrix.array.set(oldMesh.instanceMatrix.array);
+    this.mesh.instanceMatrix.array.set(oldMesh.instanceMatrix.array.subarray(0, this.mesh.instanceMatrix.array.length));
+    this.matrixLow = Infinity;
+    this.matrixHigh = -1;
+    this.dirtyAttributes.clear();
     this.parent.remove(oldMesh);
     oldMesh.geometry.dispose();
     oldMesh.dispose();

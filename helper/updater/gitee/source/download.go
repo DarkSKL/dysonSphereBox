@@ -32,7 +32,7 @@ func (source *Source) DownloadReleaseAsset(ctx context.Context, _ *selfupdate.Re
 		return nil, err
 	}
 	request.Header.Set("Accept", "application/octet-stream, */*")
-	response, err := source.httpClient.Do(request)
+	response, err := source.downloadClient.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("download gitee release asset %q: %w", asset.Name, err)
 	}

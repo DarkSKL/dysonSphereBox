@@ -45,6 +45,10 @@ export class ShadowLayer {
     this.pool.clear();
   }
 
+  beginGeneration(): void {
+    this.pool.beginGeneration();
+  }
+
   /** 写入投影：中心 (x, z)、旋转 yaw、尺寸 (w, d)、强度 */
   set(slot: number, x: number, z: number, yaw: number, w: number, d: number, strength: number): void {
     const c = Math.cos(yaw);

@@ -32,10 +32,10 @@ const selectedData = computed(() => {
 })
 
 // =============== 预览标签页 ===============
-// 说明：下层卡片在「蓝图预览」与「算法可视化」间切换；切走时预览只隐藏不卸载，避免重建 WebGL 视图。
-// 算法可视化在首次切换时挂载，之后同样只隐藏，渲染循环随容器不可见自动暂停。
+// 说明：下层卡片在「蓝图预览」与「平面预览器」间切换；切走时预览只隐藏不卸载，避免重建 WebGL 视图。
+// 平面预览器在首次切换时挂载，之后同样只隐藏，渲染循环随容器不可见自动暂停。
 type PreviewTab = 'preview' | 'algorithm'
-const previewTabs: {key: PreviewTab, label: string}[] = [{key: 'preview', label: '蓝图预览'}, {key: 'algorithm', label: '算法可视化'}]
+const previewTabs: {key: PreviewTab, label: string}[] = [{key: 'preview', label: '蓝图预览'}, {key: 'algorithm', label: '平面预览器（内测版）'}]
 const previewTab = ref<PreviewTab>('preview')
 const algorithmMounted = ref(false)
 watch(previewTab, tab => { if (tab === 'algorithm') algorithmMounted.value = true })
@@ -96,7 +96,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
           <button v-for="tab in previewTabs" :id="`preview-tab-${tab.key}`" :key="tab.key" type="button" role="tab" class="preview-tab" :class="{'is-active': previewTab === tab.key}" :aria-selected="previewTab === tab.key" :aria-controls="`preview-panel-${tab.key}`" @click="previewTab = tab.key">{{ tab.label }}</button>
         </div>
         <span class="bar-divider" aria-hidden="true" />
-        <!-- 算法活动热力图：仅在「算法可视化」下显示，占满标签右侧到操作区之间的空间 -->
+        <!-- 算法活动热力图：仅在「平面预览器」下显示，占满标签右侧到操作区之间的空间 -->
         <AlgorithmHeatmap v-if="previewTab === 'algorithm'" />
         <!-- 多目标归属只用于查看与聚焦，真实上下游路线由统一流图决定，不要求用户手工跨区分送。 -->
         <div v-if="previewTab === 'preview' && w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
@@ -125,7 +125,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
           </div>
           <div v-if="w.previewStale && w.code" class="preview-overlay">{{ w.generationFailed ? '最近一次生成未成功，当前显示上次成功结果' : w.generating ? '正在生成，当前显示上次成功结果' : `参数已改变，${w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览'}` }}</div>
         </div>
-        <!-- 算法可视化：首次切换到该标签时才创建场景，之后保持挂载以保留舞台与播放进度 -->
+        <!-- 平面预览器：首次切换到该标签时才创建场景，之后保持挂载以保留舞台与播放进度 -->
         <div v-if="algorithmMounted" v-show="previewTab === 'algorithm'" id="preview-panel-algorithm" class="preview-algorithm" role="tabpanel" aria-labelledby="preview-tab-algorithm"><AlgorithmStage :w="w" :active="previewTab === 'algorithm'" /></div>
       </div>
     </section>

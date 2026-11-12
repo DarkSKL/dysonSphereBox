@@ -80,6 +80,7 @@ declare module 'vue' {
     NTooltip: typeof import('naive-ui')['NTooltip']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SystemAppUpdateButton: typeof import('./components/system/app-update-button.vue')['default']
     SystemAppUpdateDialog: typeof import('./components/system/app-update-dialog.vue')['default']
     SystemSettingsSection: typeof import('./components/system/settings/section.vue')['default']
     SystemSettingsServerSection: typeof import('./components/system/settings/server-section.vue')['default']

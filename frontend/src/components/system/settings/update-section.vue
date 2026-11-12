@@ -9,6 +9,7 @@ import {formatErrorMessage} from '../../../utils/format'
 import {describeUpdateError} from '../../../utils/update-error'
 import SettingsSection from './section.vue'
 import SettingsValueBox, {type SettingsValueTone} from './value-box.vue'
+import AppUpdateButton from '../app-update-button.vue'
 
 type UpdateStatus = 'idle' | 'checking' | 'latest' | 'available' | 'error' | 'updated'
 
@@ -146,12 +147,12 @@ const openReleasePage = (): void => {
     </n-button>
     <n-popconfirm v-else positive-text="立即更新" negative-text="取消" @positive-click="handleUpdate">
       <template #trigger>
-        <n-button type="primary" secondary :disabled="status !== 'available'" :loading="isUpdatingApp">
+        <AppUpdateButton secondary :disabled="status !== 'available'">
           <template #icon>
             <CloudDownload :size="15" :stroke-width="1.8" />
           </template>
           更新
-        </n-button>
+        </AppUpdateButton>
       </template>
       将下载 {{ appUpdateInfo?.assetName }} 并替换当前程序，完成后需重启应用。
     </n-popconfirm>

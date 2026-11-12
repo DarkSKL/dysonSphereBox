@@ -180,6 +180,8 @@ export interface AlgoVizOptions {
 
 /** 场景控制器：对外的全部接口 */
 export interface AlgorithmVizController {
+  /** 切换生成任务，只保留当前及上次任务使用的缓存；同一任务回放无需重复切换。 */
+  beginGeneration(taskId: string): void;
   beginCandidate(id: string, ordinal: number): void;
   finishCandidate(id: string, status: 'valid' | 'rejected' | 'pruned'): void;
   finalizeSearch(winnerId: string): void;

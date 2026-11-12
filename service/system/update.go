@@ -7,9 +7,12 @@ package system
 import (
 	"context"
 
+	systemConstant "DysonSphereBox/constant/system"
 	"DysonSphereBox/core"
 	systemHelper "DysonSphereBox/helper/system"
 	appUpdater "DysonSphereBox/helper/updater"
+	"DysonSphereBox/helper/updater/progress"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // UpdateService 提供前端可调用的应用自更新能力。
@@ -46,7 +49,11 @@ func (service *UpdateService) CheckAppUpdate() (*appUpdater.CheckResult, error) 
 // 边界：更新完成后需要用户重启；失败时保留当前程序并记录错误日志。
 // 逻辑流：1. 调用自更新 helper => 2. 失败则记录失败日志并返回错误 => 3. 成功则记录更新结果 => 4. 返回重启提示所需信息。
 func (service *UpdateService) UpdateAppSelf() (*appUpdater.UpdateResult, error) {
-	result, err := appUpdater.UpdateAppSelf(context.Background())
+	result, err := appUpdater.UpdateAppSelf(context.Background(), func(snapshot progress.Snapshot) {
+		if core.GLOBAL.RuntimeContext != nil {
+			runtime.EventsEmit(core.GLOBAL.RuntimeContext, systemConstant.AppUpdateProgressEvent, snapshot)
+		}
+	})
 	if err != nil {
 		systemHelper.RecordUpdateSelfFailure(core.Version, err)
 		return nil, err

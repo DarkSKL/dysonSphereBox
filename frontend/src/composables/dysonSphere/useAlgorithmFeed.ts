@@ -352,7 +352,8 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
   //       生成结束但实时差量未完成（失败、取消或改为普通生成重试）时，按结果恢复场景。
   // 控制事件必须及时读取，否则“已淘汰”会被旧动画积压挡在后面；绘制节奏由场景的帧预算独立控制。
   const stop = observeFactoryGenerationEvents(onEvent, () => true, () => w.generationTaskId)
-  watch(() => w.generationTaskId, () => {
+  watch(() => w.generationTaskId, taskId => {
+    getViz()?.beginGeneration(taskId)
     if (getViz()?.getProgress().candidates) {
       clearScene(false)
       lastSourceKey = ''
