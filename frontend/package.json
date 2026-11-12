@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "models:prepare": "node tools/model-compression/prepare.mjs",
+    "models:compare": "node tools/model-compression/prepare.mjs --compare",
+    "test:models": "node --test tools/model-compression/optimizer.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

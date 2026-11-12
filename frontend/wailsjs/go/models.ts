@@ -4228,6 +4228,7 @@ export namespace modTranslation {
 export namespace multiplayer {
 	
 	export class AccountView {
+	    headerImg?: string;
 	    loggedIn: boolean;
 	    userId: number;
 	    nickname: string;
@@ -4238,6 +4239,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.headerImg = source["headerImg"];
 	        this.loggedIn = source["loggedIn"];
 	        this.userId = source["userId"];
 	        this.nickname = source["nickname"];
@@ -4446,6 +4448,7 @@ export namespace multiplayer {
 	    }
 	}
 	export class RoomSummary {
+	    hostHeaderImg?: string;
 	    roomId: string;
 	    name: string;
 	    hostNickname: string;
@@ -4461,6 +4464,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hostHeaderImg = source["hostHeaderImg"];
 	        this.roomId = source["roomId"];
 	        this.name = source["name"];
 	        this.hostNickname = source["hostNickname"];
@@ -4524,6 +4528,7 @@ export namespace multiplayer {
 		}
 	}
 	export class Member {
+	    headerImg?: string;
 	    userId: number;
 	    nickname: string;
 	    peerId: string;
@@ -4536,6 +4541,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.headerImg = source["headerImg"];
 	        this.userId = source["userId"];
 	        this.nickname = source["nickname"];
 	        this.peerId = source["peerId"];
@@ -4691,6 +4697,7 @@ export namespace multiplayer {
 		}
 	}
 	export class RoomHost {
+	    headerImg?: string;
 	    userId: number;
 	    nickname: string;
 	    peerId: string;
@@ -4701,6 +4708,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.headerImg = source["headerImg"];
 	        this.userId = source["userId"];
 	        this.nickname = source["nickname"];
 	        this.peerId = source["peerId"];

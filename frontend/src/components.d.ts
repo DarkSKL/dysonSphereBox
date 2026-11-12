@@ -44,6 +44,7 @@ declare module 'vue' {
     LayoutAnnouncementHistoryPopover: typeof import('./components/layout/announcement-history-popover.vue')['default']
     LayoutAnnouncementModal: typeof import('./components/layout/announcement-modal.vue')['default']
     LayoutPagePlaceholder: typeof import('./components/layout/page-placeholder.vue')['default']
+    MultiplayerAvatar: typeof import('./components/multiplayer/avatar.vue')['default']
     MultiplayerCreateDialog: typeof import('./components/multiplayer/create-dialog.vue')['default']
     MultiplayerCurrentRoom: typeof import('./components/multiplayer/current-room.vue')['default']
     MultiplayerJoinDialog: typeof import('./components/multiplayer/join-dialog.vue')['default']

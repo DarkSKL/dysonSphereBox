@@ -263,24 +263,29 @@ wails generate module
 
 ## 发布构建
 
-Windows 发布脚本会询问版本号，也可以在命令行直接传入：
+Windows 发布脚本会询问版本号和模型压缩档位，档位回车默认为均衡；也可以在命令行直接传入：
 
 ```powershell
 deploy\build.bat
 deploy\build.bat v2.0.1
+deploy\build.bat v2.1.2 balanced
 ```
 
 脚本会：
 
 - 校验并规范化版本号为 `vX.Y.Z`。
+- 提供高画质 `quality`（1024）、均衡 `balanced`（512，默认）、轻量 `compact`（256）三档，也可用数字 `1`、`2`、`3` 指定；只在构建时处理模型，开发仍使用原始 GLB。
 - 通过 `-ldflags "-X DysonSphereBox/core.Version=<版本>"` 注入应用版本。
-- 使用 `wails build -clean` 构建 `windows/amd64` 和 `windows/arm64`。
+- 使用独立输出文件构建 `windows/amd64` 和 `windows/arm64`，不清空现有 `build/bin`；第二个架构复用同一份已压缩前端。
+- 保留 `DysonSphereBox_windows_amd64.exe`、`DysonSphereBox_windows_arm64.exe` 两份可直接运行的程序。
 - 生成 `DysonSphereBox_windows_amd64.zip`、`DysonSphereBox_windows_arm64.zip`，压缩包内只包含 `DysonSphereBox.exe`。
-- 生成包含两个 zip 的 `checksums.txt`。
+- 生成包含 EXE 与 ZIP 的 `checksums.txt`，以及 `build-profile.json` 和模型体积报告。
 
-产物位于 `deploy/release/<版本号>/`。发布到 Gitee Release 时上传两个 zip 包和 `checksums.txt`。应用自更新依赖这些附件名称和 SHA256 校验清单，修改名称需要同步更新更新器配置。
+产物位于 `deploy/release/<版本号>/<模式>/`，不同档位互不覆盖。发布到 Gitee Release 时上传所选档位的两个 zip 包和 `checksums.txt`。应用自更新依赖这些附件名称和 SHA256 校验清单，修改名称需要同步更新更新器配置。
 
-`deploy/release` 属于本地产物并被 Git 忽略，`deploy/build.bat` 会随仓库保留。发布构建需要可用的 Wails CLI。
+`deploy/release` 属于本地产物并被 Git 忽略，`deploy/build.bat` 和 `deploy/package-release.ps1` 随仓库保留。发布构建需要可用的 Wails CLI。模型策略和画质对比见 `frontend/tools/model-compression/README.md`。
+
+模型调用、渲染模块公开入口以及其他 HTTP 预览器的接入方案见 [模型资源调用与预览器接入指南](docs/模型资源调用与预览器接入指南.md)。
 
 ## 运行数据与目录
 

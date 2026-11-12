@@ -3,6 +3,7 @@ node_modules
 frontend/dist
 deploy/*
 !deploy/build.bat
+!deploy/package-release.ps1
 remotion
 .gocache
 .cache

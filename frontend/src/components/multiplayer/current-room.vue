@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import {Copy, Link2, LogOut, Monitor, RotateCcw, Server, UserPlus, UserX} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
-import {computed, onMounted, ref, watch} from 'vue'
+import {computed} from 'vue'
 import {ClipboardSetText} from '../../../wailsjs/runtime/runtime'
-import {accountUser, defaultAvatarUrl, resolveAvatarUrl} from '../../pages/services/account'
-import {loadServerAddress, serverAddressReady, serverEffectiveAddress} from '../../pages/services/server'
+import MultiplayerAvatar from './avatar.vue'
 import {linkErrorText, linkPathTexts, linkStateTexts, relayAdmissionTexts, type LinkView, type MultiplayerState, type RoomMember} from '../../types/multiplayer'
 import {portText, protoLabel} from '../../utils/multiplayer'
 // =============== 当前房间与用户操作 ===============
@@ -78,25 +77,16 @@ const relayAdmission = computed(() => {
 // =============== 座位网格 ===============
 // 说明：参考游戏房间常见的"座位"布局，按人数上限补齐空位；房主固定首位，成员按快照顺序就座。
 // 边界：空位只是视觉占位，不代表可邀请名额已预留；人数上限以快照 maxMembers 为准。
-interface Seat {readonly key: string; readonly member?: RoomMember; readonly host?: boolean; readonly name?: string; readonly self?: boolean}
+interface Seat {readonly key: string; readonly member?: RoomMember; readonly host?: boolean; readonly name?: string; readonly self?: boolean; readonly headerImg?: string; readonly userId?: number}
 const seats = computed<Seat[]>(() => {
   const s = snapshot.value
   if (!s) return []
   const selfId = props.state.account.userId
-  const list: Seat[] = [{key: 'host', host: true, name: s.host.nickname, self: s.host.userId === selfId}]
-  for (const member of s.members) list.push({key: `m${member.userId}`, member, name: member.nickname, self: member.userId === selfId})
+  const list: Seat[] = [{key: 'host', host: true, name: s.host.nickname, self: s.host.userId === selfId, headerImg: s.host.headerImg, userId: s.host.userId}]
+  for (const member of s.members) list.push({key: `m${member.userId}`, member, name: member.nickname, self: member.userId === selfId, headerImg: member.headerImg, userId: member.userId})
   for (let i = list.length; i < s.maxMembers; i++) list.push({key: `empty${i}`})
   return list
 })
-// =============== 座位头像 ===============
-// 说明：只有自己的座位能渲染真实头像；房间快照只下发昵称，其他成员的头像需要服务端补充字段后才能展示。
-// 边界：头像地址解析失败或图片加载失败时统一回退默认头像，不额外请求账号服务器。
-const selfAvatarFailed = ref(false)
-const selfAvatar = computed(() => (
-  resolveAvatarUrl(accountUser.value?.headerImg, serverEffectiveAddress.value, serverAddressReady.value)
-))
-watch(selfAvatar, () => { selfAvatarFailed.value = false })
-onMounted(() => { void loadServerAddress().catch(() => { selfAvatarFailed.value = true }) })
 // 说明：延迟按常见游戏阈值分三档，仅影响信号格颜色。
 function rttLevel(ms?: number): number {
   if (!ms) return 0
@@ -208,8 +198,8 @@ const flowRtt = computed(() => {
         <article v-for="seat in seats" :key="seat.key" class="seat" :class="{'is-empty': !seat.name, 'is-host': seat.host, 'is-self': seat.self}">
           <template v-if="seat.name">
             <div class="seat-avatar" aria-hidden="true">
-              <img v-if="seat.self && selfAvatar && !selfAvatarFailed" :src="selfAvatar" alt="" referrerpolicy="no-referrer" @error="selfAvatarFailed = true" />
-              <img v-else :src="defaultAvatarUrl" alt="" referrerpolicy="no-referrer" />
+              <!-- * 头像来自房间握手快照，自己与其他成员共用默认及错误回退规则。 -->
+              <MultiplayerAvatar :source="seat.headerImg" :identity="`${snapshot.roomId}:${seat.userId}`" />
             </div>
             <div class="seat-info">
               <strong :title="seat.name">{{ seat.name }}<span v-if="seat.self" class="self-tag">我</span></strong>
