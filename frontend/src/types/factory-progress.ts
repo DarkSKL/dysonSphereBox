@@ -37,6 +37,10 @@ export interface FactoryPreviewBuilding extends Readonly<Pick<blueprint.Building
   readonly outputObjectId?: string
   readonly productionIndex: number
   readonly isTemporary: boolean
+  /** 机器配方；后端省略零值，仅用于在建筑上方显示配方产物图标 */
+  readonly recipeId?: number
+  /** 传送带标记物品；后端省略零值，仅用于在带入口与出口上方显示物品图标 */
+  readonly iconItemId?: number
 }
 
 /** 职责：描述实时预览使用的嵌套区域元数据；使用：解释 Area 局部坐标；边界：不改变蓝图编解码 DTO。 */

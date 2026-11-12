@@ -77,7 +77,7 @@ viz.finishCandidate('candidate-1', 'rejected');
 - `coordinates: 'layout'`：生成过程中的平面装配格，直接使用 `x/y`
 - `coordinates: 'area'`：正式蓝图的区域局部坐标，配合 `areas` 把子区域锚点沿父链累加后拼成整体平面
 
-分拣器使用首端 `x/y/z` 与次端 `x2/y2/z2` 拉伸；传送带通过 `outputId` 连向下游传送带，链首自动补半格。
+分拣器使用首端 `x/y/z` 与次端 `x2/y2/z2` 拉伸；传送带通过 `outputId` 连向下游传送带，链首自动补半格。相邻带段共享斜接截面，使水平转弯、斜坡与垂直升降保持闭合；流动箭头沿路径累计相位，支持 1.5 格等非整数长度，闭环自动匹配整数个箭头周期。
 
 ## 控制器接口
 
@@ -98,6 +98,8 @@ viz.finishCandidate('candidate-1', 'rejected');
 | `rotate(steps)` | 以 90° 为步进旋转视角 |
 | `resetView()` | 恢复自动取景 |
 | `select(id \| null)` / `getProgress()` | 选中建筑 / 读取队列与累计统计 |
+| `setIconsVisible(group, b)` / `getIconsVisible()` | 显示或隐藏世界图标，`group` 为 `'belt'`（传送带入口）或 `'building'`（机器建筑）；只切换可见性，不影响对象与播放 |
+| `refreshIcons()` | 重新解析全部对象的图标；精灵图、物品数据迟到后调用 |
 | `dispose()` | 释放全部资源 |
 
 ## 配置项
@@ -114,11 +116,23 @@ interface AlgoVizOptions {
   viewPaddingTop?: number;                   // 顶部被外部工具栏覆盖的像素，取景时让出
   injectStyles?: boolean;                    // 默认 true；false 时自行插入 ALGORITHM_VIZ_CSS
   describe?: (b: AlgoVizBuilding) => string; // 悬停提示文案
+  iconSheet?: { url: string; width: number; height: number; cell: number }; // 图标精灵图；缺省时不绘制图标
+  icon?: (b: AlgoVizBuilding) => { x: number; y: number } | null;          // 解析建筑的图标格，null 为没有
+  iconsVisible?: { belt?: boolean; building?: boolean };                    // 初始显示开关，默认都显示
   onSelect?: (s: AlgoVizSelection | null) => void;
   onProgress?: (p: AlgoVizProgress) => void; // 最多每 100ms 一次
   onStats?: (s: AlgoVizStats) => void;
 }
 ```
+
+## 世界图标
+
+传送带入口与机器建筑上方可以显示物品图标：圆角底板 + 指向建筑的小尾巴 + 精灵图中的一格，正对屏幕，边长夹在 12 ~ 40 屏幕像素之间，远景里自然边长过小的图标淡出。全部图标共用一个实例池和一次绘制。
+
+- 数据：`AlgoVizBuilding.iconItemId`（带标记物品，用于原料入口与成品出口的带节点）和 `recipeId`（机器配方）只是原始数据，包本身不认识物品名；由使用方的 `icon(building)` 解析为精灵图中的格坐标，返回 `null` 表示没有图标
+- 精灵图：`iconSheet` 给出整图像素尺寸与单格边长，格按行列紧密排布、原点在左上角；缺省或加载失败时图标层保持为空，其余功能不受影响
+- 开关：`setIconsVisible('belt' | 'building', visible)` 只切换可见性，槽位随写入阶段分配或释放，对象、动画与队列都不受影响；外部数据迟到时调用 `refreshIcons()`
+- 随对象：图标跟随入场下落、平移抬升和候选平台的偏移，失败候选一并标红，坠落候选随深度淡出
 
 ## 模型
 
@@ -148,12 +162,14 @@ src/
   styles.ts         覆盖层样式与注入
   scene.ts          场景实现（队列节奏、对象动画、实例写入、交互、渲染循环）
   mock.ts           演示数据 createDemoBatches
-  internal/         调色板、等距相机、操作队列、对象姿态、覆盖层、数学工具
-  render/           着色器、模型库（KTX2 贴图）、实例池、方块平台、天空背景、投影与涟漪
+  internal/         调色板、等距相机、操作队列、对象姿态、覆盖层、数学工具、图标槽位簿记
+  render/           着色器、模型库（KTX2 贴图）、实例池、方块平台、天空背景、投影与涟漪、世界图标
 ```
 
 ## 脚本
 
 ```bash
 npm run typecheck   # 严格模式类型检查（tsc -p tsconfig.json --noEmit）
+npm run test:belts  # 传送带接缝和箭头相位回归检查，需 Node.js 22.6+ 的类型擦除支持
+npm run test:icons  # 图标槽位压实与精灵图 UV 换算回归检查，同样需要类型擦除支持
 ```

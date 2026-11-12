@@ -14,3 +14,12 @@ build
 .local
 .tmp
 .idea
+
+# 可再生的 Python 与 TypeScript 编译缓存
+__pycache__/
+*.pyc
+*.pyo
+*.tsbuildinfo
+
+# 图标提取过程的临时输出
+/.codex/tmp-exe-icon.png

@@ -5068,6 +5068,8 @@ export namespace preview {
 	    inputFromSlot: number;
 	    outputToSlot: number;
 	    productionIndex: number;
+	    recipeId?: number;
+	    iconItemId?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Building(source);
@@ -5093,6 +5095,8 @@ export namespace preview {
 	        this.inputFromSlot = source["inputFromSlot"];
 	        this.outputToSlot = source["outputToSlot"];
 	        this.productionIndex = source["productionIndex"];
+	        this.recipeId = source["recipeId"];
+	        this.iconItemId = source["iconItemId"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

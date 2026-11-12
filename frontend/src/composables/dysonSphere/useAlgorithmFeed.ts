@@ -105,6 +105,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
       group: b.productionIndex, temporary: b.isTemporary,
       outputId: b.outputObjectId ? liveKey(taskId, b.outputObjectId) : undefined,
       index: b.index >= 0 ? b.index : undefined,
+      recipeId: b.recipeId || undefined, iconItemId: b.iconItemId || undefined,
     }}
   }
   const liveStage = (stage: string, coordinates: AlgoVizCoordinates, operations: AlgoVizOperation[]): string => {

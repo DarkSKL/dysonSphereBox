@@ -247,9 +247,17 @@ func (b *builder) rollbackPreview() {
 	b.previewActive = false
 }
 
-// renderPreviewBuilding 职责：从建筑记录摘取渲染值；使用：临时及最终姿态共用；边界：不复制参数和原始编码尾部，连接身份由调用方填写。
+// renderPreviewBuilding 职责：从建筑记录摘取渲染值；使用：临时及最终姿态共用；边界：不复制参数数组和原始编码尾部，只摘取配方与带标记物品两个图标字段，连接身份由调用方填写。
 func renderPreviewBuilding(record blueprint.Building, owner int, isTemporary bool) preview.Building {
-	return preview.Building{Index: record.Index, IsTemporary: isTemporary, ItemID: record.ItemID, ModelIndex: record.ModelIndex, AreaIndex: record.AreaIndex, LocalOffset: record.LocalOffset, LocalOffset2: record.LocalOffset2, Yaw: record.Yaw, Yaw2: record.Yaw2, Tilt: record.Tilt, Tilt2: record.Tilt2, Pitch: record.Pitch, Pitch2: record.Pitch2, InputFromSlot: record.InputFromSlot, OutputToSlot: record.OutputToSlot, ProductionIndex: owner}
+	return preview.Building{Index: record.Index, IsTemporary: isTemporary, ItemID: record.ItemID, ModelIndex: record.ModelIndex, AreaIndex: record.AreaIndex, LocalOffset: record.LocalOffset, LocalOffset2: record.LocalOffset2, Yaw: record.Yaw, Yaw2: record.Yaw2, Tilt: record.Tilt, Tilt2: record.Tilt2, Pitch: record.Pitch, Pitch2: record.Pitch2, InputFromSlot: record.InputFromSlot, OutputToSlot: record.OutputToSlot, ProductionIndex: owner, RecipeID: max(record.RecipeID, 0), IconItemID: previewBeltMarkerItem(record)}
+}
+
+// previewBeltMarkerItem 职责：取出传送带标记参数里的物品；使用：入口与出口的带标记图标；边界：只认传送带且参数不少于二的记录，其他建筑的参数含义不同，一律返回零。
+func previewBeltMarkerItem(record blueprint.Building) int32 {
+	if !surfaceIsBelt(record.ItemID) || len(record.Parameters) < 2 || record.Parameters[0] <= 0 {
+		return 0
+	}
+	return record.Parameters[0]
 }
 
 // previewAreas 职责：把蓝图区域转换为实时预览契约；使用：候选最终提交；边界：原始 Area 记录继续保持扁平结构。

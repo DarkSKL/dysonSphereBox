@@ -243,24 +243,41 @@ void main() {
 }
 `;
 
-/** 传送带：单位盒按长度拉伸；暗色履带上流动着等级色的发光箭头 */
+/** 传送带：共享端点截面连接带面，箭头沿整条路径连续流动。 */
 export const BELT_VERTEX = /* glsl */ `
 attribute vec4 aState;
 attribute float aColor;
-attribute float aLen;
+attribute vec2 aFlow;
+attribute vec3 aStartSide;
+attribute vec3 aStartUp;
+attribute vec3 aEndSide;
+attribute vec3 aEndUp;
 attribute float aFail;
 uniform vec3 uTiers[3];
 varying vec3 vWorld;
 varying vec3 vLocal;
 varying vec3 vTier;
 varying vec4 vState;
-varying float vLen;
+varying float vFlow;
 varying float vFail;
 varying float vSteep;
 void main() {
   vec4 world = vec4(position, 1.0);
+  float along = position.x + 0.5;
   #ifdef USE_INSTANCING
-    world = instanceMatrix * world;
+    // 只在半个带宽以内斜接；中间两排顶点保持本段的正交截面，避免整段扭曲。
+    float join = min(0.25, 0.33 / max(length(instanceMatrix[0].xyz), 1e-4));
+    if (along < 0.333334) along *= 3.0 * join;
+    else if (along > 0.666666) along = 1.0 - (1.0 - along) * 3.0 * join;
+    else along = join + (along - 0.333333) * 3.0 * (1.0 - 2.0 * join);
+    float startJoin = 1.0 - smoothstep(0.0, join, along);
+    float endJoin = smoothstep(1.0 - join, 1.0, along);
+    vec3 side = instanceMatrix[2].xyz;
+    vec3 up = instanceMatrix[1].xyz;
+    side += (aStartSide - side) * startJoin + (aEndSide - side) * endJoin;
+    up += (aStartUp - up) * startJoin + (aEndUp - up) * endJoin;
+    world = instanceMatrix * vec4(along - 0.5, 0.0, 0.0, 1.0);
+    world.xyz += side * position.z + up * position.y;
     // 实例矩阵第一列是 运输方向 × 长度：竖直分量占比大即为陡坡带
     vSteep = step(0.35, abs(instanceMatrix[0].y) / max(length(instanceMatrix[0].xyz), 1e-4));
   #else
@@ -271,7 +288,7 @@ void main() {
   vLocal = position;
   vTier = uTiers[int(clamp(aColor, 0.0, 2.0) + 0.5)];
   vState = aState;
-  vLen = aLen;
+  vFlow = aFlow.x + along * aFlow.y;
   vFail = aFail;
   gl_Position = projectionMatrix * viewMatrix * world;
 }
@@ -287,7 +304,7 @@ varying vec3 vWorld;
 varying vec3 vLocal;
 varying vec3 vTier;
 varying vec4 vState;
-varying float vLen;
+varying float vFlow;
 void main() {
   if (vState.x < 0.999 && vState.x <= bayer4(gl_FragCoord.xy)) discard;
   float holo = vState.z;
@@ -298,9 +315,8 @@ void main() {
   // 陡坡带（升降）的顶面容易背向或正对视线，顶底两面都绘制箭头，任何视角都能看见流向
   float top = max(step(0.99, vLocal.y), vSteep * step(vLocal.y, 0.01));
   float across = abs(vLocal.z) * 2.0;
-  float u = (vLocal.x + 0.5) * vLen;
   // 箭头尖端在带中线、两翼向后张开，整体沿运输方向（局部 +x）移动
-  float c = fract(u * 0.85 + across * 0.42 - uTime * uFlow);
+  float c = fract(vFlow + across * 0.42 - uTime * uFlow);
   float chevron = smoothstep(0.0, 0.07, c) * (1.0 - smoothstep(0.26, 0.34, c));
   float inner = 1.0 - smoothstep(0.58, 0.66, across);
   vec3 col = mvShade(uBelt, n, vWorld.y + 1.6);
@@ -399,6 +415,89 @@ void main() {
   float a = (1.0 - smoothstep(0.0, 1.0, d)) * vStrength * uParams.z;
   if (a < 0.003) discard;
   gl_FragColor = vec4(uShadowColor, a);
+  #include <colorspace_fragment>
+}
+`;
+
+/**
+ * 世界图标：正对屏幕的公告牌，圆角底板 + 指向建筑的小尾巴 + 精灵图中的一格物品图标。
+ * 锚点在尾尖；尺寸按屏幕像素夹在上下限之间，缩小取景时仍可辨认、放大时不会无限膨胀。
+ * 不写深度也不测深度：图标始终浮在建筑上方，由 aIcon.x 控制整体透明度（含退场淡出）。
+ */
+export const ICON_VERTEX = /* glsl */ `
+attribute vec4 aRect;
+attribute vec2 aIcon;
+uniform float uWorldPerPixel;
+// x 屏幕最小边长、y 最大边长（CSS 像素）
+uniform vec2 uIconPx;
+// 自然屏幕边长低于 x 时完全隐藏、达到 y 时完全显示，避免远景里图标挤成一片
+uniform vec2 uIconFade;
+varying vec2 vLocal;
+varying vec4 vRect;
+varying vec2 vIcon;
+varying float vWorldY;
+varying float vFade;
+void main() {
+  vec3 anchor = vec3(0.0);
+  float size = 1.0;
+  #ifdef USE_INSTANCING
+    anchor = instanceMatrix[3].xyz;
+    size = length(instanceMatrix[0].xyz);
+  #endif
+  // 视图矩阵的前两行即相机在世界中的右、上方向
+  vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+  vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+  float pixel = max(uWorldPerPixel, 1e-5);
+  vFade = smoothstep(uIconFade.x, uIconFade.y, size / pixel);
+  size = clamp(size, uIconPx.x * pixel, uIconPx.y * pixel);
+  vec3 base = (modelMatrix * vec4(anchor, 1.0)).xyz;
+  vec3 world = base + right * (position.x * size) + up * ((position.y + 0.5) * size);
+  vLocal = position.xy;
+  vRect = aRect;
+  vIcon = aIcon;
+  vWorldY = world.y;
+  gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+}
+`;
+
+export const ICON_FRAGMENT = /* glsl */ `
+${COMMON}
+uniform sampler2D uIconMap;
+uniform vec3 uRim;
+varying vec2 vLocal;
+varying vec4 vRect;
+varying vec2 vIcon;
+varying float vWorldY;
+varying float vFade;
+void main() {
+  // 坠落中的候选平台带着图标一起沉入深处，随深度淡出
+  float alpha = vIcon.x * vFade * smoothstep(-30.0, -6.0, vWorldY);
+  if (alpha < 0.02) discard;
+  vec2 p = vLocal;
+  // 圆角底板占上方 0.8×0.8，下方留出指向建筑的小尾巴
+  vec2 c = vec2(0.0, 0.1);
+  float d = length(max(abs(p - c) - vec2(0.3), 0.0)) - 0.1;
+  float aa = max(fwidth(d), 1e-4);
+  float plate = 1.0 - smoothstep(-aa, aa, d);
+  float rim = plate * smoothstep(-0.05 - aa, -0.05 + aa, d);
+  float tailWidth = 0.13 * clamp((p.y + 0.5) / 0.22, 0.0, 1.0);
+  float tail = smoothstep(-aa, aa, tailWidth - abs(p.x)) * step(p.y, -0.28) * step(-0.5, p.y);
+  vec3 plateCol = mix(uShadow, uHaze, 0.18);
+  vec3 col = mix(plateCol, uRim, rim * 0.9);
+  col = mix(col, uRim, tail * (1.0 - plate));
+  float a = max(plate * 0.88, tail * 0.95);
+  // 图标占底板中央 0.6×0.6；贴图已按 flipY 上传，uv 由 iconRect 换算
+  vec2 uv = clamp((p - c) / 0.6 + 0.5, 0.0, 1.0);
+  float inside = step(abs(p.x - c.x), 0.3) * step(abs(p.y - c.y), 0.3);
+  vec4 tex = texture2D(uIconMap, vRect.xy + uv * vRect.zw);
+  float ia = tex.a * inside * plate;
+  col = mix(col, tex.rgb, ia);
+  a = max(a, ia);
+  col = failTint(col, vIcon.y);
+  col = mvHaze(col, vWorldY);
+  a *= alpha;
+  if (a < 0.01) discard;
+  gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
 }
 `;

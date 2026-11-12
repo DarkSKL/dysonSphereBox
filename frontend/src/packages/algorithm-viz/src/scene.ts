@@ -9,8 +9,10 @@ import { clonePalette, lerpPalette, resolvePalette, type Palette } from './inter
 import { areaOffsets, OperationQueue, type Offset, type QueueFrame, type QueueItem } from './internal/queue';
 import { FrameWorkBudget } from './internal/work-budget';
 import { CandidateSnapshot } from './internal/snapshot';
+import { BeltFlow, BeltGeometry, BELT_THICKNESS, BELT_WIDTH } from './internal/belts';
 import { BackdropLayer } from './render/backdrop';
 import { RingLayer, ShadowLayer } from './render/effects';
+import { IconLayer } from './render/icons';
 import { IslandLayer } from './render/island';
 import { ModelLibrary, type PartKind } from './render/models';
 import { InstancePool, type InstanceAttributeSpec } from './render/pool';
@@ -19,8 +21,9 @@ import type {
   AlgorithmVizController,
   AlgoVizBatch,
   AlgoVizBuilding,
-  AlgoVizOperation,
   AlgoVizCoordinates,
+  AlgoVizIconGroup,
+  AlgoVizIconVisibility,
   AlgoVizOptions,
   AlgoVizProgress,
   AlgoVizTheme,
@@ -38,24 +41,29 @@ const FOLLOW_KEEP = 160;
 const FOLLOW_MIN_RATE = 160;
 /** 跳过动画且仍有工作时降低中间画面的重绘频率，保留主线程处理数据；完成帧始终立即绘制。 */
 const INSTANT_DRAW_INTERVAL_MS = 100;
+const INSTANT_MAX_DRAW_COOLDOWN_MS = 500;
 const DUR_ENTER = 0.78;
 const DUR_MOVE = 0.7;
 const DUR_EXIT = 0.5;
 const THEME_DURATION = 0.45;
 /** 打开页面即预加载的常用模型 */
 const PRELOAD = ['assembler-1', 'assembler-2', 'assembler-3', 'smelter', 'inserter-1', 'inserter-2', 'inserter-3', 'tesla-coil'];
-const BELT_THICKNESS = 0.2;
-const BELT_WIDTH = 0.66;
-/** 相邻传送带节点超过该距离不再连成一段，避免跨区连线 */
-const BELT_LINK_MAX = 6;
 const DRAG_THRESHOLD = 4;
+/** 图标基准边长（蓝图格）：传送带入口固定；建筑按占地短边的 0.7 倍取值并夹在上下限之间。屏幕边长另由图标层夹取 */
+const ICON_BELT_SIZE = 1.5;
+const ICON_BUILDING_MIN = 1.9;
+const ICON_BUILDING_MAX = 3.4;
 const CANVAS_LABEL = '蓝图生成算法可视化：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
 const DEFAULT_EMPTY = '产线计算完成后，算法会在这里逐步搭建蓝图';
 const NO_OFFSETS: ReadonlyMap<number, Offset> = new Map();
 
 const STATE_SPEC: InstanceAttributeSpec = { name: 'aState', itemSize: 4 };
 const COLOR_SPEC: InstanceAttributeSpec = { name: 'aColor', itemSize: 1 };
-const LEN_SPEC: InstanceAttributeSpec = { name: 'aLen', itemSize: 1, fill: [1] };
+const BELT_SPECS: InstanceAttributeSpec[] = [
+  { name: 'aFlow', itemSize: 2 },
+  { name: 'aStartSide', itemSize: 3 }, { name: 'aStartUp', itemSize: 3 },
+  { name: 'aEndSide', itemSize: 3 }, { name: 'aEndUp', itemSize: 3 },
+];
 /** 失败候选标红的逐实例强度 */
 const FAIL_SPEC: InstanceAttributeSpec = { name: 'aFail', itemSize: 1 };
 
@@ -134,11 +142,15 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private island!: IslandLayer;
   private shadows!: ShadowLayer;
   private rings!: RingLayer;
+  private icons!: IconLayer;
+  /** 各分组的图标显示开关：只决定图标是否绘制，对象、动画与队列不受影响 */
+  private iconVisibility: { belt: boolean; building: boolean } = { belt: true, building: true };
   private overlay!: Overlay;
   private models!: ModelLibrary;
   private buildingMaterial!: THREE.ShaderMaterial;
   private beltMaterial!: THREE.ShaderMaterial;
   private unitBox!: THREE.BufferGeometry;
+  private beltBox!: THREE.BufferGeometry;
   private readonly pools = new Map<string, InstancePool>();
   /** 自有材质的模型池：释放场景时一并释放其材质 */
   private readonly ownedPools = new Set<InstancePool>();
@@ -157,6 +169,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private readonly dirty = new Set<VizObject>();
   /** 下游对象 ID → 指向它的传送带 */
   private readonly beltInputs = new Map<string, Set<VizObject>>();
+  private readonly beltFlow = new BeltFlow();
+  private readonly beltGeometry = new BeltGeometry();
   private queue = new OperationQueue();
   private readonly candidates = new Map<string, CandidateStage>();
   /** 淘汰身份在任务内保留，防止迟到批次重新创建已经退场的候选。 */
@@ -220,6 +234,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private progressSent = -1;
   private progressAt = 0;
   private nextInstantDrawAt = 0;
+  private drewLastFrame = false;
+  private lastDrawDurationMs = 0;
   private reducedMotion!: MediaQueryList;
   private resizeObserver!: ResizeObserver;
   private intersectionObserver!: IntersectionObserver;
@@ -230,6 +246,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.options = options;
     this.maxObjects = Math.max(1, options.maxObjects ?? DEFAULT_MAX_OBJECTS);
     this.themeName = options.theme === 'dark' ? 'dark' : 'light';
+    this.iconVisibility = { belt: options.iconsVisible?.belt !== false, building: options.iconsVisible?.building !== false };
     this.speed = clampSpeed(options.speed ?? 1);
     if (options.injectStyles !== false) {
       acquireStyles();
@@ -364,12 +381,15 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       for (const pool of this.pools.values()) pool.clear();
       for (const owners of this.owners.values()) owners.length = 0;
       this.shadows.clear();
+      this.icons.clear();
       this.shadowOwners.length = 0;
       this.objects.clear();
       this.animating.clear();
       this.glowing.clear();
       this.dirty.clear();
       this.beltInputs.clear();
+      this.beltFlow.clear();
+      this.beltGeometry.beginFrame();
       this.objectCandidates.clear();
       this.memberships = new WeakMap();
       this.placeholders.clear();
@@ -460,6 +480,31 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     return this.viewLocked;
   }
 
+  setIconsVisible(group: AlgoVizIconGroup, visible: boolean): void {
+    if (group !== 'belt' && group !== 'building') return;
+    const next = Boolean(visible);
+    if (this.iconVisibility[group] === next) return;
+    this.iconVisibility[group] = next;
+    if (this.disposed || !this.supported) return;
+    // 只重写该分组已有图标的对象；槽位随写入阶段按开关分配或释放，建筑实例本身不动
+    for (const obj of this.objects.values()) if (obj.icon && this.iconGroup(obj) === group) this.dirty.add(obj);
+    this.touch();
+  }
+
+  getIconsVisible(): AlgoVizIconVisibility {
+    return { ...this.iconVisibility };
+  }
+
+  /** 重新解析并重写全部对象的图标；精灵图或物品数据迟到时调用 */
+  refreshIcons(): void {
+    if (this.disposed || !this.supported) return;
+    for (const obj of this.objects.values()) {
+      this.resolveIcon(obj);
+      this.dirty.add(obj);
+    }
+    this.touch();
+  }
+
   rotate(steps: number): void {
     if (this.disposed || !this.supported || this.viewLocked || !Number.isFinite(steps)) return;
     this.rig.rotate(Math.round(steps));
@@ -529,6 +574,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.ownedPools.clear();
       this.models.dispose();
       this.shadows.dispose();
+      this.icons.dispose();
       this.rings.dispose();
       this.island.dispose();
       for (const candidate of this.candidates.values()) {
@@ -538,6 +584,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.retiredCandidates.clear();
       this.backdrop.dispose();
       this.unitBox.dispose();
+      this.beltBox.dispose();
       this.buildingMaterial.dispose();
       this.beltMaterial.dispose();
       this.overlay.dispose();
@@ -552,6 +599,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.owners.clear();
     this.shadowOwners.length = 0;
     this.beltInputs.clear();
+    this.beltFlow.clear();
+    this.beltGeometry.beginFrame();
     this.objectCandidates.clear();
     this.placeholders.clear();
     this.readyModels.clear();
@@ -592,10 +641,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.scene.add(this.backdrop.group, this.island.group, this.world);
     this.shadows = new ShadowLayer(this.world, this.uniforms);
     this.rings = new RingLayer(this.world, this.uniforms);
+    // 图标层在全部建筑之后绘制；精灵图缺失或加载失败时保持空层，不影响其余渲染
+    this.icons = new IconLayer(this.world, this.uniforms, this.options.iconSheet, () => this.refreshIcons());
     // 占位体：无贴图的钢灰色机身，跟随主题插值
     this.buildingMaterial = this.createBuildingMaterial(null, null, this.palette.steel, new THREE.Color(0, 0, 0));
     this.beltMaterial = new THREE.ShaderMaterial({ vertexShader: BELT_VERTEX, fragmentShader: BELT_FRAGMENT, uniforms: this.uniforms, side: THREE.DoubleSide });
     this.unitBox = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    // 三段分别负责入口接头、等宽直段和出口接头，接头不会拉伸整条履带。
+    this.beltBox = new THREE.BoxGeometry(1, 1, 1, 3, 1, 1).translate(0, 0.5, 0);
 
     this.models = new ModelLibrary(this.options.modelUrls ?? {}, renderer, this.options.transcoderUrls, this.options.maskUrls);
     this.unsubscribeModels = this.models.onSettled((key) => this.onModelSettled(key));
@@ -778,6 +831,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       slot: -1,
       placeholder: false,
       shadowSlot: -1,
+      iconSlot: -1,
+      icon: null,
       target: worldPose(emptyPose(), building, frame),
       from: emptyPose(),
       pose: emptyPose(),
@@ -815,6 +870,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.memberships.set(obj, candidate);
       this.objectCandidates.set(id, candidate.id);
     }
+    this.resolveIcon(obj);
     this.linkBelt(obj);
     this.markNeighbors(obj);
     if (!instant && !this.reducedMotion.matches) this.startEnter(obj);
@@ -834,6 +890,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     }
     this.unlinkBelt(obj);
     obj.building = building;
+    this.resolveIcon(obj);
     if (obj.colorIndex !== desc.colorIndex) {
       obj.colorIndex = desc.colorIndex;
       obj.pool?.set('aColor', obj.slot, obj.colorIndex);
@@ -919,12 +976,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private destroy(obj: VizObject): void {
+    this.beltFlow.delete(obj);
     this.memberships.get(obj)?.objects.delete(obj);
     this.memberships.delete(obj);
     this.animating.delete(obj);
     this.glowing.delete(obj);
     this.dirty.delete(obj);
     this.freeSlot(obj);
+    this.icons.release(obj);
     if (obj.shadowSlot >= 0) {
       const slot = obj.shadowSlot;
       this.shadowOwners[slot] = undefined;
@@ -1040,8 +1099,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     obj.placeholder = false;
     if (obj.kind === 'belt') {
       key = 'belt';
+      geometry = this.beltBox;
       material = this.beltMaterial;
-      specs = [STATE_SPEC, COLOR_SPEC, LEN_SPEC, FAIL_SPEC];
+      specs = [STATE_SPEC, COLOR_SPEC, FAIL_SPEC, ...BELT_SPECS];
     } else if (obj.modelKey) {
       const entry = this.models.get(obj.modelKey);
       if (entry.status === 'ready' && entry.geometry) {
@@ -1137,6 +1197,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   // -------------------------------------------------------------------------
 
   private linkBelt(obj: VizObject): void {
+    this.beltFlow.invalidate(obj);
+    for (const input of this.beltInputs.get(obj.id) ?? []) this.beltFlow.invalidate(input);
     const out = obj.kind === 'belt' ? obj.building.outputId : undefined;
     if (!out) return;
     let set = this.beltInputs.get(out);
@@ -1145,6 +1207,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private unlinkBelt(obj: VizObject): void {
+    for (const input of this.beltInputs.get(obj.id) ?? []) this.beltFlow.invalidate(input);
     const out = obj.kind === 'belt' ? obj.building.outputId : undefined;
     if (!out) return;
     const set = this.beltInputs.get(out);
@@ -1152,17 +1215,69 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     set.delete(obj);
     if (!set.size) this.beltInputs.delete(out);
     const target = this.objects.get(out);
-    if (target) this.dirty.add(target);
+    if (target) {
+      this.dirty.add(target);
+      this.markNeighbors(target);
+    }
   }
 
   /** 对象位置或存在性变化后，重绘与它相连的传送带 */
   private markNeighbors(obj: VizObject): void {
+    this.beltGeometry.markVerticalRun(obj, this.objects, this.beltInputs, this.dirty);
     const inputs = this.beltInputs.get(obj.id);
-    if (inputs) for (const belt of inputs) this.dirty.add(belt);
+    if (inputs) for (const belt of inputs) {
+      this.dirty.add(belt);
+      // 输入段的端点截面也依赖本节点的下一段朝向。
+      for (const previous of this.beltInputs.get(belt.id) ?? []) this.dirty.add(previous);
+    }
     if (obj.kind === 'belt' && obj.building.outputId) {
       const out = this.objects.get(obj.building.outputId);
-      if (out && out.kind === 'belt') this.dirty.add(out);
+      if (out && out.kind === 'belt') {
+        this.dirty.add(out);
+        for (const input of this.beltInputs.get(out.id) ?? []) this.dirty.add(input);
+        const next = out.building.outputId ? this.objects.get(out.building.outputId) : undefined;
+        if (next?.kind === 'belt') this.dirty.add(next);
+      }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // 世界图标
+  // -------------------------------------------------------------------------
+
+  /** 图标所属分组：传送带节点为 belt，其余建筑为 building */
+  private iconGroup(obj: VizObject): AlgoVizIconGroup {
+    return obj.kind === 'belt' ? 'belt' : 'building';
+  }
+
+  /** 解析对象的图标并交给写入阶段；数据由外部 icon 回调提供，槽位随开关与精灵图状态在写入时分配或释放 */
+  private resolveIcon(obj: VizObject): void {
+    obj.icon = this.options.icon?.(obj.building) ?? null;
+  }
+
+  /**
+   * 写入对象上方的图标；分配与释放都由同一个判定驱动，开关切换、精灵图迟到、退场对象都会自行归位。
+   * 锚点：建筑为模型顶面上方，传送带为带面上方；跟随入场下落、平移抬升与候选平台偏移。
+   */
+  private writeIcon(obj: VizObject, candidate: CandidateStage | undefined): void {
+    const icon = obj.icon;
+    if (!icon || !this.icons.ready || !this.iconVisibility[this.iconGroup(obj)]) {
+      if (obj.iconSlot >= 0) this.icons.release(obj);
+      return;
+    }
+    this.icons.alloc(obj);
+    const p = obj.pose;
+    let top: number;
+    let size: number;
+    if (obj.kind === 'belt') {
+      top = BELT_THICKNESS + 0.1;
+      size = ICON_BELT_SIZE;
+    } else {
+      const entry = obj.modelKey && !obj.placeholder ? this.models.get(obj.modelKey) : null;
+      top = (entry?.geometry ? entry.center.y + entry.size.y / 2 : obj.height) * obj.scale + 0.25;
+      size = THREE.MathUtils.clamp(Math.min(obj.width, obj.depth) * 0.7, ICON_BUILDING_MIN, ICON_BUILDING_MAX);
+    }
+    this.icons.set(obj.iconSlot, icon, p.x + (candidate?.x ?? 0), p.y + obj.lift + top + (candidate?.y ?? 0), p.z + (candidate?.z ?? 0), size, obj.alpha * (1 - obj.ghost * 0.4), candidate?.failMix ?? 0);
   }
 
   // -------------------------------------------------------------------------
@@ -1190,6 +1305,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       const strength = obj.alpha * clamp01(1 - lift / 9) * (1 - obj.ghost * 0.55);
       this.shadows.set(obj.shadowSlot, obj.pose.x + (candidate?.x ?? 0), obj.pose.z + (candidate?.z ?? 0), obj.pose.yaw, obj.width * size, obj.depth * size, candidate && candidate.y < -1 ? 0 : strength);
     }
+    this.writeIcon(obj, candidate);
   }
 
   private composeBuilding(obj: VizObject): void {
@@ -1219,56 +1335,24 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   /**
-   * 传送带：从本节点延伸到下游传送带节点；没有可连接的下游时按朝向画一格。
-   * 链首（没有上游传送带）向后补半格，使整条带首尾完整。
+   * 传送带共享节点截面，升降与转角使用同一斜接边界；箭头沿连接累计相位。
+   * 生长只裁短当前带段，不改变下游的动画原点；链首向后补半格。
    */
   private composeBelt(obj: VizObject, pool: InstancePool): void {
-    const p = obj.pose;
-    const yawRad = Math.PI - p.yaw;
-    let dirX = Math.sin(yawRad);
-    let dirY = 0;
-    let dirZ = -Math.cos(yawRad);
-    let ex = p.x + dirX * 0.5;
-    let ey = p.y;
-    let ez = p.z + dirZ * 0.5;
-    const outId = obj.building.outputId;
-    const out = outId ? this.objects.get(outId) : undefined;
-    if (out && out.kind === 'belt') {
-      const tx = out.pose.x;
-      const ty = out.pose.y + out.lift;
-      const tz = out.pose.z;
-      const d = Math.hypot(tx - p.x, ty - p.y, tz - p.z);
-      if (d > 1e-3 && d <= BELT_LINK_MAX) {
-        ex = tx;
-        ey = ty;
-        ez = tz;
-        dirX = (tx - p.x) / d;
-        dirY = (ty - p.y) / d;
-        dirZ = (tz - p.z) / d;
-      }
-    }
-    let sx = p.x;
-    let sy = p.y;
-    let sz = p.z;
-    if (!this.beltInputs.get(obj.id)?.size) {
-      sx -= dirX * 0.5;
-      sy -= dirY * 0.5;
-      sz -= dirZ * 0.5;
-    }
-    const g = Math.max(obj.grow, 1e-3);
-    ex = sx + (ex - sx) * g;
-    ey = sy + (ey - sy) * g;
-    ez = sz + (ez - sz) * g;
-    const length = Math.max(Math.hypot(ex - sx, ey - sy, ez - sz), 1e-3);
-    this.ax.set((ex - sx) / length, (ey - sy) / length, (ez - sz) / length);
-    this.az.crossVectors(this.ax, this.yAxis);
-    if (this.az.lengthSq() < 1e-6) this.az.set(0, 0, 1);
-    this.az.normalize();
-    this.ay.crossVectors(this.az, this.ax).normalize();
-    const w = BELT_WIDTH * obj.scale;
-    this.m.makeBasis(this.ax.multiplyScalar(length), this.ay.multiplyScalar(BELT_THICKNESS), this.az.multiplyScalar(w));
-    this.m.setPosition((sx + ex) / 2, (sy + ey) / 2 + obj.lift + 0.02, (sz + ez) / 2);
-    pool.set('aLen', obj.slot, length);
+    const shape = this.beltGeometry.shape(obj, this.objects, this.beltInputs);
+    this.ax.subVectors(shape.end, shape.start);
+    this.ay.copy(shape.up).multiplyScalar(BELT_THICKNESS);
+    this.az.copy(shape.side).multiplyScalar(BELT_WIDTH * obj.scale);
+    this.m.makeBasis(this.ax, this.ay, this.az);
+    this.v.addVectors(shape.start, shape.end).multiplyScalar(0.5);
+    this.m.setPosition(this.v);
+    const flow = this.beltFlow.get(obj);
+    pool.set('aFlow', obj.slot, flow.phase - shape.head * flow.frequency,
+      (this.beltGeometry.span(obj, this.objects) + shape.head) * flow.frequency * Math.max(obj.grow, 1e-3));
+    pool.set('aStartSide', obj.slot, shape.startSide.x, shape.startSide.y, shape.startSide.z);
+    pool.set('aStartUp', obj.slot, shape.startUp.x, shape.startUp.y, shape.startUp.z);
+    pool.set('aEndSide', obj.slot, shape.endSide.x, shape.endSide.y, shape.endSide.z);
+    pool.set('aEndUp', obj.slot, shape.endUp.x, shape.endUp.y, shape.endUp.z);
   }
 
   // -------------------------------------------------------------------------
@@ -1785,14 +1869,24 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.selected.highlight = 0.55 + Math.sin(this.time * 5) * 0.25;
       this.dirty.add(this.selected);
     }
+    this.beltFlow.update(this.objects, this.beltInputs, this.dirty);
+    this.beltGeometry.beginFrame();
     for (const obj of this.dirty) if (obj.pool) this.writeObject(obj);
     this.dirty.clear();
     for (const pool of this.pools.values()) pool.commit();
     this.shadows.commit();
+    this.icons.setView(this.rig.worldPerPixel);
+    this.icons.commit();
     this.rings.update(animDt);
 
     const instantPending = this.skipping && (this.queue.length > 0 || this.animating.size > 0 || this.readyModels.size > 0
       || Array.from(this.candidates.values()).some(candidate => candidate.queue.length > 0 || candidate.snapshot || candidate.falling >= 0));
+    // 慢设备的 GPU/驱动阻塞会落在下一次 RAF 间隔里；跳过期间给队列留出计算窗口，避免每次慢绘制后只处理一小批。
+    // 下一帧没有绘制便不再推迟，窗口最长半秒；完成帧始终立即绘制，resize/主题强制刷新仍可把截止清零。
+    if (instantPending && this.drewLastFrame && this.nextInstantDrawAt > 0) {
+      const cooldown = Math.min(INSTANT_MAX_DRAW_COOLDOWN_MS, Math.max(this.lastDrawDurationMs, elapsed * 1000) * 2);
+      this.nextInstantDrawAt = Math.max(this.nextInstantDrawAt, performance.now() + cooldown);
+    }
     const draw = !instantPending || performance.now() >= this.nextInstantDrawAt;
     if (draw && this.boundsDirty && (this.boundsAt < 0 || this.time - this.boundsAt > 0.12)) this.recomputeBounds();
     this.island.update(dt, this.time, reduced);
@@ -1805,9 +1899,12 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     }
 
     if (draw) {
+      const drawStart = performance.now();
       this.renderer.render(this.scene, this.rig.camera);
+      this.lastDrawDurationMs = performance.now() - drawStart;
       this.nextInstantDrawAt = performance.now() + INSTANT_DRAW_INTERVAL_MS;
     }
+    this.drewLastFrame = draw;
     this.emitProgress();
     return draw;
   }

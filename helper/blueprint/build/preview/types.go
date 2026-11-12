@@ -88,6 +88,10 @@ type Building struct {
 	OutputToSlot int8 `json:"outputToSlot"`
 	// ProductionIndex 职责：保存原量化产线归属；使用：模块着色和选择；边界：共享设施为 -1。
 	ProductionIndex int `json:"productionIndex"`
+	// RecipeID 职责：保存机器配方原型；使用：前端按配方主产物在建筑上方显示图标；边界：非机器或未设置配方时为零并省略，不参与对象身份、连接或碰撞判断。
+	RecipeID int16 `json:"recipeId,omitempty"`
+	// IconItemID 职责：保存传送带标记物品；使用：前端在原料入口与成品出口的带上显示物品图标；边界：仅传送带且标记参数完整时填写，零值省略，不改变带的连接或流量。
+	IconItemID int32 `json:"iconItemId,omitempty"`
 }
 
 // Object 职责：把请求内稳定身份与建筑姿态绑定；使用：后端场景交接；边界：只在本任务中有效，不是持久化主键。

@@ -24,8 +24,16 @@ const sameBuilding = (a: AlgoVizBuilding, b: AlgoVizBuilding): boolean => {
   const near = (p?: number, q?: number): boolean => Math.abs((p ?? 0) - (q ?? 0)) < 1e-3
   return a.itemId === b.itemId && a.modelIndex === b.modelIndex && a.areaIndex === b.areaIndex && a.group === b.group
     && Boolean(a.temporary) === Boolean(b.temporary) && a.outputId === b.outputId
+    && (a.recipeId ?? 0) === (b.recipeId ?? 0) && (a.iconItemId ?? 0) === (b.iconItemId ?? 0)
     && near(a.x, b.x) && near(a.y, b.y) && near(a.z, b.z) && near(a.x2, b.x2) && near(a.y2, b.y2) && near(a.z2, b.z2)
     && Math.abs((a.yaw ?? 0) - (b.yaw ?? 0)) < 0.01
+}
+
+/** 传送带标记物品：只认传送带（2001~2003）且参数不少于二的记录，与后端 previewBeltMarkerItem 同一规则；其他建筑的参数含义不同。 */
+export const beltMarkerItem = (record: Pick<blueprint.Building, 'itemId' | 'parameters'>): number | undefined => {
+  if (record.itemId < 2001 || record.itemId > 2003 || (record.parameters?.length ?? 0) < 2) return undefined
+  const item = record.parameters[0]
+  return item > 0 ? item : undefined
 }
 
 /** 准备完整差量；身份索引先于建筑转换，避免跨批或超出旧阈值的带连接丢失。取消返回null，原镜像保持原样。 */
@@ -57,6 +65,7 @@ export const prepareAlgorithmReplay = async (
       x2: record.localOffset2.x, y2: record.localOffset2.y, z2: record.localOffset2.z, yaw: record.yaw, areaIndex: record.areaIndex,
       group: groups.get(record.index) ?? -1, temporary: false,
       outputId: record.outputObjIdx >= 0 ? idOfIndex.get(record.outputObjIdx) : undefined, index: record.index,
+      recipeId: record.recipeId > 0 ? record.recipeId : undefined, iconItemId: beltMarkerItem(record),
     }
     const previous = mirror.get(id)
     if (!previous) adds.push({type: 'add', id, building})

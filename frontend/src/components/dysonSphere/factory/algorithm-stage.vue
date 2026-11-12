@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch, watchEffect} from 'vue'
-import {ChevronsRight, Crosshair, Pause, Play, RefreshCw, RotateCcw, RotateCw, Sparkles, X} from '@lucide/vue'
+import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch, watchEffect} from 'vue'
+import {ChevronsRight, Crosshair, Eye, EyeOff, Pause, Play, RefreshCw, RotateCcw, RotateCw, Sparkles, X} from '@lucide/vue'
 import basisTranscoderJs from 'three/examples/jsm/libs/basis/basis_transcoder.js?url'
 import basisTranscoderWasm from 'three/examples/jsm/libs/basis/basis_transcoder.wasm?url'
-import {ALGORITHM_VIZ_MODEL_KEYS, createAlgorithmViz, type AlgorithmVizController, type AlgoVizBuilding, type AlgoVizProgress, type AlgoVizSelection} from '../../../packages/algorithm-viz/src'
+import {ALGORITHM_VIZ_MODEL_KEYS, createAlgorithmViz, type AlgorithmVizController, type AlgoVizBuilding, type AlgoVizIcon, type AlgoVizIconGroup, type AlgoVizProgress, type AlgoVizSelection} from '../../../packages/algorithm-viz/src'
 import {recordAlgorithmActivity, resetAlgorithmActivity} from '../../../composables/dysonSphere/useAlgorithmActivity'
 import {useThemeMode} from '../../../composables/useThemeMode'
 import {algorithmFollow, algorithmFollowKey, useAlgorithmFeed} from '../../../composables/dysonSphere/useAlgorithmFeed'
 import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
+import {ensureFactoryIcons, factoryIconCell, factoryIconsReady} from '../../../pages/services/dysonSphere/factory-icons'
+import {encyclopediaManifest} from '../../../pages/services/encyclopedia/catalog'
 
 const props = defineProps<{w: QuantWorkspace; active: boolean}>()
 
@@ -59,6 +61,33 @@ const productionLabel = (building: AlgoVizBuilding): string => {
 }
 const describe = (building: AlgoVizBuilding): string => `${props.w.itemName(building.itemId)} · ${productionLabel(building)}`
 
+// =============== 世界图标 ===============
+// 说明：传送带入口（带标记的原料入口与成品出口）与机器建筑上方的物品图标，由工具栏「显示」菜单分别开关，选择记在本机。
+// 数据：带标记取后端随建筑下发的标记物品，机器取配方的首个产物；图鉴精灵与量化数据集迟到时由下方监听重新解析。
+// 边界：开关只改变渲染层的可见性，不改变场景对象、播放队列与蓝图数据；精灵图不可用或名称未收录的物品不显示图标。
+ensureFactoryIcons()
+const sprite = encyclopediaManifest.sprite
+const iconSheet = {url: sprite.path, width: sprite.width, height: sprite.height, cell: sprite.cell}
+const iconPrefsKey = 'dsbox.algoviz.icons'
+const readIconPrefs = (): Record<AlgoVizIconGroup, boolean> => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(iconPrefsKey) ?? '{}') as Partial<Record<AlgoVizIconGroup, unknown>>
+    return {belt: saved.belt !== false, building: saved.building !== false}
+  } catch { return {belt: true, building: true} }
+}
+const iconVisible = reactive(readIconPrefs())
+const anyIconVisible = computed(() => iconVisible.belt || iconVisible.building)
+watch(iconVisible, value => { try { localStorage.setItem(iconPrefsKey, JSON.stringify(value)) } catch { /* 存储不可用时只保留本次会话 */ } })
+const recipeMainItem = computed(() => new Map((props.w.detail?.recipes ?? []).map(recipe => [recipe.id, recipe.results[0]] as const)))
+const resolveIcon = (building: AlgoVizBuilding): AlgoVizIcon | null => {
+  const itemId = building.iconItemId ?? (building.recipeId ? recipeMainItem.value.get(building.recipeId) : undefined)
+  return itemId ? factoryIconCell(props.w.itemName(itemId)) : null
+}
+const setIconVisible = (group: AlgoVizIconGroup, visible: boolean): void => {
+  iconVisible[group] = visible
+  viz?.setIconsVisible(group, visible)
+}
+
 // 选中建筑时同步工作区：节点图高亮对应产线，蓝图预览定位同一建筑
 const onSelect = (value: AlgoVizSelection | null): void => {
   selection.value = value
@@ -77,6 +106,9 @@ onMounted(async () => {
     speed: speed.value,
     viewPaddingTop: 64,
     describe,
+    iconSheet,
+    icon: resolveIcon,
+    iconsVisible: {belt: iconVisible.belt, building: iconVisible.building},
     onProgress: value => { progress.value = value; recordAlgorithmActivity(value) },
     onSelect,
   })
@@ -109,6 +141,8 @@ const regenerate = (): void => {
 // =============== 外部状态同步 ===============
 // 说明：只读应用主题；应用自身有圆形揭示动画，场景立即切换避免新旧配色混杂。切走标签页时关闭选中卡片。
 watch(themeMode, mode => viz?.setTheme(mode, true))
+// 图鉴精灵就绪或量化数据集（物品名、配方）更换后，已显示的建筑需要重新解析图标
+watch([factoryIconsReady, () => props.w.detail], () => viz?.refreshIcons())
 watch(() => props.active, active => { if (!active) viz?.select(null) })
 // 计算过程中强制处于复位视角：自动取景跟随画面，不允许旋转、平移、缩放，计算结束后恢复
 watch(() => props.w.generating, generating => viz?.setViewLocked(generating))
@@ -183,6 +217,21 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
       <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="向左旋转" :disabled="w.generating" @click="viz?.rotate(-1)"><RotateCcw :size="14" /></button></template>向左旋转 90°</n-tooltip>
       <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="向右旋转" :disabled="w.generating" @click="viz?.rotate(1)"><RotateCw :size="14" /></button></template>向右旋转 90°</n-tooltip>
       <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" aria-label="复位视角" @click="viz?.resetView()"><Crosshair :size="14" /></button></template>复位视角并恢复自动取景</n-tooltip>
+      <span class="tool-divider" />
+      <!-- ~ 显示设置 -->
+      <!-- * 说明：控制传送带入口与机器建筑上方的物品图标是否渲染；两类可分别开关，选择记在本机 -->
+      <!-- * 交互：点击「显示」展开菜单，勾选即时生效；全部关闭时按钮高亮取消，悬停可看到当前状态 -->
+      <!-- * 依赖：iconVisible 本机偏好、viz.setIconsVisible；图标数据来自后端随建筑下发的带标记与配方 -->
+      <!-- * 边界：只切换渲染层可见性，不影响场景对象、播放与蓝图数据；图鉴精灵不可用时菜单仍可操作，但没有图标可显示 -->
+      <n-popover trigger="click" placement="bottom-end" :show-arrow="false" :style="{padding: '8px 10px'}">
+        <template #trigger>
+          <button type="button" class="tool-button display" :class="{'is-on': anyIconVisible}" aria-label="显示设置" aria-haspopup="true"><Eye v-if="anyIconVisible" :size="14" /><EyeOff v-else :size="14" /><span>显示</span></button>
+        </template>
+        <div class="display-menu" role="group" aria-label="图标显示">
+          <n-checkbox :checked="iconVisible.belt" size="small" @update:checked="setIconVisible('belt', $event)">传送带入口图标</n-checkbox>
+          <n-checkbox :checked="iconVisible.building" size="small" @update:checked="setIconVisible('building', $event)">建筑图标</n-checkbox>
+        </div>
+      </n-popover>
     </div>
 
     <!-- 选中建筑卡片：跟随点击位置，显示建筑、产线与坐标 -->
@@ -217,6 +266,8 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
 .tool-button.icon-only { width: 28px; padding: 0; }
 .tool-button.speed { min-width: 40px; }
 .tool-button.run { gap: 5px; }
+.tool-button.display { gap: 5px; }
+.display-menu { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
 .tool-button:hover:not(:disabled) { border-color: var(--ds-border-strong); color: var(--ds-text-primary); }
 .tool-button:disabled { cursor: not-allowed; opacity: .45; }
 .tool-button.is-on { border-color: var(--ds-brand); color: var(--ds-brand); }
@@ -233,5 +284,5 @@ const format = (value: number | undefined): string => (value ?? 0).toFixed(value
 .algo-notice { position: absolute; bottom: 10px; left: 12px; z-index: 2; max-width: calc(100% - 24px); margin: 0; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 4px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-warning); font-size: 12px; }
 @keyframes algo-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .algo-source i, .algo-phase i { animation: none !important; } .tool-button { transition: none; } }
-@container (max-width: 760px) { .tool-button.run span { display: none; } .tool-button.run { width: 28px; padding: 0; } }
+@container (max-width: 760px) { .tool-button.run span, .tool-button.display span { display: none; } .tool-button.run, .tool-button.display { width: 28px; padding: 0; } }
 </style>

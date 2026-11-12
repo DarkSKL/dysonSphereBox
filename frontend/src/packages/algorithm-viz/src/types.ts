@@ -41,7 +41,31 @@ export interface AlgoVizBuilding {
   readonly outputId?: string;
   /** 正式记录下标，仅展示用 */
   readonly index?: number;
+  /** 机器配方；由 options.icon 解析为机器上方的配方图标，缺省或 0 表示没有 */
+  readonly recipeId?: number;
+  /** 传送带标记物品（原料入口、成品出口等带节点）；由 options.icon 解析为带节点上方的物品图标 */
+  readonly iconItemId?: number;
 }
+
+/** 图标精灵图中的一格：左上角像素坐标，格边长见 AlgoVizIconSheet.cell */
+export interface AlgoVizIcon {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** 图标精灵图规格：整图像素尺寸与单格边长，格按行列紧密排布 */
+export interface AlgoVizIconSheet {
+  readonly url: string;
+  readonly width: number;
+  readonly height: number;
+  readonly cell: number;
+}
+
+/** 图标分组：belt 为带标记的传送带入口/出口节点（显示标记物品），building 为机器建筑（显示配方产物） */
+export type AlgoVizIconGroup = 'belt' | 'building';
+
+/** 各分组的显示开关；只影响图标的绘制，不改变场景对象与播放 */
+export type AlgoVizIconVisibility = Readonly<Record<AlgoVizIconGroup, boolean>>;
 
 /** 场景操作：新增、替换（位置/外观变化，保留身份）、撤销 */
 export type AlgoVizOperation =
@@ -142,6 +166,12 @@ export interface AlgoVizOptions {
   injectStyles?: boolean;
   /** 悬停提示文案；缺省时不显示悬停提示 */
   describe?: (building: AlgoVizBuilding) => string;
+  /** 图标精灵图；缺省或加载失败时不绘制任何图标，其余功能不受影响 */
+  iconSheet?: AlgoVizIconSheet;
+  /** 解析建筑上方要显示的图标；返回 null 表示该建筑没有图标。数据迟到时由 refreshIcons 重新解析 */
+  icon?: (building: AlgoVizBuilding) => AlgoVizIcon | null;
+  /** 初始的图标显示开关，缺省的分组默认显示 */
+  iconsVisible?: Partial<AlgoVizIconVisibility>;
   onSelect?: (selection: AlgoVizSelection | null) => void;
   /** 进度变化时回调（节流到每帧最多一次） */
   onProgress?: (progress: AlgoVizProgress) => void;
@@ -177,6 +207,11 @@ export interface AlgorithmVizController {
   /** 视角锁定：为 true 时立即强制复位（默认方位 + 自动取景），并禁止旋转、平移、缩放；复位操作仍可用 */
   setViewLocked(locked: boolean): void;
   isViewLocked(): boolean;
+  /** 显示或隐藏某一分组的图标；只切换可见性，不影响场景对象与播放 */
+  setIconsVisible(group: AlgoVizIconGroup, visible: boolean): void;
+  getIconsVisible(): AlgoVizIconVisibility;
+  /** 重新解析全部对象的图标：精灵图、物品数据等外部数据迟到后调用 */
+  refreshIcons(): void;
   /** 选中或取消选中建筑 */
   select(id: string | null): void;
   getProgress(): AlgoVizProgress;

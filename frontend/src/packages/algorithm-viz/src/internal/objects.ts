@@ -1,6 +1,6 @@
 import { buildingKind, isProceduralModel, placeholderSize, resolveModelKey, type BuildingKind } from '../catalog';
 import { HEIGHT_SCALE } from '../defaults';
-import type { AlgoVizBuilding } from '../types';
+import type { AlgoVizBuilding, AlgoVizIcon } from '../types';
 import type { InstancePool } from '../render/pool';
 import type { QueueFrame } from './queue';
 
@@ -28,6 +28,10 @@ export interface VizObject {
   slot: number;
   placeholder: boolean;
   shadowSlot: number;
+  /** 图标层的实例槽位，-1 表示没有图标；由 IconSlots 在分配、释放与压实时回写 */
+  iconSlot: number;
+  /** 已解析的图标；null 表示没有。由场景在创建、替换与 refreshIcons 时写入，逐帧只读 */
+  icon: AlgoVizIcon | null;
   /** 占地宽、深与高度（蓝图格），用于投影、涟漪和取景 */
   width: number;
   depth: number;
