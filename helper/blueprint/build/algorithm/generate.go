@@ -209,7 +209,7 @@ func prepareGeneration(ctx context.Context, request Request, adapter *modeAdapte
 			return prepared, recipeErr
 		}
 		if !adapter.supportsMachineRecycle && recipeHasMachineRecycle(recipe) {
-			return prepared, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 的当前生成组合未提供本地毛流回收，请使用直连带、总线或超密度黑盒模式；净流物流端点不能代替实际回收链", production.RecipeID)}
+			return prepared, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 需要本地毛流回收，但当前生成组合尚未实现；净流物流端点不能代替实际回收链", production.RecipeID)}
 		}
 	}
 	return prepared, nil

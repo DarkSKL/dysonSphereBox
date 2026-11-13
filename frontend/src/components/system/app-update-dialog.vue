@@ -11,7 +11,7 @@ import AppUpdateButton from './app-update-button.vue'
 const props = defineProps<{readonly show: boolean}>()
 const emit = defineEmits<{(event: 'update:show', value: boolean): void}>()
 const message = useMessage()
-const {appUpdateInfo, isUpdatingApp, updateAppSelf} = useAppUpdateState()
+const {appUpdateInfo, isUpdatingApp, appUpdateDetail, updateAppSelf} = useAppUpdateState()
 const updatedTargetVersion = ref('')
 const releaseNotesHtml = computed(() => renderReleaseNotes(appUpdateInfo.value?.releaseNotes?.trim() || ''))
 const title = computed(() => `发现新版本 ${appUpdateInfo.value?.latestVersion || ''}`.trim())
@@ -85,6 +85,7 @@ const openReleaseNoteLink = (event: MouseEvent | KeyboardEvent): void => {
 
     <template #footer>
       <div class="app-update-dialog-footer">
+        <span v-if="isUpdatingApp" class="app-update-dialog-progress">{{ appUpdateDetail }}</span>
         <n-button
           v-if="updatedTargetVersion"
           type="primary"
@@ -206,6 +207,16 @@ const openReleaseNoteLink = (event: MouseEvent | KeyboardEvent): void => {
 
 .app-update-dialog-footer {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px 16px;
+}
+
+.app-update-dialog-progress {
+  color: var(--ds-text-secondary);
+  font-family: var(--ds-font-display);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 </style>

@@ -20,6 +20,7 @@ const {
   appUpdateCheckedAt,
   isCheckingAppUpdate,
   isUpdatingApp,
+  appUpdateDetail,
   checkAppUpdate,
   updateAppSelf,
 } = useAppUpdateState()
@@ -156,7 +157,10 @@ const openReleasePage = (): void => {
       </template>
       将下载 {{ appUpdateInfo?.assetName }} 并替换当前程序，完成后需重启应用。
     </n-popconfirm>
-    <template #hint>当前运行环境：{{ platformText }}　上次检查：{{ lastCheckedText }}</template>
+    <template #hint>
+      <span v-if="isUpdatingApp" class="font-display tabular-nums">{{ appUpdateDetail }}</span>
+      <template v-else>当前运行环境：{{ platformText }}　上次检查：{{ lastCheckedText }}</template>
+    </template>
 
     <!-- ~ 发布说明 -->
     <!-- * 说明：展示目标 Release 的标题、发布时间、原文说明与发布页链接 -->

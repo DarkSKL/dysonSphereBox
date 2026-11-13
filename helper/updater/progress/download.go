@@ -14,12 +14,18 @@ type Snapshot struct {
 	Stage string `json:"stage"`
 	// DownloadedBytes 职责：记录实际读取字节数；使用：计算下载比例；边界：不包含 checksum 内容。
 	DownloadedBytes int64 `json:"downloadedBytes"`
-	// TotalBytes 职责：承载发布元数据中的附件大小；使用：计算百分比；边界：非正数表示大小未知。
+	// TotalBytes 职责：承载下载响应或发布元数据中的附件大小；使用：计算百分比；边界：非正数表示大小未知。
 	TotalBytes int64 `json:"totalBytes"`
 }
 
 // Reporter 职责：接收下载快照；使用：服务注入事件广播；边界：同步调用，不能阻塞下载或修改下载内容。
 type Reporter func(Snapshot)
+
+// contentLengthReader 职责：识别带有真实响应长度的下载流；使用：ReadAll 优先采用该长度；边界：不要求普通 Reader 实现，未知时回退发布元数据。
+type contentLengthReader interface {
+	// ContentLength 职责：返回响应的实际字节总量；使用：初始化下载快照；边界：非正数表示长度不可用。
+	ContentLength() int64
+}
 
 // downloadReader 职责：包装下载流并节流报告；使用：ReadAll 内部读取；边界：不关闭原始流，关闭责任仍属于调用方。
 type downloadReader struct {
@@ -45,10 +51,13 @@ func (reader *downloadReader) Read(buffer []byte) (int, error) {
 }
 
 // ReadAll 职责：完整读取主更新包并报告进度；使用：ApplyRelease 在校验前调用；边界：无回调时直接读取，读取失败不报告下载完成。
-// 逻辑流：1. 报告下载开始 => 2. 累计并节流报告字节数 => 3. 成功后报告校验阶段，失败直接返回原始错误。
+// 逻辑流：1. 优先读取响应长度并报告下载开始 => 2. 累计并节流报告字节数 => 3. 补发最终字节量 => 4. 成功后报告校验阶段，失败直接返回原始错误。
 func ReadAll(reader io.Reader, totalBytes int64, report Reporter) ([]byte, error) {
 	if report == nil {
 		return io.ReadAll(reader)
+	}
+	if sized, ok := reader.(contentLengthReader); ok && sized.ContentLength() > 0 {
+		totalBytes = sized.ContentLength()
 	}
 	tracked := &downloadReader{
 		reader: reader, report: report, lastReport: time.Now(),
@@ -56,6 +65,7 @@ func ReadAll(reader io.Reader, totalBytes int64, report Reporter) ([]byte, error
 	}
 	report(tracked.snapshot)
 	data, err := io.ReadAll(tracked)
+	report(tracked.snapshot)
 	if err == nil {
 		tracked.snapshot.Stage = "verifying"
 		report(tracked.snapshot)

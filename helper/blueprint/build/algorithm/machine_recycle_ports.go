@@ -5,7 +5,7 @@ package build
 
 import "math"
 
-// buildRecyclePort 职责：建立槽点、一格过渡及两格外端的有向带链；使用：回收门各独立物料口；边界：槽位来自原型目录，最终仍检查碰撞。
+// buildRecyclePort 职责：建立槽外短接点、一格过渡及两格外端的有向带链；使用：回收门各独立物料口；边界：短接点位于原型槽位向外的合法过渡范围，最终仍检查碰撞。
 func (b *builder) buildRecyclePort(gate *placed, slot int8, input bool) ([]*placed, error) {
 	profile, err := loadSplitterPortProfile(gate.record.ModelIndex)
 	if err != nil {
@@ -14,6 +14,11 @@ func (b *builder) buildRecyclePort(gate *placed, slot int8, input bool) ([]*plac
 	port := profile.ports[slot]
 	point := splitterGateRotate(port.point, gate.record.Yaw)
 	forward := splitterGateRotate(port.forward, gate.record.Yaw)
+	if b.adapter != nil && b.adapter.density == densityStandard {
+		// 原始槽点距中心仅0.25米；普通模式的相邻带段包络会在门内相交。
+		// 沿各自真实槽方向外移0.4米，仍在原生1.1米过渡范围内，不改槽位连接或放宽碰撞规则。
+		point = point.Add(forward.Scale(.4))
+	}
 	dx, dy := math.Round(forward[0]), math.Round(forward[2])
 	points := []vector{{gate.a.x + point[0]/planarGridLength, gate.a.y + point[2]/planarGridLength, gate.a.z + point[1]/1.3333333}, {gate.a.x + dx, gate.a.y + dy, gate.a.z}, {gate.a.x + 2*dx, gate.a.y + 2*dy, gate.a.z}}
 	if input {

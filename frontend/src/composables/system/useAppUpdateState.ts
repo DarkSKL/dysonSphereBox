@@ -1,7 +1,8 @@
-import {ref} from 'vue'
+import {computed, ref} from 'vue'
 import {updater} from '../../../wailsjs/go/models'
 import {CheckAppUpdate, UpdateAppSelf} from '../../../wailsjs/go/system/UpdateService'
 import {EventsOn} from '../../../wailsjs/runtime/runtime'
+import {formatFileSize} from '../../utils/format'
 
 // =============== 更新包下载进度 ===============
 // 说明：与后端 system:appUpdateProgress 快照对应；大小未知时只展示已下载状态，不伪造百分比。
@@ -11,6 +12,32 @@ export interface AppUpdateProgress {
   readonly totalBytes: number
 }
 const appUpdateProgress = ref<AppUpdateProgress | null>(null)
+
+// 说明：所有更新入口共用字节比例和阶段文案；总量未知时仍展示实际已下载量，不用计时器模拟进度。
+// 边界：满进度只表示下载结束，是否更新成功仍以后端调用结果为准。
+const appUpdatePercentage = computed(() => {
+  const progress = appUpdateProgress.value
+  if (progress?.stage === 'verifying') return 100
+  if (!progress || progress.totalBytes <= 0) return undefined
+  return Math.min(100, Math.max(0, progress.downloadedBytes / progress.totalBytes * 100))
+})
+const appUpdateLabel = computed(() => {
+  const progress = appUpdateProgress.value
+  if (!progress) return '准备更新…'
+  if (progress.stage === 'verifying') return '校验安装中…'
+  return appUpdatePercentage.value === undefined
+    ? `已下载 ${formatFileSize(progress.downloadedBytes)}`
+    : `下载 ${Math.floor(appUpdatePercentage.value)}%`
+})
+const appUpdateDetail = computed(() => {
+  const progress = appUpdateProgress.value
+  if (!progress) return '正在检查版本并连接下载源…'
+  const downloaded = formatFileSize(progress.downloadedBytes)
+  if (progress.stage === 'verifying') return `已下载 ${downloaded}，正在校验并安装…`
+  return progress.totalBytes > 0
+    ? `${downloaded} / ${formatFileSize(progress.totalBytes)}`
+    : `已下载 ${downloaded}（总大小未知）`
+})
 
 interface AppUpdateCheckOptions {
   readonly force?: boolean
@@ -82,7 +109,8 @@ export const useAppUpdateState = () => {
     try {
       stopProgress = EventsOn('system:appUpdateProgress', (progress: AppUpdateProgress) => {
         if (!progress || !['downloading', 'verifying'].includes(progress.stage)
-          || !Number.isFinite(progress.downloadedBytes) || !Number.isFinite(progress.totalBytes)) return
+          || !Number.isFinite(progress.downloadedBytes) || progress.downloadedBytes < 0
+          || !Number.isFinite(progress.totalBytes)) return
         appUpdateProgress.value = progress
       })
       const result = await UpdateAppSelf()
@@ -101,6 +129,9 @@ export const useAppUpdateState = () => {
     isCheckingAppUpdate,
     isUpdatingApp,
     appUpdateProgress,
+    appUpdatePercentage,
+    appUpdateLabel,
+    appUpdateDetail,
     checkAppUpdate,
     updateAppSelf,
   }

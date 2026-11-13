@@ -119,8 +119,8 @@ func buildModeAdapters() map[modeAdapterKey]*modeAdapter {
 		}
 		adapter := *base
 		adapter.density = profile.Density
-		if profile.Density == densityDense && profile.Mode >= 2 && profile.Mode <= 4 {
-			// 仅密铺黑盒具备本地优先回流门；各模式对这类请求强制只走黑盒候选，不能退回旧远程净流端口。
+		if profile.Mode >= 2 && profile.Mode <= 4 {
+			// 普通模式已固定走共享设施黑盒，密铺对回流请求也只走黑盒候选；两种密度均装配本地双优先回流门，不能退回旧远程净流端口。
 			adapter.supportsMachineRecycle = true
 		}
 		if profile.Station != nil {
