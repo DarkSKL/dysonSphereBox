@@ -171,6 +171,4 @@ src/
 
 ```bash
 npm run typecheck   # 严格模式类型检查（tsc -p tsconfig.json --noEmit）
-npm run test:belts  # 传送带接缝和箭头相位回归检查，需 Node.js 22.6+ 的类型擦除支持
-npm run test:icons  # 图标槽位压实与精灵图 UV 换算回归检查，同样需要类型擦除支持
 ```

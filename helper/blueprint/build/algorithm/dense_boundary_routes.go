@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：把密铺边界的三层槽位落实为直入短带及严格带段净空。
+// 文件职责：把普通和密铺直连边界的三层槽位落实为直入短带及严格带段净空。
 // 使用：原料实体创建和全局路线提交前后；边界：只约束生产实体左侧的接口区，厂内继续使用既有密铺规则。
 
 import (
@@ -38,7 +38,7 @@ func (index *denseRoutePortIndex) boundarySpanAllowed(first, second vector) bool
 	return true
 }
 
-// appendDenseInputStem 职责：在边界与交接列之间建立固定向东短带；使用：密铺原料头创建后；边界：原头仍是外部接口，完整真实前缀保留在 route.path 中。
+// appendDenseInputStem 职责：在边界与交接列之间建立固定向东短带；使用：普通或密铺分层原料头创建后；边界：原头仍是外部接口，完整真实前缀保留在 route.path 中。
 func (b *builder) appendDenseInputStem(route *transportRoute) {
 	if b.denseBoundary == nil {
 		return
@@ -115,14 +115,14 @@ func (b *builder) validateDenseBoundaryRoutes(ctx context.Context) error {
 				continue
 			}
 			if !index.nodeClear(node.a, nil) {
-				return &blueprint.Error{Code: "GEN_E_COLLISION", Message: "密铺输入输出区存在重叠的独立带节点"}
+				return &blueprint.Error{Code: "GEN_E_COLLISION", Message: "直连输入输出区存在重叠的独立带节点"}
 			}
 			seen[node] = true
 			cell := denseRouteNodeCell(index.world(node.a))
 			index.nodes[cell] = append(index.nodes[cell], node)
 		}
 		if !index.boundarySpanAllowed(entity.a, target.a) || !index.beltSpanClear(entity.a, target.a) {
-			return &blueprint.Error{Code: "GEN_E_COLLISION", Message: "密铺输入输出区存在带段交叠或超出三层接入范围"}
+			return &blueprint.Error{Code: "GEN_E_COLLISION", Message: "直连输入输出区存在带段交叠或超出三层接入范围"}
 		}
 		index.addBeltSpan(entity)
 	}

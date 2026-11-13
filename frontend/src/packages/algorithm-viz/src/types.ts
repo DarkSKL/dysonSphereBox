@@ -85,6 +85,8 @@ export interface AlgoVizArea {
 
 /** 一批操作。批内按顺序播放，批与批按入队顺序播放。 */
 export interface AlgoVizBatch {
+  /** 本批所属生成任务；空字符串表示导入蓝图，缺省沿用 beginGeneration 的任务。 */
+  readonly taskId?: string;
   readonly candidateId?: string;
   readonly snapshot?: boolean;
   readonly operations: readonly AlgoVizOperation[];
@@ -128,6 +130,20 @@ export interface AlgoVizProgress {
   /** 当前阶段文案 */
   readonly stage: string;
   readonly paused: boolean;
+}
+
+/** 单栋建筑的操作通知；before/after 以 sequence 关联，打断或撤销的操作只有 before。 */
+export interface AlgoVizBuildingEvent {
+  /** 生成任务 ID；导入蓝图等没有生成任务的场景为空字符串。 */
+  readonly taskId: string;
+  /** 场景内递增的操作序号，重新回放后继续递增；不作为跨场景身份。 */
+  readonly sequence: number;
+  readonly candidateId?: string;
+  readonly id: string;
+  /** 这次操作的建筑快照；temporary 仍表示候选中的临时建筑。 */
+  readonly building: AlgoVizBuilding;
+  /** 新增或替换；同 ID 换模型也属于 replace。 */
+  readonly operation: 'add' | 'replace';
 }
 
 /** 渲染统计 */
@@ -180,6 +196,10 @@ export interface AlgoVizOptions {
   onSelectionMove?: (screen: { readonly x: number; readonly y: number }) => void;
   /** 进度变化时回调（节流到每帧最多一次） */
   onProgress?: (progress: AlgoVizProgress) => void;
+  /** 建筑操作开始；不依赖 Vue 或应用事件总线，由使用方决定如何转发。 */
+  onBuildingBefore?: (event: AlgoVizBuildingEvent) => void;
+  /** 建筑姿态落定后通知一次；直接落位也触发，撤销和淘汰不触发，不等待模型补加载。 */
+  onBuildingAfter?: (event: AlgoVizBuildingEvent) => void;
   onStats?: (stats: AlgoVizStats) => void;
 }
 

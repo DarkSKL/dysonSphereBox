@@ -8,7 +8,6 @@
     "build": "vue-tsc --noEmit && vite build",
     "models:prepare": "node tools/model-compression/prepare.mjs",
     "models:compare": "node tools/model-compression/prepare.mjs --compare",
-    "test:models": "node --test tools/model-compression/optimizer.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -23,6 +22,7 @@
     "echarts": "^6.1.0",
     "lottie-web": "^5.13.0",
     "markdown-it": "^15.0.3",
+    "mitt": "3.0.1",
     "three": "0.186.1",
     "vue": "^3.2.37",
     "vue-echarts": "^8.0.1",

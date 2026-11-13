@@ -114,7 +114,7 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 		if p.ExactMachineCount > float64(p.MachineCount)+1e-9 {
 			return nil, &blueprint.Error{Code: "GEN_E_PLAN_ROUNDING", Message: fmt.Sprintf("产线 %d 的取整机器数 %d 小于精确需求 %.6f，拒绝生成以避免隐形欠产", owner, p.MachineCount, p.ExactMachineCount)}
 		}
-		if b.setting.UseMixed || len(r.Items)+len(r.Results) > 6 || len(r.Results) == 0 {
+		if b.setting.UseMixed || len(r.Items)+len(r.Results) > 6 && !labSevenPorts(p, r) || len(r.Results) == 0 {
 			return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 需要独立物料带且原料与产物合计至多六种；循环混带端口尚无已验证逐物品过滤拓扑，请取消混带输入或更换模式", r.ID)}
 		}
 		if _, err := productionMaterialFlows(p, r); err != nil {

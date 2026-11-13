@@ -51,7 +51,7 @@ func (b *builder) trimConnectedTails() error {
 		}
 	}
 	for _, recycle := range b.machineRecycles {
-		for _, entities := range [][]*placed{recycle.route.path, recycle.source, recycle.intake, recycle.surplus, {recycle.fresh, recycle.returned}} {
+		for _, entities := range [][]*placed{recycle.route.path, recycle.source, recycle.intake, recycle.surplus, recycle.freshPath, recycle.returnedPath} {
 			for _, entity := range entities {
 				required[entity] = true
 			}

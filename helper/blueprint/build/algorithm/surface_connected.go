@@ -48,6 +48,8 @@ func (b *builder) connectedSurfacePathRefs() []*[]*placed {
 		addPath(&entry.source)
 		addPath(&entry.intake)
 		addPath(&entry.surplus)
+		addPath(&entry.freshPath)
+		addPath(&entry.returnedPath)
 	}
 	return refs
 }

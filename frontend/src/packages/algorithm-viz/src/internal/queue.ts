@@ -12,6 +12,8 @@ export interface Offset {
 
 /** 一批操作共享的坐标解释与播放节奏 */
 export interface QueueFrame {
+  /** 入队时固定任务身份，避免延迟播放的建筑通知被归到新任务。 */
+  readonly taskId?: string;
   readonly candidateId?: string;
   readonly coordinates: AlgoVizCoordinates;
   /** 区域下标 → 区域原点在整体平面中的偏移（蓝图格） */

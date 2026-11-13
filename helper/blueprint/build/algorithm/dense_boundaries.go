@@ -84,14 +84,17 @@ func (b *builder) denseInputPositions(low, high vector) []vector {
 	return positions
 }
 
-// fitDenseInputHeight 职责：将直连接口约束在生产实体纬向范围内，联合安排最多三层入口和独立地面出口。
+// fitDenseInputHeight 职责：将普通和密铺直连接口约束在生产实体纬向范围内，联合安排最多三层入口和独立地面出口。
 // 使用：入口草案完成、实体尚未创建；边界：不合并物料或改变份额、带等级及内部目标，其它模式保持原生球面适配。
 func (b *builder) fitDenseInputHeight(ctx context.Context, positions []vector, low, high vector) ([]vector, error) {
-	if len(positions) == 0 || b.adapter == nil || b.adapter.density != densityDense {
+	if len(positions) == 0 || b.adapter == nil {
 		return positions, nil
 	}
 	if b.adapter.mode == 1 && len(b.all) > 0 {
 		return b.planDenseBoundaries(ctx, positions, low, high)
+	}
+	if b.adapter.density != densityDense {
+		return positions, nil
 	}
 	leftovers := 0
 	for _, r := range b.transportRoutes {

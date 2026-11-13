@@ -93,6 +93,13 @@ func lineCountsWithStrategy(p quant.Production, r quant.Recipe, s Setting, speed
 		limit = min(limit, s.MaxMachineInALine)
 	}
 	limit = min(limit, theory)
+	if labSevenPorts(p, r) {
+		ports := planLabSevenInserters(p, r, s, p.MachineCount)
+		if ports.capacityError != nil {
+			return nil, ports.capacityError
+		}
+		limit = min(limit, ports.layers)
+	}
 	// 喷涂及自定义倍率以可信计划的单机毛流为准；每种物品独立占带，
 	// 不能累加不同产物，也不能用期望流量/取整机器数低估整行满载需求。
 	inputs, outputs, err := machineInserterRates(p, r)

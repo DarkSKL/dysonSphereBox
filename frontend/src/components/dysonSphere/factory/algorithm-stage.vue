@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch, watchEffect} from 'vue'
-import {ChevronsRight, Crosshair, Eye, EyeOff, Pause, Play, RefreshCw, RotateCcw, RotateCw, Sparkles} from '@lucide/vue'
+import {ChevronsRight, Crosshair, Eye, EyeOff, Pause, Play, RefreshCw, RotateCcw, RotateCw, Save, Sparkles} from '@lucide/vue'
 import basisTranscoderJs from 'three/examples/jsm/libs/basis/basis_transcoder.js?url'
 import basisTranscoderWasm from 'three/examples/jsm/libs/basis/basis_transcoder.wasm?url'
 import {ALGORITHM_VIZ_MODEL_KEYS, createAlgorithmViz, type AlgorithmVizController, type AlgoVizBuilding, type AlgoVizIcon, type AlgoVizIconGroup, type AlgoVizProgress, type AlgoVizSelection} from '../../../packages/algorithm-viz/src'
@@ -11,6 +11,7 @@ import {useBuildingPanel} from '../../../composables/dysonSphere/useBuildingPane
 import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
 import {ensureFactoryIcons, factoryIconCell, factoryIconsReady} from '../../../pages/services/dysonSphere/factory-icons'
 import {encyclopediaManifest} from '../../../pages/services/encyclopedia/catalog'
+import {eventBus} from '../../../utils/event-bus'
 import BriefCard from './panel/brief-card.vue'
 import LabWindow from './panel/lab-window.vue'
 import StationWindow from './panel/station-window.vue'
@@ -215,6 +216,9 @@ onMounted(async () => {
     icon: resolveIcon,
     iconsVisible: {belt: iconVisible.belt, building: iconVisible.building},
     onProgress: value => { progress.value = value; recordAlgorithmActivity(value) },
+    // 建筑通知由姿态生命周期触发，与后端生成进度独立。
+    onBuildingBefore: event => eventBus.emit('algorithm:building:before', event),
+    onBuildingAfter: event => eventBus.emit('algorithm:building:after', event),
     onSelect,
     onSelectionMove: screen => { anchor.x = screen.x; anchor.y = screen.y },
   })
@@ -288,6 +292,16 @@ const phaseText = computed(() => {
   return value.total > 0 ? `${value.message} · ${value.current}/${value.total}` : value.message
 })
 const busy = computed(() => Boolean(progress.value && (progress.value.pending > 0 || progress.value.animating > 0)))
+
+// =============== 渲染结果保存 ===============
+// 说明：当前有效蓝图的全部建筑落位、候选退场结束后显示保存入口，直接复用蓝图预览区的入库与启用流程。
+// 边界：生成、解析、导入或结果过期时隐藏；保存加载状态由工作区共享，不将候选画面当作可保存结果。
+const showSave = computed(() => {
+  const state = progress.value
+  return Boolean(props.w.code && !props.w.generating && !props.w.solving && !props.w.importing && !props.w.previewStale
+    && !decoding.value && feedSource.value !== 'idle' && state && state.objects > 0 && state.objects === props.w.expectedBuildings
+    && state.pending === 0 && state.animating === 0 && state.falling === 0 && state.candidates <= 1)
+})
 </script>
 
 <template>
@@ -311,6 +325,10 @@ const busy = computed(() => Boolean(progress.value && (progress.value.pending > 
     <!-- 右上：算法、播放与视角控制 -->
     <div class="algo-tools" role="toolbar" aria-label="平面预览器控制">
       <n-tooltip><template #trigger><button type="button" class="tool-button run" :disabled="!canRegenerate" aria-label="重新运行算法" @click="regenerate"><Sparkles :size="13" /><span>重新运行算法</span></button></template>对当前方案重新生成一次，从头跟随算法的计算过程</n-tooltip>
+      <!-- ~ 保存当前蓝图 -->
+      <!-- * 说明：渲染完成后显示入库入口；交互：复用 w.save，保存中禁用并显示加载状态。 -->
+      <!-- * 依赖：showSave 与工作区 saving；边界：只保存正式蓝图编码，沿用名称处理、快照校验和入库后启用提示。 -->
+      <n-tooltip v-if="showSave"><template #trigger><n-button size="tiny" class="save-button" :loading="w.saving" :disabled="w.saving" aria-label="存入蓝图库" @click="w.save"><template #icon><Save :size="14" /></template></n-button></template>保存蓝图到蓝图库</n-tooltip>
       <span class="tool-divider" />
       <n-tooltip><template #trigger><button type="button" class="tool-button icon-only" :class="{'is-on': paused}" :aria-label="paused ? '继续播放' : '暂停播放'" @click="togglePause"><Play v-if="paused" :size="14" /><Pause v-else :size="14" /></button></template>{{ paused ? '继续播放' : '暂停播放' }}</n-tooltip>
       <n-tooltip><template #trigger><button type="button" class="tool-button speed" aria-label="切换播放速度" @click="cycleSpeed"><span class="type-display">{{ speed }}×</span></button></template>播放速度，点击切换</n-tooltip>
@@ -355,7 +373,7 @@ const busy = computed(() => Boolean(progress.value && (progress.value.pending > 
 <style scoped lang="scss">
 .algo-stage { position: absolute; inset: 0; overflow: hidden; container-type: inline-size; }
 .algo-canvas { position: absolute; inset: 0; }
-.algo-hud { position: absolute; top: 10px; left: 12px; z-index: 2; display: flex; max-width: calc(100% - 430px); flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+.algo-hud { position: absolute; top: 10px; left: 12px; z-index: 2; display: flex; max-width: calc(100% - 470px); flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
 .algo-hud-row { display: flex; max-width: 100%; align-items: center; gap: 8px; }
 .algo-hud-row > * { pointer-events: auto; }
 .algo-phase { display: inline-flex; max-width: 100%; align-items: center; gap: 6px; margin: 0; overflow: hidden; padding: 0 2px; color: var(--ds-text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 0 8px var(--ds-bg-app); }
@@ -366,6 +384,7 @@ const busy = computed(() => Boolean(progress.value && (progress.value.pending > 
 .algo-source.is-replay i { background: var(--ds-success); }
 .algo-source.is-busy i { background: var(--ds-warning); animation: algo-pulse 1s ease-in-out infinite; }
 .algo-tools { position: absolute; top: 10px; right: 12px; z-index: 2; display: flex; align-items: center; gap: 4px; }
+.save-button { width: 28px; height: 28px; padding: 0; --n-border-radius: 2px !important; }
 .tool-button { display: inline-flex; height: 28px; align-items: center; justify-content: center; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 0 8px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; cursor: pointer; transition: border-color 150ms, color 150ms; }
 .tool-button.icon-only { width: 28px; padding: 0; }
 .tool-button.speed { min-width: 40px; }

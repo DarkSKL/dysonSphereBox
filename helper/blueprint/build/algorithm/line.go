@@ -106,7 +106,7 @@ func (s Setting) maxCount(typ int) int {
 	return s.MaxMachineInALine
 }
 
-// buildLine 职责：装配基础机器行与逐产物独立输出；使用：所有生成策略；边界：输入和产物合计不超过六个真实槽位，容量无解不伪造拓扑。
+// buildLine 职责：装配基础机器行与逐产物独立输出；使用：所有生成策略；边界：通用两侧六槽，七物料研究站使用独立西侧槽，容量无解不伪造拓扑。
 func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lineIndex int, last bool) (*line, error) {
 	if err := b.checkGeneration("机器行装配"); err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	if count <= 0 || count > 10000 {
 		return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "机器行必须包含1到10000台真实机器，拒绝空行或超限行"}
 	}
-	if b.setting.UseMixed || len(r.Items)+len(r.Results) > 6 || len(r.Results) == 0 {
+	if b.setting.UseMixed || len(r.Items)+len(r.Results) > 6 && !labSevenPorts(p, r) || len(r.Results) == 0 {
 		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: "独立物料带需要至少一种产物且原料与产物合计至多六种；旧循环混带尚无按所选分拣器等级逐物品验证的实体端口拓扑，需要独立规划"}
 	}
 	if _, err := productionMaterialFlows(p, r); err != nil {
@@ -140,10 +140,16 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	}
 	l := &line{recipe: r, info: p}
 	ports := planMachineInserters(p, r, b.setting, count)
+	if labSevenPorts(p, r) && count > ports.layers {
+		return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "七物料研究站单元必须按实际堆叠能力拆列"}
+	}
 	bottom := ports.bottom
 	pre := 0.
 	if p.IncreasePoints > 0 && p.ProductionMode >= 0 {
 		pre = 4
+	}
+	if labSevenPorts(p, r) {
+		pre += 4
 	}
 	ground := count
 	pairCount := 0
@@ -170,7 +176,11 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	machineX := math.Floor(conf.Left + conf.Start + pre)
 	machineY := float64(bottom) + conf.Bottom
 	belts := make([][]*placed, 0, len(r.Items)+len(r.Results))
-	for i := 0; i < len(r.Items)+len(r.Results); i++ {
+	trackCount := len(r.Items) + len(r.Results)
+	if labSevenPorts(p, r) {
+		trackCount--
+	}
+	for i := 0; i < trackCount; i++ {
 		if err := b.checkGeneration("机器行传送带装配"); err != nil {
 			return nil, err
 		}
@@ -194,6 +204,10 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		l.inputs = append(l.inputs, belts[track])
 	}
 	for _, port := range ports.outputs {
+		if port.lateral {
+			l.outputs = append(l.outputs, b.straight(0, machineY, int(machineX)-1, 2))
+			continue
+		}
 		track := bottom - port.reach
 		if port.top {
 			track = bottom + port.reach - 1
@@ -271,6 +285,10 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			}
 		}
 		for index, port := range ports.outputs {
+			if port.lateral {
+				b.buildLabSideOutput(m, l.outputs[index])
+				continue
+			}
 			filter := 0
 			if len(r.Results) > 1 {
 				filter = r.Results[index]
@@ -285,7 +303,7 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			return nil, err
 		}
 	}
-	if pre > 0 {
+	if p.IncreasePoints > 0 && p.ProductionMode >= 0 {
 		for _, row := range l.inputs {
 			c := b.make(2313, 2, row[0].a.y, 0)
 			c.record.OutputToSlot = 14

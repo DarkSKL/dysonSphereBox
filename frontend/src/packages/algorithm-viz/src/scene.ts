@@ -22,6 +22,7 @@ import type {
   AlgorithmVizController,
   AlgoVizBatch,
   AlgoVizBuilding,
+  AlgoVizBuildingEvent,
   AlgoVizCoordinates,
   AlgoVizIconGroup,
   AlgoVizIconVisibility,
@@ -167,6 +168,10 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 视角锁定：计算期间强制复位并禁止旋转、平移、缩放 */
   private viewLocked = false;
   private readonly animating = new Set<VizObject>();
+  /** 按对象实体保存尚未落定的操作，防止同 ID 换型、撤销或重置后误发完成通知。 */
+  private buildingEvents = new WeakMap<VizObject, AlgoVizBuildingEvent>();
+  private buildingSequence = 0;
+  private generationTaskId = '';
   /** 正在衰减闪白但不在动画中的对象 */
   private readonly glowing = new Set<VizObject>();
   private readonly dirty = new Set<VizObject>();
@@ -288,7 +293,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.lastCoordinates = coordinates;
     const stage = batch.stage ?? this.lastStage;
     this.lastStage = stage;
-    const frame: QueueFrame = { candidateId: batch.candidateId, coordinates, offsets: coordinates === 'area' ? this.lastOffsets : NO_OFFSETS, stage, pace: batch.pace ?? 'replay' };
+    const frame: QueueFrame = { taskId: batch.taskId ?? this.generationTaskId, candidateId: batch.candidateId, coordinates, offsets: coordinates === 'area' ? this.lastOffsets : NO_OFFSETS, stage, pace: batch.pace ?? 'replay' };
     const queue = batch.candidateId ? this.candidates.get(batch.candidateId)?.queue : this.queue;
     const candidate = batch.candidateId ? this.candidates.get(batch.candidateId) : undefined;
     if (batch.snapshot && candidate) {
@@ -360,7 +365,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   beginGeneration(taskId: string): void {
-    if (this.disposed || !this.supported || !this.poolUsage.begin(taskId)) return;
+    if (this.disposed || !this.supported) return;
+    this.generationTaskId = taskId;
+    if (!this.poolUsage.begin(taskId)) return;
     this.models.beginGeneration(taskId);
     this.pruneGenerationCache();
     for (const pool of this.pools.values()) pool.beginGeneration();
@@ -371,6 +378,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
 
   reset(options: { animate?: boolean } = {}): void {
     if (this.disposed || !this.supported) return;
+    this.buildingEvents = new WeakMap();
     const hadCandidates = this.candidates.size > 0;
     this.queue.clear();
     this.skipping = false;
@@ -597,6 +605,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.buildingEvents = new WeakMap();
     if (this.supported) {
       this.running = false;
       cancelAnimationFrame(this.rafId);
@@ -867,7 +876,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.replaceObject(existing, op.building, frame, instant);
   }
 
-  private createObject(id: string, building: AlgoVizBuilding, frame: QueueFrame, instant: boolean): VizObject {
+  private createObject(id: string, building: AlgoVizBuilding, frame: QueueFrame, instant: boolean, operation: AlgoVizBuildingEvent['operation'] = 'add'): VizObject {
     const desc = describeObject(id, building, hashString(id));
     const ghost = building.temporary ? 1 : 0;
     const obj: VizObject = {
@@ -901,6 +910,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       landed: true,
       removing: false,
     };
+    this.beginBuilding(obj, building, frame, operation);
     copyPose(obj.pose, obj.target);
     copyPose(obj.from, obj.target);
     this.allocSlot(obj);
@@ -921,6 +931,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (!instant && !this.reducedMotion.matches) this.startEnter(obj);
     this.dirty.add(obj);
     this.boundsDirty = true;
+    if (instant || this.reducedMotion.matches) this.finishPose(obj);
     return obj;
   }
 
@@ -930,9 +941,10 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       // 换型：旧建筑沉入地面，新建筑在同一身份下重新落位
       const id = obj.id;
       this.startExit(obj, 0, instant);
-      this.createObject(id, building, frame, instant);
+      this.createObject(id, building, frame, instant, 'replace');
       return;
     }
+    this.beginBuilding(obj, building, frame, 'replace');
     this.unlinkBelt(obj);
     obj.building = building;
     this.resolveIcon(obj);
@@ -995,6 +1007,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 开始撤销：对象立即脱离身份表（同 ID 可马上重新加入），播放完动画后释放 */
   private startExit(obj: VizObject, delay: number, instant: boolean): void {
     if (obj.removing) return;
+    this.buildingEvents.delete(obj);
     obj.removing = true;
     this.untrackPlaceholder(obj);
     if (this.objects.get(obj.id) === obj) this.objects.delete(obj.id);
@@ -1129,6 +1142,31 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     obj.flash = 0;
     obj.ghost = obj.ghostTo;
     obj.landed = true;
+    this.completeBuilding(obj);
+  }
+
+  /** 固定本次操作的建筑快照；后续替换会覆盖旧通知，旧操作不再补发 after。 */
+  private beginBuilding(obj: VizObject, building: AlgoVizBuilding, frame: QueueFrame, operation: AlgoVizBuildingEvent['operation']): void {
+    if (!this.options.onBuildingBefore && !this.options.onBuildingAfter) return;
+    const event: AlgoVizBuildingEvent = {
+      taskId: frame.taskId ?? this.generationTaskId,
+      sequence: ++this.buildingSequence,
+      candidateId: frame.candidateId,
+      id: obj.id,
+      building: {...building},
+      operation,
+    };
+    this.buildingEvents.set(obj, event);
+    this.options.onBuildingBefore?.(event);
+  }
+
+  /** 姿态已落定才消费通知；先删除再回调，重复收尾、撤销及已淘汰候选均不会误发。 */
+  private completeBuilding(obj: VizObject): void {
+    const event = this.buildingEvents.get(obj);
+    if (!event) return;
+    this.buildingEvents.delete(obj);
+    if (this.disposed || obj.removing || this.objects.get(obj.id) !== obj || (event.candidateId && this.retiredCandidates.has(event.candidateId))) return;
+    this.options.onBuildingAfter?.(event);
   }
 
   // -------------------------------------------------------------------------

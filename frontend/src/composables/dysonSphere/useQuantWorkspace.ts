@@ -174,7 +174,7 @@ export const useQuantWorkspace = () => {
     if (index >= 0) recipeOverrides[index] = {...overrideFor(recipe), ...patch}
   }
   const buildingOptions = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => (recipe?.factories ?? []).map((id, index) => ({label: itemName(id), value: index, icon: itemName(id)}))
-  // 设备类型偏好：按配方类型（1 熔炼、4 制造）汇总可选设施，选中后写入该类型全部配方的设备序号；缺少该设施的配方保持原选择。
+  // 设备类型偏好：按配方类型（1 熔炼、2 化工、4 制造、15 矩阵）汇总可选设施，选中后写入该类型全部配方的设备序号；缺少该设施的配方保持原选择。
   const machinePreference = reactive<Record<number, number>>({})
   const machineChoices = (recipeType: number): {label: string; value: number; icon: string}[] => {
     const ids: number[] = []

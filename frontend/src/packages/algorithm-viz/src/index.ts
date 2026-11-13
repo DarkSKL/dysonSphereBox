@@ -24,6 +24,7 @@ export type {
   AlgoVizArea,
   AlgoVizBatch,
   AlgoVizBuilding,
+  AlgoVizBuildingEvent,
   AlgoVizCoordinates,
   AlgoVizIcon,
   AlgoVizIconGroup,

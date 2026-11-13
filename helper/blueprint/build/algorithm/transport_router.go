@@ -104,7 +104,7 @@ type transportEnvironment struct {
 	beltCorridors map[[2]int]bool
 	// corridorPotential 职责：缓存当前路线的平面松弛势场；使用：相邻端口下界复用；边界：占位版本变化即失效。
 	corridorPotential *transportCorridorPotential
-	// densePorts 职责：核验连续低轨接驳与真实整段静态净空；使用：仅密铺路由；边界：普通模式保持为空。
+	// densePorts 职责：核验接驳与真实整段静态净空；使用：密铺路由及普通分层接口；边界：普通模式同时启用严格独立带段避碰。
 	densePorts *denseRoutePortIndex
 }
 
@@ -133,6 +133,8 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 
 // routeTransportWithStrategy 职责：以相同实体端点选择走廊软代价；使用：公开默认策略与同布局回归比较；边界：仅改变寻路目标，不改变物料图、硬约束或预算，不新增用户配置。
 func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions []vector, preferCorridor bool) error {
+	// 分层接口复用逐段净空接驳；普通模式仍保留普通机器布局及严格带段碰撞规则，不能按整根垂直柱封死另一层入口。
+	preciseRouting := b.denseSpatial || b.denseBoundary != nil
 	routes := append([]*transportRoute{}, b.denseProducerSplitRoutes()...)
 	routes = append(routes, b.transportRoutes...)
 	routes = append(routes, b.denseStreetRoutes...)
@@ -197,7 +199,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		env.minimum.y = math.Max(env.minimum.y, 0)
 		env.maximum.y = math.Min(env.maximum.y, b.denseLatitudeSpan-1)
 	}
-	if b.denseSpatial {
+	if preciseRouting {
 		env.densePorts, err = b.newDenseRoutePortIndex(ctx)
 		if err != nil {
 			return err
@@ -216,14 +218,14 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	env.reserveDenseBoundaryEscapes(routes)
 	for _, p := range b.all {
 		if surfaceIsBelt(p.record.ItemID) {
-			if b.denseSpatial {
+			if preciseRouting {
 				env.densePorts.blockNode(env.blocked, p.a)
 			} else {
 				env.blocked[beltCell(p.a)] = true
 			}
 			env.beltCorridors[beltColumn(p.a)] = true
 		}
-		if !b.denseSpatial && p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
+		if !preciseRouting && p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
 			// 分拣器胶囊通道也进入离散占位，最终仍由版本化 slotPose 精确预检决定。
 			for x := math.Floor(math.Min(p.a.x, p.b.x)); x <= math.Ceil(math.Max(p.a.x, p.b.x)); x++ {
 				for y := math.Floor(math.Min(p.a.y, p.b.y)); y <= math.Ceil(math.Max(p.a.y, p.b.y)); y++ {
@@ -234,9 +236,9 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	}
 	// 为所有未来入口预留落地柱，防止先路由的高架封死尚未接线的端口。
 	for _, route := range routes {
-		if b.denseSpatial {
+		if preciseRouting {
 			// 低轨可共享XY而位于不同真实高度；整数整列预留会把彼此的合法接驳全部封死。
-			// 密铺由portal逐节点/逐段检查并在提交后登记真实占位，普通模式保留原列预留。
+			// 分层接口由portal逐节点/逐段检查并在提交后登记真实占位，未采用此接口的兼容模式保留原列预留。
 			continue
 		}
 		if route.to == nil && route.from != nil && route.end == nil {
@@ -326,7 +328,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		destination := end
 		points, steps := []vector(nil), 0
 		maxSearchExpanded, searches := 0, 0
-		if b.denseSpatial {
+		if preciseRouting {
 			var tailIndex int
 			preferred := vector{start.x - source.a.x, start.y - source.a.y, 0}
 			points, tailIndex, steps, maxSearchExpanded, searches = env.findDenseTransportPath(ctx, route, tail, incomingCounts, preferred)
@@ -426,7 +428,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: fmt.Sprintf("完整物料路线会使建筑超过本次预算 %d，请拆分目标", generationBuildingBudget(ctx))}
 		}
 		b.owner = -1
-		if merge != nil || b.denseSpatial {
+		if merge != nil || preciseRouting {
 			points = points[:len(points)-1]
 		}
 		previewBase := len(b.all)
@@ -452,12 +454,12 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		// 合流锚点随新入带向上游推进，避免所有供应者把同一格的四个邻位耗尽。
 		// 保存完整下游尾链，诊断检查的仍是此物料实际抵达消费者的连续路线。
 		incoming[route.end] = append([]*placed{}, path...)
-		if b.denseSpatial && denseIntegerNode(source.a) {
+		if preciseRouting && denseIntegerNode(source.a) {
 			// 整数源本身也是合法有向尾链的一部分；保留它供短接路线的下一供应者合流。
 			incoming[route.end] = append([]*placed{source}, incoming[route.end]...)
 		}
 		for _, point := range points {
-			if b.denseSpatial {
+			if preciseRouting {
 				env.densePorts.blockNode(env.blocked, point)
 			} else {
 				env.blocked[beltCell(point)] = true

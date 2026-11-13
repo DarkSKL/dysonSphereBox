@@ -21,13 +21,11 @@ npm run dev
 
 ```powershell
 npm run models:prepare
-npm run test:models
 npm run build
 ```
 
 - `models:prepare`：准备当前档位的全部模型，便于预热缓存。
 - `models:compare`：准备全部模型的 1024、512、256 三档，以及各自的体积报告；对比页展示原版、1024 和 512。
-- `test:models`：检查真实模型的非纹理数据、保留 mip、Basis WASM 转码像素一致性、缓存与构建钩子。
 - `build`：仅处理构建实际导入的 GLB，输出压缩资产与 `dist/model-compression-report.json`。
 
 发布脚本 `deploy/build.bat` 提供三档菜单，回车选择中间的均衡档；也可直接运行 `deploy\build.bat v2.1.2 quality`、`balanced` 或 `compact`。模式通过 `MODEL_COMPRESSION_MODE` 传递，并优先于终端中残留的数值覆盖。

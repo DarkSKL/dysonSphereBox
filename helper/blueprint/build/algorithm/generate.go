@@ -410,6 +410,15 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 		document.Description += "；密铺按整图单次粘贴规则生成，已有场景接入和连续拖拽复制需另行验证"
 		document.Description += densityLatitudePlacementHint(surfacePlan)
 	}
+	// 封面按用户目标顺序展示产物，不以中间原料、设备或产线排序代替目标。
+	iconItems := make([]int, 0, len(req.Plan.Targets))
+	for _, target := range req.Plan.Targets {
+		iconItems = append(iconItems, target.ItemID)
+	}
+	document, err = blueprint.WithItemIcons(document, iconItems)
+	if err != nil {
+		return result, err
+	}
 	reportProgress(ctx, "encode", "正在编码并校验蓝图", 0, 0)
 	encoded, err := blueprint.Encode(document, 1)
 	if err != nil {

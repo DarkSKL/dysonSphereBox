@@ -149,7 +149,7 @@ type flyTransportEndpoint struct {
 type builder struct {
 	// mode1Deliveries 职责：保存独立左侧成品/副产物交付组和被冻结的真实末端；使用：mode1路由、裁尾与终检；边界：不接管塔、配送或混带边界。
 	mode1Deliveries *mode1DeliveryPlan
-	// denseBoundary 职责：保存密铺原料及交付端的联合位置；使用：边界创建和局部严格避碰；边界：不跨候选复用。
+	// denseBoundary 职责：保存普通和密铺直连原料及交付端的联合位置；使用：边界创建和局部严格避碰；边界：不跨候选复用。
 	denseBoundary *denseBoundaryLayout
 	// denseProducerSplits 职责：保存单产物出货树及规范份额身份；使用：独立密铺候选；边界：不跨候选共享，不替代机器取放臂或原回流结构。
 	denseProducerSplits *denseProducerSplitPlan

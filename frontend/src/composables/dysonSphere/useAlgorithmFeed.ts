@@ -83,7 +83,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
       if (op.type === 'remove') { mirror.delete(op.id); objects?.delete(op.id) }
       else { mirror.set(op.id, {building: op.building, index: op.building.index}); objects?.add(op.id) }
     }
-    getViz()?.enqueue({...options, operations})
+    getViz()?.enqueue({...options, taskId: w.replay ? '' : w.generationTaskId, operations})
   }
   const clearScene = (animate: boolean): void => {
     // 大场景切换来源时直接复用实例池，避免给旧建筑再安排大量退场动画；当前蓝图的记录仍全部保留。
