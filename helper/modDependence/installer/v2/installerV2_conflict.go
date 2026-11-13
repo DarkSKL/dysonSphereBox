@@ -67,5 +67,5 @@ func ContinueRemoteModPackageInstall(packageKey string, action contract.InstallC
 	if err := conflictstate.SaveManifest(record.PackageKey, string(installConstant.StateRunning), "prepare", "继续安装", 1, "", &manifest); err != nil {
 		return nil, err
 	}
-	return installRemoteModPackageWithOptions(pack, contract.InstallRemotePackageOptions{Decisions: manifest.Decisions})
+	return installRemoteModPackageWithOptions(pack, contract.InstallRemotePackageOptions{Decisions: manifest.Decisions, ForceRootReinstall: manifest.ForceRootReinstall})
 }

@@ -23,9 +23,9 @@ func generationFailureStatus(code, message string, err error) contract.Status {
 	case "GEN_E_ROUTE":
 		status.Message = "当前布局未能完成全部物料接线。"
 		status.Suggestion = "可尝试其他运输模式或更高等级的传送带、分拣器；搜索预算耗尽不代表一定无法接线。"
-	case "GEN_E_BELT_CAPACITY", "GEN_E_INSERTER_CAPACITY":
-		status.Message = "当前传送带或分拣器的输送能力不足。"
-		status.Suggestion = "请提高对应设备等级或降低目标产量，技术详情中保留了所需流量与具体端口。"
+	case "GEN_E_BELT_CAPACITY", "GEN_E_INSERTER_CAPACITY", "GEN_E_OVERFLOW":
+		status.Message = "自动升档后，仍未找到满足输送能力的布局。"
+		status.Suggestion = "可调整运输模式或拆分产线；技术详情保留了实际等级、所需流量与具体端口。"
 	case "GEN_E_POWER_COVERAGE", "GEN_E_POWER_NETWORK":
 		status.Message = "当前布局未能满足全部建筑的供电或电网连通要求。"
 		status.Suggestion = "可尝试更宽的建造地区或调整研究站层数；若仍失败，请保留技术详情反馈。"

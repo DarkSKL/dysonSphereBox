@@ -28,6 +28,7 @@ import type {
   AlgoVizIconVisibility,
   AlgoVizOptions,
   AlgoVizProgress,
+  AlgoVizScreenAnchor,
   AlgoVizTheme,
 } from './types';
 
@@ -216,7 +217,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private hovered: VizObject | null = null;
   private selected: VizObject | null = null;
   /** 最近一次通知使用方的选中建筑屏幕坐标 */
-  private readonly selectionScreen = { x: NaN, y: NaN };
+  private selectionScreen: AlgoVizScreenAnchor | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
 
@@ -559,8 +560,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     }
     const candidate = this.candidates.get(this.objectCandidates.get(next.id) ?? '');
     const screen = this.projectSelection(next);
-    this.selectionScreen.x = screen.x;
-    this.selectionScreen.y = screen.y;
+    this.selectionScreen = screen;
     this.options.onSelect?.({
       id: next.id,
       candidateId: candidate?.id,
@@ -570,20 +570,44 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     });
   }
 
-  /** 选中建筑在容器内的屏幕坐标：取建筑高度六成处，计入候选平台偏移 */
-  private projectSelection(obj: VizObject): { x: number; y: number } {
+  /** 投影建筑锚点与八角包围盒，计入真实缩放、动画抬升和候选平台偏移；不依赖详情面板的设计尺寸。 */
+  private projectSelection(obj: VizObject): AlgoVizScreenAnchor {
     const candidate = this.candidates.get(this.objectCandidates.get(obj.id) ?? '');
-    this.v.set(obj.pose.x + (candidate?.x ?? 0), obj.pose.y + obj.height * 0.6 + (candidate?.y ?? 0), obj.pose.z + (candidate?.z ?? 0)).project(this.rig.camera);
-    return { x: ((this.v.x + 1) / 2) * this.width, y: ((1 - this.v.y) / 2) * this.height };
+    const x = obj.pose.x + (candidate?.x ?? 0);
+    const y = obj.pose.y + obj.lift + (candidate?.y ?? 0);
+    const z = obj.pose.z + (candidate?.z ?? 0);
+    const scale = Math.max(0.001, obj.scale);
+    this.v.set(x, y + obj.height * scale * 0.6, z).project(this.rig.camera);
+    const centerX = ((this.v.x + 1) / 2) * this.width;
+    const centerY = ((1 - this.v.y) / 2) * this.height;
+    const inDepth = this.v.z >= -1 && this.v.z <= 1;
+    const bounds = {left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity};
+    const cos = Math.cos(obj.pose.yaw), sin = Math.sin(obj.pose.yaw);
+    for (let corner = 0; corner < 8; corner++) {
+      const dx = (corner & 1 ? 0.5 : -0.5) * obj.width * scale;
+      const dz = (corner & 2 ? 0.5 : -0.5) * obj.depth * scale;
+      const dy = (corner & 4 ? obj.height : 0) * scale;
+      this.v.set(x + dx * cos + dz * sin, y + dy, z - dx * sin + dz * cos).project(this.rig.camera);
+      const px = ((this.v.x + 1) / 2) * this.width, py = ((1 - this.v.y) / 2) * this.height;
+      bounds.left = Math.min(bounds.left, px);
+      bounds.right = Math.max(bounds.right, px);
+      bounds.top = Math.min(bounds.top, py);
+      bounds.bottom = Math.max(bounds.bottom, py);
+    }
+    return {x: centerX, y: centerY, pixelsPerUnit: scale / this.rig.worldPerPixel, bounds,
+      visible: inDepth && bounds.right >= 0 && bounds.left <= this.width && bounds.bottom >= 0 && bounds.top <= this.height};
   }
 
-  /** 绘制后检查选中建筑的屏幕位置，移动超过半像素时通知使用方，让详情面板跟随建筑 */
+  /** 绘制后同步位置、轮廓和比例；即使以建筑中心缩放导致锚点不动，也必须更新吸附卡片。 */
   private trackSelection(): void {
     if (!this.selected || !this.options.onSelectionMove) return;
     const screen = this.projectSelection(this.selected);
-    if (Math.abs(screen.x - this.selectionScreen.x) < 0.5 && Math.abs(screen.y - this.selectionScreen.y) < 0.5) return;
-    this.selectionScreen.x = screen.x;
-    this.selectionScreen.y = screen.y;
+    const previous = this.selectionScreen;
+    if (previous && screen.visible === previous.visible && Math.abs(screen.x - previous.x) < 0.5 && Math.abs(screen.y - previous.y) < 0.5
+      && Math.abs(screen.pixelsPerUnit - previous.pixelsPerUnit) < 0.01
+      && Math.abs(screen.bounds.left - previous.bounds.left) < 0.5 && Math.abs(screen.bounds.right - previous.bounds.right) < 0.5
+      && Math.abs(screen.bounds.top - previous.bounds.top) < 0.5 && Math.abs(screen.bounds.bottom - previous.bounds.bottom) < 0.5) return;
+    this.selectionScreen = screen;
     this.options.onSelectionMove(screen);
   }
 

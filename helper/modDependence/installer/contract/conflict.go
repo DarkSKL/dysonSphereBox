@@ -63,6 +63,8 @@ type InstallRemotePackageOptions struct {
 	Decisions []InstallConflictDecisionDTO `json:"decisions"`
 	// ResetSession 职责：控制是否重置既有安装会话；使用：初次安装时为 true，继续冲突时保持 false；边界：不导出到 JSON。
 	ResetSession bool `json:"-"`
+	// ForceRootReinstall 职责：更新时强制主包走文件校验与版本迁移；使用：已安装市场模组升级入口；边界：依赖继续复用，普通安装保持同版本跳过策略。
+	ForceRootReinstall bool `json:"-"`
 }
 
 // InstallConflictDecisionDTO 记录用户对一次组件文件冲突的选择。

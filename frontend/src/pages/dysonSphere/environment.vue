@@ -8,6 +8,7 @@ import {contract, environment, type r2modman} from '../../../wailsjs/go/models'
 import {OnFileDrop, OnFileDropOff} from '../../../wailsjs/runtime/runtime'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import ResourceCard from '../../components/dysonSphere/environment/resource-card.vue'
+import MarketResourceCard from '../../components/dysonSphere/environment/market-resource-card.vue'
 import R2ModmanPanel from '../../components/dysonSphere/environment/r2modman-panel.vue'
 import type {ResourceCardTone} from '../../types/environment'
 import {useEnvironmentContextMenu} from '../../composables/dysonSphere/useEnvironmentContextMenu'
@@ -22,7 +23,7 @@ definePage({ meta: { layout: 'main', title: '资源', keepAlive: true } })
 const router = useRouter()
 const message = useMessage()
 const env = useEnvironmentState()
-const installed = useInstalledModState()
+const installed = useInstalledModState(async () => { await Promise.all([env.loadMods(), env.loadOverview()]) })
 const dialogs = useEnvironmentDialogs()
 // =============== 外部 Profile 托管入口 ===============
 // 说明：Profile 面板读取盒子持久快照，显式同步才扫描 R2；工具栏直接下拉切换，摘要单列 R2 数量。
@@ -70,6 +71,7 @@ const {
   enabledBlueprintCount,
 } = env
 const {installedPackages, isLoadingInstalledPackages, uninstallingPackageKeys, selectedInstalledPackage} = installed
+const {packageUpdates, updateTasks, isCheckingUpdates, hasActiveOperation} = installed
 const {textDialog, confirmDialog, quickImportDialog} = dialogs
 const {menu: envContextMenu, options: envContextMenuOptions} = contextMenu
 
@@ -224,11 +226,12 @@ const scheduleSearch = (loader: () => Promise<void>): void => {
 // 边界：Profile 与本机资源分别操作，不向游戏目录复制 R2 模组。
 const syncKindByTab = {mods: 'mod', blueprints: 'blueprint', saves: 'save'} as const
 const syncLabelByTab = {mods: '同步模组 / r2modman Profile', blueprints: '同步本机蓝图', saves: '重新扫描存档'} as const
+const isSyncingModSources = ref(false)
 
 const isSyncingActiveTab = computed(() => (
   activeTab.value === 'saves'
     ? isLoadingSaves.value
-    : isRunningInitialSync.value || isRefreshingManagedState.value || (activeTab.value === 'mods' && r2Busy.value)
+    : isRunningInitialSync.value || isRefreshingManagedState.value || (activeTab.value === 'mods' && (r2Busy.value || isSyncingModSources.value || hasActiveOperation.value))
 ))
 const syncButtonLabel = computed(() => syncLabelByTab[activeTab.value])
 
@@ -246,9 +249,13 @@ const syncActiveTab = async (): Promise<void> => {
 
 // 说明：同一同步入口并行更新本机资源与 R2 快照，不把 Profile 作为游戏目录复制目标。
 const syncLocalMods = async (): Promise<void> => {
-  if (isRunningInitialSync.value || isRefreshingManagedState.value || r2Busy.value) return
-  await Promise.all([env.syncEnvironmentResources('mod'), r2Panel.value?.syncProfiles()])
-  await installed.loadInstalledPackages()
+  if (isSyncingModSources.value || isRunningInitialSync.value || isRefreshingManagedState.value || r2Busy.value || hasActiveOperation.value) return
+  isSyncingModSources.value = true
+  try {
+    await Promise.all([env.syncEnvironmentResources('mod'), r2Panel.value?.syncProfiles()])
+    await installed.loadInstalledPackages(false)
+    await installed.checkUpdates(true)
+  } finally { isSyncingModSources.value = false }
 }
 
 watch(modSearch, () => activeTab.value === 'mods' && scheduleSearch(env.loadMods))
@@ -600,27 +607,46 @@ watch(activeTab, (tab) => {
         <h2 class="environment-section-title">
           <span>模组市场</span>
           <em>{{ installedPackages.length }}</em>
-          <button type="button" class="environment-section-link" @click="router.push('/dysonSphere/mod')">浏览市场</button>
+          <span class="ml-auto flex items-center gap-3">
+            <n-button
+              v-if="installedPackages.some((pack) => pack.source === 'thunderstore')"
+              text size="tiny" :loading="isCheckingUpdates" :disabled="hasActiveOperation"
+              title="检查已安装模组的可用更新" @click="installed.checkUpdates(true, true)"
+            >
+              <template #icon><RefreshCw :size="12" :stroke-width="1.8" /></template>
+              检查更新
+            </n-button>
+            <button type="button" class="environment-section-link" @click="router.push('/dysonSphere/mod')">浏览市场</button>
+          </span>
         </h2>
         <div v-if="!isLoadingInstalledPackages && filteredInstalledPackages.length === 0" class="environment-empty is-compact">
           <Store :size="22" :stroke-width="1.7" />
           <p>{{ modSearch.trim() ? '没有匹配的市场模组。' : '还没有从模组市场安装的模组。' }}</p>
         </div>
         <div v-else class="environment-grid">
-          <ResourceCard
+          <!-- * 说明：升级徽标使用旧包到新版的检查结果，进度沿用安装器真实 targetKey 映射 -->
+          <MarketResourceCard
             v-for="pack in filteredInstalledPackages"
             :key="pack.packageKey"
-            :name="packTitle(pack)"
-            :meta="pack.version || '未知版本'"
-            status="已启用"
-            tone="enabled"
-            :operating="uninstallingPackageKeys[pack.packageKey] || false"
-            :title="pack.description || packTitle(pack)"
-            @click="installed.openInstalledPackage(pack.packageKey)"
+            :package-key="pack.packageKey"
+            :title="packTitle(pack)"
+            :version="pack.version || '未知版本'"
+            :description="pack.description || ''"
+            :update-version="packageUpdates[pack.packageKey]?.latestVersion || ''"
+            :update-disabled="hasActiveOperation"
+            :updating="Boolean(updateTasks[pack.packageKey]?.running || updateTasks[pack.packageKey]?.requesting)"
+            :uninstalling="uninstallingPackageKeys[pack.packageKey] || false"
+            :progress="updateTasks[pack.packageKey]?.percent || 0"
+            :progress-status="updateTasks[pack.packageKey]?.status || ''"
+            :download-speed="updateTasks[pack.packageKey]?.downloadSpeed || ''"
+            :failure-message="updateTasks[pack.packageKey]?.failureMessage || ''"
+            :conflicted="Boolean(updateTasks[pack.packageKey]?.conflict)"
+            @open="installed.openInstalledPackage"
+            @update="installed.updateInstalledPackage"
+            @cancel="installed.cancelPackageUpdate"
+            @repair="installed.repairPackageUpdate"
             @contextmenu="contextMenu.open($event, {kind: 'market', pack})"
-          >
-            <Store :size="24" :stroke-width="1.7" />
-          </ResourceCard>
+          />
         </div>
 
         <!-- ~ r2modman Profile -->
@@ -982,6 +1008,7 @@ watch(activeTab, (tab) => {
           <n-button
             type="error"
             secondary
+            :disabled="hasActiveOperation"
             :loading="selectedInstalledPackage ? uninstallingPackageKeys[selectedInstalledPackage.packageKey] : false"
             @click="uninstallSelectedPackage"
           >

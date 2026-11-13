@@ -104,6 +104,18 @@ export interface AlgoVizBatch {
   readonly pace?: 'follow' | 'replay' | 'cinematic';
 }
 
+/** 建筑在容器内的投影锚点；像素均为 CSS 像素，供详情卡片定位与跟随缩放。 */
+export interface AlgoVizScreenAnchor {
+  readonly x: number;
+  readonly y: number;
+  /** 当前相机下每个世界单位对应的像素数，包含建筑入场时的缩放。 */
+  readonly pixelsPerUnit: number;
+  /** 建筑包围盒投影，包含朝向、层高及候选平台偏移。 */
+  readonly bounds: { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+  /** 投影是否仍与可见画面相交。 */
+  readonly visible: boolean;
+}
+
 /** 选中的建筑 */
 export interface AlgoVizSelection {
   readonly candidateId?: string;
@@ -111,7 +123,7 @@ export interface AlgoVizSelection {
   readonly id: string;
   readonly building: AlgoVizBuilding;
   /** 选中时建筑在容器内的屏幕坐标（CSS 像素） */
-  readonly screen: { readonly x: number; readonly y: number };
+  readonly screen: AlgoVizScreenAnchor;
 }
 
 /** 播放进度与累计统计（自上次 reset 起） */
@@ -190,10 +202,10 @@ export interface AlgoVizOptions {
   iconsVisible?: Partial<AlgoVizIconVisibility>;
   onSelect?: (selection: AlgoVizSelection | null) => void;
   /**
-   * 选中建筑的屏幕位置变化：相机旋转、平移、缩放、自动取景、建筑动画或容器尺寸变化后回调，
-   * 每个绘制帧最多一次，移动不足半像素不回调；坐标与 AlgoVizSelection.screen 相同（容器内 CSS 像素）。
+   * 选中建筑的投影变化：相机旋转、平移、缩放、自动取景、建筑动画或容器尺寸变化后回调。
+   * 每个绘制帧最多一次；锚点未移动但比例或轮廓变化时也回调，坐标与 AlgoVizSelection.screen 相同。
    */
-  onSelectionMove?: (screen: { readonly x: number; readonly y: number }) => void;
+  onSelectionMove?: (screen: AlgoVizScreenAnchor) => void;
   /** 进度变化时回调（节流到每帧最多一次） */
   onProgress?: (progress: AlgoVizProgress) => void;
   /** 建筑操作开始；不依赖 Vue 或应用事件总线，由使用方决定如何转发。 */

@@ -120,7 +120,7 @@ interface AlgoVizOptions {
   icon?: (b: AlgoVizBuilding) => { x: number; y: number } | null;          // 解析建筑的图标格，null 为没有
   iconsVisible?: { belt?: boolean; building?: boolean };                    // 初始显示开关，默认都显示
   onSelect?: (s: AlgoVizSelection | null) => void;
-  onSelectionMove?: (screen: { x: number; y: number }) => void; // 选中建筑的屏幕位置变化，每帧最多一次
+  onSelectionMove?: (screen: AlgoVizScreenAnchor) => void; // 投影位置、轮廓或比例变化，每帧最多一次
   onProgress?: (p: AlgoVizProgress) => void; // 最多每 100ms 一次
   onStats?: (s: AlgoVizStats) => void;
 }
@@ -147,7 +147,8 @@ interface AlgoVizOptions {
 
 - 左键拖动：旋转视角，松手吸附到最近的 90° 档位；方向键 ← → 同样旋转
 - 右键或 Shift + 左键拖动：平移；滚轮：以指针为锚点缩放；双击空白：复位视角
-- 点击建筑：选中并回调 `onSelect`；之后相机或建筑移动导致其屏幕位置变化时回调 `onSelectionMove`，供详情面板跟随建筑；Esc 取消选中
+- 点击建筑：选中并回调 `onSelect`；之后相机或建筑改变投影时回调 `onSelectionMove`，供详情面板吸附建筑并跟随缩放；Esc 取消选中
+- `AlgoVizScreenAnchor` 包含容器内 CSS 像素坐标 `x/y`、投影轮廓 `bounds`（`left/top/right/bottom`）、每世界单位的像素数 `pixelsPerUnit` 与可见性 `visible`；以建筑中心缩放时，即使坐标未变也会通知比例变化
 - `prefers-reduced-motion`：关闭下落与流动动画，操作直接落定
 - 容器不可见或页面隐藏时暂停渲染
 

@@ -9,7 +9,25 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/Masterminds/semver/v3"
 )
+
+// IsNewerVersion 判断候选版本是否严格高于当前版本。
+// 职责：以语义版本优先级比较 candidate 与 current，防止更新检查或安装校验产生降级。
+// 使用：已安装包更新查询和目标解析调用，首个参数为远端候选版本，第二个参数为本地当前版本。
+// 边界：兼容 v 前缀和省略的版本段；任一版本无法解析时返回 false，构建元数据差异不触发更新，不回退字符串比较。
+func IsNewerVersion(candidate string, current string) bool {
+	candidateVersion, err := semver.NewVersion(strings.TrimSpace(candidate))
+	if err != nil {
+		return false
+	}
+	currentVersion, err := semver.NewVersion(strings.TrimSpace(current))
+	if err != nil {
+		return false
+	}
+	return candidateVersion.GreaterThan(currentVersion)
+}
 
 // LatestActiveVersion 选择版本列表中创建时间最新的 active 版本。
 // 职责：按创建时间从 active 版本中挑选市场展示和依赖解析使用的版本。

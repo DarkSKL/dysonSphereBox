@@ -15,6 +15,8 @@ type Manifest struct {
 	Conflict *contract.InstallConflictDTO `json:"conflict,omitempty"`
 	// Decisions 职责：记录用户已选择的冲突决策；使用：继续安装时复用；边界：仅对当前安装会话有效。
 	Decisions []contract.InstallConflictDecisionDTO `json:"decisions,omitempty"`
+	// ForceRootReinstall 职责：保存更新时必须执行主组件版本迁移的策略；使用：冲突暂停后继续；边界：历史安装会话缺失时保持普通复用策略。
+	ForceRootReinstall bool `json:"forceRootReinstall,omitempty"`
 	// StartedAt 职责：记录会话开始时间；使用：审计和恢复判断；边界：只作诊断。
 	StartedAt string `json:"startedAt,omitempty"`
 	// PlannedComponents 职责：记录计划处理的组件和安装目录；使用：失败清理补充目录清理目标；边界：可能早于实际文件写入。

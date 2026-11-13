@@ -3,13 +3,13 @@ import {computed} from 'vue'
 import {X} from '@lucide/vue'
 
 // 职责：游戏建筑窗口的外框：模糊玻璃底、左上标题页签、右上信息/关闭徽章与转角描边；内容由默认插槽按设计坐标排布。
-// 使用：研究站与物流站窗口传入设计尺寸（游戏 1:1 截图像素）、统一界面缩放与可用空间；可用空间不足时才进一步缩小。
+// 使用：研究站与物流站窗口传入设计尺寸（游戏 1:1 截图像素）、随建筑变化的缩放与舞台可用空间；空间不足时进一步缩小。
 // 边界：缩放使用 CSS zoom，不使用 transform/opacity/filter 包裹玻璃层，避免打断 backdrop-filter 的背景取样。
 const props = withDefaults(defineProps<{
   title: string
   size: {width: number; height: number}
   bounds: {width: number; height: number}
-  /** 统一界面缩放：与悬停浮窗相同，保证各面板的文字与图标比例一致 */
+  /** 随建筑投影变化的整体缩放，内部文字与图标保持设计比例。 */
   scale: number
   tone: 'lab' | 'station'
   info: string
@@ -18,7 +18,7 @@ const props = withDefaults(defineProps<{
 }>(), {tab: 210})
 const emit = defineEmits<{(event: 'close'): void}>()
 
-const zoom = computed(() => Math.max(.36, Math.min(props.scale, props.bounds.height / props.size.height, props.bounds.width / props.size.width)))
+const zoom = computed(() => Math.max(.01, Math.min(props.scale, props.bounds.height / props.size.height, props.bounds.width / props.size.width)))
 </script>
 
 <template>

@@ -145,7 +145,7 @@ type LayoutMetrics struct {
 type LogisticsSummary struct {
 	// FlowGraphDigest 职责：记录规范边指纹；使用：前后端一致性；边界：与画板坐标无关。
 	FlowGraphDigest string `json:"flowGraphDigest"`
-	// BeltLevel 职责：记录用户选择的等级；使用：诊断；边界：生成器不静默升级。
+	// BeltLevel 职责：记录实际生成的传送带等级；使用：诊断；边界：自动升档时与实际建筑一致，升级原因另列说明。
 	BeltLevel int `json:"beltLevel"`
 	// BeltCapacityPerMinute 职责：记录唯一容量表结果；使用：UI 展示；边界：始终为单带。
 	BeltCapacityPerMinute float64 `json:"beltCapacityPerMinute"`

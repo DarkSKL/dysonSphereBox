@@ -43,8 +43,10 @@ func installRemoteModPackageWithOptions(pack modDependenceResponse.RemoteModPack
 		return nil, fmt.Errorf("package key is required")
 	}
 	if options.ResetSession {
-		if result, err := reuseInstalledRoot(pack); result != nil || err != nil {
-			return result, err
+		if !options.ForceRootReinstall {
+			if result, err := reuseInstalledRoot(pack); result != nil || err != nil {
+				return result, err
+			}
 		}
 		// 重试必须先完成旧会话恢复，不能重置掉仍需恢复的备份证据。
 		if err := cleanupEntry.CleanupInterrupted(pack.Key, "重新安装前恢复旧会话"); err != nil {

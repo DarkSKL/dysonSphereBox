@@ -180,7 +180,7 @@ func (b *builder) checkLineMachineInserters(l *line) error {
 	if b.logistics == nil {
 		return nil
 	}
-	message := "已按真实机器堆叠、独立物料带、不同机器槽位和实际并联分拣器累计保守能力；未升级所选等级，不假定集装或科技加成"
+	message := "已按实际生成的分拣器等级、机器堆叠、独立物料带和并联槽位核验输送能力，不假定额外科技加成；自动升档另列说明"
 	for _, rule := range []string{"machine-inserter-capacity", "inserter-capacity"} {
 		found := false
 		for index := range b.logistics.Checks {

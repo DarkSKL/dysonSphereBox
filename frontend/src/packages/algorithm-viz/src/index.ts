@@ -34,6 +34,7 @@ export type {
   AlgoVizOptions,
   AlgoVizProgress,
   AlgoVizQuality,
+  AlgoVizScreenAnchor,
   AlgoVizSelection,
   AlgoVizStats,
   AlgoVizTheme,

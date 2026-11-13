@@ -6501,3 +6501,44 @@ export namespace updater {
 
 }
 
+export namespace updates {
+	
+	export class PackageUpdate {
+	    packageKey: string;
+	    currentVersion: string;
+	    latestVersion: string;
+	    latestPackage: modDependence.RemoteModPackageDTO;
+	
+	    static createFrom(source: any = {}) {
+	        return new PackageUpdate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.packageKey = source["packageKey"];
+	        this.currentVersion = source["currentVersion"];
+	        this.latestVersion = source["latestVersion"];
+	        this.latestPackage = this.convertValues(source["latestPackage"], modDependence.RemoteModPackageDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+

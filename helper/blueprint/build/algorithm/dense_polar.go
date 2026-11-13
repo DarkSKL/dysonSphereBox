@@ -126,7 +126,7 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 				}
 				out, err := adapter.generate(local, prepared.builder, prepared.request, prepared.dataset)
 				if err == nil {
-					return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
+					return out, nil
 				}
 				last = err
 				if ctx.Err() != nil {
@@ -159,7 +159,7 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 			}
 			out, err := adapter.generate(local, prepared.builder, prepared.request, prepared.dataset)
 			if err == nil {
-				return publishFinalBlueprintProgress(local, prepared.request, prepared.dataset, out, nil)
+				return out, nil
 			}
 			last = err
 			if ctx.Err() != nil {

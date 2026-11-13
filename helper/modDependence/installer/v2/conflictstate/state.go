@@ -33,6 +33,7 @@ func PersistConflict(pack modDependenceResponse.RemoteModPackageDTO, err error, 
 	}
 	manifest := sessionsnapshot.LoadManifest(pack.Key)
 	manifest.Conflict = &conflictErr.Conflict
+	manifest.ForceRootReinstall = options.ForceRootReinstall
 	if len(options.Decisions) > 0 {
 		manifest.Decisions = options.Decisions
 	}

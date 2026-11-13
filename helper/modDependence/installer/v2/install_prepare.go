@@ -60,6 +60,14 @@ func prepareRemotePackageInstall(ctx context.Context, pack modDependenceResponse
 	if err != nil {
 		return nil, err
 	}
+	// 更新时主组件即使已作为依赖存在，也要执行版本迁移，避免旧主包入口被留在资源列表中。
+	if options.ForceRootReinstall {
+		for index := range artifacts {
+			if artifacts[index].ComponentKey == pack.Key {
+				artifacts[index].ReuseExisting = false
+			}
+		}
+	}
 
 	return &installPreparation{
 		bepInExResult: bepInExResult,

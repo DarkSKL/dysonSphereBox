@@ -6,6 +6,10 @@ export function CancelRemotePackageInstall(arg1) {
   return window['go']['modDependence']['InstallerService']['CancelRemotePackageInstall'](arg1);
 }
 
+export function CheckInstalledPackageUpdates(arg1) {
+  return window['go']['modDependence']['InstallerService']['CheckInstalledPackageUpdates'](arg1);
+}
+
 export function ContinueRemotePackageInstall(arg1, arg2) {
   return window['go']['modDependence']['InstallerService']['ContinueRemotePackageInstall'](arg1, arg2);
 }
@@ -28,4 +32,8 @@ export function ListInstalledPackages() {
 
 export function UninstallRemotePackage(arg1) {
   return window['go']['modDependence']['InstallerService']['UninstallRemotePackage'](arg1);
+}
+
+export function UpdateRemotePackage(arg1, arg2) {
+  return window['go']['modDependence']['InstallerService']['UpdateRemotePackage'](arg1, arg2);
 }

@@ -101,7 +101,7 @@ export const useEnvironmentContextMenu = (
           {label: '查看详情', key: 'market-detail'},
           {label: '打开游戏插件目录', key: 'mod-open-real-dir'},
           {type: 'divider', key: 'market-danger-divider'},
-          {label: '卸载模组', key: 'market-uninstall'},
+          {label: '卸载模组', key: 'market-uninstall', disabled: installed.hasActiveOperation.value},
         ]
       case 'blueprint-space':
         return [

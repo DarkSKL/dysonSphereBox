@@ -126,22 +126,8 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	req.SurfaceLayout = surface
 	if surface != nil && surface.LatitudeZone != "" {
 		ctx = context.WithValue(ctx, densityLatitudeKey{}, surface.LatitudeZone)
-		if selection, ok := densityLatitudeSelectionFor(surface.LatitudeZone); ok && req.Density == densityDense && (selection.tier >= 4 || req.Plan.MachineCount >= denseNativeLargeMachineThreshold) {
-			return generateDensePolar(ctx, req, adapter)
-		}
 	}
-	prepared, err := prepareGeneration(ctx, req, adapter)
-	if err != nil {
-		return result, err
-	}
-	prepared.builder.beginPreview()
-	generated, err := adapter.generate(ctx, prepared.builder, prepared.request, prepared.dataset)
-	if err != nil && ctx.Err() == nil && denseNativeLayoutRetryable(prepared.request, err) {
-		prepared.builder.rollbackPreview()
-		reportProgress(ctx, "dense-native-retry", "正在按所选纬带的真实球面重新排布与接线", 0, 0)
-		return generateDensePolar(ctx, prepared.request, adapter)
-	}
-	return publishFinalBlueprintProgress(ctx, prepared.request, prepared.dataset, generated, err)
+	return generateWithTransportUpgrades(ctx, req, adapter)
 }
 
 // normalizeDensity 职责：规范组合适配器密度键；使用：生成入口和测试；边界：空值兼容旧请求，未知值明确失败由解析器处理。
@@ -212,6 +198,13 @@ func prepareGeneration(ctx context.Context, request Request, adapter *modeAdapte
 			return prepared, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: fmt.Sprintf("配方 %d 需要本地毛流回收，但当前生成组合尚未实现；净流物流端点不能代替实际回收链", production.RecipeID)}
 		}
 	}
+	setting, err = upgradeProductionTransport(ctx, prepared.request.Plan, prepared.dataset, setting)
+	prepared.request.Setting = setting
+	if err != nil {
+		return prepared, err
+	}
+	prepared.builder.setting = setting
+	prepared.builder.logistics = newLogisticsSummary(graph, setting)
 	return prepared, nil
 }
 

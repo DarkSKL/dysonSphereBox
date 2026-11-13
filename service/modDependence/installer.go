@@ -32,9 +32,14 @@ type InstallerService struct {
 // 边界：冲突和取消错误由 helper 保持特殊状态，服务层不把它们记录为普通失败。
 // 逻辑流：1. 调用远端安装 helper => 2. 判断取消/冲突/失败分支 => 3. 记录安装成功或失败日志 => 4. 返回安装结果给前端。
 func (service *InstallerService) InstallRemotePackage(pack ModDependenceResponse.RemoteModPackageDTO) (*contract.PackageInstallResult, error) {
+	return service.installRemotePackageWithOptions(pack, contract.InstallRemotePackageOptions{ResetSession: true})
+}
+
+// 职责：复用安装和升级的执行、取消语义及审计；使用：公开安装入口和升级入口；边界：只转发受控选项，不自行复制文件或绕过安装器保护。
+func (service *InstallerService) installRemotePackageWithOptions(pack ModDependenceResponse.RemoteModPackageDTO, options contract.InstallRemotePackageOptions) (*contract.PackageInstallResult, error) {
 	finishLog := diagnostic.Begin(pack.Key, "安装 Mod 包", logging.User)
 	defer finishLog()
-	result, err := v2Installer.InstallRemoteModPackage(pack)
+	result, err := v2Installer.InstallRemoteModPackageWithOptions(pack, options)
 	if err != nil {
 		if !v2InstallError.IsCancelled(err) && !v2InstallError.IsConflict(err) {
 			installAudit.RecordRemotePackageInstallFailure(pack, err)

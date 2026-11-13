@@ -3,7 +3,7 @@ import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reacti
 import {ChevronsRight, Crosshair, Eye, EyeOff, Pause, Play, RefreshCw, RotateCcw, RotateCw, Save, Sparkles} from '@lucide/vue'
 import basisTranscoderJs from 'three/examples/jsm/libs/basis/basis_transcoder.js?url'
 import basisTranscoderWasm from 'three/examples/jsm/libs/basis/basis_transcoder.wasm?url'
-import {ALGORITHM_VIZ_MODEL_KEYS, createAlgorithmViz, type AlgorithmVizController, type AlgoVizBuilding, type AlgoVizIcon, type AlgoVizIconGroup, type AlgoVizProgress, type AlgoVizSelection} from '../../../packages/algorithm-viz/src'
+import {ALGORITHM_VIZ_MODEL_KEYS, createAlgorithmViz, type AlgorithmVizController, type AlgoVizBuilding, type AlgoVizIcon, type AlgoVizIconGroup, type AlgoVizProgress, type AlgoVizScreenAnchor, type AlgoVizSelection} from '../../../packages/algorithm-viz/src'
 import {recordAlgorithmActivity, resetAlgorithmActivity} from '../../../composables/dysonSphere/useAlgorithmActivity'
 import {useThemeMode} from '../../../composables/useThemeMode'
 import {algorithmFollow, algorithmFollowKey, useAlgorithmFeed} from '../../../composables/dysonSphere/useAlgorithmFeed'
@@ -102,9 +102,8 @@ const setIconVisible = (group: AlgoVizIconGroup, visible: boolean): void => {
 const onSelect = (value: AlgoVizSelection | null): void => {
   selection.value = value
   if (value) {
-    anchor.x = value.screen.x
-    anchor.y = value.screen.y
-    dockSide.value = pageAnchor.value.x > (stageRect.value.left + stageRect.value.right) / 2 ? 'left' : 'right'
+    Object.assign(anchor, value.screen)
+    dockSide.value = anchor.x > stageSize.width / 2 ? 'left' : 'right'
   }
   const index = value?.building.index
   if (index !== undefined && !value?.building.temporary) props.w.onBuildingSelect({index})
@@ -112,22 +111,14 @@ const onSelect = (value: AlgoVizSelection | null): void => {
 const closeSelection = (): void => viz?.select(null)
 
 // =============== 选中建筑面板 ===============
-// 说明：普通建筑显示游戏悬停浮窗样式的卡片；矩阵研究站与物流运输站显示游戏建筑窗口。两者都跟随建筑的实时屏幕位置：
-//       相机旋转、平移、缩放、自动取景或建筑移动后由渲染包逐帧回报，卡片贴在建筑旁，窗口停在建筑一侧并垂直居中对齐。
-// 缩放：三类面板都按游戏 1:1 像素设计，共用同一界面缩放，保持游戏中浮窗与窗口的大小比例（浮窗标题约 12px、窗口标题约 16px）；
-//       舞台很矮时也不缩小文字。卡片较小，留在舞台内；窗口较大，传送到页面层，水平限制在舞台范围内、垂直可越出矮舞台，
-//       只在整个视口放不下时才进一步缩小。
-// 交互：Esc 关闭；建筑移出画面时卡片暂时隐藏，窗口贴边保留；窗口只在当前一侧放不下而另一侧放得下时换边，避免平移时来回跳动。
-// 边界：舞台、卡片与窗口尺寸由 ResizeObserver 实测；窗口不遮挡顶部标题栏（54px）；页面停用或标签页隐藏时面板随选中一起关闭。
+// 说明：研究站与物流站窗口按建筑投影比例缩放，吸附在建筑轮廓一侧；短连接线在窗口避让边缘时仍标明所属建筑。
+// 交互：相机缩放、平移、旋转与建筑动画同步更新位置和大小；当前侧放不下而另一侧可容纳时换边，Esc 关闭。
+// 边界：所有面板都留在舞台内并避让工具栏，建筑完全离开画面后隐藏；普通建筑继续使用简短浮窗。
 const PANEL_SCALE = .72
-const HEADER_CLEARANCE = 62
-const WINDOW_GAP = 28
 const {panel} = useBuildingPanel(props.w, selection, {owner: productionLabel, recordAt: feed.recordAt})
-const anchor = reactive({x: 0, y: 0})
+const anchor = reactive<AlgoVizScreenAnchor>({x: 0, y: 0, pixelsPerUnit: 0, bounds: {left: 0, top: 0, right: 0, bottom: 0}, visible: false})
 const dockSide = ref<'left' | 'right'>('right')
 const stageSize = reactive({width: 0, height: 0})
-const viewport = reactive({width: window.innerWidth, height: window.innerHeight})
-const layoutVersion = ref(0)
 const briefHost = ref<HTMLDivElement | null>(null)
 const briefSize = reactive({width: 0, height: 0})
 const windowHost = ref<HTMLDivElement | null>(null)
@@ -141,20 +132,13 @@ const observeSizes = (): void => {
       target.width = entry.contentRect.width
       target.height = entry.contentRect.height
     }
-    layoutVersion.value++
   })
   for (const element of [host.value, briefHost.value, windowHost.value]) if (element) resizeObserver.observe(element)
 }
 watch([briefHost, windowHost], observeSizes)
-// 视口尺寸与滚动会移动舞台在页面中的位置，窗口按页面坐标定位，需要重新取舞台矩形
-const onViewportChange = (): void => {
-  viewport.width = window.innerWidth
-  viewport.height = window.innerHeight
-  layoutVersion.value++
-}
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max))
 // 卡片：舞台内坐标
-const offscreen = computed(() => anchor.x < -24 || anchor.y < -24 || anchor.x > stageSize.width + 24 || anchor.y > stageSize.height + 24)
+const offscreen = computed(() => !anchor.visible)
 const briefStyle = computed(() => {
   const width = briefSize.width || 200
   const height = briefSize.height || 78
@@ -164,34 +148,32 @@ const briefStyle = computed(() => {
   const top = below ? anchor.y + 16 : anchor.y - 16 - height
   return {left: `${clamp(left, 8, stageSize.width - width - 8)}px`, top: `${clamp(top, 48, stageSize.height - height - 8)}px`, visibility: offscreen.value ? 'hidden' as const : undefined}
 })
-// 窗口：页面坐标（舞台矩形 + 建筑在舞台内的坐标）；水平方向限制在舞台范围内，不遮挡侧边导航，舞台过窄时才放宽到视口
-const stageRect = computed(() => {
-  void layoutVersion.value
-  const rect = host.value?.getBoundingClientRect()
-  return {left: rect?.left ?? 0, top: rect?.top ?? 0, right: rect?.right ?? viewport.width}
-})
-const pageAnchor = computed(() => ({x: stageRect.value.left + anchor.x, y: stageRect.value.top + anchor.y}))
-const windowRange = (width: number): {min: number; max: number} => {
-  const {left, right} = stageRect.value
-  return width <= right - left - 24 ? {min: left + 12, max: right - 12} : {min: 12, max: viewport.width - 12}
-}
-watch(() => [pageAnchor.value.x, windowSize.width, stageRect.value.right, viewport.width] as const, ([x, width]) => {
+// 窗口只跟随场景的实际投影比例，设远近景上下限以避免极远时消失或近景遮满舞台；不叠加延迟动画。
+const windowScale = computed(() => clamp(anchor.pixelsPerUnit / 48, .22, .55))
+const windowGap = computed(() => clamp(anchor.pixelsPerUnit * .3, 6, 14))
+const windowBounds = computed(() => ({width: Math.max(1, stageSize.width - 24), height: Math.max(1, stageSize.height - 64)}))
+watch(() => [anchor.bounds.left, anchor.bounds.right, windowSize.width, stageSize.width, windowGap.value] as const, ([left, right, width, stageWidth, gap]) => {
   if (!width) return
-  const range = windowRange(width)
-  const fitsRight = x + WINDOW_GAP + width <= range.max
-  const fitsLeft = x - WINDOW_GAP - width >= range.min
+  const fitsRight = right + gap + width <= stageWidth - 12
+  const fitsLeft = left - gap - width >= 12
   if (dockSide.value === 'right' && !fitsRight && fitsLeft) dockSide.value = 'left'
   else if (dockSide.value === 'left' && !fitsLeft && fitsRight) dockSide.value = 'right'
 })
-const windowStyle = computed(() => {
-  const width = windowSize.width || 580
-  const height = windowSize.height || 380
-  const {x, y} = pageAnchor.value
-  const range = windowRange(width)
-  const left = dockSide.value === 'right' ? x + WINDOW_GAP : x - WINDOW_GAP - width
-  return {left: `${clamp(left, range.min, range.max - width)}px`, top: `${clamp(y - height / 2, HEADER_CLEARANCE, viewport.height - height - 12)}px`}
+const windowPlacement = computed(() => {
+  const width = windowSize.width || 809 * windowScale.value
+  const height = windowSize.height || 526 * windowScale.value
+  const right = dockSide.value === 'right'
+  const attachX = right ? anchor.bounds.right : anchor.bounds.left
+  const left = clamp(right ? attachX + windowGap.value : attachX - windowGap.value - width, 12, stageSize.width - width - 12)
+  const top = clamp(anchor.y - height / 2, 48, stageSize.height - height - 12)
+  return {left, top, attachX, attachY: anchor.y, edgeX: right ? left : left + width, edgeY: clamp(anchor.y, top + 12, top + height - 12)}
 })
-const windowBounds = computed(() => ({width: Math.max(0, viewport.width - 24), height: Math.max(0, viewport.height - HEADER_CLEARANCE - 12)}))
+const windowStyle = computed(() => ({left: `${windowPlacement.value.left}px`, top: `${windowPlacement.value.top}px`, visibility: offscreen.value ? 'hidden' as const : undefined}))
+const windowTether = computed(() => {
+  const {attachX, attachY, edgeX, edgeY} = windowPlacement.value
+  const bend = (attachX + edgeX) / 2
+  return `M${attachX},${attachY} L${bend},${attachY} L${edgeX},${edgeY}`
+})
 const onKeydown = (event: KeyboardEvent): void => {
   if (event.key !== 'Escape' || event.defaultPrevented || !selection.value || !props.active || !pageActive.value) return
   closeSelection()
@@ -199,8 +181,6 @@ const onKeydown = (event: KeyboardEvent): void => {
 
 onMounted(async () => {
   document.addEventListener('keydown', onKeydown)
-  window.addEventListener('resize', onViewportChange)
-  document.addEventListener('scroll', onViewportChange, true)
   await loadThemeMode()
   if (!host.value) return
   observeSizes()
@@ -220,7 +200,7 @@ onMounted(async () => {
     onBuildingBefore: event => eventBus.emit('algorithm:building:before', event),
     onBuildingAfter: event => eventBus.emit('algorithm:building:after', event),
     onSelect,
-    onSelectionMove: screen => { anchor.x = screen.x; anchor.y = screen.y },
+    onSelectionMove: screen => { Object.assign(anchor, screen) },
   })
   viz.beginGeneration(props.w.generationTaskId)
   viz.setViewLocked(props.w.generating)
@@ -228,8 +208,6 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('resize', onViewportChange)
-  document.removeEventListener('scroll', onViewportChange, true)
   resizeObserver?.disconnect()
   algorithmFollow.active = false
   resetAlgorithmActivity()
@@ -355,15 +333,19 @@ const showSave = computed(() => {
       </n-popover>
     </div>
 
-    <!-- 选中建筑面板：普通建筑为游戏悬停浮窗样式（舞台内），矩阵研究站与物流运输站为游戏建筑窗口（传送到页面层，可越出矮舞台） -->
+    <!-- ~ 建筑吸附面板 -->
+    <!-- * 说明：研究站与物流站窗口贴近建筑轮廓并随场景缩放，连接线标明建筑归属；普通建筑保持简短浮窗。 -->
+    <!-- * 交互：窗口在舞台内避让边缘，关闭按钮或 Esc 取消选择；依赖：渲染包的投影锚点及窗口实测尺寸。 -->
+    <!-- * 边界：建筑移出画面后隐藏窗口与连接线，页面和标签停用时不显示，不覆盖上层量化节点图。 -->
     <template v-if="selection && active && pageActive && panel">
       <div v-if="panel.kind === 'brief'" ref="briefHost" class="algo-brief" :style="briefStyle"><BriefCard :panel="panel" :scale="PANEL_SCALE" @close="closeSelection" /></div>
-      <Teleport v-else to="body">
+      <template v-else>
+        <svg v-if="!offscreen" class="algo-tether" aria-hidden="true"><path :d="windowTether" /><circle :cx="windowPlacement.attachX" :cy="windowPlacement.attachY" r="2.5" /></svg>
         <div :key="panel.id" ref="windowHost" class="algo-window" :style="windowStyle">
-          <LabWindow v-if="panel.kind === 'lab'" :panel="panel" :bounds="windowBounds" :scale="PANEL_SCALE" @close="closeSelection" />
-          <StationWindow v-else :panel="panel" :bounds="windowBounds" :scale="PANEL_SCALE" @close="closeSelection" />
+          <LabWindow v-if="panel.kind === 'lab'" :panel="panel" :bounds="windowBounds" :scale="windowScale" @close="closeSelection" />
+          <StationWindow v-else :panel="panel" :bounds="windowBounds" :scale="windowScale" @close="closeSelection" />
         </div>
-      </Teleport>
+      </template>
     </template>
 
     <p v-if="feedNotice" class="algo-notice" role="status">{{ feedNotice }}</p>
@@ -397,7 +379,10 @@ const showSave = computed(() => {
 .tool-button:focus-visible { outline: 1px solid var(--ds-brand); outline-offset: 1px; }
 .tool-divider { width: 1px; height: 18px; margin: 0 2px; background: var(--ds-border-default); }
 .algo-brief { position: absolute; z-index: 3; }
-.algo-window { position: fixed; z-index: 60; display: flex; }
+.algo-window { position: absolute; z-index: 4; display: flex; }
+.algo-tether { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
+.algo-tether path { fill: none; stroke: var(--ds-brand); stroke-width: 1; opacity: .7; }
+.algo-tether circle { fill: var(--ds-brand); }
 .algo-notice { position: absolute; bottom: 10px; left: 12px; z-index: 2; max-width: calc(100% - 24px); margin: 0; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 4px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-warning); font-size: 12px; }
 @keyframes algo-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .algo-source i, .algo-phase i { animation: none !important; } .tool-button { transition: none; } }
