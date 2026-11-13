@@ -134,6 +134,14 @@ uniform float uHasOrm;
 uniform float uNative;
 // 自发光依赖供电（未通电的建筑不发光）
 uniform float uUnlit;
+uniform sampler2D uOriginalLight;
+uniform float uHasOriginalLight;
+uniform float uSolidEffect;
+uniform float uLightShape;
+uniform sampler2D uSecondaryLight;
+uniform float uHasSecondaryLight;
+uniform vec3 uLabTint;
+uniform float uLabLight;
 // 涂装遮罩（亮处为涂装区）与法线贴图
 uniform sampler2D uMask;
 uniform sampler2D uNormal;
@@ -152,8 +160,34 @@ void main() {
   if (holo > 0.5 && mod(floor(gl_FragCoord.y), 3.0) < 1.0) discard;
   // 特效面片：游戏中是黑底发光贴图，按亮度加法叠加，不写深度
   if (uKind > 1.5) {
-    vec3 fx = texture2D(uMap, vUv).rgb;
-    float a = max(fx.r, max(fx.g, fx.b)) * vState.x * (1.0 - holo * 0.85);
+    if (uLightShape > 0.5) {
+      float band = uLightShape < 1.5
+        ? exp(-pow((length(vUv - 0.5) - 0.38) * 20.0, 2.0))
+        : smoothstep(0.0, 0.13, vUv.y) * (1.0 - smoothstep(0.35, 1.0, vUv.y));
+      vec2 flowUv = uLightShape < 1.5 ? vUv : fract(vUv + vec2(0.0, -uTime * 0.08));
+      vec4 layer = uHasOriginalLight > 0.5 ? texture2D(uOriginalLight, flowUv) : vec4(1.0);
+      float pattern = dot(layer.rgb, vec3(0.2126, 0.7152, 0.0722)) * layer.a;
+      float strength = band * (0.20 + pattern * 0.55) * vState.x * (1.0 - holo * 0.85);
+      if (strength < 0.01) discard;
+      gl_FragColor = vec4(failTint(uTint, vFail), strength);
+      #include <colorspace_fragment>
+      return;
+    }
+    if (uLabLight > 0.5 && uHasOriginalLight > 0.5) {
+      vec4 lab = texture2D(uOriginalLight, vUv);
+      float energy = max(lab.r, max(lab.g, lab.b)) * sqrt(lab.a);
+      float opacity = energy * 1.8 * vState.x * (1.0 - holo * 0.85);
+      if (opacity < 0.012) discard;
+      gl_FragColor = vec4(failTint(uLabTint, vFail), min(opacity, 0.8));
+      #include <colorspace_fragment>
+      return;
+    }
+    if (uHasOriginalLight < 0.5 && uHasMap < 0.5 && uSolidEffect < 0.5) discard;
+    vec4 texel = uHasOriginalLight > 0.5 ? texture2D(uOriginalLight, vUv) : vec4(1.0);
+    vec3 fx = uHasOriginalLight > 0.5 ? pow(texel.rgb, vec3(2.2)) :
+      (uSolidEffect > 0.5 ? uTint : texture2D(uMap, vUv).rgb);
+    float strength = uSolidEffect > 0.5 ? 0.18 : max(fx.r, max(fx.g, fx.b)) * texel.a * 0.7;
+    float a = strength * vState.x * (1.0 - holo * 0.85);
     if (a < 0.02) discard;
     gl_FragColor = vec4(failTint(fx, vFail) * 0.9, a);
     #include <colorspace_fragment>
@@ -163,7 +197,11 @@ void main() {
   // 玻璃罩：纯白贴图不能当底色，改为冷色半透明（隔点镂空，保持深度正确且无需排序）
   if (uKind > 0.5) {
     if (bayer4(gl_FragCoord.xy) < 0.55) discard;
-    vec3 gcol = mvShade(vec3(0.42, 0.6, 0.78), n, vWorld.y);
+    vec3 gcol = mvShade(mix(vec3(0.42, 0.6, 0.78), uTint, 0.35), n, vWorld.y);
+    if (uHasOriginalLight > 0.5) {
+      vec4 e = texture2D(uOriginalLight, vUv);
+      gcol += pow(e.rgb, vec3(2.2)) * e.a * 0.4;
+    }
     gcol = mvHaze(failTint(gcol, vFail), vWorld.y);
     gl_FragColor = vec4(gcol, 1.0);
     #include <colorspace_fragment>
@@ -218,12 +256,19 @@ void main() {
   float spec = pow(max(dot(nb, normalize(lightV + viewV)), 0.0), mix(160.0, 22.0, rough));
   spec *= (0.1 + metal * 0.6) * (1.0 - rough * 0.6);
   col += vec3(0.8, 0.88, 1.0) * spec * 0.25;
-  // 自发光：依赖供电的材质在预览器里未通电，完全不发光（GLB 的自发光贴图丢了 alpha，强行开启会把机身照白）；
-  // 不依赖供电的按遮罩颜色发光
-  vec3 glow = uEmissiveTint;
-  if (uHasEmissive > 0.5) {
+  // 有原版贴图时用完整 RGBA 自发光；GLB 缺少原通道时继续使用原来的保守降级。
+  vec3 glow = uEmissiveTint * (1.0 - uUnlit);
+  if (uHasOriginalLight > 0.5) {
+    vec4 e = texture2D(uOriginalLight, vUv);
+    glow = pow(e.rgb, vec3(2.2)) * e.a * 0.65;
+  } else if (uHasEmissive > 0.5) {
     vec3 e = texture2D(uEmissiveMap, vUv).rgb;
     glow = e * uEmissiveTint * (uNative > 0.5 ? 0.5 * (1.0 - uUnlit) : 0.4);
+  }
+  // 实验室的专用贴图含打包通道；预览从稀疏绿通道取灯带，避免将整片洋红底当成发光。
+  if (uHasSecondaryLight > 0.5) {
+    float labStrip = texture2D(uSecondaryLight, vUv).g;
+    glow += uLabTint * smoothstep(0.10, 0.70, labStrip) * 0.85;
   }
   col += glow;
   // 预览器的后期：饱和度 1.1、对比度 1.1，压住灰白、让涂装色更实

@@ -33,6 +33,8 @@ const nameAliases: Record<string, string> = {
   '近程电浆塔': '近程等离子体塔',
 }
 const normalize = (name: string): string => { const value = name.replace(/\s/g, ' '); return nameAliases[value] ?? value }
+/** 量化物品名对应的图鉴中文名或稳定 ID；图标与图鉴属性（如建筑功率）按同一规则对齐 */
+export const factoryEncyclopediaName = normalize
 
 export const factoryIconsReady = computed(() => encyclopediaSpriteReady.value)
 export function ensureFactoryIcons(): void {
@@ -46,6 +48,10 @@ export function factoryIconCell(name: string): {x: number; y: number} | null {
 }
 /** 返回指定尺寸下的精灵背景样式；缺失时返回 null。 */
 export function factoryIconStyle(name: string, size: number): Record<string, string> | null {
+  // 图鉴精灵仍是旧版；新增透镜使用从原版安装提取的独立图标。
+  if (name === '黑雾引力透镜') {
+    return {width: `${size}px`, height: `${size}px`, backgroundImage: 'url("/quant-icons/darkfog-lens.png")', backgroundSize: 'contain'}
+  }
   const icon = factoryIconCell(name)
   if (!icon) return null
   const sprite = encyclopediaManifest.sprite

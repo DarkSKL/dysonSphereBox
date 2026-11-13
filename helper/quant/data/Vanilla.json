@@ -1,4 +1,5 @@
 ﻿{
+  "gameVersion": "0.10.35.29151",
   "recipes": [
     {
       "ID": 1,
@@ -4668,10 +4669,16 @@
       ],
       "Name": "全息信标",
       "Items": [
-        1101,1111,1401,1301
+        1101,
+        1111,
+        1401,
+        1301
       ],
       "ItemCounts": [
-        3,4,2,2
+        3,
+        4,
+        2,
+        2
       ],
       "Results": [
         2401
@@ -4679,7 +4686,7 @@
       "ResultCounts": [
         1
       ],
-      "TimeSpend": 60.0,
+      "TimeSpend": 240.0,
       "Proliferator": 3,
       "IconName": "全息信标"
     },
@@ -5663,7 +5670,7 @@
         1209
       ],
       "ItemCounts": [
-        0.0083333333333333332
+        0.008333333333333333
       ],
       "Results": [
         1208
@@ -6196,6 +6203,34 @@
       "TimeSpend": 600,
       "Proliferator": 1,
       "IconName": "accumulator-full"
+    },
+    {
+      "ID": 162,
+      "Type": 4,
+      "Factories": [
+        2303,
+        2304,
+        2305,
+        2318
+      ],
+      "Name": "黑雾引力透镜",
+      "Items": [
+        1209,
+        5201
+      ],
+      "ItemCounts": [
+        1,
+        12
+      ],
+      "Results": [
+        1211
+      ],
+      "ResultCounts": [
+        1
+      ],
+      "TimeSpend": 360,
+      "Proliferator": 3,
+      "IconName": "darkfog-lens"
     }
   ],
   "items": [
@@ -6740,9 +6775,9 @@
     },
     {
       "ID": 1131,
-      "Type": 3,
+      "Type": 7,
       "Name": "地基",
-      "GridIndex": 1706,
+      "GridIndex": 1707,
       "IconName": "terrain-tool"
     },
     {
@@ -7155,7 +7190,7 @@
       "GridIndex": 2307,
       "IconName": "water-pump",
       "WorkEnergyPerTick": 5000,
-      "Speed": 0.83333333333333337,
+      "Speed": 0.8333333333333334,
       "Space": 12.0
     },
     {
@@ -7269,7 +7304,7 @@
       "ID": 2311,
       "Type": 6,
       "Name": "电磁轨道弹射器",
-      "GridIndex": 2410,
+      "GridIndex": 2411,
       "IconName": "em-rail-ejector"
     },
     {
@@ -7286,7 +7321,7 @@
       "ID": 2312,
       "Type": 6,
       "Name": "垂直发射井",
-      "GridIndex": 2411,
+      "GridIndex": 2412,
       "IconName": "vertical-launching-silo"
     },
     {
@@ -7342,9 +7377,9 @@
     },
     {
       "ID": 2401,
-      "Type": 3,
+      "Type": 7,
       "Name": "全息信标",
-      "GridIndex": 2511,
+      "GridIndex": 2410,
       "IconName": "全息信标"
     },
     {
@@ -7500,6 +7535,20 @@
       "Speed": 10000.0,
       "MultipleOutput": 1,
       "Space": 0
+    },
+    {
+      "ID": 1099,
+      "Type": 1,
+      "Name": "沙土",
+      "GridIndex": 0,
+      "IconName": "soil-pile"
+    },
+    {
+      "ID": 1211,
+      "Type": 3,
+      "Name": "黑雾引力透镜",
+      "GridIndex": 1706,
+      "IconName": "darkfog-lens"
     }
   ]
 }

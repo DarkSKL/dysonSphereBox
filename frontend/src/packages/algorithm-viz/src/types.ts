@@ -173,6 +173,11 @@ export interface AlgoVizOptions {
   /** 初始的图标显示开关，缺省的分组默认显示 */
   iconsVisible?: Partial<AlgoVizIconVisibility>;
   onSelect?: (selection: AlgoVizSelection | null) => void;
+  /**
+   * 选中建筑的屏幕位置变化：相机旋转、平移、缩放、自动取景、建筑动画或容器尺寸变化后回调，
+   * 每个绘制帧最多一次，移动不足半像素不回调；坐标与 AlgoVizSelection.screen 相同（容器内 CSS 像素）。
+   */
+  onSelectionMove?: (screen: { readonly x: number; readonly y: number }) => void;
   /** 进度变化时回调（节流到每帧最多一次） */
   onProgress?: (progress: AlgoVizProgress) => void;
   onStats?: (stats: AlgoVizStats) => void;

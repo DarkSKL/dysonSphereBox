@@ -172,6 +172,46 @@ test('同名模型重新加载后，旧任务迟到的结果被释放且不覆�
   library.dispose();
 });
 
+test('对撞机的可见网格正常加载，碰撞体仍被过滤', async () => {
+  const { library, loads } = networkLibrary();
+  const entry = library.get('a');
+  const { scene } = gltf(new THREE.Texture());
+  const body = scene.children[0];
+  body.name = 'hadron-collider-2-3';
+  const helper = body.clone();
+  helper.name = 'hadron-collider-collider';
+  scene.add(helper);
+  loads[0].resolve({ scene });
+  await tick();
+  assert.equal(entry.status, 'ready');
+  assert.equal(entry.geometry.index.count, body.geometry.index.count);
+  library.dispose();
+});
+
+test('原版发光与特效贴图进入各自的材质分组，纯遮罩不参与绘制', async () => {
+  const { library, loads, masks } = networkLibrary({
+    'light-2914': '/emission.webp',
+    'light-5085-mask-2486': '/effect.webp',
+  });
+  const entry = library.get('a');
+  const body = gltf(new THREE.Texture(), 'hadron-collider');
+  const effect = gltf(null, 'ray-receiver-eff');
+  const helper = gltf(null, 'piler-mask');
+  body.scene.add(effect.scene, helper.scene);
+  loads[0].resolve(body);
+  await tick();
+  assert.equal(masks.length, 2);
+  const emission = new THREE.Texture(), glow = new THREE.Texture();
+  masks[0].resolve(emission);
+  masks[1].resolve(glow);
+  await tick();
+  assert.equal(entry.status, 'ready');
+  assert.deepEqual(entry.parts.map(part => [part.kind, part.light]), [['solid', emission], ['effect', glow]]);
+  const freed = [disposal(emission), disposal(glow)];
+  library.dispose();
+  assert.deepEqual(freed.map(count => count()), [1, 1]);
+});
+
 test('淘汰等待遮罩的旧模型，不影响上一代共用同一遮罩的模型', async () => {
   const { library, loads, masks } = networkLibrary({ [maskId]: '/shared.png' });
   library.beginGeneration('a');

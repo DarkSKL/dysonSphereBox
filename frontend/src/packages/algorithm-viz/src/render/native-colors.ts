@@ -15,7 +15,7 @@ export interface NativeMaterialColor {
 }
 
 /**
- * 不绘制的材质：游戏预览器里未通电时隐藏的特效面片，以及贴图丢了 alpha 后会画成纯白板的特效 / 玻璃面片。
+ * GLB 单独使用时需隐藏的材质；有原版贴图或已定义预览材质时由模型库恢复。
  */
 export const HIDDEN_PARTS: ReadonlySet<string> = new Set([
   'accumulator-effect-1',

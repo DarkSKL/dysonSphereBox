@@ -66,3 +66,21 @@ export const formatDownloadSpeed = (bytesPerSecond: number): string => {
 
   return `${(kbPerSecond / 1024).toFixed(1)} MB/s`
 }
+
+// 说明：按戴森球计划界面的写法格式化功率与能量：保留三位有效数字（6.69 / 12.0 / 144），单位逐级进位到 k、M、G、T。
+// 边界：非法或负数按 0 处理；separator 控制数值与单位之间的空格（游戏不同窗口写法不同，如「12.0 kW」与「12.0kW」）。
+const formatGameQuantity = (value: number, unit: string, separator: string): string => {
+  const prefixes = ['', 'k', 'M', 'G', 'T']
+  let amount = Number.isFinite(value) && value > 0 ? value : 0
+  if (amount === 0) return `0${separator}${unit}`
+  let level = 0
+  while (amount >= 999.5 && level < prefixes.length - 1) {
+    amount /= 1000
+    level++
+  }
+  return `${amount.toFixed(amount >= 99.95 ? 0 : amount >= 9.995 ? 1 : 2)}${separator}${prefixes[level]}${unit}`
+}
+
+export const formatGamePower = (watts: number, separator = ' '): string => formatGameQuantity(watts, 'W', separator)
+
+export const formatGameEnergy = (joules: number, separator = ''): string => formatGameQuantity(joules, 'J', separator)

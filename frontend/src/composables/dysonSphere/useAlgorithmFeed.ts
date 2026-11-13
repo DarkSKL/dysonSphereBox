@@ -260,6 +260,25 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     getViz()?.caption(event.message.replace(/^正在/, ''), event.total > 0 ? `${event.current} / ${event.total}` : '算法运行中')
   }
 
+  // =============== 蓝图记录查询 ===============
+  // 说明：建筑面板按记录下标读取蓝图参数（如物流塔槽位与设置）；回放已解码的文档直接复用，实时跟随结束后按需解码一次。
+  // 边界：只保留当前蓝图编码的一份记录索引，编码变化后旧索引作废；解码失败抛给调用方，不影响回放与场景。
+  let records: {code: string; byIndex: Map<number, blueprint.Building>} | null = null
+  let recordsPending: {code: string; promise: Promise<unknown>} | null = null
+  const rememberRecords = (code: string, document: blueprint.Document): void => {
+    records = {code, byIndex: new Map((document.buildings ?? []).map(building => [building.index, building] as const))}
+  }
+  const recordAt = async (index: number): Promise<blueprint.Building | null> => {
+    const code = w.code
+    if (!code) return null
+    if (records?.code !== code) {
+      if (recordsPending?.code !== code) recordsPending = {code, promise: decodeFactoryBlueprint(code, false).then(document => rememberRecords(code, document))}
+      const pending = recordsPending
+      try { await pending.promise } finally { if (recordsPending === pending) recordsPending = null }
+    }
+    return records?.code === code ? records.byIndex.get(index) ?? null : null
+  }
+
   // =============== 结果回放 ===============
   // 说明：解码当前蓝图，与镜像按记录下标比较；撤销先于替换，替换先于新增，新增按记录顺序（算法装配顺序）。
   // 边界：导入蓝图与生成结果互不比较，切换来源时先清空舞台；全部建筑分批准备和提交，旧任务不能覆盖新结果。
@@ -318,6 +337,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
       if (version === decodeVersion) decoding.value = false
       return
     }
+    rememberRecords(code, document)
     const isCurrent = (): boolean => version === decodeVersion && code === w.code && getViz() !== null
     if (!isCurrent()) return
     const sourceKey = w.replay ? `import:${w.previewRevision}` : 'gen'
@@ -399,5 +419,5 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     void replay()
   }
 
-  return {source, notice, decoding, phase, sync: replay, rebuild}
+  return {source, notice, decoding, phase, sync: replay, rebuild, recordAt}
 }

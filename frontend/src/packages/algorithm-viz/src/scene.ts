@@ -210,6 +210,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private hoverPending = false;
   private hovered: VizObject | null = null;
   private selected: VizObject | null = null;
+  /** 最近一次通知使用方的选中建筑屏幕坐标 */
+  private readonly selectionScreen = { x: NaN, y: NaN };
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
 
@@ -538,6 +540,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (next === this.selected) return;
     const previous = this.selected;
     this.selected = next;
+    if (this.hovered && (this.hovered === next || this.hovered === previous)) this.overlay.showTooltip(this.hoverText(this.hovered), this.hoverX, this.hoverY);
     if (previous) {
       previous.highlight = previous === this.hovered ? 0.5 : 0;
       this.dirty.add(previous);
@@ -547,14 +550,33 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       return;
     }
     const candidate = this.candidates.get(this.objectCandidates.get(next.id) ?? '');
-    this.v.set(next.pose.x + (candidate?.x ?? 0), next.pose.y + next.height * 0.6 + (candidate?.y ?? 0), next.pose.z + (candidate?.z ?? 0)).project(this.rig.camera);
+    const screen = this.projectSelection(next);
+    this.selectionScreen.x = screen.x;
+    this.selectionScreen.y = screen.y;
     this.options.onSelect?.({
       id: next.id,
       candidateId: candidate?.id,
       candidateOrdinal: candidate?.ordinal,
       building: next.building,
-      screen: { x: ((this.v.x + 1) / 2) * this.width, y: ((1 - this.v.y) / 2) * this.height },
+      screen,
     });
+  }
+
+  /** 选中建筑在容器内的屏幕坐标：取建筑高度六成处，计入候选平台偏移 */
+  private projectSelection(obj: VizObject): { x: number; y: number } {
+    const candidate = this.candidates.get(this.objectCandidates.get(obj.id) ?? '');
+    this.v.set(obj.pose.x + (candidate?.x ?? 0), obj.pose.y + obj.height * 0.6 + (candidate?.y ?? 0), obj.pose.z + (candidate?.z ?? 0)).project(this.rig.camera);
+    return { x: ((this.v.x + 1) / 2) * this.width, y: ((1 - this.v.y) / 2) * this.height };
+  }
+
+  /** 绘制后检查选中建筑的屏幕位置，移动超过半像素时通知使用方，让详情面板跟随建筑 */
+  private trackSelection(): void {
+    if (!this.selected || !this.options.onSelectionMove) return;
+    const screen = this.projectSelection(this.selected);
+    if (Math.abs(screen.x - this.selectionScreen.x) < 0.5 && Math.abs(screen.y - this.selectionScreen.y) < 0.5) return;
+    this.selectionScreen.x = screen.x;
+    this.selectionScreen.y = screen.y;
+    this.options.onSelectionMove(screen);
   }
 
   getProgress(): AlgoVizProgress {
@@ -718,7 +740,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
    * 建筑材质：共享 uniform + 本材质的原生贴图。tint 直接引用颜色对象，
    * 占位体传入调色板中的钢灰色以随主题插值。
    */
-  private createBuildingMaterial(map: THREE.Texture | null, emissiveMap: THREE.Texture | null, tint: THREE.Color, emissive: THREE.Color, kind: PartKind = 'solid', orm: THREE.Texture | null = null, native = false, mask: THREE.Texture | null = null, normalMap: THREE.Texture | null = null, unlit = false): THREE.ShaderMaterial {
+  private createBuildingMaterial(map: THREE.Texture | null, emissiveMap: THREE.Texture | null, tint: THREE.Color, emissive: THREE.Color, kind: PartKind = 'solid', orm: THREE.Texture | null = null, native = false, mask: THREE.Texture | null = null, normalMap: THREE.Texture | null = null, unlit = false, originalLight: THREE.Texture | null = null, solidEffect = false, lightShape?: 'ring' | 'beam', secondaryLight: THREE.Texture | null = null, labTint?: THREE.Color): THREE.ShaderMaterial {
     const effect = kind === 'effect';
     return new THREE.ShaderMaterial({
       vertexShader: BUILDING_VERTEX,
@@ -735,6 +757,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         uHasOrm: { value: orm ? 1 : 0 },
         uNative: { value: native ? 1 : 0 },
         uUnlit: { value: unlit ? 1 : 0 },
+        uOriginalLight: { value: originalLight },
+        uHasOriginalLight: { value: originalLight ? 1 : 0 },
+        uSolidEffect: { value: solidEffect ? 1 : 0 },
+        uLightShape: { value: lightShape === 'ring' ? 1 : lightShape === 'beam' ? 2 : 0 },
+        uSecondaryLight: { value: secondaryLight },
+        uHasSecondaryLight: { value: secondaryLight ? 1 : 0 },
+        uLabTint: { value: labTint ?? new THREE.Color() },
+        uLabLight: { value: labTint ? 1 : 0 },
         uMask: { value: mask },
         uHasMask: { value: mask ? 1 : 0 },
         uNormal: { value: normalMap },
@@ -1124,7 +1154,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         geometry = entry.geometry;
         if (!this.pools.has(key)) {
           // 每个模型一组材质：与几何体分组一一对应，采样游戏原生的底色与自发光贴图
-          material = entry.parts.map((part) => this.createBuildingMaterial(part.map, part.emissiveMap, part.color, part.emissive, part.kind, part.orm, part.native, part.mask, part.normalMap, part.unlit));
+          material = entry.parts.map((part) => this.createBuildingMaterial(part.map, part.emissiveMap, part.color, part.emissive, part.kind, part.orm, part.native, part.mask, part.normalMap, part.unlit, part.light, part.kind === 'effect' && !part.map && !part.lightId, part.lightShape, part.secondaryLight, part.labTint));
           owned = true;
         }
         if (obj.kind !== 'sorter') {
@@ -1626,9 +1656,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       obj.highlight = 0.5;
       this.dirty.add(obj);
     }
-    const text = obj && this.options.describe ? this.options.describe(obj.building) : null;
+    const text = this.hoverText(obj);
     this.overlay.showTooltip(text, this.hoverX, this.hoverY);
     this.container.style.cursor = obj ? 'pointer' : '';
+  }
+
+  /** 悬停提示文案：选中的建筑由使用方的详情面板展示，不再叠加悬停提示 */
+  private hoverText(obj: VizObject | null): string | null {
+    return obj && obj !== this.selected && this.options.describe ? this.options.describe(obj.building) : null;
   }
 
   private pick(x: number, y: number): VizObject | null {
@@ -1934,7 +1969,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (draw && this.hoverPending && !this.pointer) {
       this.hoverPending = false;
       this.setHovered(this.pick(this.hoverX, this.hoverY));
-      if (this.hovered) this.overlay.showTooltip(this.options.describe ? this.options.describe(this.hovered.building) : null, this.hoverX, this.hoverY);
+      if (this.hovered) this.overlay.showTooltip(this.hoverText(this.hovered), this.hoverX, this.hoverY);
     }
 
     if (draw) {
@@ -1942,6 +1977,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.renderer.render(this.scene, this.rig.camera);
       this.lastDrawDurationMs = performance.now() - drawStart;
       this.nextInstantDrawAt = performance.now() + INSTANT_DRAW_INTERVAL_MS;
+      this.trackSelection();
     }
     this.drewLastFrame = draw;
     this.emitProgress();

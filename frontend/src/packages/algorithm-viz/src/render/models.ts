@@ -4,6 +4,16 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { GRID_METERS } from '../defaults';
 import { GenerationCache } from '../internal/generation-cache';
 import { HIDDEN_PARTS, NATIVE_COLORS } from './native-colors';
+import originalLighting from '../../../../data/models/lighting/materials.json';
+
+interface OriginalLight {
+  readonly kind: 'emission' | 'effect' | 'glass';
+  readonly texture?: string;
+  readonly secondary?: string;
+  readonly color?: readonly number[];
+}
+
+const ORIGINAL_LIGHT: Readonly<Record<string, OriginalLight>> = originalLighting as Record<string, OriginalLight>;
 
 /**
  * 模型库：按需加载 GLB，保留游戏原生贴图颜色。
@@ -44,6 +54,14 @@ export interface ModelPart {
   readonly unlit: boolean;
   /** 涂装遮罩贴图（单通道，亮处为涂装区）；由模型库按编号共享加载，未提供或加载失败时为 null */
   mask: THREE.Texture | null;
+  /** 原版发光或特效贴图，与涂装遮罩共用加载和回收机制。 */
+  readonly lightId?: string;
+  light?: THREE.Texture | null;
+  readonly secondaryLightId?: string;
+  secondaryLight?: THREE.Texture | null;
+  readonly labTint?: THREE.Color;
+  /** 效果代理网格由预览器展开，使用独立的衰减曲线。 */
+  readonly lightShape?: 'ring' | 'beam';
 }
 
 export interface ModelEntry {
@@ -66,8 +84,10 @@ export interface TranscoderUrls {
 /** 同时加载的模型数上限，避免解析集中在同一帧造成卡顿 */
 const MAX_CONCURRENT = 3;
 
-/** 名称中带有低精度层级或碰撞体标记的网格不参与合并 */
-const SKIP_MESH = /(lod[1-9]|collider|-cl$|shadow)/i;
+/** 低精度层级和辅助网格不参与合并；hadron-collider 是建筑本体名称。 */
+const SKIP_MESH = /(lod[1-9]|-cl$|shadow)/i;
+const isCollisionMesh = (name: string): boolean =>
+  /collider/i.test(name) && !/^hadron-collider(?:-\d+)*$/i.test(name);
 
 /** 按材质名判断类别：玻璃罩、特效面片（光效 / 遮罩 / 水面）之外都是机身 */
 const classifyPart = (name: string): PartKind => (/glass/i.test(name) ? 'glass' : /(effect|-eff|mask|-water$)/i.test(name) ? 'effect' : 'solid');
@@ -191,11 +211,11 @@ export class ModelLibrary {
       this.loader
         .loadAsync(this.urls[key])
         .then(async (gltf) => {
-          merged = mergeScene(gltf);
+          merged = mergeScene(gltf, key);
           if (merged && !this.disposed && this.entries.get(key) === entry) {
             this.pending.set(entry, merged);
             for (const texture of baseTextures(merged.parts)) this.textures.add(texture);
-            await this.attachMasks(merged);
+            await this.attachMaterialTextures(merged);
             this.pending.delete(entry);
           }
           this.settle(entry, merged);
@@ -217,10 +237,17 @@ export class ModelLibrary {
   }
 
   /** 给带遮罩编号的分组挂上遮罩贴图；遮罩缺失时该分组整体染色，不影响模型显示 */
-  private async attachMasks(merged: MergedModel): Promise<void> {
+  private async attachMaterialTextures(merged: MergedModel): Promise<void> {
     await Promise.all(
       merged.parts.map(async (part) => {
-        if (part.maskId) part.mask = await this.loadMask(part.maskId);
+        const [mask, light, secondaryLight] = await Promise.all([
+          part.maskId ? this.loadMask(part.maskId) : null,
+          part.lightId ? this.loadMask(part.lightId) : null,
+          part.secondaryLightId ? this.loadMask(part.secondaryLightId) : null,
+        ]);
+        part.mask = mask;
+        part.light = light;
+        part.secondaryLight = secondaryLight;
       }),
     );
   }
@@ -293,7 +320,11 @@ export class ModelLibrary {
     const maskIds = new Set<string>();
     for (const model of [...this.entries.values(), ...this.pending.values()]) {
       for (const texture of baseTextures(model.parts)) retained.add(texture);
-      for (const part of model.parts) if (part.maskId) maskIds.add(part.maskId);
+      for (const part of model.parts) {
+        if (part.maskId) maskIds.add(part.maskId);
+        if (part.lightId) maskIds.add(part.lightId);
+        if (part.secondaryLightId) maskIds.add(part.secondaryLightId);
+      }
     }
     for (const texture of this.textures) if (!retained.has(texture)) {
       texture.dispose();
@@ -329,7 +360,7 @@ interface Bucket {
  * 把 glTF 场景内的全部网格按世界变换合并：同一材质的网格放进同一分组，只保留位置、UV 与索引，
  * 并把米换算为蓝图格。量化或交错存储的顶点属性通过 getX/getY/getZ 统一读出。
  */
-function mergeScene(gltf: GLTF): MergedModel | null {
+function mergeScene(gltf: GLTF, key: string): MergedModel | null {
   const root = gltf.scene;
   root.updateMatrixWorld(true);
   const buckets = new Map<THREE.Material, Bucket>();
@@ -338,16 +369,17 @@ function mergeScene(gltf: GLTF): MergedModel | null {
   const used = new Set<THREE.Texture>();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.geometry || SKIP_MESH.test(mesh.name)) return;
+    if (!mesh.isMesh || !mesh.geometry || SKIP_MESH.test(mesh.name) || isCollisionMesh(mesh.name)) return;
     const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
     const source = mesh.geometry;
     const position = source.getAttribute('position');
     if (!position || position.itemSize < 3) return;
-    const kind = classifyPart(material.name);
+    const light = ORIGINAL_LIGHT[material.name];
+    const kind = light && light.kind !== 'emission' ? light.kind : classifyPart(material.name);
     // 预览器里隐藏的特效面片（未通电）与 alpha 丢失后会画成白板的面片不绘制
-    if (HIDDEN_PARTS.has(material.name)) return;
+    if (HIDDEN_PARTS.has(material.name) && !light) return;
     // 没有贴图的特效面片（遮罩、水面等）没有可绘制内容，直接略过
-    if (kind === 'effect' && !material.map) return;
+    if (kind === 'effect' && !material.map && !light) return;
     let bucket = buckets.get(material);
     if (!bucket) {
       // 名称含 black 的无贴图材质在游戏中为深色部件，glTF 中缺省底色为白色，这里按名称还原
@@ -364,7 +396,7 @@ function mergeScene(gltf: GLTF): MergedModel | null {
           orm,
           normalMap,
           emissiveMap: kind === 'solid' ? (material.emissiveMap ?? null) : null,
-          color: dark ? new THREE.Color(0x1c2028) : native ? new THREE.Color().setRGB(...native.color, THREE.LinearSRGBColorSpace) : (material.color?.clone() ?? new THREE.Color(1, 1, 1)),
+          color: light?.color && light.kind !== 'emission' ? new THREE.Color().fromArray(light.color) : dark ? new THREE.Color(0x1c2028) : native ? new THREE.Color().setRGB(...native.color, THREE.LinearSRGBColorSpace) : (material.color?.clone() ?? new THREE.Color(1, 1, 1)),
           emissive: hasEmissiveMap
             ? (native?.emissive ? new THREE.Color().setRGB(...native.emissive, THREE.LinearSRGBColorSpace) : new THREE.Color(1, 1, 1))
             : (kind === 'solid' ? (material.emissive?.clone() ?? new THREE.Color(0, 0, 0)) : new THREE.Color(0, 0, 0)),
@@ -372,6 +404,9 @@ function mergeScene(gltf: GLTF): MergedModel | null {
           maskId: native?.mask ?? null,
           unlit: Boolean(native?.unlit),
           mask: null,
+          lightId: light?.texture,
+          secondaryLightId: light?.secondary,
+          labTint: light?.color && material.name.startsWith('science-academy-') ? new THREE.Color().fromArray(light.color) : undefined,
         },
         positions: [],
         uvs: [],
@@ -424,6 +459,33 @@ function mergeScene(gltf: GLTF): MergedModel | null {
     for (const index of bucket.indices) indices.push(index + offset);
     geometry.addGroup(start, bucket.indices.length, parts.length);
     parts.push(bucket.part);
+  }
+  // Unity 会在顶点 Shader 中展开这两种代理；GLB 只有很小的占位网格。
+  // 以建筑局部坐标生成光环和光束，保留蓝图旋转并随实例一起绘制。
+  if (key === 'lighthouse' || key === 'ray-receiver') {
+    const ring = key === 'lighthouse';
+    const fx = ring
+      ? new THREE.RingGeometry(1.0, 1.9, 48).rotateX(-Math.PI / 2).translate(0, 0.10, 0)
+      : new THREE.CylinderGeometry(0.36, 1.9, 11, 28, 1, true).translate(0, 13.5, 0);
+    const position = fx.getAttribute('position');
+    const uv = fx.getAttribute('uv');
+    const index = fx.getIndex()!;
+    const start = indices.length;
+    const offset = positions.length / 3;
+    for (let i = 0; i < position.count; i++) {
+      positions.push(position.getX(i) * scale, position.getY(i) * scale, position.getZ(i) * scale);
+      uvs.push(uv.getX(i), uv.getY(i));
+    }
+    for (let i = 0; i < index.count; i++) indices.push(offset + index.getX(i));
+    geometry.addGroup(start, index.count, parts.length);
+    parts.push({
+      kind: 'effect', map: null, emissiveMap: null, orm: null, normalMap: null,
+      color: ring ? new THREE.Color(0.67, 1, 0.50) : new THREE.Color(0.65, 0.86, 1),
+      emissive: new THREE.Color(0, 0, 0), native: false, maskId: null, mask: null, unlit: false,
+      lightId: ring ? 'light-3543' : ORIGINAL_LIGHT['ray-receiver-eff']?.texture,
+      lightShape: ring ? 'ring' : 'beam',
+    });
+    fx.dispose();
   }
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
