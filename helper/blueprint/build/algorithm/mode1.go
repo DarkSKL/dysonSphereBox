@@ -371,6 +371,9 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 	if err := b.prepareConnectedRows(ctx, req, dataset, heightLimit, compact); err != nil {
 		return err
 	}
+	if err := b.assignStationInputPorts(ctx); err != nil {
+		return err
+	}
 	if err := b.routeTransport(ctx); err != nil {
 		return err
 	}
@@ -746,10 +749,14 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 			cursor = math.Min(cursor, trunk.a.x-1)
 			recycled = true
 		}
-		if b.denseSpatial && !recycled && len(group.routes) == 1 && productionSprayItem(row.info) != group.routes[0].edge.ItemID {
+		if b.denseSpatial && (!recycled || b.adapter != nil && b.adapter.density == densityDense) && len(group.routes) == 1 && productionSprayItem(row.info) != group.routes[0].edge.ItemID {
 			route := group.routes[0]
 			route.start, route.path = trunk, []*placed{trunk}
 			route.sharedPath = append([]*placed(nil), group.belts[1:]...)
+			if recycled {
+				// 优先门已将回流与纯物品净产出分开；单一去向直接取净出口，保留全部共同毛流段用于容量核验。
+				route.sharedPath = append([]*placed(nil), shared[:len(shared)-1]...)
+			}
 			trunk.record.Parameters = []int32{int32(route.edge.ItemID), int32(math.Ceil(route.rate))}
 			if route.to == nil {
 				route.boundary = trunk

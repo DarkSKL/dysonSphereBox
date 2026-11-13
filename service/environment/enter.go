@@ -11,6 +11,8 @@ package environment
 type ServiceGroup struct {
 	// EnvironmentManagerService 职责：暴露环境页只读扫描和目录入口；使用：RegisterServices 绑定给环境页；边界：注册时不访问文件系统。
 	EnvironmentManagerService
+	// R2ModmanService 职责：暴露 Profile 直接托管；使用：资源页一键同步及模组操作；边界：注册时不检索磁盘、不读数据库。
+	R2ModmanService
 }
 
 // RegisterServices 返回环境管理领域需要绑定给前端的服务实例。
@@ -20,5 +22,6 @@ type ServiceGroup struct {
 func (serviceGroup *ServiceGroup) RegisterServices() []interface{} {
 	return []interface{}{
 		&serviceGroup.EnvironmentManagerService,
+		&serviceGroup.R2ModmanService,
 	}
 }

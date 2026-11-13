@@ -13,12 +13,13 @@ import (
 
 // machineRecycle 职责：保存单行单物品的优先回收证据；使用：路由和最终实体核验；边界：route是局部毛流，不属于规范FlowGraph边。
 type machineRecycle struct {
-	row                   *transportRow
-	item                  int
-	rate, netInput        float64
-	netOutput             float64
-	source, surplus       []*placed
-	intake                []*placed
+	row             *transportRow
+	item            int
+	rate, netInput  float64
+	netOutput       float64
+	source, surplus []*placed
+	intake          []*placed
+	// outputGate/inputGate 职责：保存回流优先出口和可选新料合流门；使用：装配与终检；边界：密铺零净补料时inputGate为空，回料直接进入机器带。
 	outputGate, inputGate *placed
 	fresh, returned       *placed
 	// freshPath/returnedPath 职责：保存外端到真实槽口的完整带链；使用：连通与毛流复核；边界：不计入规范净流边。
@@ -39,7 +40,7 @@ func recipeHasMachineRecycle(recipe quant.Recipe) bool {
 	return false
 }
 
-// prepareMachineRecycles 职责：为同物品创建先回收后出货、先回料后补新的双优先门；使用：机器行完成输入stub之后；边界：两个门都使用已核对Model38地面端口，不通过普通T接假设优先级。
+// prepareMachineRecycles 职责：为同物品创建先回收后出货、必要时先回料后补新的优先链；使用：机器行完成输入stub之后；边界：净补料为零的密铺直接回机，其它情况保留已核对的双优先门。
 func (b *builder) prepareMachineRecycles(row *transportRow) error {
 	if !recipeHasMachineRecycle(row.recipe) {
 		return nil
@@ -84,33 +85,15 @@ func (b *builder) prepareMachineRecycles(row *transportRow) error {
 			return &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("配方%d回流物品%d机器行毛输入/输出%.3f/%.3f超过单带容量%.3f/min", row.recipe.ID, item, grossIn, grossOut, b.logistics.BeltCapacityPerMinute)}
 		}
 		entry := &machineRecycle{row: row, item: item, rate: rate, netInput: math.Max(0, grossIn-grossOut), netOutput: math.Max(0, grossOut-grossIn)}
-		// 输入优先门也必须声明真实物品。使用 0 会让粘贴后的游戏过滤器
-		// 失去物品语义，且无法和规范 lane 的物品诊断对应。
-		entry.inputGate = b.recycleGate(inputCursor, stub[0].a.y, 3, item)
-		entry.freshPath, err = b.buildRecyclePort(entry.inputGate, 2, true)
-		if err != nil {
+		if err := b.prepareRecycleIntake(entry, stub, inputCursor); err != nil {
 			return err
-		}
-		entry.fresh = entry.freshPath[0]
-		entry.fresh.record.Parameters = []int32{int32(item), int32(math.Ceil(entry.netInput))}
-		entry.returnedPath, err = b.buildRecyclePort(entry.inputGate, 3, true)
-		if err != nil {
-			return err
-		}
-		entry.returned = entry.returnedPath[0]
-		entry.intake, err = b.buildRecyclePort(entry.inputGate, 0, false)
-		if err != nil {
-			return err
-		}
-		middle := b.straight(inputCursor+3, stub[0].a.y, int(math.Round(stub[0].a.x-inputCursor-3)), 2)
-		entry.intake = append(entry.intake, middle...)
-		entry.intake = append(entry.intake, stub...)
-		for i := 0; i+1 < len(entry.intake); i++ {
-			connect(entry.intake[i], entry.intake[i+1])
 		}
 		row.inputs[item] = entry.fresh
 		// 出货门放在所有原料接口西侧，避免其上下优先口落到邻近原料stub上。
 		x := outputCursor
+		if len(flows.recycle) == 1 && entry.inputGate == nil {
+			x = b.compactRecycleOutputX(row, x)
+		}
 		for _, previous := range row.recycles {
 			x = math.Min(x, previous.outputGate.a.x-4)
 		}
@@ -178,7 +161,7 @@ func (b *builder) recycleGate(x, y float64, priority int8, item int) *placed {
 	return gate
 }
 
-// validateMachineRecycles 职责：从实际实体重建双优先门、回料带和机器毛流能力；使用：mode1/6最终物流出口；边界：回流负载叠加规范净流，不能只验证一条孤立回流链或伪造规范边。
+// validateMachineRecycles 职责：从实际实体重建优先出口、可选新料合流及机器毛流能力；使用：直连与设施黑盒最终物流出口；边界：回流负载叠加规范净流，不能只验证孤立回流链或伪造规范边。
 func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map[*placed]float64) error {
 	for _, entry := range b.machineRecycles {
 		if err := b.checkGeneration("机器内部回流核验"); err != nil {
@@ -195,9 +178,6 @@ func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map
 		if !finitePositive(want) || math.Abs(entry.rate-want) > math.Max(1e-6, want*1e-8) {
 			return &blueprint.Error{Code: "GEN_E_FLOW", Message: "机器回流份额与毛输入/输出的共同部分不守恒"}
 		}
-		if err := validateRecycleGate(entry.inputGate, 3, entry.item, entry.row.quarterTurns, indices); err != nil {
-			return err
-		}
 		if err := validateRecycleGate(entry.outputGate, entry.outputSlot, entry.item, entry.row.quarterTurns, indices); err != nil {
 			return err
 		}
@@ -208,21 +188,7 @@ func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map
 		if err := validateBusFabricChain(route.path, indices); err != nil {
 			return err
 		}
-		if !recycleInputAttached(entry.returnedPath, entry.returned, entry.inputGate, 3) || !recycleInputAttached(entry.freshPath, entry.fresh, entry.inputGate, 2) || entry.fresh == entry.returned || !hasPortItem(entry.fresh, entry.item) {
-			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "机器回流优先入口或独立新料/预充入口已断开"}
-		}
-		for _, path := range [][]*placed{entry.freshPath, entry.returnedPath} {
-			if err := validateBusFabricChain(path, indices); err != nil {
-				return err
-			}
-		}
-		if _, exists := indices[entry.fresh]; !exists {
-			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "机器回流预充入口不属于当前蓝图"}
-		}
-		if len(entry.intake) == 0 || entry.intake[0].input != entry.inputGate || entry.intake[0].record.InputFromSlot != 0 {
-			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "机器回流合流门没有连接机器原料带"}
-		}
-		if err := validateBusFabricChain(entry.intake, indices); err != nil {
+		if err := validateRecycleIntake(entry, indices); err != nil {
 			return err
 		}
 		var input []*placed
@@ -273,7 +239,7 @@ func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map
 				checks = append(checks, check)
 			}
 		}
-		b.logistics.Checks = append(checks, LogisticsCheck{RuleID: "machine-local-recycle", Status: "passed", Message: fmt.Sprintf("%d条机器内部毛流已接入本地双优先回收门；规范净边不变，毛输入/输出和实际共享带独立核算", len(b.machineRecycles))}, LogisticsCheck{RuleID: "machine-recycle-startup", Status: "unverified", Message: "回料优先于新料、循环优先于净出货；零净输入的自催化物品仍需启动预充，离线不验证库存、回压或连续运行时序"})
+		b.logistics.Checks = append(checks, LogisticsCheck{RuleID: "machine-local-recycle", Status: "passed", Message: fmt.Sprintf("%d条机器内部毛流已接入本地优先回收链；规范净边不变，毛输入/输出和实际共享带独立核算", len(b.machineRecycles))}, LogisticsCheck{RuleID: "machine-recycle-startup", Status: "unverified", Message: "回料优先于新料、循环优先于净出货；零净输入的自催化物品仍需启动预充，离线不验证库存、回压或连续运行时序"})
 	}
 	return nil
 }

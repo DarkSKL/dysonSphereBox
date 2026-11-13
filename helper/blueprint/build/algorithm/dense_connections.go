@@ -13,7 +13,9 @@ func denseRotateVector(point vector, turns int) vector {
 
 // validateDenseDirectOutput 职责：证明无二次过滤支路的输出来自本行独立物料带且只有一个去向；使用：完整物流出口；边界：任一结构不满足仍拒绝，原料与出货能力仍按实际机器臂检查。
 func (b *builder) validateDenseDirectOutput(route *transportRoute) error {
-	if handled, err := b.validateDenseProducerSplitOutput(route); handled { return err }
+	if handled, err := b.validateDenseProducerSplitOutput(route); handled {
+		return err
+	}
 	if handled, err := b.validateDenseMaterialDirectOutput(route); handled {
 		return err
 	}
@@ -31,7 +33,7 @@ func (b *builder) validateDenseDirectOutput(route *transportRoute) error {
 	}
 	for _, recycle := range row.recycles {
 		if recycle.item == route.edge.ItemID {
-			return fail("回流必须保留专用分支")
+			return b.validateRecycleDirectOutput(route, recycle)
 		}
 	}
 	count := 0

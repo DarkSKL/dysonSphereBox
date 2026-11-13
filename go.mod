@@ -10,6 +10,7 @@ require (
 	github.com/multiformats/go-multiaddr v0.16.1
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/sys v0.39.0
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/datatypes v1.2.7
 	gorm.io/gorm v1.31.1
 )
@@ -139,7 +140,6 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.5.6 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 	modernc.org/libc v1.61.13 // indirect

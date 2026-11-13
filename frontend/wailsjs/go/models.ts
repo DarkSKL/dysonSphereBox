@@ -5845,6 +5845,101 @@ export namespace quant {
 
 }
 
+export namespace r2modman {
+	
+	export class Mod {
+	    name: string;
+	    displayName: string;
+	    author: string;
+	    version: string;
+	    description: string;
+	    websiteUrl: string;
+	    dependencies: string[];
+	    enabled: boolean;
+	    canManage: boolean;
+	    canDisable: boolean;
+	    disableWith: string[];
+	    disableReason: string;
+	    canRemove: boolean;
+	    removeReason: string;
+	    warning: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Mod(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.displayName = source["displayName"];
+	        this.author = source["author"];
+	        this.version = source["version"];
+	        this.description = source["description"];
+	        this.websiteUrl = source["websiteUrl"];
+	        this.dependencies = source["dependencies"];
+	        this.enabled = source["enabled"];
+	        this.canManage = source["canManage"];
+	        this.canDisable = source["canDisable"];
+	        this.disableWith = source["disableWith"];
+	        this.disableReason = source["disableReason"];
+	        this.canRemove = source["canRemove"];
+	        this.removeReason = source["removeReason"];
+	        this.warning = source["warning"];
+	    }
+	}
+	export class Profile {
+	    name: string;
+	    path: string;
+	    modCount: number;
+	    enabledCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Profile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.modCount = source["modCount"];
+	        this.enabledCount = source["enabledCount"];
+	    }
+	}
+	export class ProfileState {
+	    profile?: Profile;
+	    mods: Mod[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ProfileState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.profile = this.convertValues(source["profile"], Profile);
+	        this.mods = this.convertValues(source["mods"], Mod);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace server {
 	
 	export class ProbeResult {

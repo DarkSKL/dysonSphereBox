@@ -369,7 +369,11 @@ function mergeScene(gltf: GLTF, key: string): MergedModel | null {
   const used = new Set<THREE.Texture>();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.geometry || SKIP_MESH.test(mesh.name) || isCollisionMesh(mesh.name)) return;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    // GLTFLoader 会给重名节点追加后缀（如 hadron-collider_1），过滤应使用 GLB 原名。
+    const originalName: unknown = mesh.userData.name;
+    const meshName = typeof originalName === 'string' && originalName ? originalName : mesh.name;
+    if (SKIP_MESH.test(meshName) || isCollisionMesh(meshName)) return;
     const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
     const source = mesh.geometry;
     const position = source.getAttribute('position');

@@ -4,10 +4,11 @@ import {useMessage} from 'naive-ui'
 import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
 import {consumeBlueprintLibraryRequest} from '../services/dysonSphere/blueprint-navigation'
-import {contract, environment} from '../../../wailsjs/go/models'
+import {contract, environment, type r2modman} from '../../../wailsjs/go/models'
 import {OnFileDrop, OnFileDropOff} from '../../../wailsjs/runtime/runtime'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import ResourceCard from '../../components/dysonSphere/environment/resource-card.vue'
+import R2ModmanPanel from '../../components/dysonSphere/environment/r2modman-panel.vue'
 import type {ResourceCardTone} from '../../types/environment'
 import {useEnvironmentContextMenu} from '../../composables/dysonSphere/useEnvironmentContextMenu'
 import {useEnvironmentDialogs} from '../../composables/dysonSphere/useEnvironmentDialogs'
@@ -23,7 +24,26 @@ const message = useMessage()
 const env = useEnvironmentState()
 const installed = useInstalledModState()
 const dialogs = useEnvironmentDialogs()
-const contextMenu = useEnvironmentContextMenu(env, dialogs, installed)
+// =============== 外部 Profile 托管入口 ===============
+// 说明：Profile 面板读取盒子持久快照，显式同步才扫描 R2；工具栏直接下拉切换，摘要单列 R2 数量。
+const r2Panel = ref<{refresh: () => Promise<void>, syncProfiles: () => Promise<void>, selectProfile: (path: string) => Promise<void>, selectDirectory: () => Promise<void>} | null>(null)
+const r2Busy = ref(false)
+const r2Profiles = ref<r2modman.Profile[]>([])
+const r2ProfilePath = ref('')
+// 说明：未发现 Profile 且没有持久快照时不渲染 R2 控件；面板仍负责静默加载和显式同步发现。
+const hasR2Profiles = computed(() => r2Profiles.value.length > 0 || Boolean(r2ProfilePath.value))
+const r2Summary = ref({total: 0, enabled: 0, disabled: 0})
+const r2ProfileOptions = computed(() => [
+  ...r2Profiles.value.map((profile) => ({label: profile.name, value: profile.path})),
+  {label: '手动定位 Profile 目录…', value: '__manual_profile__'},
+])
+// 说明：下拉选择直接切换持久快照，手动定位仅弹系统目录选择器。
+const selectR2Profile = async (path: string): Promise<void> => {
+  if (path === '__manual_profile__') await r2Panel.value?.selectDirectory()
+  else await r2Panel.value?.selectProfile(path)
+}
+const openModSync = async (): Promise<void> => { await syncLocalMods() }
+const contextMenu = useEnvironmentContextMenu(env, dialogs, installed, openModSync)
 
 const {
   activeTab,
@@ -79,7 +99,7 @@ const activeTabSummary = computed(() => {
   if (activeTab.value === 'mods') {
     const enabled = enabledModCount.value + installedPackages.value.length
     const total = mods.value.length + installedPackages.value.length
-    return `${enabled} 启用 · ${disabledModCount.value} 禁用 · ${total} 总计`
+    return `${enabled} 启用 · ${disabledModCount.value} 禁用 · ${total} 本机${r2Summary.value.total ? ` · R2 ${r2Summary.value.enabled}/${r2Summary.value.total} 启用` : ''}`
   }
   if (activeTab.value === 'blueprints') {
     const totalFolders = blueprintPage.value?.totalFolders ?? 0
@@ -200,15 +220,15 @@ const scheduleSearch = (loader: () => Promise<void>): void => {
 }
 
 // =============== 工具栏同步 ===============
-// 说明：搜索栏右侧的同步按钮；模组、蓝图先纳管游戏侧新增资源再校验状态，存档重新扫描真实目录。
-// 边界：同步进行中禁用按钮，避免重复提交；模组同步后额外刷新市场安装列表。
+// 说明：模组同步纳管游戏目录并更新 R2 持久快照；蓝图纳管真实目录，存档重新扫描。
+// 边界：Profile 与本机资源分别操作，不向游戏目录复制 R2 模组。
 const syncKindByTab = {mods: 'mod', blueprints: 'blueprint', saves: 'save'} as const
-const syncLabelByTab = {mods: '同步本机模组', blueprints: '同步本机蓝图', saves: '重新扫描存档'} as const
+const syncLabelByTab = {mods: '同步模组 / r2modman Profile', blueprints: '同步本机蓝图', saves: '重新扫描存档'} as const
 
 const isSyncingActiveTab = computed(() => (
   activeTab.value === 'saves'
     ? isLoadingSaves.value
-    : isRunningInitialSync.value || isRefreshingManagedState.value
+    : isRunningInitialSync.value || isRefreshingManagedState.value || (activeTab.value === 'mods' && r2Busy.value)
 ))
 const syncButtonLabel = computed(() => syncLabelByTab[activeTab.value])
 
@@ -217,10 +237,18 @@ const syncActiveTab = async (): Promise<void> => {
     return
   }
   const tab = activeTab.value
-  await env.syncEnvironmentResources(syncKindByTab[tab])
   if (tab === 'mods') {
-    await installed.loadInstalledPackages()
+    await openModSync()
+    return
   }
+  await env.syncEnvironmentResources(syncKindByTab[tab])
+}
+
+// 说明：同一同步入口并行更新本机资源与 R2 快照，不把 Profile 作为游戏目录复制目标。
+const syncLocalMods = async (): Promise<void> => {
+  if (isRunningInitialSync.value || isRefreshingManagedState.value || r2Busy.value) return
+  await Promise.all([env.syncEnvironmentResources('mod'), r2Panel.value?.syncProfiles()])
+  await installed.loadInstalledPackages()
 }
 
 watch(modSearch, () => activeTab.value === 'mods' && scheduleSearch(env.loadMods))
@@ -390,7 +418,7 @@ const uninstallSelectedPackage = (): void => {
 const refreshCurrentView = async (): Promise<void> => {
   await env.refreshActiveTab()
   if (activeTab.value === 'mods') {
-    await installed.loadInstalledPackages()
+    await Promise.all([installed.loadInstalledPackages(), r2Panel.value?.refresh()])
   }
   await refreshBepInExReady()
 }
@@ -493,6 +521,17 @@ watch(activeTab, (tab) => {
         </n-input>
 
         <div class="environment-toolbar-actions">
+          <n-select
+            v-if="hasR2Profiles"
+            size="small"
+            class="w-48 max-w-full"
+            :value="r2ProfilePath || null"
+            :options="r2ProfileOptions"
+            :disabled="isSyncingActiveTab"
+            placeholder="选择 Profile"
+            aria-label="切换 r2modman Profile"
+            @update:value="selectR2Profile"
+          />
           <button
             type="button"
             class="environment-sync-button"
@@ -536,8 +575,8 @@ watch(activeTab, (tab) => {
           <p v-if="modSearch.trim()">没有匹配的资源库模组。</p>
           <p v-else>
             资源库里还没有模组，可以拖入 zip 导入，或点击
-            <button type="button" :disabled="isRunningInitialSync" @click="env.runInitialSync('mod')">一键同步</button>
-            纳管游戏目录里已有的模组。
+            <button type="button" :disabled="isSyncingActiveTab" @click="openModSync">一键同步</button>
+            纳管游戏目录或直接管理 r2modman Profile。
           </p>
         </div>
         <div v-else class="environment-grid">
@@ -583,6 +622,18 @@ watch(activeTab, (tab) => {
             <Store :size="24" :stroke-width="1.7" />
           </ResourceCard>
         </div>
+
+        <!-- ~ r2modman Profile -->
+        <!-- * 说明：在模组市场下方展示盒子持久保存的所选 Profile；交互：卡片启停、详情与移除 -->
+        <!-- * 依赖：R2ModmanService 持久快照；边界：普通页面进入不扫描 R2 目录 -->
+        <R2ModmanPanel
+          ref="r2Panel"
+          :query="modSearch"
+          @summary="r2Summary = $event"
+          @busy="r2Busy = $event"
+          @profiles="r2Profiles = $event"
+          @profile-path="r2ProfilePath = $event"
+        />
       </div>
     </section>
 

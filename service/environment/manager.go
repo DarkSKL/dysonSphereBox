@@ -1936,7 +1936,7 @@ func (service *EnvironmentManagerService) prepareModImportSource(sourcePath stri
 	if err := environmentHelper.ExtractZipToDirectorySafely(sourcePath, extractRoot); err != nil {
 		return "", "", nil, err
 	}
-	modRoot, targetName, err := discoverModRootFromExtractedZip(extractRoot, sourcePath)
+	modRoot, targetName, err := environmentHelper.DiscoverModRootFromExtractedZip(extractRoot, sourcePath)
 	cleanup := func() {
 		_ = os.RemoveAll(extractRoot)
 	}
@@ -2733,82 +2733,6 @@ func remapBlueprintRelativePath(selected environmentHelper.BlueprintResource, ol
 		return filepath.ToSlash(filepath.Clean(newBaseRelativePath))
 	}
 	return filepath.ToSlash(filepath.Clean(filepath.Join(filepath.FromSlash(newBaseRelativePath), childRelativePath)))
-}
-
-// discoverModRootFromExtractedZip 从 zip 解压目录中识别目录型 Mod 根。
-// 职责：兼容包根包含 plugins 子目录、单个包根目录或根目录即 Mod 文件集的常见结构。
-// 使用：prepareModImportSource 调用。
-// 边界：不处理 patchers/config；无法识别时返回错误，不创建资源库项目。
-func discoverModRootFromExtractedZip(extractRoot string, sourceZipPath string) (string, string, error) {
-	pluginsRoot := filepath.Join(extractRoot, "plugins")
-	if isExistingDirectory(pluginsRoot) {
-		entries, err := os.ReadDir(pluginsRoot)
-		if err != nil {
-			return "", "", err
-		}
-		dirs := []os.DirEntry{}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				dirs = append(dirs, entry)
-			}
-		}
-		if len(dirs) == 1 {
-			return filepath.Join(pluginsRoot, dirs[0].Name()), dirs[0].Name(), nil
-		}
-		if len(dirs) > 1 {
-			return "", "", fmt.Errorf("zip 包含多个 Mod 目录，请分别导入目录")
-		}
-	}
-	entries, err := os.ReadDir(extractRoot)
-	if err != nil {
-		return "", "", err
-	}
-	dirs := []os.DirEntry{}
-	for _, entry := range entries {
-		if entry.IsDir() && entry.Name() != "patchers" && entry.Name() != "config" {
-			dirs = append(dirs, entry)
-		}
-	}
-	if len(dirs) == 1 {
-		return filepath.Join(extractRoot, dirs[0].Name()), dirs[0].Name(), nil
-	}
-	if directoryHasRegularFile(extractRoot) {
-		name := strings.TrimSuffix(filepath.Base(sourceZipPath), filepath.Ext(sourceZipPath))
-		if name == "" {
-			name = filepath.Base(extractRoot)
-		}
-		return extractRoot, name, nil
-	}
-	return "", "", fmt.Errorf("未在 zip 包中识别到目录型 Mod")
-}
-
-// directoryHasRegularFile 判断目录根是否包含普通文件。
-// 职责：辅助识别 zip 根目录即 Mod 文件集的结构。
-// 使用：discoverModRootFromExtractedZip 调用。
-// 边界：只检查当前目录一级文件，不递归。
-func directoryHasRegularFile(path string) bool {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return false
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			return true
-		}
-	}
-	return false
-}
-
-// isExistingDirectory 判断路径是否存在且为目录。
-// 职责：为服务层导入识别提供轻量目录判断。
-// 使用：discoverModRootFromExtractedZip 调用。
-// 边界：访问失败、空路径或普通文件均返回 false。
-func isExistingDirectory(path string) bool {
-	if path == "" {
-		return false
-	}
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }
 
 // normalizePreviewKind 归一化首次同步预览类型。

@@ -4,6 +4,8 @@ package environment
 // 使用：根 model.RegisterModels 调用本组 RegisterModels 后交给 core.AutoMigrate。
 // 边界：只维护模型清单，不执行数据库迁移、不读写业务数据、不处理文件系统。
 
+import profileModel "DysonSphereBox/model/environment/r2modman"
+
 // ModelGroup 聚合环境管理领域的模型实例。
 // 职责：组合资源项目、同步文件、操作记录和存档索引模型。
 // 使用：根模型注册器在数据库初始化时读取。
@@ -17,6 +19,8 @@ type ModelGroup struct {
 	EnvOperation EnvOperation
 	// EnvSaveIndex 职责：聚合存档最近扫描索引表；使用：RegisterModels 返回给 AutoMigrate；边界：不替代实时扫描。
 	EnvSaveIndex EnvSaveIndex
+	// R2ProfileSnapshot 职责：聚合 Profile 同步快照；使用：注册迁移；边界：不替代 R2 模组清单。
+	R2ProfileSnapshot profileModel.ProfileSnapshot
 }
 
 // RegisterModels 返回环境管理领域需要 AutoMigrate 的模型集合。
@@ -29,5 +33,6 @@ func (modelGroup *ModelGroup) RegisterModels() []interface{} {
 		&modelGroup.EnvSyncedFile,
 		&modelGroup.EnvOperation,
 		&modelGroup.EnvSaveIndex,
+		&modelGroup.R2ProfileSnapshot,
 	}
 }

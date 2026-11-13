@@ -34,6 +34,7 @@ export const useEnvironmentContextMenu = (
   env: EnvironmentState,
   dialogs: EnvironmentDialogs,
   installed: InstalledModState,
+  syncMods?: () => Promise<void>,
 ) => {
   const menu = ref<{visible: boolean, x: number, y: number, target: EnvContextMenuTarget | null}>({
     visible: false,
@@ -53,7 +54,7 @@ export const useEnvironmentContextMenu = (
 
   const modMaintenanceOptions = (): DropdownOption[] => [
     {type: 'divider', key: 'mod-maintenance-divider'},
-    {label: '同步本机模组', key: 'mod-sync'},
+    {label: '同步模组 / r2modman Profile', key: 'mod-sync'},
     {label: '打开资源库目录', key: 'mod-open-dir'},
     {label: '打开游戏插件目录', key: 'mod-open-real-dir'},
   ]
@@ -268,7 +269,7 @@ export const useEnvironmentContextMenu = (
       case 'mod-import-dir':
         return env.selectAndImportModDirectory()
       case 'mod-sync':
-        return env.syncEnvironmentResources('mod')
+        return syncMods ? syncMods() : env.syncEnvironmentResources('mod')
       case 'mod-open-dir':
         return env.openModLibraryDir()
       case 'mod-open-real-dir':

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 )
 
 // denseStationPairedOutputVariantOffset 职责：独立比较二三去向的双侧过滤布局；使用：塔候选内部组合；边界：不替换原单侧候选或公开模式编号。
@@ -45,6 +46,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	var failures []error
 	var diagnostics []SearchCandidateDiagnostic
 	bestTowers := math.MaxInt
+	bestBlackboxVariant := -1
 	budget := 4
 	for index, prepared := range input.Productions {
 		if b.denseStationStreetEligible(input.Plan.Productions[index], prepared.Recipe) {
@@ -148,6 +150,8 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	budget = fieldBudget + blackboxBudget
 	allPreviews := b.planCandidatePreviews(budget)
 	type stationEvaluation struct {
+		// variant 职责：保留获选黑盒的布局编号；使用：一次可选塔口精修；边界：塔场候选不使用此字段。
+		variant     int
 		out         Result
 		count       int
 		err         error
@@ -255,6 +259,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 				return
 			}
 
+			evaluation.variant = variant
 			evaluation.out = out
 			evaluation.count = denseStationFacilityCount(candidate)
 			return
@@ -267,6 +272,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			out, count := evaluation.out, evaluation.count
 			if best == nil || count < bestTowers || count == bestTowers && betterDenseStationCandidate(out.LogisticsSummary, best.LogisticsSummary) {
 				best, bestTowers = &out, count
+				bestBlackboxVariant = evaluation.variant
 			}
 			return nil
 		})
@@ -378,6 +384,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			out, count := evaluation.out, evaluation.count
 			if best == nil || count < bestTowers || count == bestTowers && betterDenseStationCandidate(out.LogisticsSummary, best.LogisticsSummary) {
 				best, bestTowers = &out, count
+				bestBlackboxVariant = -1
 			}
 			return nil
 		})
@@ -390,6 +397,40 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	}
 	if best == nil {
 		return Result{}, errors.Join(failures...)
+	}
+	refinePorts := bestBlackboxVariant >= 0
+	if deadline, limited := ctx.Deadline(); limited && time.Until(deadline) < 20*time.Second {
+		refinePorts = false
+	}
+	if refinePorts {
+		// 只对已获选布局追加一次就近塔口候选，避免把整套布局搜索翻倍。
+		// 可选精修使用独立时限，并给原请求留出提交余量；精修超时不丢弃已有完整可行结果。
+		previews := b.planCandidatePreviews(1)
+		nearbyCtx, cancelNearby := context.WithTimeout(context.WithValue(ctx, stationInputAssignmentKey{}, true), 15*time.Second)
+		nearbyCtx, finishPerformance := beginCandidatePerformance(nearbyCtx, "station-input-ports", budget)
+		candidate, err := b.denseStationBlackboxCandidate(nearbyCtx, req, dataset, config, bestBlackboxVariant, previews[0])
+		var out Result
+		if err == nil {
+			out, err = candidate.finish(nearbyCtx, req, dataset)
+		}
+		finishPerformance(err)
+		cancelNearby()
+		diagnostics = appendSearchCandidateDiagnostics(diagnostics, newSearchCandidateDiagnostic("station-input-ports", budget, fmt.Sprintf("baseVariant=%d;nearbyInputPorts=true", bestBlackboxVariant), "final-validation", err), out.LogisticsSummary)
+		budget++
+		if err != nil {
+			failures = append(failures, err)
+			if candidate != nil {
+				candidate.rollbackPreview()
+			}
+		} else if out.LogisticsSummary != nil && denseStationFacilityCount(candidate) == bestTowers {
+			previous, next := best.LogisticsSummary.Metrics, out.LogisticsSummary.Metrics
+			if next.EnvelopeArea <= previous.EnvelopeArea+1e-6 && next.TotalBeltLengthMeters < previous.TotalBeltLengthMeters-1e-6 {
+				best = &out
+			}
+		}
+		if err := b.checkGeneration("就近塔口候选提交"); err != nil {
+			return Result{}, err
+		}
 	}
 	best.LogisticsSummary.SearchCandidates = diagnostics
 	best.LogisticsSummary.Metrics.CandidateBudget, best.LogisticsSummary.Metrics.EvaluatedCandidates, best.LogisticsSummary.Metrics.RejectedCandidates = budget, budget, len(failures)
