@@ -40,6 +40,10 @@ const (
 	ReconnectGiveUp = 3 * time.Minute
 	// RTTReportInterval 职责：connected 时 RTT 上报节流；使用：成员链路；边界：最多每 10 秒一次。
 	RTTReportInterval = 10 * time.Second
+	// RTTProbeTimeout 职责：限制单次延迟探测；使用：成员链路；边界：包括打开探测流与等待应答，最多 3 秒。
+	RTTProbeTimeout = 3 * time.Second
+	// RTTFailureThreshold 职责：规定主动重连前的连续探测失败次数；使用：成员链路；边界：成功或完成一次重连判定后重新计数。
+	RTTFailureThreshold = 3
 	// HandshakeTimeout 职责：数据链路握手超时；使用：TCP/UDP stream 握手头；边界：5 秒。
 	HandshakeTimeout = 5 * time.Second
 	// TargetProbeTimeout 职责：目标地址单个候选拨号上限；使用：房主目标地址探测；边界：500 毫秒。

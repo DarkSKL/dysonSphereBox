@@ -52,7 +52,7 @@ type HostForwarder struct {
 	// OnTargets 职责：主动探测使目标状态变化时通知；使用：控制器推送新投影；边界：Start 前设置，调用时不持锁，必须不阻塞。
 	OnTargets func()
 	okSeen    map[firstOKKey]bool
-	done    chan struct{}
+	done      chan struct{}
 }
 
 // NewHostForwarder 创建房主转发器。
@@ -314,13 +314,18 @@ func (forwarder *HostForwarder) handleTCP(stream network.Stream) {
 // Pipe 在 stream 与 TCP 连接之间双向对拷。
 // 职责：一侧 EOF 时对另一侧 CloseWrite，两侧结束后关闭，出错时 Reset；使用：房主与成员 TCP 转发；边界：阻塞直到两侧都结束。
 func Pipe(stream network.Stream, conn *net.TCPConn) {
+	pipeTCP(stream, conn, conn)
+}
+
+// pipeTCP 双向转发 TCP；职责：集中处理半关闭和错误；使用：成员可观察写入游戏的字节；边界：目标 writer 必须将数据写入 conn。
+func pipeTCP(stream network.Stream, conn *net.TCPConn, gameWriter io.Writer) {
 	var wait sync.WaitGroup
 	var failed sync.Once
 	fail := func() { failed.Do(func() { _ = stream.Reset(); _ = conn.Close() }) }
 	wait.Add(2)
 	go func() {
 		defer wait.Done()
-		if _, err := io.Copy(conn, stream); err != nil {
+		if _, err := io.Copy(gameWriter, stream); err != nil {
 			fail()
 			return
 		}

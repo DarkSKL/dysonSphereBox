@@ -6,6 +6,7 @@ package multiplayer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -53,7 +54,7 @@ type memberLink struct {
 	disconnected chan struct{}
 	// logged 职责：最近一次写入本地日志的状态签名；使用：只在 state/path/error 变化时记录；边界：由 mu 保护。
 	logged string
-	// pingFails 职责：连续 RTT 探测失败次数；使用：发现"连接还在但数据不通"的半死路径；边界：由 mu 保护，成功即清零。
+	// pingFails 职责：连续 RTT 探测失败次数；使用：判断是否需要重连；边界：由 mu 保护，探测成功、重建完成或达到阈值后清零。
 	pingFails int
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -386,6 +387,7 @@ func (l *memberLink) view(userID int64) LinkView {
 // onConnected 连通后设置实际路径并开放本地端口；职责：投影可用游戏链路；使用：状态机；边界：仅协商电路不调用。
 func (l *memberLink) onConnected() {
 	l.c.clearRelayAdmission(l.sess, l.roomID)
+	l.pingSucceeded()
 	conn := p2p.BestConn(l.sess.host, l.hostID, l.sess.host.RelayFallback())
 	l.mu.Lock()
 	hostNet := l.endpoint.Net
@@ -442,17 +444,34 @@ func (l *memberLink) holdConnection() {
 	}
 }
 
-// measureRTT 用 libp2p ping 测 RTT，最多每 10 秒上报一次；连续失败时判定路径半死并重建。
+// measureRTT 用 libp2p ping 测 RTT；职责：上报延迟、记录探测失败原因；使用：链路连通期间；边界：离房取消不算探测失败。
 func (l *memberLink) measureRTT() {
 	pingCtx := network.WithNoDial(l.ctx, "rtt")
 	if l.sess.host.RelayFallback() {
 		pingCtx = network.WithAllowLimitedConn(pingCtx, "relay-rtt")
 	}
-	ctx, cancel := context.WithTimeout(pingCtx, 3*time.Second)
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(pingCtx, mpConstant.RTTProbeTimeout)
 	defer cancel()
 	result, ok := <-ping.Ping(ctx, l.sess.host, l.hostID)
+	if l.ctx.Err() != nil {
+		return
+	}
 	if !ok || result.Error != nil {
-		l.pingFailed()
+		reason := "probe_ended"
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded), errors.Is(result.Error, context.DeadlineExceeded):
+			reason = "timeout"
+		case errors.Is(result.Error, network.ErrResourceLimitExceeded):
+			reason = "resource_limit"
+		case errors.Is(result.Error, network.ErrNoConn):
+			reason = "no_connection"
+		case errors.Is(result.Error, network.ErrReset):
+			reason = "stream_reset"
+		case result.Error != nil:
+			reason = fmt.Sprintf("%T", result.Error)
+		}
+		l.pingFailed(started, reason)
 		return
 	}
 	l.pingSucceeded()
@@ -472,33 +491,43 @@ func (l *memberLink) measureRTT() {
 }
 
 // pingSucceeded 清零连续 RTT 失败计数。
-// 职责：路径恢复后不误判；使用：measureRTT 成功分支；边界：只改计数。
+// 职责：路径恢复后不沿用旧失败；使用：探测成功或重建完成；边界：只改计数。
 func (l *memberLink) pingSucceeded() {
 	l.mu.Lock()
 	l.pingFails = 0
 	l.mu.Unlock()
 }
 
-// pingFailed 记录一次 RTT 失败，连续 3 次仍无可用连接时主动关闭到房主的连接。
-// 职责：发现"连接还在但数据不通"的半死路径，交给状态机重建，避免用户一直卡住；
-// 使用：holdConnection 的 10 秒周期；边界：只关闭到房主的连接，不判定房间或会话，也不影响其他成员。
-func (l *memberLink) pingFailed() {
+// pingFailed 记录一次 RTT 失败；职责：区分没有应答与游戏数据仍能到达；使用：measureRTT 失败分支；边界：只检查到房主的连接。
+// 逻辑流：累计失败 => 检查最近一轮探测周期内的中继下行 => 有数据则保留，否则关闭连接让状态机重连。
+func (l *memberLink) pingFailed(started time.Time, reason string) {
 	l.mu.Lock()
 	l.pingFails++
 	fails := l.pingFails
-	if fails >= 3 {
+	if fails >= mpConstant.RTTFailureThreshold {
 		l.pingFails = 0
 	}
 	l.mu.Unlock()
-	if fails < 3 {
+	if fails < mpConstant.RTTFailureThreshold || l.ctx.Err() != nil {
 		return
 	}
 	conns := l.sess.host.Network().ConnsToPeer(l.hostID)
 	if len(conns) == 0 {
 		return
 	}
-	recordStateAsync(loggingConstant.Warn, "link.stale", "成员链路数据不通，主动重建", "连续 3 次 RTT 探测失败，关闭到房主的连接",
-		map[string]interface{}{"roomId": l.roomID, "peerUserId": l.hostUserID, "connections": len(conns)})
+	data := map[string]interface{}{"roomId": l.roomID, "peerUserId": l.hostUserID, "connections": len(conns),
+		"probeFailures": fails, "lastProbeReason": reason, "lastProbeMs": durationMs(started)}
+	if l.sess.host.RelayFallback() {
+		// 按实际承载游戏流的连接判断，避免关闭所有连接时误断仍在传输的中继。
+		since := started.Add(-mpConstant.RTTReportInterval)
+		for _, conn := range conns {
+			if !conn.IsClosed() && l.room.local.HasRecentRelayTCPReceive(conn.ID(), since) {
+				recordStateAsync(loggingConstant.Info, "link.probe_deferred", "延迟探测失败，保留联机连接", "中继仍在向游戏交付数据，推迟重连", data)
+				return
+			}
+		}
+	}
+	recordStateAsync(loggingConstant.Warn, "link.stale", "成员链路数据不通，主动重建", "连续延迟探测失败，未发现活跃的中继下行，关闭到房主的连接", data)
 	for _, conn := range conns {
 		_ = conn.Close()
 	}

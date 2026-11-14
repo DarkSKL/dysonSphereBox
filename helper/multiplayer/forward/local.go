@@ -165,8 +165,8 @@ type LocalForwarder struct {
 	closed    bool
 	// preferred 职责：上次为每组分配的起点；使用：重进同一房间时优先复用，避免游戏里的本地地址变化；边界：越界或被占用时回退随机。
 	preferred []int
-	// tcp 职责：跟踪已接受的游戏连接；使用：Close 立即释放本地 socket；边界：不依赖异步 ClosePeer 才结束。
-	tcp      map[*net.TCPConn]struct{}
+	// tcp 职责：跟踪游戏连接和中继接收活动；使用：关闭 socket、判定链路活性；边界：直连和握手中的连接没有接收活动记录。
+	tcp      map[*net.TCPConn]*tcpReceiveActivity
 	sessions map[string]*localUDPSession
 	local    []LocalPort
 	pick     func(span int) int
@@ -205,7 +205,7 @@ func (forwarder *LocalForwarder) traceOpen(proto string, header Header, status b
 func NewLocalForwarder(host *p2p.Host, hostID peer.ID, ports []mpAPI.PortDecl, preferred []int) *LocalForwarder {
 	return &LocalForwarder{host: host, hostID: hostID, ports: append([]mpAPI.PortDecl(nil), ports...),
 		preferred: append([]int(nil), preferred...),
-		sessions:  map[string]*localUDPSession{}, tcp: map[*net.TCPConn]struct{}{}, pick: randomBase, okSeen: map[firstOKKey]bool{}}
+		sessions:  map[string]*localUDPSession{}, tcp: map[*net.TCPConn]*tcpReceiveActivity{}, pick: randomBase, okSeen: map[firstOKKey]bool{}}
 }
 
 // Open 分配全部 M 并开始接收。
@@ -323,7 +323,7 @@ func (forwarder *LocalForwarder) Close() {
 	groups := forwarder.groups
 	sessions := forwarder.sessions
 	connections := forwarder.tcp
-	forwarder.tcp = map[*net.TCPConn]struct{}{}
+	forwarder.tcp = map[*net.TCPConn]*tcpReceiveActivity{}
 	forwarder.sessions = map[string]*localUDPSession{}
 	forwarder.mu.Unlock()
 	for _, group := range groups {
@@ -361,7 +361,7 @@ func (forwarder *LocalForwarder) acceptTCP(listener *net.TCPListener, index int,
 			_ = conn.Close()
 			return
 		}
-		forwarder.tcp[conn] = struct{}{}
+		forwarder.tcp[conn] = nil
 		forwarder.mu.Unlock()
 		go func() {
 			defer func() {
@@ -387,7 +387,7 @@ func (forwarder *LocalForwarder) acceptTCP(listener *net.TCPListener, index int,
 				_ = conn.Close()
 				return
 			}
-			Pipe(stream, conn)
+			forwarder.pipeGameTCP(stream, conn)
 		}()
 	}
 }
