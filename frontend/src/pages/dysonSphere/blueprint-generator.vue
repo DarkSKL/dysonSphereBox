@@ -87,10 +87,10 @@ const selectedData = computed(() => {
 })
 
 // =============== 预览标签页 ===============
-// 说明：标签状态与切换命令集中在 useBlueprintPreviewTabs；数据层收到候选数据时会命令切到平面预览器。
+// 说明：标签状态与切换命令集中在 useBlueprintPreviewTabs；数据层收到候选数据时切到平面预览器，播完后切回蓝图预览。
 // 切走时预览只隐藏不卸载，避免重建 WebGL 视图；平面预览器在首次切换时挂载，之后同样只隐藏。
-const {tab: previewTab, algorithmMounted, previewTabs, showPreviewTab, showAlgorithmTab} = useBlueprintPreviewTabs()
-const showTab = (key: PreviewTab): void => { if (key === 'preview') showPreviewTab(); else showAlgorithmTab() }
+const {tab: previewTab, algorithmMounted, previewTabs, selectTab} = useBlueprintPreviewTabs()
+const showTab = (key: PreviewTab): void => selectTab(key)
 
 // =============== 上下分栏 ===============
 // 说明：拖动分隔条调整网格与预览高度，比例限制在 30%–80%；双击分隔条恢复默认。
