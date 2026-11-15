@@ -16,6 +16,12 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 		return nil, &blueprint.Error{Code: "GEN_E_FLOW", Message: "缺少统一物流规划"}
 	}
 	summary := b.logistics
+	if err := b.commitByproductPriorityInputs(); err != nil {
+		return nil, err
+	}
+	if err := b.validateProductionBuffers(); err != nil {
+		return nil, err
+	}
 	if err := b.validateMode1Deliveries(); err != nil {
 		return nil, err
 	}
@@ -61,7 +67,7 @@ func (b *builder) finalizeLogistics(policy logisticsFinalization, records []blue
 				sharedBeltRates[p] += route.rate
 			}
 		}
-		if b.denseProducerLeafFor(route) != nil {
+		if b.denseProducerLeafFor(route) != nil || route.priorityInput != nil || route.from != nil && route.from.buffers[route.edge.ItemID] != nil {
 			seen := map[int]bool{}
 			for _, index := range lane.BuildingIndices {
 				seen[index] = true

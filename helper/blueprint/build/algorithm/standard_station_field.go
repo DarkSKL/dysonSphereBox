@@ -21,6 +21,7 @@ func (b *builder) generateStandardStationField(ctx context.Context, req Request,
 	bestTowers := math.MaxInt
 	var failures []error
 	diagnostics := []SearchCandidateDiagnostic{}
+	candidateCount := 8
 	type stationEvaluation struct {
 		out         Result
 		count       int
@@ -28,10 +29,18 @@ func (b *builder) generateStandardStationField(ctx context.Context, req Request,
 		diagnostics []SearchCandidateDiagnostic
 	}
 	{
-		indices := make([]int, 4)
+		indices := make([]int, candidateCount)
 		for index := range indices {
-			indices[index] = index
+			indices[index] = index % 4
+			if index >= 4 {
+				indices[index] += independentStationVariantOffset
+			}
 		}
+		indices, err := b.stationCandidateVariants(ctx, req, dataset, "standard-station", indices)
+		if err != nil {
+			return Result{}, err
+		}
+		candidateCount = len(indices)
 		previews := b.planCandidatePreviews(len(indices))
 		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
 			ctx, finishPerformance := beginCandidatePerformance(ctx, "standard-station", variant)
@@ -91,8 +100,8 @@ func (b *builder) generateStandardStationField(ctx context.Context, req Request,
 		return Result{}, errors.Join(failures...)
 	}
 	best.LogisticsSummary.SearchCandidates = diagnostics
-	best.LogisticsSummary.Metrics.CandidateBudget = 4
-	best.LogisticsSummary.Metrics.EvaluatedCandidates = 4
+	best.LogisticsSummary.Metrics.CandidateBudget = candidateCount
+	best.LogisticsSummary.Metrics.EvaluatedCandidates = candidateCount
 	best.LogisticsSummary.Metrics.RejectedCandidates = len(failures)
 	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "standard-station-shared-field", Status: "passed", Message: fmt.Sprintf("普通机器间距与碰撞规则下，以全场机器核心和共享外部库存布局生成；实际%d座塔，内部物料由真实直连带输送", bestTowers)})
 	return *best, nil

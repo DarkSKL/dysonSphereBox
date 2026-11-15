@@ -1,0 +1,568 @@
+{
+  "schemaVersion": "dense-near-square-verification/v1",
+  "status": "verified",
+  "scope": "超密度近方形布局与行组间隙",
+  "configuration": {
+    "target": {
+      "itemId": 1101,
+      "name": "铁块",
+      "ratePerMinute": 10000
+    },
+    "productionMachines": 167,
+    "density": "dense",
+    "latitudeZone": "ring1-center",
+    "inserterLevel": 1,
+    "buffer": false,
+    "monitor": false
+  },
+  "preferences": {
+    "preferredAspectRatio": 1.4,
+    "hardRule": false,
+    "paddingPolicy": "只增加空白而不缩短最长边不能降低代价，同分保留较小面积；物流塔数量仍优先取少。"
+  },
+  "changes": [
+    "近方形软目标统一用于最终择优、折排和压缩；保留原有局部装箱搜索。",
+    "根据单容量段真实折排尺寸，额外比较最多三个邻近组数，避免只枚举1/2/3/全部组。",
+    "裸街道同样预置真实电塔，仅在实际无位时增加必要折排接缝，最终仍检查球面供电与碰撞。",
+    "塔模式分别比较自动折排、双段折排和原长街道。",
+    "直连增加有限的独立平移压缩候选，保留原候选；只接受不增加面积、形状代价或真实端点距离的移动。",
+    "修复边界槽容量判断遗漏输出数量的情况；无监测时独立平行交付带允许一格排列，原料地面隔离仍保留两格。",
+    "分层入口按真实高度与地面交付口隔离，修复普通投影把高层入口当作地面占位的误判。"
+  ],
+  "cases": [
+    {
+      "name": "mode1-belt1",
+      "mode": "机器直连带",
+      "beltLevel": 1,
+      "before": {
+        "aspectRatio": 3.0833333333333335,
+        "envelopeAreaGrid2": 1776,
+        "beltLengthMeters": 1672.8022946206243,
+        "beltCount": 1366,
+        "buildings": 1884,
+        "machines": 167,
+        "logisticsTowers": 0,
+        "maxMachineRowCenterSpacingGrid": 2.84,
+        "seconds": 34.042
+      },
+      "after": {
+        "aspectRatio": 1.0681818181818181,
+        "envelopeAreaGrid2": 2068,
+        "beltLengthMeters": 2649.74118757636,
+        "beltCount": 1928,
+        "buildings": 2442,
+        "machines": 167,
+        "logisticsTowers": 0,
+        "maxMachineRowCenterSpacingGrid": 3.35,
+        "seconds": 50.941
+      },
+      "changePercent": {
+        "envelopeAreaGrid2": 16.44,
+        "beltLengthMeters": 58.4,
+        "seconds": 49.64
+      },
+      "requestAndResult": "verified/mode1-belt1.json",
+      "blueprint": "verified/mode1-belt1.txt",
+      "beforePlot": "baseline/mode1-belt1.png",
+      "afterPlot": "verified/mode1-belt1.png"
+    },
+    {
+      "name": "mode1-belt3",
+      "mode": "机器直连带",
+      "beltLevel": 3,
+      "before": {
+        "aspectRatio": 1.125,
+        "envelopeAreaGrid2": 1800,
+        "beltLengthMeters": 924.2882064872292,
+        "beltCount": 787,
+        "buildings": 1301,
+        "machines": 167,
+        "logisticsTowers": 0,
+        "maxMachineRowCenterSpacingGrid": 6.16,
+        "seconds": 21.037
+      },
+      "after": {
+        "aspectRatio": 1.075,
+        "envelopeAreaGrid2": 1720,
+        "beltLengthMeters": 624.296492172023,
+        "beltCount": 600,
+        "buildings": 1114,
+        "machines": 167,
+        "logisticsTowers": 0,
+        "maxMachineRowCenterSpacingGrid": 3.22,
+        "seconds": 12.569
+      },
+      "changePercent": {
+        "envelopeAreaGrid2": -4.44,
+        "beltLengthMeters": -32.46,
+        "seconds": -40.25
+      },
+      "requestAndResult": "verified/mode1-belt3.json",
+      "blueprint": "verified/mode1-belt3.txt",
+      "beforePlot": "baseline/mode1-belt3.png",
+      "afterPlot": "verified/mode1-belt3.png"
+    },
+    {
+      "name": "mode3-belt1",
+      "mode": "行星物流塔",
+      "beltLevel": 1,
+      "before": {
+        "aspectRatio": 1.425531914893617,
+        "envelopeAreaGrid2": 3149,
+        "beltLengthMeters": 4311.774428620231,
+        "beltCount": 3511,
+        "buildings": 4043,
+        "machines": 167,
+        "logisticsTowers": 5,
+        "maxMachineRowCenterSpacingGrid": 2.26,
+        "seconds": 14.431
+      },
+      "after": {
+        "aspectRatio": 1.3478260869565217,
+        "envelopeAreaGrid2": 2852,
+        "beltLengthMeters": 3914.2597976169873,
+        "beltCount": 2710,
+        "buildings": 3231,
+        "machines": 167,
+        "logisticsTowers": 5,
+        "maxMachineRowCenterSpacingGrid": 3.35,
+        "seconds": 19.452
+      },
+      "changePercent": {
+        "envelopeAreaGrid2": -9.43,
+        "beltLengthMeters": -9.22,
+        "seconds": 34.79
+      },
+      "requestAndResult": "verified/mode3-belt1.json",
+      "blueprint": "verified/mode3-belt1.txt",
+      "beforePlot": "baseline/mode3-belt1.png",
+      "afterPlot": "verified/mode3-belt1.png"
+    },
+    {
+      "name": "mode3-belt3",
+      "mode": "行星物流塔",
+      "beltLevel": 3,
+      "before": {
+        "aspectRatio": 13,
+        "envelopeAreaGrid2": 3328,
+        "beltLengthMeters": 1532.1339335005555,
+        "beltCount": 1108,
+        "buildings": 1626,
+        "machines": 167,
+        "logisticsTowers": 1,
+        "maxMachineRowCenterSpacingGrid": 2.84,
+        "seconds": 16.359
+      },
+      "after": {
+        "aspectRatio": 1.069767441860465,
+        "envelopeAreaGrid2": 1978,
+        "beltLengthMeters": 1654.0608930973974,
+        "beltCount": 1201,
+        "buildings": 1717,
+        "machines": 167,
+        "logisticsTowers": 1,
+        "maxMachineRowCenterSpacingGrid": 3.22,
+        "seconds": 13.105
+      },
+      "changePercent": {
+        "envelopeAreaGrid2": -40.56,
+        "beltLengthMeters": 7.96,
+        "seconds": -19.89
+      },
+      "requestAndResult": "verified/mode3-belt3.json",
+      "blueprint": "verified/mode3-belt3.txt",
+      "beforePlot": "baseline/mode3-belt3.png",
+      "afterPlot": "verified/mode3-belt3.png"
+    }
+  ],
+  "randomVerification": {
+    "passed": 23,
+    "total": 23,
+    "cases": [
+      {
+        "seed": 20261115,
+        "index": 0,
+        "mode": 1,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 1116,
+            "ratePerMinute": 120
+          }
+        ],
+        "buildings": 296,
+        "requestAndResult": "random/case-00.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 1,
+        "mode": 2,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 1126,
+            "ratePerMinute": 60
+          }
+        ],
+        "buildings": 3319,
+        "requestAndResult": "random/case-01.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 2,
+        "mode": 3,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 1112,
+            "ratePerMinute": 15
+          }
+        ],
+        "buildings": 82,
+        "requestAndResult": "random/case-02.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 3,
+        "mode": 4,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 2102,
+            "ratePerMinute": 3
+          }
+        ],
+        "buildings": 124,
+        "requestAndResult": "random/case-03.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 4,
+        "mode": 1,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 2040,
+            "ratePerMinute": 6
+          }
+        ],
+        "buildings": 1435,
+        "requestAndResult": "random/case-04.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 5,
+        "mode": 2,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 1101,
+            "ratePerMinute": 15
+          },
+          {
+            "itemId": 2202,
+            "ratePerMinute": 6
+          }
+        ],
+        "buildings": 477,
+        "requestAndResult": "random/case-05.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 7,
+        "mode": 4,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 6006,
+            "ratePerMinute": 3
+          }
+        ],
+        "buildings": 4690,
+        "requestAndResult": "random/case-07.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 8,
+        "mode": 1,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 1302,
+            "ratePerMinute": 60
+          }
+        ],
+        "buildings": 1859,
+        "requestAndResult": "random/case-08.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 9,
+        "mode": 2,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 2020,
+            "ratePerMinute": 6
+          }
+        ],
+        "buildings": 523,
+        "requestAndResult": "random/case-09.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 10,
+        "mode": 3,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 1116,
+            "ratePerMinute": 60
+          }
+        ],
+        "buildings": 284,
+        "requestAndResult": "random/case-10.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 11,
+        "mode": 4,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 2201,
+            "ratePerMinute": 12
+          },
+          {
+            "itemId": 1108,
+            "ratePerMinute": 120
+          }
+        ],
+        "buildings": 857,
+        "requestAndResult": "random/case-11.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 12,
+        "mode": 1,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 1205,
+            "ratePerMinute": 120
+          }
+        ],
+        "buildings": 1729,
+        "requestAndResult": "random/case-12.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 13,
+        "mode": 2,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 6006,
+            "ratePerMinute": 12
+          }
+        ],
+        "buildings": 8887,
+        "requestAndResult": "random/case-13.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 14,
+        "mode": 3,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 1123,
+            "ratePerMinute": 120
+          }
+        ],
+        "buildings": 935,
+        "requestAndResult": "random/case-14.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 15,
+        "mode": 4,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 2003,
+            "ratePerMinute": 3
+          }
+        ],
+        "buildings": 3386,
+        "requestAndResult": "random/case-15.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 16,
+        "mode": 1,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 1302,
+            "ratePerMinute": 15
+          }
+        ],
+        "buildings": 777,
+        "requestAndResult": "random/case-16.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 17,
+        "mode": 2,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 1203,
+            "ratePerMinute": 120
+          },
+          {
+            "itemId": 6002,
+            "ratePerMinute": 60
+          }
+        ],
+        "buildings": 1663,
+        "requestAndResult": "random/case-17.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 18,
+        "mode": 3,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 1124,
+            "ratePerMinute": 15
+          }
+        ],
+        "buildings": 1128,
+        "requestAndResult": "random/case-18.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 19,
+        "mode": 4,
+        "density": "standard",
+        "targets": [
+          {
+            "itemId": 2040,
+            "ratePerMinute": 6
+          }
+        ],
+        "buildings": 2768,
+        "requestAndResult": "random/case-19.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 20,
+        "mode": 1,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 1111,
+            "ratePerMinute": 30
+          }
+        ],
+        "buildings": 780,
+        "requestAndResult": "random/case-20.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 21,
+        "mode": 2,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 1126,
+            "ratePerMinute": 30
+          }
+        ],
+        "buildings": 3928,
+        "requestAndResult": "random/case-21.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 22,
+        "mode": 3,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 2202,
+            "ratePerMinute": 3
+          }
+        ],
+        "buildings": 1413,
+        "requestAndResult": "random/case-22.json"
+      },
+      {
+        "seed": 20261115,
+        "index": 23,
+        "mode": 4,
+        "density": "dense",
+        "targets": [
+          {
+            "itemId": 1110,
+            "ratePerMinute": 15
+          },
+          {
+            "itemId": 1126,
+            "ratePerMinute": 30
+          }
+        ],
+        "buildings": 3489,
+        "requestAndResult": "random/case-23.json"
+      }
+    ]
+  },
+  "largeCacheRegression": {
+    "target": "构造矩阵120/min",
+    "machines": 180,
+    "buildings": 48725,
+    "areaGrid2": 14130,
+    "seconds": 119.3348445,
+    "result": "large-cache/result.json"
+  },
+  "fastBeltRegression": {
+    "target": "极速传送带120/min，行星塔",
+    "beforeAspect": 1.96875,
+    "afterAspect": 1.394736842105263,
+    "beforeArea": 2016,
+    "afterArea": 2014,
+    "beforeBeltMeters": 2018.1399662316737,
+    "afterBeltMeters": 2248.3356596768717,
+    "contract": "保留2塔、产能、端口及供需校验；面积不增加，长宽比不超过1.6，带长最多比旧上限增加15%，且形状×带长综合代价必须改善。"
+  },
+  "limitations": [
+    "低速带需要28路原料及独立出料，折排后接线成本上升；没有声称全部指标同时改善。",
+    "面积为格网包络，带长为唯一实际带间连接弦长；排间距为本案例机器中心行的最大间距，不冒充净空距离。",
+    "主要四例单独运行用于耗时比较；随机和大缓存回归与其他检查有并行，不用这些耗时声称性能收益。",
+    "平面示意图由导出记录绘制，建筑外框仅用于观察，不能替代游戏或原型碰撞校验。",
+    "检查属于离线导出与数值规则验证，尚未进行游戏内长期运行实测。"
+  ],
+  "artifactRoot": "../runtime-shots/square-layout",
+  "validationCommands": [
+    {
+      "command": "go test ./helper/quant ./helper/factory/... ./helper/blueprint/build/... -count=1 -timeout 15m",
+      "result": "passed"
+    },
+    {
+      "command": "go build ./...",
+      "result": "passed"
+    },
+    {
+      "command": "wails build -s -skipbindings -m -nosyncgomod -nopackage -o DysonSphereBox-qa.exe",
+      "result": "passed",
+      "note": "本次只改后端布局，复用上一轮已通过构建的前端；公开字段未变。"
+    }
+  ],
+  "testApplication": {
+    "path": "DysonSphereBox-qa.exe",
+    "sha256": "7b6120c40fb20063037124f32759e283956266340e2efc632341e7d7ccf35683"
+  },
+  "artifactPathSemantics": "所有案例、示意图、测试程序路径均相对于artifactRoot。"
+}

@@ -29,6 +29,8 @@ func CloneQuantPlan(plan quant.Result) (quant.Result, error) {
 // 使用：服务生成和导出前复核；边界：无论客户端传入、遗漏还是篡改流图，都必须由调用方恢复后端快照，不能直接使用候选图。
 func MatchQuantSnapshot(trusted, candidate quant.Result) bool {
 	trusted.FlowGraph, candidate.FlowGraph = nil, nil
+	// 统计同样是只读派生数据；生成使用服务端快照重算，旧客户端无需携带它。
+	trusted.Statistics, candidate.Statistics = nil, nil
 	// 外供来源标记同样由服务保存的求解请求派生；旧工作区缺字段不改变真实原料数量。
 	trusted.ExternalInputItemIDs, candidate.ExternalInputItemIDs = nil, nil
 	return reflect.DeepEqual(trusted, candidate)

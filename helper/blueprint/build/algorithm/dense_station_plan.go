@@ -158,6 +158,9 @@ func (b *builder) assembleDenseStationRows(ctx context.Context, input contract.S
 
 // denseStationStreetEligible 职责：选择已具备真实连续端口来源的塔街道；使用：独立街道候选；边界：喷涂/监测由共享附件构造及真实接驳证明，不改变可信生产配置。
 func (b *builder) denseStationStreetEligible(production quant.Production, recipe quant.Recipe) bool {
+	if b.setting.EnableIntermediateBuffer {
+		return false
+	}
 	return production.MachineCount > 1 && b.referenceLowTrackEligible(production, recipe)
 }
 

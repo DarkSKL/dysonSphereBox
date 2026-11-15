@@ -39,6 +39,8 @@ type connectedLayoutVariant struct {
 	splitterModel  int16
 	// bentRows 职责：选择真实短run的L/U折行；使用：独立密铺候选；边界：直线方案保留，不按外包矩形独占折角空间。
 	bentRows bool
+	// translateCompact 职责：增加独立移近候选；使用：行间空档优化；边界：保留未经平移的可行方案。
+	translateCompact bool
 }
 
 // connectedLayoutVariants 职责：生成有限的矩形/轮廓排版候选；使用：布局测试与生成器扩展；边界：不扩大候选预算，不绕过碰撞和路线规则。
@@ -108,6 +110,13 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 				}
 			}
 		}
+		original := append([]connectedLayoutVariant{}, variants...)
+		for _, variant := range original {
+			if variant.Compact && !variant.street && !variant.refine && !variant.capacityFill && !variant.producerSplits && !variant.bentRows {
+				variant.translateCompact = true
+				variants = append(variants, variant)
+			}
+		}
 	}
 	result, err := b.generateConnectedVariants(ctx, req, dataset, variants)
 	if err == nil && removed > 0 {
@@ -118,6 +127,7 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 
 // generateConnectedVariants 职责：用同一完整流水线比较显式候选集合；使用：公开候选及同条件回归；边界：每个候选独立完成装配与终检，不复用其它候选的实体。
 func (b *builder) generateConnectedVariants(ctx context.Context, req Request, dataset *quant.Dataset, variants []connectedLayoutVariant) (Result, error) {
+	variants = deduplicateConnectedVariants(ctx, req, variants)
 	layouts := len(variants)
 	budget := layouts * 2
 	var best *Result
@@ -195,6 +205,10 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 			candidate.connectedHorizontalPacking = variants[layoutIndex].Horizontal
 			candidate.connectedGlobalPower = variants[layoutIndex].GlobalPower
 			if req.Density == densityDense {
+				if variants[layoutIndex].translateCompact {
+					// 只为有限新增候选移近独立行组，原布局继续参加完整比较。
+					ctx = context.WithValue(ctx, denseSpatialCompactKey{}, true)
+				}
 				candidate.denseSpatial, candidate.denseSpatialOrder = true, variants[layoutIndex].denseOrder
 				candidate.denseMaxSpan, candidate.denseRefine = variants[layoutIndex].denseSpan, variants[layoutIndex].refine
 				candidate.denseStreetCandidate, candidate.denseStreetRotation = variants[layoutIndex].street, variants[layoutIndex].streetRotation
@@ -227,6 +241,7 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 				splitterModel, _ := splitterGateModel(ctx)
 				parameters += fmt.Sprintf(";producerSplits=%t;splitterModel=%d", producerSplits, splitterModel)
 				parameters += fmt.Sprintf(";bentRows=%t", variants[layoutIndex].bentRows)
+				parameters += fmt.Sprintf(";translationCompact=%t", variants[layoutIndex].translateCompact)
 			}
 			if err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, compact); err != nil {
 				searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "assembly", err), candidate.logistics)
@@ -330,7 +345,7 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 		}
 	}
 	if stoppedAfterFeasibleWave {
-		searchMessage += "；大型原生直连连续复用空闲计算槽，首个完整候选通过终检后最多比较5秒，并按原索引归约所有已完成候选；临近父截止时预留5秒返回，未完成候选取消且不作为部分蓝图返回"
+		searchMessage += "；原生直连连续复用空闲计算槽，首个完整候选通过终检后最多比较5秒，并按原索引归约所有已完成候选；临近父截止时预留5秒返回，未完成候选取消且不作为部分蓝图返回"
 	}
 	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: searchMessage})
 	return *best, nil
@@ -409,6 +424,9 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 // prepareConnectedRows 职责：装配统一机器行和逐物品过滤端口但不决定全局运输拓扑；使用：直连带与可扩展混带环路共用局部几何；边界：调用方必须继续完成全图路由与最终规则，不能直接编码半成品。
 func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset *quant.Dataset, heightLimit float64, compact bool) error {
 	b.generationCtx = ctx
+	if b.setting.EnableIntermediateBuffer {
+		b.denseSpatial, b.connectedGlobalPower = true, true
+	}
 	if b.connectedGlobalPower {
 		originalPower := b.setting.NeedPower
 		disabled := false
@@ -418,6 +436,9 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 	rows, err := b.planTransportRows(ctx, req, dataset)
 	if err != nil {
 		return err
+	}
+	if len(byproductPriorityGroups(b.transportRoutes)) > 0 {
+		b.denseSpatial, b.connectedGlobalPower = true, true
 	}
 	x, y, columnWidth := 0., 0., 0.
 	horizontal := req.SurfaceLayout != nil && req.SurfaceLayout.Mode == "autoTropic" && (!compact || b.connectedHorizontalPacking)
@@ -530,6 +551,11 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 		// 接入干线属于机器行真实占地，必须在装箱前生成，否则后补的西侧带会侵入上一列。
 		block := b.all[begin:]
 		if b.denseSpatial {
+			if b.setting.EnableIntermediateBuffer {
+				var units []denseSpatialUnit
+				block, units = b.detachProductionBuffers(row, block)
+				denseUnits = append(denseUnits, units...)
+			}
 			denseUnits = append(denseUnits, denseSpatialUnit{entities: block, row: row})
 			continue
 		}
@@ -587,6 +613,10 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			return err
 		}
 	}
+	denseUnits, err = b.prepareByproductPriorityInputs(ctx, denseUnits)
+	if err != nil {
+		return err
+	}
 	if b.directBoundaryUnits != nil {
 		if !b.denseSpatial {
 			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "黑盒边界设施必须参与全场密铺占位"}
@@ -594,6 +624,9 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 		for _, route := range b.transportRoutes {
 			if route.to != nil {
 				route.end = route.to.inputEndpoint(route.edge.ItemID, route.inputRole)
+				if route.priorityInput != nil {
+					route.end = route.priorityInput
+				}
 			}
 		}
 		boundaryUnits, err := b.directBoundaryUnits(ctx, rows)
@@ -630,7 +663,7 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 		if err != nil {
 			return err
 		}
-		if b.directBoundaryUnits != nil && b.directBoundaryExtentScale > 0 {
+		if b.directBoundaryUnits != nil && (b.directBoundaryExtentScale > 0 || len(b.byproductInputs) > 0) {
 			// 包络只用于估算有限搜索空间；实际摆放仍允许这些独立实体轮廓交错，不占据整块矩形。
 			area, shortest := 0., 0.
 			for _, unit := range denseUnits {
@@ -639,7 +672,16 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 				area += width * height
 				shortest = math.Max(shortest, math.Min(width, height))
 			}
-			heightLimit = math.Max(heightLimit, math.Max(shortest+4, math.Ceil(math.Sqrt(area)*b.directBoundaryExtentScale)))
+			scale := b.directBoundaryExtentScale
+			if len(b.byproductInputs) > 0 {
+				scale = math.Max(scale, 1.2)
+			}
+			heightLimit = math.Max(heightLimit, math.Max(shortest+4, math.Ceil(math.Sqrt(area)*scale)))
+			if b.candidateExtentProbe != nil {
+				b.candidateExtentProbe.area, b.candidateExtentProbe.shortest = area, shortest
+				b.candidateExtentProbe.byproducts = len(b.byproductInputs) > 0
+				return errCandidateExtentReady
+			}
 		}
 		if b.denseStreetCandidate && len(b.denseStreetRoutes) > 0 {
 			heightLimit, err = b.denseConnectedStreetExtent(ctx, denseUnits, heightLimit)
@@ -677,6 +719,9 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 				continue
 			}
 			route.end = route.to.inputEndpoint(route.edge.ItemID, route.inputRole)
+			if route.priorityInput != nil {
+				route.end = route.priorityInput
+			}
 			if route.end == nil {
 				return transportAllocationError(route.edge, route.rate, "配方输入或增产剂没有已验证实体端口")
 			}
@@ -730,6 +775,7 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 	})
 	poles := []*placed{}
 	for _, group := range outputs {
+		groupBegin := len(b.all)
 		if len(group.routes) == 0 {
 			continue
 		}
@@ -749,10 +795,26 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 			cursor = math.Min(cursor, trunk.a.x-1)
 			recycled = true
 		}
+		if b.setting.EnableIntermediateBuffer {
+			buffer, err := b.attachProductionBuffer(row, group.routes[0].edge.ItemID, trunk, cursor)
+			if err != nil {
+				return err
+			}
+			shared = append(shared, buffer.main...)
+			group.belts = append([]*placed(nil), buffer.outlet...)
+			for i, j := 0, len(group.belts)-1; i < j; i, j = i+1, j-1 {
+				group.belts[i], group.belts[j] = group.belts[j], group.belts[i]
+			}
+			trunk = group.belts[0]
+			cursor = trunk.a.x - 1
+		}
 		if b.denseSpatial && (!recycled || b.adapter != nil && b.adapter.density == densityDense) && len(group.routes) == 1 && productionSprayItem(row.info) != group.routes[0].edge.ItemID {
 			route := group.routes[0]
 			route.start, route.path = trunk, []*placed{trunk}
 			route.sharedPath = append([]*placed(nil), group.belts[1:]...)
+			if row.buffers[group.routes[0].edge.ItemID] != nil {
+				route.sharedPath = append([]*placed(nil), shared[:len(shared)-1]...)
+			}
 			if recycled {
 				// 优先门已将回流与纯物品净产出分开；单一去向直接取净出口，保留全部共同毛流段用于容量核验。
 				route.sharedPath = append([]*placed(nil), shared[:len(shared)-1]...)
@@ -760,6 +822,9 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 			trunk.record.Parameters = []int32{int32(route.edge.ItemID), int32(math.Ceil(route.rate))}
 			if route.to == nil {
 				route.boundary = trunk
+			}
+			if buffer := row.buffers[route.edge.ItemID]; buffer != nil {
+				buffer.entities = append([]*placed(nil), b.all[groupBegin:]...)
 			}
 			continue
 		}
@@ -851,6 +916,9 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 				cursor--
 			}
 		}
+		if buffer := row.buffers[group.routes[0].edge.ItemID]; buffer != nil {
+			buffer.entities = append([]*placed(nil), b.all[groupBegin:]...)
+		}
 	}
 	return nil
 }
@@ -929,6 +997,11 @@ func (b *builder) connectedBlockShape(ctx context.Context, row *transportRow, bl
 			return out, &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 		}
 		for shapeIndex, shape := range shapes {
+			if b.setting.EnableIntermediateBuffer && (p.record.ItemID == 2101 || p.record.ItemID == 2106) {
+				// 缓存只在装箱阶段增加少量球面收缩余量；实际碰撞盒和最终验收仍读取原型。
+				shape.Extents[0] += .25
+				shape.Extents[2] += .25
+			}
 			position := world(p.a)
 			box, err := encoding.colliderBox(vector{position[0], position[1], position[2]}, p.record.Yaw, shape)
 			if err != nil {

@@ -6,6 +6,7 @@ type FactoryLayoutControls = {
   mix2: boolean
   needCoaterNet: boolean
   enableFlowMonitor: boolean
+  enableIntermediateBuffer: boolean
 }
 
 /**

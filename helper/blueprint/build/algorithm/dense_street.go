@@ -81,7 +81,9 @@ func (b *builder) buildDenseStreet(ctx context.Context, p quant.Production, r qu
 // selectDenseStreet 职责：在明确构造阶段中比较矩形核心；使用：裸街道和附件入口；边界：阶段标志不改变可信生产数据或完整终检。
 func (b *builder) selectDenseStreet(ctx context.Context, p quant.Production, r quant.Recipe, counts []int, attachments bool) (*denseStreet, error) {
 	limits := []int{1, 2, 3, len(counts)}
+	adaptive := true
 	if attachments && b.denseStreetGroupLimit != 0 {
+		adaptive = false
 		limit := b.denseStreetGroupLimit
 		if limit < 0 {
 			limit = len(counts)
@@ -92,7 +94,8 @@ func (b *builder) selectDenseStreet(ctx context.Context, p quant.Production, r q
 	var best *denseStreet
 	bestScore := math.Inf(1)
 	var lastError error
-	for _, limit := range limits {
+	for next := 0; next < len(limits); next++ {
+		limit := limits[next]
 		if ctx != nil && ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -110,8 +113,17 @@ func (b *builder) selectDenseStreet(ctx context.Context, p quant.Production, r q
 		if width <= 0 || height <= 0 {
 			continue
 		}
+		if adaptive && limit == 1 {
+			// 从实际单段折排的长宽估计接近正方形的组数；只增加最多三个邻近整数候选。
+			ideal := int(math.Round(math.Sqrt(height / width)))
+			for _, extra := range []int{ideal - 1, ideal, ideal + 1} {
+				if extra > 0 && extra <= len(counts) {
+					limits = append(limits, extra)
+				}
+			}
+		}
 		aspect := math.Max(width, height) / math.Min(width, height)
-		score := width * height * math.Max(1, aspect/1.8)
+		score := denseShapeCost(width*height, aspect)
 		if best == nil || score < bestScore {
 			best, bestScore = candidate, score
 		}

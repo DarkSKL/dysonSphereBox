@@ -33,7 +33,7 @@ func denseBalancedFrameEnabled(ctx context.Context) bool {
 // denseBalancedFrameEligible 职责：限制新增搜索到非极区大型原生候选；使用：公开候选登记；边界：小厂、普通模式与极点沿用已有路径。
 func denseBalancedFrameEligible(ctx context.Context, req Request) bool {
 	root, _ := ctx.Value(densityPolarRootKey{}).(bool)
-	if !root || req.Density != densityDense || req.SurfaceLayout == nil || req.Plan.MachineCount < denseNativeLargeMachineThreshold {
+	if !root || req.Density != densityDense || req.SurfaceLayout == nil || !denseNativeLargeRequest(ctx, req) {
 		return false
 	}
 	selection, ok := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)

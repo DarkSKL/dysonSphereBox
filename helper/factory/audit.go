@@ -22,6 +22,7 @@ func RecordWorkspaceExport(targets int) {
 // 使用：服务确认任务仍为最新且全部校验成功后调用；边界：不记录蓝图串、完整方案、用户路径或真实游戏放置保证。
 func RecordGeneration(req build.Request, result build.Result) {
 	data := map[string]interface{}{"planId": req.Plan.PlanID, "mode": req.Mode, "beltLevel": req.Setting.BeltLv, "machines": req.Plan.MachineCount, "buildings": result.BuildingCount, "areas": result.Areas, "result": "success"}
+	data["intermediateBuffer"] = req.Setting.EnableIntermediateBuffer
 	if result.LogisticsSummary != nil {
 		data["requestedBeltLevel"] = req.Setting.BeltLv
 		data["beltLevel"] = result.LogisticsSummary.BeltLevel

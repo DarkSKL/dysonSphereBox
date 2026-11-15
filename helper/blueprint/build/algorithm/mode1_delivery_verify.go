@@ -68,7 +68,8 @@ func (b *builder) validateMode1Deliveries() error {
 			}
 		}
 		for _, input := range p.inputs {
-			sameHeight := b.polarFrame == nil || math.Abs(input.a.z-g.end.a.z) < 1e-5
+			// 普通投影与原生球面都保留真实高度；二、三层入口不能被误当作地面交付占位。
+			sameHeight := math.Abs(input.a.z-g.end.a.z) < 1e-5
 			if !alive[input] || input == g.end || math.Abs(input.a.x-g.end.a.x) > 1e-5 || sameHeight && math.Abs(input.a.y-g.end.a.y) < 2-1e-5 {
 				return fail("交付口没有与原料入口保持独立同侧边界")
 			}
@@ -127,6 +128,13 @@ func (b *builder) validateMode1Deliveries() error {
 			}
 			for _, arm := range r.filters {
 				arms[arm] = true
+			}
+			if buffer := r.from.buffers[r.edge.ItemID]; buffer != nil {
+				for _, arm := range buffer.outArms {
+					if alive[arm] && allowed[arm.output] {
+						arms[arm] = true
+					}
+				}
 			}
 			if r.from.line != nil {
 				for _, arm := range r.from.line.all {

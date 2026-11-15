@@ -13,6 +13,14 @@ import (
 
 // validateDynamicFacilities 职责：验证端口修正和分拣器互相占用；使用：最终记录出口；边界：按游戏预览规则分拣器与非分拣器互免，不混进静态占用集合。
 func (encoding *surfaceEncoding) validateDynamicFacilities(ctx context.Context, records []blueprint.Building) error {
+	restore, err := encoding.beginPositionSnapshot(records)
+	if err != nil {
+		return err
+	}
+	defer restore()
+	if err := encoding.validateTankBufferPorts(ctx, records); err != nil {
+		return err
+	}
 	if err := encoding.validateSurfacePowerNodeSpacing(ctx, records); err != nil {
 		return err
 	}

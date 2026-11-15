@@ -100,11 +100,7 @@ func (encoding *surfaceEncoding) surfaceInserterBoxesMeasured(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	secondary := append([]blueprint.Building(nil), records...)
-	for i := range secondary {
-		secondary[i].LocalOffset = records[i].LocalOffset2
-	}
-	second, err := encoding.surfaceWorldPositions(secondary)
+	second, err := encoding.surfaceSecondPositions(records)
 	if err != nil {
 		return nil, err
 	}

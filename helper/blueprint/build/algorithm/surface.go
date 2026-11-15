@@ -44,7 +44,7 @@ func normalizeSurfaceLayout(layout *SurfaceLayout) (*SurfaceLayout, error) {
 		if err != nil {
 			return nil, err
 		}
-		normalized.Mode, normalized.ExpandAdjacent, normalized.LatitudeGridIndex = "explicitTropic", false, bandCenter(band)
+		normalized.Mode, normalized.LatitudeGridIndex = "explicitTropic", bandCenter(band)
 	}
 	if normalized.Mode == "autoTropic" {
 		normalized.LatitudeGridIndex = 0

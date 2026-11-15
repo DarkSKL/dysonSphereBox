@@ -37,7 +37,8 @@ func (b *builder) generateDenseFlyLayout(ctx context.Context, req Request, datas
 	if hasStreet {
 		variants = append(variants, denseFlyLayoutVariant{blackbox: true, street: true})
 	}
-	if !recycle {
+	// 旧逐行配送没有中转缓存或联产优先合流；不能先花时间装配再在终检拒绝这些必然不合格的候选。
+	if !recycle && !b.setting.EnableIntermediateBuffer && !needsByproductPriority(req.Plan, b.flowGraph, dataset) {
 		variants = append(variants, denseFlyLayoutVariant{})
 		if hasStreet {
 			variants = append(variants, denseFlyLayoutVariant{street: true})
@@ -48,7 +49,9 @@ func (b *builder) generateDenseFlyLayout(ctx context.Context, req Request, datas
 
 // denseFlyLayoutVariant 职责：声明一次完整配送候选的拓扑和核心策略；使用：公开选择与同条件审计；边界：不同策略必须分别通过全部生成终检。
 type denseFlyLayoutVariant struct {
-	blackbox  bool
+	blackbox bool
+	// ground 职责：使用独立地面机器轨而非低层参考轨；使用：参考轨失败后的同密度备选；边界：仍执行全部原生终检。
+	ground    bool
 	street    bool
 	groups    int
 	clearance float64
@@ -61,7 +64,7 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 	var lastError error
 	diagnostics := []SearchCandidateDiagnostic{}
 	index, rejected := 0, 0
-	plannedPreviews := b.planCandidatePreviews(len(variants) * 6)
+	groundAdded := false
 	for variantIndex := 0; variantIndex < len(variants); variantIndex++ {
 		option := variants[variantIndex]
 		useStreet := option.street
@@ -78,16 +81,14 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 			diagnostics      []SearchCandidateDiagnostic
 			assemblyFailures int
 		}
-		type flyInput struct {
-			scale float64
-			order int
-		}
-		inputs := []flyInput{{.85, 2}, {.85, 3}, {1, 2}, {1, 3}, {1.2, 2}, {1.2, 3}}
+		inputs := []flyInput{{scale: .85, order: 2}, {scale: .85, order: 3}, {scale: 1, order: 2}, {scale: 1, order: 3}, {scale: 1.2, order: 2}, {scale: 1.2, order: 3}}
 		if denseNativeLatitude(req) {
 			// 高纬高度预算会让多个尺度收敛到同一排布；保留面积优先的两种次序作为独立候选。
 			inputs[4].order, inputs[5].order = 0, 1
+			inputs[4].nativeReserve, inputs[5].nativeReserve = true, true
 		}
-		previews := plannedPreviews[variantIndex*6 : (variantIndex+1)*6]
+		inputs = b.normalizeDenseFlyInputs(ctx, req, dataset, option, inputs)
+		previews := b.planCandidatePreviews(len(inputs))
 		groupBase := index
 		waveErr := search.Waves(ctx, inputs, b.candidateWorkers(ctx, len(inputs)), func(ctx context.Context, localIndex int, input flyInput) (evaluation flyEvaluation) {
 			ctx, finishPerformance := beginCandidatePerformance(ctx, "dense-fly", groupBase+localIndex)
@@ -115,6 +116,9 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 				candidate.preview = previews[localIndex]
 			}
 			candidateContext := ctx
+			if option.ground {
+				candidateContext = context.WithValue(candidateContext, denseGroundTracksKey{}, true)
+			}
 			if useStreet {
 				candidateContext = context.WithValue(ctx, denseStreetFoldClearanceKey{}, clearance)
 			}
@@ -123,7 +127,7 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 			}
 			candidate.generationCtx, candidate.flowGraph = candidateContext, b.flowGraph
 			candidate.denseSpatial, candidate.denseSpatialOrder, candidate.flyCompact = true, order, true
-			candidate.nativeCapacityReserve = denseNativeLatitude(req) && localIndex >= 4
+			candidate.nativeCapacityReserve = input.nativeReserve
 			candidate.denseStreetGroupLimit = option.groups
 			candidate.warnings = append(candidate.warnings, b.warnings...)
 			candidate.logistics = newLogisticsSummary(*b.flowGraph, candidate.setting)
@@ -131,6 +135,7 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 			candidate.beginPreview()
 			parameters := fmt.Sprintf("detachedFacilities=true;street=%t;streetGroups=%d;streetClearance=%.2f;extentScale=%.2f;order=%d", useStreet, option.groups, clearance, scale, order)
 			parameters += fmt.Sprintf(";blackbox=%t", option.blackbox)
+			parameters += fmt.Sprintf(";groundMachineTracks=%t", option.ground)
 			if option.blackbox {
 				span := 12
 				if order%2 == 1 {
@@ -194,9 +199,13 @@ func (b *builder) generateDenseFlyVariants(ctx context.Context, req Request, dat
 		if waveErr != nil {
 			return Result{}, previewContextError(waveErr)
 		}
+		if option.blackbox && !option.ground && passed == 0 && assemblyFailures > 0 && !groundAdded {
+			// 低层参考轨可能受球面/货物校正影响；先换同密度机器轨拓扑，再尝试整厂球面重排。
+			groundAdded = true
+			variants = append(variants, denseFlyLayoutVariant{blackbox: true, ground: true})
+		}
 		if useStreet && !option.blackbox && option.groups == 0 && passed == 0 && assemblyFailures > 0 {
 			variants = append(variants, denseFlyLayoutVariant{street: true, groups: 3}, denseFlyLayoutVariant{street: true, groups: 2, clearance: .2}, denseFlyLayoutVariant{street: true, groups: 2, clearance: .4}, denseFlyLayoutVariant{street: true, groups: 2, clearance: .6}, denseFlyLayoutVariant{street: true, groups: 1})
-			plannedPreviews = append(plannedPreviews, b.planCandidatePreviews(30)...)
 		}
 	}
 	if err := b.checkGeneration("配送全场密铺提交"); err != nil {
@@ -480,6 +489,10 @@ func (b *builder) assembleDenseFlyLayout(ctx context.Context, req Request, datas
 		area += (math.Ceil(hi.x-lo.x) + 1) * (math.Ceil(hi.y-lo.y) + 1)
 	}
 	limit := math.Max(16, math.Ceil(math.Sqrt(area)*scale))
+	if b.candidateExtentProbe != nil {
+		b.candidateExtentProbe.area = area
+		return errCandidateExtentReady
+	}
 	if err := b.placeDenseSpatialUnits(ctx, units, limit); err != nil {
 		return err
 	}

@@ -171,6 +171,9 @@ func finalizeDenseFlyBlackbox(ctx context.Context, b *builder, _ []blueprint.Bui
 	}
 	for _, entity := range b.all {
 		if (entity.record.ItemID == 2101 || entity.record.ItemID == 2107) && !claimed[entity] {
+			if b.isProductionBuffer(entity) {
+				continue
+			}
 			return fail("存在未登记用途的额外箱体或配送器")
 		}
 	}

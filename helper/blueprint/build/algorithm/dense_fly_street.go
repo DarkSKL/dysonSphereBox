@@ -13,6 +13,9 @@ import (
 
 // denseFlyStreetEligible 职责：确认配送产线具备真实容量组和已支持的附件拓扑；使用：候选准备和实际装配共用；边界：不静默丢弃喷涂、监测器或反馈回路。
 func denseFlyStreetEligible(p quant.Production, r quant.Recipe, counts []int, setting Setting) bool {
+	if setting.EnableIntermediateBuffer {
+		return false
+	}
 	return len(counts) >= 1 && p.MachineCount >= 2 && !recipeHasMachineRecycle(r) && referenceLowRecipe(p, r) && referenceSingleArmsSufficient(p, r, setting.InserterLv)
 }
 

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import {ArrowRightLeft, Factory, PackageOpen, Settings2, Trash2, X} from '@lucide/vue'
-import {computed} from 'vue'
+import {computed, ref} from 'vue'
 import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
 import type {FlowNodeData} from '../../../pages/services/dysonSphere/factory-graph'
 import IconSelect from './icon-select.vue'
 import ItemIcon from './item-icon.vue'
 import LatitudeGlobe from './latitude-globe.vue'
+import ByproductBalance from './byproduct-balance.vue'
 import {generationDebugOptions} from '../../../composables/dysonSphere/useGenerationTimeline'
 
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
@@ -41,6 +42,17 @@ const recipe = computed(() => props.node ? props.w.selectedRecipe(props.node.ite
 const override = computed(() => props.w.overrideFor(recipe.value))
 const production = computed(() => props.node?.production)
 const capacity = computed(() => props.node?.capacity)
+const byproducts = computed(() => (props.w.plan?.byproducts ?? []).filter(balance => !props.node || balance.itemId === props.node.itemId || props.node.production?.outputs.some(output => output.itemId === balance.itemId)))
+const sprayPreset = ref(2)
+const sprayPoints = ref(4)
+const sprayPresets = [{label: '额外产出优先', value: 2}, {label: '统一加速', value: 1}, {label: '不喷涂', value: 0}]
+// 批量喷涂只选择各配方支持的模式，之后仍可逐配方调整；同一次点击由工作区防抖合并重算。
+const applySprayScheme = (): void => {
+  for (const recipe of props.w.detail?.recipes ?? []) {
+    const productionMode = sprayPreset.value === 2 && (recipe.proliferator & 2) ? 2 : sprayPreset.value > 0 && (recipe.proliferator & 1) ? 1 : 0
+    props.w.updateOverride(recipe, {productionMode, increasePoints: productionMode > 0 ? sprayPoints.value : 0})
+  }
+}
 const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入', production: '产线', target: '目标产物', leftover: '剩余副产物'}
 const importedRows = computed(() => {
   const rows = new Map<number, {recipeId: number; count: number; first: number; outputs: string}>()
@@ -129,8 +141,10 @@ const importedRows = computed(() => {
         </template>
         <template v-else>
           <div class="metric-grid single ds-bracket"><div><span>预计剩余</span><strong class="type-display">{{ w.number(node.expectedRate) }}<small>/min</small></strong></div></div>
-          <n-button size="small" block secondary @click="w.addTargetItem(node.itemId, node.expectedRate)">作为目标产出</n-button>
+          <p class="capacity-hint">这是每分钟持续过剩的产物。请连接外部接收或消耗设施；列为交付目标只改变用途标记，不能消除实际物料。</p>
+          <n-button size="small" block secondary @click="w.addTargetItem(node.itemId, node.expectedRate)">列为交付目标</n-button>
         </template>
+        <ByproductBalance :balances="byproducts" :format="w.number" :stale="w.quantStale" />
       </div>
     </template>
 
@@ -167,6 +181,15 @@ const importedRows = computed(() => {
             <span v-for="name in w.mineralized" :key="name" class="supply-chip"><ItemIcon :name="name" :size="16" />{{ name }}<button type="button" class="chip-remove" :aria-label="`${name} 改为本地生产`" @click="w.mineralized = w.mineralized.filter(value => value !== name)"><X :size="11" /></button></span>
           </div>
         </template>
+
+        <h3>批量喷涂方案</h3>
+        <div class="field-row">
+          <label class="field">模式<IconSelect v-model:value="sprayPreset" size="small" :options="sprayPresets" /></label>
+          <label class="field">点数<IconSelect v-model:value="sprayPoints" size="small" :disabled="sprayPreset === 0" :options="w.pointOptions.filter(option => option.value > 0)" /></label>
+        </div>
+        <p class="capacity-hint">额外产出不可用时采用加速；不支持喷涂的配方保持不喷涂。应用后仍可逐配方调整，同配方的联产物共享设置。</p>
+        <n-button size="small" block secondary :disabled="w.loadingDataset" @click="applySprayScheme">应用到全部配方</n-button>
+        <ByproductBalance :balances="byproducts" :format="w.number" :stale="w.quantStale" />
 
         <h3><Factory :size="13" />蓝图布局</h3>
         <!-- ~ 密度切换 -->
@@ -217,6 +240,8 @@ const importedRows = computed(() => {
         <div class="flags">
           <n-checkbox v-model:checked="w.layout.needPower" size="small">生成供电设施</n-checkbox>
           <n-checkbox v-model:checked="w.layout.enableFlowMonitor" size="small">生成流速监测器</n-checkbox>
+          <n-checkbox v-model:checked="w.layout.enableIntermediateBuffer" size="small">生成中转缓存箱/储液罐</n-checkbox>
+          <p v-if="w.layout.enableIntermediateBuffer" class="capacity-hint">在产物主带旁增加缓存：箱子从同一主带取料、补回，主带保持直通；储液罐采用优先直行的溢流旁路。超密度布局会预留箱罐顶部扩建空间。缓存速度不限制主带运力，有限库存只缓解短时积压，持续过剩仍需外运。</p>
         </div>
       </div>
     </template>

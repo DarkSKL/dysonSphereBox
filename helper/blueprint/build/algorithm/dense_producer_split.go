@@ -75,6 +75,9 @@ type denseProducerSplitLeaf struct {
 
 // planDenseProducerSplit 职责：登记可替换二次带间过滤的真实物理去向；使用：attachFilteredOutputs的独立分支；边界：不创建半成品设施，多产物、回流、自供剂和单去向均保留原实现。
 func (b *builder) planDenseProducerSplit(row *transportRow) (bool, error) {
+	if b.setting.EnableIntermediateBuffer {
+		return false, nil
+	}
 	if !b.denseSpatial || b.generationCtx == nil || b.adapter != nil && b.adapter.density != densityDense {
 		return false, nil
 	}

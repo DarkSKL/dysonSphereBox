@@ -48,7 +48,7 @@ export const useQuantWorkspace = () => {
   const denseLatitudeZone = ref('equator')
   // 蓝图名称：默认按目标自动生成（如「电磁矩阵 60 + 能量矩阵 60」）；用户手动修改后保持手动值，清空即恢复自动。
   const customName = ref('')
-  const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, enableFlowMonitor: false, useMixed: false, mix2: false, needCoaterNet: false})
+  const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, enableFlowMonitor: false, enableIntermediateBuffer: false, useMixed: false, mix2: false, needCoaterNet: false})
   const surfaceLayout = reactive({mode: 'autoTropic', gridSegment: 200, latitudeGridIndex: 0, expandAdjacent: true})
   const plan = ref<quant.Result | null>(null)
   const generated = ref<build.Result | null>(null)
@@ -107,8 +107,9 @@ export const useQuantWorkspace = () => {
     if (!denseLatitudeOptions.value.length) return '当前后端尚未提供建造位置选项。请重启应用或开发服务，再刷新页面。'
     return denseLatitudeOption.value ? '' : '当前建造位置不可用，请重新选择。'
   })
+  // 超密度以选择的位置为放置基准，允许后端比较跨相邻纬带的完整矩形；最终已验证范围由结果说明。
   const requestSurfaceLayout = computed(() => density.value === 'dense'
-    ? {mode: 'explicitTropic', gridSegment: 200, latitudeGridIndex: 0, expandAdjacent: false, latitudeZone: denseLatitudeZone.value}
+    ? {mode: 'explicitTropic', gridSegment: 200, latitudeGridIndex: 0, expandAdjacent: true, latitudeZone: denseLatitudeZone.value}
     : {...surfaceLayout, mode: surfaceLayout.mode === 'explicitTropic' ? 'autoTropic' : surfaceLayout.mode})
   const querySignature = computed(() => JSON.stringify([datasetKey.value, targets.value.map(({itemId, ratePerMinute}) => ({itemId, ratePerMinute})), requestSettings.value, requestScheme.value]))
   const generationSignature = computed(() => JSON.stringify([querySignature.value, mode.value, density.value, detail.value?.densityProfileVersion, requestLayout.value, requestSurfaceLayout.value]))

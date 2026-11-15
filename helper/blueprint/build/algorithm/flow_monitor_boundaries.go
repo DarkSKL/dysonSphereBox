@@ -287,6 +287,9 @@ func (b *builder) validateBoundaryFlowMonitorLayout(ctx context.Context) error {
 		return err
 	}
 	encoding := newPlanarRuleEncoding()
+	if err := b.alignFlowMonitorDirections(ctx, encoding, records, true); err != nil {
+		return err
+	}
 	if err := encoding.validateStaticColliders(ctx, records); err != nil {
 		return err
 	}

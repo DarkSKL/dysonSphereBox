@@ -35,7 +35,7 @@ const sprayLabel = computed(() => props.context.sprayOptions(props.data.itemId).
 // 分区：多目标时节点左侧色条与顶部标签显示所属目标分区；聚焦某分区时其它节点变淡。
 const zone = computed(() => props.context.zoneOf(props.data.productionIndex))
 const dimmed = computed(() => Boolean(props.context.activeZone && zone.value && zone.value.key !== props.context.activeZone))
-const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入', production: '产线', target: '目标', leftover: '剩余'}
+const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入', production: '产线', target: '目标', leftover: '持续过剩 · 须外运'}
 </script>
 
 <template>
@@ -77,6 +77,7 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
     <div v-else-if="data.kind === 'source' && context.isExternal(data.itemId)" class="node-body nodrag">
       <button type="button" class="node-link" :disabled="context.locked" @click="context.setExternal(data.itemId, false)">改为本地生产</button>
     </div>
+    <div v-else-if="data.kind === 'leftover'" class="node-body">须持续取走；库存满会阻塞联产。</div>
 
     <!-- 端口：每个物品一个连接点，标签只显示期望净流量，不以设备满负荷替换守恒边 -->
     <div class="node-ports" title="端口为期望净流量 /min">
@@ -110,7 +111,7 @@ const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入',
 .factory-node { transition: opacity 150ms; }
 .is-source { --accent: var(--ds-success); width: 200px; }
 .is-target { --accent: var(--ds-warning); width: 200px; }
-.is-leftover { --accent: var(--ds-text-muted); width: 200px; }
+.is-leftover { --accent: var(--ds-warning); width: 200px; }
 .node-head { position: relative; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--ds-border-subtle); padding: 8px 10px 8px 12px; }
 .node-head::before { content: ''; position: absolute; top: 9px; bottom: 9px; left: 0; width: 2px; background: var(--accent); }
 .node-title { display: flex; min-width: 0; flex: 1; flex-direction: column; }

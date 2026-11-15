@@ -36,7 +36,7 @@ func (b *builder) planDenseBoundaries(ctx context.Context, positions []vector, l
 	}
 	pitch := 2.
 	rows := int((top-bottom)/pitch) + 1
-	if !b.setting.EnableFlowMonitor && 3*rows-len(groups) < len(positions) {
+	if !b.setting.EnableFlowMonitor && (len(groups) > rows || 3*rows-len(groups) < len(positions)) {
 		pitch = 1
 		rows = int(top-bottom) + 1
 	}
@@ -52,6 +52,7 @@ func (b *builder) planDenseBoundaries(ctx context.Context, positions []vector, l
 	left = min(left, handoff-3)
 	plan := &denseBoundaryLayout{handoffX: handoff, levelLimitX: handoff + .5, maximumX: math.Floor(low.x) - .5, minimumX: left, minimumY: bottom, maximumY: top, outputs: make(map[*transportRoute]vector)}
 	reserved := make(map[int]bool)
+	outputRows := make(map[int]bool)
 	for _, group := range groups {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -66,11 +67,8 @@ func (b *builder) planDenseBoundaries(ctx context.Context, positions []vector, l
 		sort.Float64s(y)
 		desired, chosen, distance := y[len(y)/2], -1, math.Inf(1)
 		for row := 0; row < rows; row++ {
-			// 一格紧凑输入仍为地面交付保留两格间隔，不能破坏输出隔离契约。
-			if pitch == 1 && row%2 != 0 {
-				continue
-			}
-			if cost := math.Abs(bottom + float64(row)*pitch - desired); !reserved[row] && cost < distance {
+			// 并行交付带按一格真实格距独立排列；原料地面槽仍保留两格隔离，不能混用同一个占位表。
+			if cost := math.Abs(bottom + float64(row)*pitch - desired); !outputRows[row] && cost < distance {
 				chosen, distance = row, cost
 			}
 		}
@@ -78,6 +76,7 @@ func (b *builder) planDenseBoundaries(ctx context.Context, positions []vector, l
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "生产实体范围内缺少独立地面交付槽"}
 		}
 		reserved[chosen] = true
+		outputRows[chosen] = true
 		if pitch == 1 {
 			if chosen > 0 {
 				reserved[chosen-1] = true

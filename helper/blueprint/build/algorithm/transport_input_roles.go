@@ -1,6 +1,9 @@
 package build
 
-import "sort"
+import (
+	"math"
+	"sort"
+)
 
 // 文件职责：维护直连输入的配方/供剂实体身份。
 // 使用：普通mode1与街道附件共同绑定；边界：同物料的两个用途保持独立带头，不复制规范需求。
@@ -51,8 +54,9 @@ func (b *builder) prepareConnectedInputStub(row *transportRow, item int, role pr
 		length = max(length, count*3+2)
 	}
 	points := []vector{}
-	for x := endpoint.a.x - float64(length); x < endpoint.a.x; x++ {
-		points = append(points, vector{x, endpoint.a.y, endpoint.a.z})
+	direction := connectedInputOutward(endpoint)
+	for step := length; step > 0; step-- {
+		points = append(points, vector{endpoint.a.x + float64(step)*direction.x, endpoint.a.y + float64(step)*direction.y, endpoint.a.z})
 	}
 	stub := b.byPath(points)
 	connect(stub[len(stub)-1], endpoint)
@@ -68,6 +72,19 @@ func (b *builder) prepareConnectedInputStub(row *transportRow, item int, role pr
 		}
 	}
 	return stub
+}
+
+// connectedInputOutward 职责：避免西向接头折回已有反向轨道；使用：反向机器行与双排尾组；边界：原西侧接入未侵入轨道时保留原布局，不改动合法的垂直接驳。
+func connectedInputOutward(endpoint *placed) vector {
+	direction := vector{x: -1}
+	if endpoint == nil || endpoint.output == nil || !surfaceIsBelt(endpoint.output.record.ItemID) {
+		return direction
+	}
+	dx, dy := endpoint.a.x-endpoint.output.a.x, endpoint.a.y-endpoint.output.a.y
+	if dx > 1e-8 && math.Abs(dy) < 1e-8 {
+		return vector{x: 1}
+	}
+	return direction
 }
 
 // bindSprayInput 职责：登记供剂头并保留旧非双用途map兼容；使用：普通喷涂准备和独立附件；边界：已存在的机器原料头不被替换。

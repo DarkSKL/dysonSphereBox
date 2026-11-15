@@ -84,6 +84,11 @@ func (b *builder) denseStationMaterialUnitOrder(ctx context.Context, units []den
 			}
 		}
 	}
+	for _, buffer := range b.productionBuffers {
+		if buffer.detached {
+			add(indexOf(buffer.source), indexOf(buffer.intake[0]), 4*math.Sqrt(math.Max(1, buffer.rate)))
+		}
+	}
 	// 相同原料的相邻消费者形成稀疏亲和链，避免大规模同物料工厂产生O(n²)邻接库存。
 	for _, group := range consumers {
 		indices := make([]int, 0, len(group))

@@ -75,7 +75,7 @@ func densityContextBand(ctx context.Context, zone string, segment int) (surfaceP
 // generateDensePolar 职责：先在共享球面坐标内比较有限矩形包络，再检查同目标位置的单环候选；使用：极区和大厂入口；边界：不换产量、设备或地区，不返回失败的部分蓝图。
 func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) (Result, error) {
 	selection, _ := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
-	bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, 200)
+	bands := denseLatitudeAllowedBands(selection, req.SurfaceLayout.ExpandAdjacent)
 	if len(bands) == 0 {
 		return Result{}, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "所选区域没有原生纬带"}
 	}
@@ -87,23 +87,14 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 	if selection.position == "north" {
 		preferred = high
 	}
-	sort.SliceStable(bands, func(i, j int) bool {
-		return absInt(bandCenter(bands[i])-preferred) < absInt(bandCenter(bands[j])-preferred)
-	})
 	var last error
+	var bestExpanded *Result
 	retryFootprints := false
-	extents := []int{24, 32, 40, 48, 56, 64}
-	if selection.tier < 5 {
-		extents = denseTargetFrameExtents(bands)
-	}
-	if req.Plan.MachineCount >= denseNativeLargeMachineThreshold {
-		// 大产线先验证容量更充足的包络，所有较窄候选仍保留，避免把总时限耗在小包络上。
-		sort.Sort(sort.Reverse(sort.IntSlice(extents)))
-	}
+	extents := densePolarWindowExtents(ctx, req, bands)
 	for _, extent := range extents {
 		orientations := []bool{false}
 		// 非极区大厂的两侧边缘都需要比较刚体半周对称候选；固定左侧入口的直连模式不参与。
-		largeEdge := selection.tier < 5 && req.Plan.MachineCount >= denseNativeLargeMachineThreshold && selection.position != "center"
+		largeEdge := selection.tier < 5 && (denseNativeLargeRequest(ctx, req) || req.SurfaceLayout.ExpandAdjacent) && selection.position != "center"
 		if req.Mode >= 2 && req.Mode <= 4 && (largeEdge || selection.hemisphere > 0 && selection.position == "north" || selection.hemisphere < 0 && selection.position == "south") {
 			orientations = []bool{false, true}
 			if selection.hemisphere > 0 {
@@ -126,10 +117,20 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 				}
 				out, err := adapter.generate(local, prepared.builder, prepared.request, prepared.dataset)
 				if err == nil {
-					return out, nil
+					if !req.SurfaceLayout.ExpandAdjacent || out.LogisticsSummary.Metrics.EnvelopeAspectRatio <= densePreferredAspect {
+						return out, nil
+					}
+					if bestExpanded == nil || betterDenseCandidate(out.LogisticsSummary.Metrics, bestExpanded.LogisticsSummary.Metrics) {
+						saved := out
+						bestExpanded = &saved
+					}
+					continue
 				}
 				last = err
 				if ctx.Err() != nil {
+					if bestExpanded != nil {
+						return *bestExpanded, nil
+					}
 					return Result{}, err
 				}
 				retryFootprints = retryFootprints || denseNativeGeometryFailure(err)
@@ -137,7 +138,19 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 			}
 		}
 	}
-	for _, band := range bands {
+	if bestExpanded != nil {
+		return *bestExpanded, nil
+	}
+	// 扩展候选只使用固定锚点的完整窗口；不能退回邻带单环而偷偷改变所选位置。
+	fallbackBands := append([]surfacePackedBand(nil), bands...)
+	if req.SurfaceLayout.ExpandAdjacent {
+		fallbackBands = nil
+	}
+	// 只调整逐带回退的尝试顺序。窗口跨度必须使用南到北原始顺序，否则北边缘会被误限为最后一条窄带。
+	sort.SliceStable(fallbackBands, func(i, j int) bool {
+		return absInt(bandCenter(fallbackBands[i])-preferred) < absInt(bandCenter(fallbackBands[j])-preferred)
+	})
+	for _, band := range fallbackBands {
 		// 常见生产设施及接线至少需要六行；更窄子环仍在五档定义内，不伪装成可建矩形。
 		if band.high-band.low+1 < 6 {
 			continue
@@ -175,4 +188,22 @@ func generateDensePolar(ctx context.Context, req Request, adapter *modeAdapter) 
 		return generateDensePolar(context.WithValue(ctx, densityPrototypeFootprintKey{}, true), req, adapter)
 	}
 	return Result{}, fmt.Errorf("目标球面完整布局候选未通过：%w", last)
+}
+
+// densePolarWindowExtents 职责：在改变逐带尝试顺序前求地理跨度；使用：原生球面入口；边界：复制并按纬度归一，不因北边缘或中心优先排序误缩成单条带。
+func densePolarWindowExtents(ctx context.Context, req Request, bands []surfacePackedBand) []int {
+	ordered := append([]surfacePackedBand(nil), bands...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].low < ordered[j].low })
+	selection, _ := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone)
+	extents := []int{24, 32, 40, 48, 56, 64}
+	if selection.tier < 5 {
+		extents = denseTargetFrameExtents(ordered)
+	}
+	if req.SurfaceLayout.ExpandAdjacent {
+		return denseAdjacentFrameExtents(selection, ordered, req.Plan.MachineCount)
+	}
+	if denseNativeLargeRequest(ctx, req) {
+		sort.Sort(sort.Reverse(sort.IntSlice(extents)))
+	}
+	return extents
 }

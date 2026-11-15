@@ -42,7 +42,7 @@ func (index *denseRoutePortIndex) linkedPortBuildings(endpoint *placed, source b
 
 // densePortalLinkPermissions 职责：把原端点到建筑的跳数与新增路径深度相加；使用：每条真实接驳边；边界：分流器最多两跳且另核对槽口射线，其它原生带口保留三跳，越界节点仍检查完整碰撞球。
 func densePortalLinkPermissions(linked map[*placed]int, firstDepth, secondDepth int) map[*placed][2]bool {
-	permissions := map[*placed][2]bool{}
+	var permissions map[*placed][2]bool
 	for owner, hops := range linked {
 		limit := 3
 		if owner.record.ItemID == 2020 {
@@ -50,6 +50,9 @@ func densePortalLinkPermissions(linked map[*placed]int, firstDepth, secondDepth 
 		}
 		allowed := [2]bool{hops+firstDepth <= limit, hops+secondDepth <= limit}
 		if allowed[0] || allowed[1] {
+			if permissions == nil {
+				permissions = map[*placed][2]bool{}
+			}
 			permissions[owner] = allowed
 		}
 	}

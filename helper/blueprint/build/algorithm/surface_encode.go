@@ -16,6 +16,8 @@ import (
 
 // surfaceEncoding 职责：保存整块平面蓝图的区域和候选锚点；使用：finish 的共同出口；边界：建筑仍按原顺序编号。
 type surfaceEncoding struct {
+	// positionSnapshot 职责：仅在同步只读规则区间复用世界端点；使用：减少重复映射；边界：记录或锚点变化前必须结束该区间。
+	positionSnapshot *surfacePositionSnapshot
 	// rootCoordinates 职责：使用游戏原生跨区捕获的主区域实体坐标；使用：极区多Area；边界：完整实体包络仍由plan覆盖，不能隐瞒越出第5档的建筑。
 	rootCoordinates bool
 	// planar 职责：选择等赤道格长的切平面规则；使用：旧平面请求的数值预检；边界：不冒充球面映射或实际粘贴验证。

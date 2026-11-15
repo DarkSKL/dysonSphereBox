@@ -805,6 +805,7 @@ export namespace build {
 		}
 	}
 	export class GenerationPerformance {
+	    candidateDeduplication?: candidates.Report;
 	    candidateDetails: PerformanceCandidate[];
 	    scope: string;
 	    outcome: string;
@@ -822,6 +823,7 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.candidateDeduplication = this.convertValues(source["candidateDeduplication"], candidates.Report);
 	        this.candidateDetails = this.convertValues(source["candidateDetails"], PerformanceCandidate);
 	        this.scope = source["scope"];
 	        this.outcome = source["outcome"];
@@ -1174,6 +1176,7 @@ export namespace build {
 	    maxLays: number;
 	    needPower?: boolean;
 	    enableFlowMonitor: boolean;
+	    enableIntermediateBuffer: boolean;
 	    beltSpeed: number;
 	    smelterMaxCount: number;
 	    workbenchMaxCount: number;
@@ -1206,6 +1209,7 @@ export namespace build {
 	        this.maxLays = source["maxLays"];
 	        this.needPower = source["needPower"];
 	        this.enableFlowMonitor = source["enableFlowMonitor"];
+	        this.enableIntermediateBuffer = source["enableIntermediateBuffer"];
 	        this.beltSpeed = source["beltSpeed"];
 	        this.smelterMaxCount = source["smelterMaxCount"];
 	        this.workbenchMaxCount = source["workbenchMaxCount"];
@@ -1462,6 +1466,8 @@ export namespace build {
 	    }
 	}
 	export class Result {
+	    candidateDeduplication?: candidates.Report;
+	    statistics?: statistics.Report;
 	    winnerCandidateId?: string;
 	    densityReport?: DensityReport;
 	    blueprintRef?: string;
@@ -1485,6 +1491,8 @@ export namespace build {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.candidateDeduplication = this.convertValues(source["candidateDeduplication"], candidates.Report);
+	        this.statistics = this.convertValues(source["statistics"], statistics.Report);
 	        this.winnerCandidateId = source["winnerCandidateId"];
 	        this.densityReport = this.convertValues(source["densityReport"], DensityReport);
 	        this.blueprintRef = source["blueprintRef"];
@@ -1529,6 +1537,89 @@ export namespace build {
 	
 	
 	
+
+}
+
+export namespace candidates {
+	
+	export class Counts {
+	    requested: number;
+	    executed: number;
+	    reused: number;
+	    uncached: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Counts(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requested = source["requested"];
+	        this.executed = source["executed"];
+	        this.reused = source["reused"];
+	        this.uncached = source["uncached"];
+	    }
+	}
+	export class Stage {
+	    scope: string;
+	    proposed: number;
+	    unique: number;
+	    skipped: number;
+	    inactiveModifiers: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Stage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scope = source["scope"];
+	        this.proposed = source["proposed"];
+	        this.unique = source["unique"];
+	        this.skipped = source["skipped"];
+	        this.inactiveModifiers = source["inactiveModifiers"];
+	    }
+	}
+	export class Report {
+	    stages: Stage[];
+	    proposed: number;
+	    unique: number;
+	    skipped: number;
+	    inactiveModifiers: number;
+	    finalRules: Counts;
+	
+	    static createFrom(source: any = {}) {
+	        return new Report(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stages = this.convertValues(source["stages"], Stage);
+	        this.proposed = source["proposed"];
+	        this.unique = source["unique"];
+	        this.skipped = source["skipped"];
+	        this.inactiveModifiers = source["inactiveModifiers"];
+	        this.finalRules = this.convertValues(source["finalRules"], Counts);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 
@@ -5207,6 +5298,30 @@ export namespace progressjournal {
 
 export namespace quant {
 	
+	export class ByproductBalance {
+	    itemId: number;
+	    name: string;
+	    producedPerMinute: number;
+	    consumedPerMinute: number;
+	    importedPerMinute: number;
+	    targetPerMinute: number;
+	    surplusPerMinute: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ByproductBalance(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.name = source["name"];
+	        this.producedPerMinute = source["producedPerMinute"];
+	        this.consumedPerMinute = source["consumedPerMinute"];
+	        this.importedPerMinute = source["importedPerMinute"];
+	        this.targetPerMinute = source["targetPerMinute"];
+	        this.surplusPerMinute = source["surplusPerMinute"];
+	    }
+	}
 	export class ItemCost {
 	    cost: number;
 	    enabled: boolean;
@@ -5781,6 +5896,7 @@ export namespace quant {
 		}
 	}
 	export class Result {
+	    statistics?: statistics.Report;
 	    targets: Target[];
 	    dataset: string;
 	    dataVersion: string;
@@ -5791,6 +5907,7 @@ export namespace quant {
 	    externalInputItemIds: number[];
 	    flowGraph?: FlowGraph;
 	    leftovers: ItemRate[];
+	    byproducts: ByproductBalance[];
 	    powerMw: number;
 	    machineCount: number;
 	    lpCost: number;
@@ -5804,6 +5921,7 @@ export namespace quant {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.statistics = this.convertValues(source["statistics"], statistics.Report);
 	        this.targets = this.convertValues(source["targets"], Target);
 	        this.dataset = source["dataset"];
 	        this.dataVersion = source["dataVersion"];
@@ -5814,6 +5932,7 @@ export namespace quant {
 	        this.externalInputItemIds = source["externalInputItemIds"];
 	        this.flowGraph = this.convertValues(source["flowGraph"], FlowGraph);
 	        this.leftovers = this.convertValues(source["leftovers"], ItemRate);
+	        this.byproducts = this.convertValues(source["byproducts"], ByproductBalance);
 	        this.powerMw = source["powerMw"];
 	        this.machineCount = source["machineCount"];
 	        this.lpCost = source["lpCost"];
@@ -5958,6 +6077,372 @@ export namespace server {
 	        this.message = source["message"];
 	    }
 	}
+
+}
+
+export namespace statistics {
+	
+	export class Thermal {
+	    inputPotentialMw: number;
+	    outputPotentialMw: number;
+	    ratedGenerationMw: number;
+	    ratedFuelUseMw: number;
+	    dissipationMw?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Thermal(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.inputPotentialMw = source["inputPotentialMw"];
+	        this.outputPotentialMw = source["outputPotentialMw"];
+	        this.ratedGenerationMw = source["ratedGenerationMw"];
+	        this.ratedFuelUseMw = source["ratedFuelUseMw"];
+	        this.dissipationMw = source["dissipationMw"];
+	    }
+	}
+	export class Power {
+	    idleMw: number;
+	    baseWorkMw: number;
+	    configuredWorkMw: number;
+	    knownExpectedMw: number;
+	    expectedMw?: number;
+	    unknownCount: number;
+	    missingCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Power(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.idleMw = source["idleMw"];
+	        this.baseWorkMw = source["baseWorkMw"];
+	        this.configuredWorkMw = source["configuredWorkMw"];
+	        this.knownExpectedMw = source["knownExpectedMw"];
+	        this.expectedMw = source["expectedMw"];
+	        this.unknownCount = source["unknownCount"];
+	        this.missingCount = source["missingCount"];
+	    }
+	}
+	export class Rate {
+	    itemId: number;
+	    name: string;
+	    ratePerMinute: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Rate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.name = source["name"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	    }
+	}
+	export class BuildingGroup {
+	    itemId: number;
+	    name: string;
+	    category: string;
+	    count: number;
+	    inputs: Rate[];
+	    outputs: Rate[];
+	    configuredInputs: Rate[];
+	    configuredOutputs: Rate[];
+	    power: Power;
+	    thermal: Thermal;
+	    utilization?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BuildingGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.name = source["name"];
+	        this.category = source["category"];
+	        this.count = source["count"];
+	        this.inputs = this.convertValues(source["inputs"], Rate);
+	        this.outputs = this.convertValues(source["outputs"], Rate);
+	        this.configuredInputs = this.convertValues(source["configuredInputs"], Rate);
+	        this.configuredOutputs = this.convertValues(source["configuredOutputs"], Rate);
+	        this.power = this.convertValues(source["power"], Power);
+	        this.thermal = this.convertValues(source["thermal"], Thermal);
+	        this.utilization = source["utilization"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class HeatmapEntry {
+	    buildingIndex: number;
+	    itemId: number;
+	    productionIndex: number;
+	    areaIndex: number;
+	    x: number;
+	    y: number;
+	    z: number;
+	    utilization?: number;
+	    expectedMw?: number;
+	    configuredWorkMw: number;
+	    thermal: Thermal;
+	
+	    static createFrom(source: any = {}) {
+	        return new HeatmapEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.buildingIndex = source["buildingIndex"];
+	        this.itemId = source["itemId"];
+	        this.productionIndex = source["productionIndex"];
+	        this.areaIndex = source["areaIndex"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	        this.utilization = source["utilization"];
+	        this.expectedMw = source["expectedMw"];
+	        this.configuredWorkMw = source["configuredWorkMw"];
+	        this.thermal = this.convertValues(source["thermal"], Thermal);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Line {
+	    productionIndex: number;
+	    recipeId: number;
+	    machineId: number;
+	    machineName: string;
+	    count: number;
+	    exactCount: number;
+	    utilization: number;
+	    proliferatorMode: number;
+	    points: number;
+	    powerMultiplier: number;
+	    inputs: Rate[];
+	    outputs: Rate[];
+	    netInputs: Rate[];
+	    netOutputs: Rate[];
+	    configuredInputs: Rate[];
+	    configuredOutputs: Rate[];
+	    jointProducts: number[];
+	    power: Power;
+	    thermal: Thermal;
+	
+	    static createFrom(source: any = {}) {
+	        return new Line(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.productionIndex = source["productionIndex"];
+	        this.recipeId = source["recipeId"];
+	        this.machineId = source["machineId"];
+	        this.machineName = source["machineName"];
+	        this.count = source["count"];
+	        this.exactCount = source["exactCount"];
+	        this.utilization = source["utilization"];
+	        this.proliferatorMode = source["proliferatorMode"];
+	        this.points = source["points"];
+	        this.powerMultiplier = source["powerMultiplier"];
+	        this.inputs = this.convertValues(source["inputs"], Rate);
+	        this.outputs = this.convertValues(source["outputs"], Rate);
+	        this.netInputs = this.convertValues(source["netInputs"], Rate);
+	        this.netOutputs = this.convertValues(source["netOutputs"], Rate);
+	        this.configuredInputs = this.convertValues(source["configuredInputs"], Rate);
+	        this.configuredOutputs = this.convertValues(source["configuredOutputs"], Rate);
+	        this.jointProducts = source["jointProducts"];
+	        this.power = this.convertValues(source["power"], Power);
+	        this.thermal = this.convertValues(source["thermal"], Thermal);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Material {
+	    itemId: number;
+	    name: string;
+	    importedPerMinute: number;
+	    producedPerMinute: number;
+	    consumedPerMinute: number;
+	    targetPerMinute: number;
+	    surplusPerMinute: number;
+	    grossInputPerMinute: number;
+	    grossOutputPerMinute: number;
+	    localRecyclePerMinute: number;
+	    balanceResidualPerMinute: number;
+	    jointProduct: boolean;
+	    hasSurplus: boolean;
+	    heatValueMj?: number;
+	    importPotentialMw: number;
+	    exportPotentialMw: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Material(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.name = source["name"];
+	        this.importedPerMinute = source["importedPerMinute"];
+	        this.producedPerMinute = source["producedPerMinute"];
+	        this.consumedPerMinute = source["consumedPerMinute"];
+	        this.targetPerMinute = source["targetPerMinute"];
+	        this.surplusPerMinute = source["surplusPerMinute"];
+	        this.grossInputPerMinute = source["grossInputPerMinute"];
+	        this.grossOutputPerMinute = source["grossOutputPerMinute"];
+	        this.localRecyclePerMinute = source["localRecyclePerMinute"];
+	        this.balanceResidualPerMinute = source["balanceResidualPerMinute"];
+	        this.jointProduct = source["jointProduct"];
+	        this.hasSurplus = source["hasSurplus"];
+	        this.heatValueMj = source["heatValueMj"];
+	        this.importPotentialMw = source["importPotentialMw"];
+	        this.exportPotentialMw = source["exportPotentialMw"];
+	    }
+	}
+	
+	
+	export class Space {
+	    buildingFootprintAreaGrid2: number;
+	    envelopeAreaGrid2: number;
+	    occupiedAreaGrid2: number;
+	    utilization: number;
+	    beltCount: number;
+	    totalBeltLengthMeters: number;
+	    areaCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Space(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.buildingFootprintAreaGrid2 = source["buildingFootprintAreaGrid2"];
+	        this.envelopeAreaGrid2 = source["envelopeAreaGrid2"];
+	        this.occupiedAreaGrid2 = source["occupiedAreaGrid2"];
+	        this.utilization = source["utilization"];
+	        this.beltCount = source["beltCount"];
+	        this.totalBeltLengthMeters = source["totalBeltLengthMeters"];
+	        this.areaCount = source["areaCount"];
+	    }
+	}
+	export class Report {
+	    schemaVersion: string;
+	    scope: string;
+	    planId: string;
+	    dataVersion: string;
+	    gameVersion: string;
+	    factsVersion: string;
+	    buildingCount: number;
+	    productionMachineCount: number;
+	    productionLineCount: number;
+	    buildings: BuildingGroup[];
+	    lines: Line[];
+	    materials: Material[];
+	    power: Power;
+	    thermal: Thermal;
+	    hasSurplus: boolean;
+	    surplusItemCount: number;
+	    space?: Space;
+	    heatmap: HeatmapEntry[];
+	    notes: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Report(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schemaVersion = source["schemaVersion"];
+	        this.scope = source["scope"];
+	        this.planId = source["planId"];
+	        this.dataVersion = source["dataVersion"];
+	        this.gameVersion = source["gameVersion"];
+	        this.factsVersion = source["factsVersion"];
+	        this.buildingCount = source["buildingCount"];
+	        this.productionMachineCount = source["productionMachineCount"];
+	        this.productionLineCount = source["productionLineCount"];
+	        this.buildings = this.convertValues(source["buildings"], BuildingGroup);
+	        this.lines = this.convertValues(source["lines"], Line);
+	        this.materials = this.convertValues(source["materials"], Material);
+	        this.power = this.convertValues(source["power"], Power);
+	        this.thermal = this.convertValues(source["thermal"], Thermal);
+	        this.hasSurplus = source["hasSurplus"];
+	        this.surplusItemCount = source["surplusItemCount"];
+	        this.space = this.convertValues(source["space"], Space);
+	        this.heatmap = this.convertValues(source["heatmap"], HeatmapEntry);
+	        this.notes = source["notes"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 
 }
 

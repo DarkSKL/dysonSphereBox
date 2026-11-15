@@ -1,5 +1,7 @@
 package quant
 
+import "DysonSphereBox/helper/factory/statistics"
+
 // 文件职责：定义量化请求、参考设置与结果；使用：纯 Go 引擎及 Wails 服务；边界：内部物品保持名称键，不承载持久化。
 
 // Item 职责：承载原型物品；使用：量化边界；边界：不访问系统资源。
@@ -262,6 +264,8 @@ type ItemRate struct {
 
 // Result 职责：承载已求解方案；使用：量化边界；边界：不访问系统资源。
 type Result struct {
+	// Statistics 职责：提供派生分析数据；使用：后续分析页；边界：可重算，旧快照可缺省，不能作为生成权威输入。
+	Statistics *statistics.Report `json:"statistics,omitempty"`
 	// Targets 职责：保存原目标；使用：总线区分净导出与内部流量；边界：不从产线顺序推测。
 	Targets []Target `json:"targets"`
 	// Dataset 职责：保存数据集键；使用：引擎传递；边界：不隐式改变单位。
@@ -282,6 +286,8 @@ type Result struct {
 	FlowGraph *FlowGraph `json:"flowGraph,omitempty"`
 	// Leftovers 职责：保存净溢出副产物；使用：引擎传递；边界：不隐式改变单位。
 	Leftovers []ItemRate `json:"leftovers"`
+	// Byproducts 职责：提供联产物料的内部利用、目标交付和持续过剩；使用：运行规划与界面；边界：旧方案可缺省，不能替代规范流图。
+	Byproducts []ByproductBalance `json:"byproducts"`
 	// PowerMW 职责：保存制造工作能耗 MW；使用：引擎传递；边界：不隐式改变单位。
 	PowerMW float64 `json:"powerMw"`
 	// MachineCount 职责：保存制造建筑总数；使用：引擎传递；边界：不隐式改变单位。

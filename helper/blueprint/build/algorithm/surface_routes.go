@@ -15,15 +15,19 @@ import (
 // surfaceAreaOrigin 职责：保存原生区域的经纬弧度；使用：最终坐标映射；边界：使用游戏 float32 运算。
 type surfaceAreaOrigin struct{ longitude, latitude float32 }
 
-// surfaceWorldPositions 职责：复现建议锚点下的建筑中心坐标；使用：带距离与后续碰撞窄相位；边界：未知主网格拒绝，不将格网单位直接当作米。
-func (encoding *surfaceEncoding) surfaceWorldPositions(records []blueprint.Building) ([]vector, error) {
+// surfaceWorldPositionsFor 职责：复现指定端点的建议锚点坐标；使用：第一、第二端点共用映射；边界：未知主网格拒绝，不修改记录或浮点计算顺序。
+func (encoding *surfaceEncoding) surfaceWorldPositionsFor(records []blueprint.Building, secondary bool) ([]vector, error) {
 	if encoding.planar {
 		positions := make([]vector, len(records))
 		for i, record := range records {
+			offset := record.LocalOffset
+			if secondary {
+				offset = record.LocalOffset2
+			}
 			if record.AreaIndex != 0 {
 				return nil, &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "切平面规则适配不支持未经球面映射的多 Area"}
 			}
-			positions[i] = vector{float64(record.LocalOffset.X) * planarGridLength, float64(record.LocalOffset.Z)*1.3333333 + .2, float64(record.LocalOffset.Y) * planarGridLength}
+			positions[i] = vector{float64(offset.X) * planarGridLength, float64(offset.Z)*1.3333333 + .2, float64(offset.Y) * planarGridLength}
 		}
 		return positions, nil
 	}
@@ -67,14 +71,18 @@ func (encoding *surfaceEncoding) surfaceWorldPositions(records []blueprint.Build
 	}
 	positions := make([]vector, len(records))
 	for i, record := range records {
+		offset := record.LocalOffset
+		if secondary {
+			offset = record.LocalOffset2
+		}
 		area := int(record.AreaIndex)
 		if area < 0 || area >= len(origins) {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "建筑区域索引无效"}
 		}
 		longitudeStep := surfacePasteLongitudeStep(origins[area].latitude)
-		longitude := origins[area].longitude + record.LocalOffset.X*longitudeStep
-		latitude := origins[area].latitude + record.LocalOffset.Y*latitudeStep
-		radius := record.LocalOffset.Z*float32(1.3333333) + float32(0.2) + 200
+		longitude := origins[area].longitude + offset.X*longitudeStep
+		latitude := origins[area].latitude + offset.Y*latitudeStep
+		radius := offset.Z*float32(1.3333333) + float32(0.2) + 200
 		cosLatitude := float32(math.Cos(float64(latitude)))
 		x := cosLatitude * float32(math.Sin(float64(longitude))) * radius
 		y := float32(math.Sin(float64(latitude))) * radius

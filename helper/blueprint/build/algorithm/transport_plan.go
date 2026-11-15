@@ -30,12 +30,16 @@ type transportRow struct {
 	sprayStub  []*placed
 	// recycles 职责：登记本行独立物品的优先回流结构；使用：毛流容量、路由与机器出口追踪；边界：不属于规范净流边。
 	recycles []*machineRecycle
+	// buffers 职责：登记逐净产物的实际中转设施；使用：输出源及全链核验；边界：回流先于缓存，不缓存机器催化剂毛流。
+	buffers map[int]*productionBuffer
 	// selfSpray 职责：保存同一机器行的自产喷涂剂回流；使用：直连模式最终追踪和毛流核算；边界：不作为规范净流边或外供入口。
 	selfSpray *connectedSelfSpray
 }
 
 // transportRoute 职责：在重排期间保留规范 lane 与真实指针；使用：装配、路由和最终编号；边界：不以建筑位置反推物品。
 type transportRoute struct {
+	// placementWeight 职责：设置位置搜索的软关联权重；使用：缓存优先靠近原生产端；边界：零表示一，不改变物料流量或实际线路代价。
+	placementWeight float64
 	// entryDirection 职责：记录外供入口朝向工厂的第一步；使用：密铺四侧边界；边界：零值兼容原西侧入口。
 	entryDirection vector
 	// inputRole 职责：标识消费者实际用途；使用：同物品两路净流分配与最终连通证明；边界：不改变规范edge ID或总额。
@@ -51,7 +55,9 @@ type transportRoute struct {
 	start, end *placed
 	// routingEntry 职责：在边界固定前缀末端开始全局搜索；使用：原料直入短带；边界：start 和 boundary 仍保留唯一真实外供头，不改规范容量身份。
 	routingEntry *placed
-	boundary     *placed
+	// priorityInput 职责：指定联产优先门的实际入口；使用：与外部补料分开接线；边界：不改变原消费者或规范份额。
+	priorityInput *placed
+	boundary      *placed
 }
 
 // transportSource 职责：取得真实全局接线起点；使用：几何寻路及提交；边界：没有固定前缀时保持原来的 start，容量和外部接口仍读取 start/boundary。

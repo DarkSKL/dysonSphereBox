@@ -25,6 +25,9 @@ type denseConnectedStreetWork struct {
 
 // denseConnectedStreetRowsEligible 职责：统一判断一个owner能否以完整单去向街道接入；使用：装配与确切重复候选归一；边界：按实际规范路线判断，不只看配方标签。
 func denseConnectedStreetRowsEligible(rows []*transportRow, setting Setting) bool {
+	if setting.EnableIntermediateBuffer {
+		return false
+	}
 	if len(rows) == 0 {
 		return false
 	}
@@ -203,9 +206,9 @@ func (b *builder) prepareDenseConnectedStreets(ctx context.Context, rows []*tran
 	return units, handled, nil
 }
 
-// reserveDenseConnectedStreetPower 职责：为可能被独立喷涂附件围住的宽机器核心先放置真实共享电塔；使用：全场装箱前；边界：仅启用供电且核心两轴均超过真实覆盖半径时使用，不放宽覆盖或制造虚拟禁区。
+// reserveDenseConnectedStreetPower 职责：为紧密折排的宽机器核心预置真实共享电塔；使用：全场装箱前，包含无附件的裸产线；边界：仅开启供电且两轴超过真实覆盖半径时使用，不放宽覆盖或制造虚拟禁区。
 func (b *builder) reserveDenseConnectedStreetPower(ctx context.Context, assembly *denseStreetAssembly, enabled bool) ([]*placed, error) {
-	if !enabled || len(assembly.accessories) == 0 {
+	if !enabled {
 		return nil, nil
 	}
 	radius, err := transport.TeslaPowerCoverRadius()
@@ -300,7 +303,9 @@ func (b *builder) commitDenseConnectedStreets() error {
 	if len(b.denseConnectedStreets) > 0 {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-street-accessories", Status: "passed", Message: fmt.Sprintf("%d套街道核心与独立附件已由%d条真实有向内部线连接；保留可信喷涂参数、供剂毛流、监测宿主和逐机取料顺序，辅助线不重复计入规范净流", len(b.denseConnectedStreets), len(b.denseStreetRoutes))})
 	}
-	if err := b.commitDenseProducerSplits(); err != nil { return err }
+	if err := b.commitDenseProducerSplits(); err != nil {
+		return err
+	}
 	if err := b.commitDenseMaterialNetworks(); err != nil {
 		return err
 	}

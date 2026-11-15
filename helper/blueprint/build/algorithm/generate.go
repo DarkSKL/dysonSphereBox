@@ -93,6 +93,8 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	ctx = context.WithValue(ctx, candidateConcurrencyKey{}, req.CandidateConcurrency)
 	ctx = context.WithValue(ctx, generationWorkloadKey{}, req.Plan.MachineCount)
 	ctx = withGenerationPreview(ctx, req)
+	registry := newCandidateRegistry()
+	ctx = context.WithValue(ctx, candidateRegistryKey{}, registry)
 	defer func() {
 		if generateErr != nil {
 			clearGenerationPreview(ctx)
@@ -100,6 +102,10 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	}()
 	// 后注册的性能收尾先执行，避免主动清理把真实失败误记为取消。
 	defer func() {
+		if generateErr == nil {
+			dedup := registry.snapshot()
+			result.CandidateDeduplication = &dedup
+		}
 		snapshot := performance.finish(ctx, result, generateErr)
 		if generateErr == nil && req.CollectPerformance {
 			result.Performance = &snapshot
@@ -212,6 +218,12 @@ func prepareGeneration(ctx context.Context, request Request, adapter *modeAdapte
 func publishFinalBlueprintProgress(ctx context.Context, request Request, dataset *quant.Dataset, result Result, generationErr error) (Result, error) {
 	if generationErr != nil {
 		return result, generationErr
+	}
+	if err := attachFactoryStatistics(ctx, request.Plan, &result); err != nil {
+		if ctx.Err() != nil {
+			return Result{}, previewContextError(ctx.Err())
+		}
+		return Result{}, &blueprint.Error{Code: "GEN_E_STATISTICS", Message: err.Error()}
 	}
 	if err := commitGenerationPreview(ctx, result); err != nil {
 		return Result{}, err
@@ -384,6 +396,9 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if err := updateTotalBeltMetrics(ctx, surface, records, &logistics.Metrics); err != nil {
 		return result, err
 	}
+	if req.Density == densityDense {
+		updateDenseRootShapeMetrics(surface, &logistics.Metrics)
+	}
 	if err := b.finalizeProductionRateAnnotations(records); err != nil {
 		return result, err
 	}
@@ -424,7 +439,7 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if err != nil {
 		return result, err
 	}
-	return Result{DensityReport: density, Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: len(areas), Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones, SurfacePlan: surfacePlan, LogisticsSummary: logistics, RuleAudit: ruleAudit, previewScene: b.finalPreviewSnapshot(records, areas, primaryArea)}, nil
+	return Result{statisticsRecords: records, DensityReport: density, Blueprint: encoded.Blueprint, BuildingCount: len(records), Areas: len(areas), Warnings: b.warnings, SourcePlanID: req.Plan.PlanID, Bindings: bindings, SharedBuildingIndices: shared, Zones: zones, SurfacePlan: surfacePlan, LogisticsSummary: logistics, RuleAudit: ruleAudit, previewScene: b.finalPreviewSnapshot(records, areas, primaryArea)}, nil
 }
 
 // surfaceAnchorRetryable 职责：判断球面锚点预检失败是否可以换到邻圈重试；使用：Generate 候选循环；边界：未知原型、超时和未验证错误不被软化。

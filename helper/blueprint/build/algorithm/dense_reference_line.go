@@ -16,6 +16,9 @@ import (
 // referenceProjector 职责：把参考区域0姿态投影到首台机器的局部切平面；使用：提取可重复局部关系；边界：只支持已锁定的原版200分段参考图，投影后的候选仍需最终球面校验。
 type referenceProjector struct{ origin, east, north [3]float64 }
 
+// denseGroundTracksKey 职责：为低层参考带未通过终检的请求提供独立地面轨候选；使用：配送密铺重排；边界：保留密铺碰撞、全场装箱和原设备等级，不切换公开模式。
+type denseGroundTracksKey struct{}
+
 // newReferenceProjector 职责：建立来源坐标系；使用：单元装配前；边界：参考主锚点按研究基线0解释，不宣称任意纬带平移等价。
 func newReferenceProjector(point blueprint.Point) referenceProjector {
 	lon, lat := float64(point.X)*2*math.Pi/1000, float64(point.Y)*2*math.Pi/1000
@@ -41,6 +44,11 @@ func (frame referenceProjector) project(point blueprint.Point) vector {
 
 // referenceLowTrackEligible 职责：选择已有真实端口来源的低双层单元；使用：密铺机器装配；边界：其它等级必须再核对建造盒及槽位一致性，不暗改用户设备等级。
 func (b *builder) referenceLowTrackEligible(p quant.Production, r quant.Recipe) bool {
+	if b.generationCtx != nil {
+		if ground, _ := b.generationCtx.Value(denseGroundTracksKey{}).(bool); ground {
+			return false
+		}
+	}
 	return b.adapter != nil && b.adapter.density == densityDense && referenceLowRecipe(p, r) && referenceSingleArmsSufficient(p, r, b.setting.InserterLv)
 }
 

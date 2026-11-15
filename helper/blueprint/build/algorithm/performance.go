@@ -10,12 +10,15 @@ import (
 	"sync"
 	"time"
 
+	"DysonSphereBox/helper/blueprint/build/candidates"
 	"DysonSphereBox/helper/quant"
 )
 
 // GenerationPerformance 职责：汇总单次 Generate 的全部候选工作；使用：结果诊断与性能回归；边界：耗时不是确定性输出或游戏验收证据。
 type GenerationPerformance struct {
-	CandidateDetails []PerformanceCandidate `json:"candidateDetails"`
+	// CandidateDeduplication 职责：保留成功和失败请求的去重事实；使用：性能观察者；边界：不暴露未通过的建筑。
+	CandidateDeduplication *candidates.Report     `json:"candidateDeduplication,omitempty"`
+	CandidateDetails       []PerformanceCandidate `json:"candidateDetails"`
 	// Scope 职责：标识计数作用域；使用：区分请求与获选候选；边界：固定为 request-all-candidates。
 	Scope string `json:"scope"`
 	// Outcome 职责：记录 passed、failed、canceled 或 timed-out；使用：失败观察回调；边界：不替代返回错误。
@@ -243,6 +246,10 @@ func recordPerformanceCollision(ctx context.Context, rule string, candidates, na
 // finish 职责：闭合计时、派生均值并通知可选观察者；使用：Generate 的 defer；边界：失败快照不携带部分蓝图或建筑，未提供内存与取消延迟假值。
 func (p *generationPerformance) finish(ctx context.Context, result Result, err error) GenerationPerformance {
 	p.mu.Lock()
+	if registry, _ := ctx.Value(candidateRegistryKey{}).(*candidateRegistry); registry != nil {
+		report := registry.snapshot()
+		p.data.CandidateDeduplication = &report
+	}
 	now := time.Now()
 	p.closeStage(now)
 	p.data.TotalDurationMs = float64(now.Sub(p.started)) / float64(time.Millisecond)

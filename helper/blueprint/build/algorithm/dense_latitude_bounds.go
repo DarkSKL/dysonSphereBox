@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：检查最终静态建造盒的真实球面投影是否留在所选档位内。
+// 文件职责：检查最终静态建造盒的真实球面投影是否留在显式允许的纬带范围内。
 // 使用：密铺蓝图正式规则检查前；边界：不依赖布局用的粗略格数，不替代建筑之间的碰撞检测或游戏实测。
 
 import (
@@ -23,7 +23,7 @@ func (encoding *surfaceEncoding) validateDenseStaticLatitude(ctx context.Context
 	if !ok {
 		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "真实建造盒检查需要有效的五档选区"}
 	}
-	bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, layout.GridSegment)
+	bands := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent)
 	if len(bands) == 0 {
 		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "所选档位没有可检查的原生纬带"}
 	}

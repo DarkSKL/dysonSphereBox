@@ -13,8 +13,16 @@ import (
 	"DysonSphereBox/helper/quant"
 )
 
-// denseStationBlackboxCandidate 职责：把已验证直连核心与实际外部塔组成同一次完整候选；使用：塔模式比较；边界：原请求模式、等级、产量和选区始终保留。
-func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request, dataset *quant.Dataset, config contract.StationConfig, variant int, previews ...*generationPreview) (*builder, error) {
+// stationBlackboxContext 职责：按既有顺序解码塔候选的上下文修饰；使用：规划键和真实装配共用；边界：只派生上下文，不修改父请求，返回基础几何编号。
+func stationBlackboxContext(ctx context.Context, req Request, variant int) (context.Context, int) {
+	if variant >= denseStationGroundTracksVariantOffset {
+		variant -= denseStationGroundTracksVariantOffset
+		ctx = context.WithValue(ctx, denseGroundTracksKey{}, true)
+	}
+	if variant >= independentStationVariantOffset {
+		variant -= independentStationVariantOffset
+		ctx = context.WithValue(ctx, independentStationPlacementKey{}, true)
+	}
 	shortSpan := 0.
 	if variant >= denseSpatialHolesBentVariantOffset {
 		variant -= denseSpatialHolesBentVariantOffset
@@ -68,6 +76,12 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
 	if variant >= 4 {
 		ctx = context.WithValue(ctx, denseMaterialNetworksKey{}, true)
 	}
+	return ctx, variant
+}
+
+// denseStationBlackboxCandidate 职责：把已验证直连核心与实际外部塔组成同一次完整候选；使用：塔模式比较；边界：原请求模式、等级、产量和选区始终保留。
+func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request, dataset *quant.Dataset, config contract.StationConfig, variant int, previews ...*generationPreview) (*builder, error) {
+	ctx, variant = stationBlackboxContext(ctx, req, variant)
 	candidate, err := b.newCandidateBuilder()
 	if err != nil {
 		return nil, err
@@ -85,56 +99,19 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
 	candidate.adapter = &adapter
 	candidate.flowGraph, candidate.generationCtx = b.flowGraph, ctx
 	candidate.denseSpatial, candidate.connectedCompactBelts, candidate.connectedGlobalPower = true, true, true
-	candidate.denseSpatialOrder = variant % 4
-	candidate.denseMaxSpan = []float64{18, 24, 32, 24}[variant%4]
-	needsRecycle, err := denseBlackboxHasMachineRecycle(req.Plan, dataset)
+	geometry, err := candidate.stationGeometry(ctx, req, dataset, variant)
 	if err != nil {
 		return candidate, err
 	}
-	if needsRecycle {
-		// 双优先门有不可省略的真实长接头；比较较短机器组以形成矩形，塔槽/带口仍按新增实际端口重新核算。
-		candidate.denseMaxSpan = []float64{8, 8, 8, 24}[variant%4]
-		candidate.denseRefine = variant%2 == 1
-	}
-	streetSupported := false
-	for _, production := range req.Plan.Productions {
-		recipe, recipeErr := datasetRecipeForProduction(dataset, production)
-		if recipeErr != nil {
-			return candidate, recipeErr
-		}
-		streetSupported = streetSupported || candidate.denseStationStreetEligible(production, recipe)
-	}
-	candidate.denseStreetCandidate = variant%2 == 1 && streetSupported
-	candidate.denseStreetRotation = (variant / 2) % 2
-	if variant >= 4 {
-		choice := variant - 4
-		// 同等窄纬比例按整厂规模调整；227台固定设备不能硬套约90台参考厂的24格绝对高度。
-		scale := math.Max(1, math.Sqrt(float64(req.Plan.MachineCount)/96))
-		candidate.denseLatitudeSpan = math.Ceil([]float64{24, 32, 40}[choice]*scale/4) * 4
-		candidate.denseLatitudeSpan = denseLatitudeHeightLimit(ctx, candidate.denseLatitudeSpan)
-		zone, _ := ctx.Value(densityLatitudeKey{}).(string)
-		selection, selected := densityLatitudeSelectionFor(zone)
-		// 保留17格窄候选，与可使用21格的候选比较，避免扩大内部空间后丢失原本可建的线路。
-		if selected && selection.tier >= 3 && choice == 0 {
-			candidate.denseLatitudeSpan = math.Min(candidate.denseLatitudeSpan, 17)
-		}
-		candidate.denseSpatialOrder = 3
-		candidate.denseMaxSpan = []float64{12, 18, 32}[choice]
-		compacted, _ := ctx.Value(denseSpatialCompactKey{}).(bool)
-		if scale > 1 && !compacted {
-			candidate.denseMaxSpan = 32
-		}
-		candidate.denseStreetGroupLimit = -1
-		candidate.denseStreetCandidate = streetSupported
-		candidate.denseStreetRotation = 0
+	candidate.denseSpatialOrder, candidate.denseMaxSpan, candidate.denseRefine = geometry.order, geometry.span, geometry.refine
+	candidate.denseStreetCandidate, candidate.denseStreetRotation, candidate.denseStreetGroupLimit = geometry.street, geometry.rotation, geometry.groups
+	candidate.denseLatitudeSpan = geometry.latitude
+	if geometry.materialOrder {
 		candidate.denseUnitOrder = func(ctx context.Context, units []denseSpatialUnit) ([]denseSpatialUnit, error) {
-			return candidate.denseStationMaterialUnitOrder(ctx, units, choice == 1)
+			return candidate.denseStationMaterialUnitOrder(ctx, units, geometry.consumerFirst)
 		}
 		candidate.directBoundaryAttach = candidate.attachDenseStationSprayExits
 		candidate.directBoundaryCommit = candidate.commitDenseStationSprayNetwork
-	}
-	if span, _ := ctx.Value(denseSpatialHolesKey{}).(float64); span > 0 {
-		candidate.denseMaxSpan = 32
 	}
 	candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 	candidate.warnings = append([]string(nil), b.warnings...)
@@ -152,8 +129,8 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
 		return candidate, err
 	}
 	limit := limits[0]
-	if len(limits) > 1 && variant >= 2 {
-		limit = limits[1]
+	if len(limits) > geometry.heightChoice {
+		limit = limits[geometry.heightChoice]
 	}
 	err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, true)
 	if err == nil && candidate.denseLatitudeSpan > 0 {
@@ -243,6 +220,10 @@ func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contra
 	}
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-station-facility-bound", Status: "passed", Message: fmt.Sprintf("仅对外%d类供需库存；按所选带速聚合的物料下界%d塔/至少%d带口，当前%d条独立边界lane下界%d塔，实际%d塔；库存槽%d、每塔12口；当前lane分配最少塔搜索证明=%t。内部中间流不占塔槽，未假设运输站堆叠科技", plan.roleCount, plan.materialLowerBound, plan.minimumPorts, len(plan.routes), plan.laneLowerBound, len(plan.towers), config.ItemSlots, plan.proven)})
 	if polar, _ := ctx.Value(densityPolarRootKey{}).(bool); polar {
+		return units, nil
+	}
+	if independent, _ := ctx.Value(independentStationPlacementKey{}).(bool); independent {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "independent-station-placement", Status: "passed", Message: "物流塔按各自真实轮廓与供需端口独立落位；仅塔中心之间保留必要间距，机器可填入塔间空间"})
 		return units, nil
 	}
 	return []denseSpatialUnit{{entities: append([]*placed(nil), b.all[begin:]...), ports: ports}}, nil

@@ -1,7 +1,7 @@
 package build
 
-// 文件职责：把玩家可理解的建造区域转换为严格的原生纬带范围。
-// 使用：超密度选区、候选锚点及最终结果核验；边界：仅原版200分段星球，不为失败结果自动换区。
+// 文件职责：把玩家选择的中心或边缘转换为原生纬带范围。
+// 使用：超密度选区、候选锚点及最终结果核验；边界：仅原版200分段，只有显式许可才能扩展邻带，始终保留所选位置基准。
 
 import (
 	"DysonSphereBox/helper/blueprint"
@@ -197,7 +197,7 @@ func denseLatitudeHeightLimit(ctx context.Context, limit float64) float64 {
 	return math.Min(limit, math.Max(1, float64(band.high-band.low+1-margin)))
 }
 
-// validateDensityLatitudePlan 职责：证明最终编码仍处于用户选择的区域；使用：所有密铺模式的共同出口；边界：缺少球面结果、越区或跨带均拒绝，防止适配器静默回退。
+// validateDensityLatitudePlan 职责：核对最终原生网格和所选起点；使用：所有密铺模式共同出口；边界：无扩展许可时拒绝跨带，有许可时仍拒绝超出连续允许区或偷偷换起点。
 func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error {
 	if layout == nil || layout.LatitudeZone == "" {
 		return nil
@@ -209,18 +209,25 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 	if plan == nil || len(plan.Bands) == 0 {
 		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "所选建造区域没有经过球面布局校验"}
 	}
+	selection, _ := densityLatitudeSelectionFor(layout.LatitudeZone)
+	regions := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent)
+	allowedLow, allowedHigh := band.low, band.high
+	if layout.ExpandAdjacent {
+		allowedLow, allowedHigh = regions[0].low, regions[len(regions)-1].high
+	}
 	for _, area := range plan.Bands {
 		validSegments := area.LongitudeSegments == band.segments
 		if layout.polarRoot {
+			validSegments = false
 			selection, _ := densityLatitudeSelectionFor(layout.LatitudeZone)
-			for _, native := range densityLatitudeTierBands(selection.tier, selection.hemisphere, 200) {
+			for _, native := range denseLatitudeAllowedBands(selection, layout.ExpandAdjacent) {
 				if area.MinLatitudeGrid >= native.low && area.MaxLatitudeGrid <= native.high && area.LongitudeSegments == native.segments {
 					validSegments = true
 					break
 				}
 			}
 		}
-		if area.MinLatitudeGrid < band.low || area.MaxLatitudeGrid > band.high || !validSegments {
+		if area.MinLatitudeGrid < allowedLow || area.MaxLatitudeGrid > allowedHigh || !validSegments {
 			return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("完整蓝图超出%s，请降低产量或选择更宽的建造位置", label)}
 		}
 	}
@@ -240,6 +247,9 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 	}
 	plan.LatitudeZone, plan.LatitudeZoneLabel = layout.LatitudeZone, label
 	plan.PlacementHint = densityLatitudePositionHint(layout.LatitudeZone)
+	if layout.ExpandAdjacent {
+		plan.PlacementHint += "；允许以此位置为基准跨相邻纬带，按实际已验证范围放置"
+	}
 	return nil
 }
 

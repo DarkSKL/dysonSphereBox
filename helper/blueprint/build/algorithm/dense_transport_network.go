@@ -70,6 +70,12 @@ type denseMaterialInputKey struct {
 
 // planDenseMaterialNetworks 职责：按真实配置毛需求组合有限共享组，并合并同来源同组的物理出货；使用：机器行几何创建之前；边界：直连原料通过真实四向分流共享入口并保留规范份额，机器回流保持原拓扑，喷涂组仅共享喷涂前的原料供给。
 func (b *builder) planDenseMaterialNetworks(ctx context.Context, rows []*transportRow) error {
+	if len(byproductPriorityGroups(b.transportRoutes)) > 0 {
+		return nil
+	}
+	if b.setting.EnableIntermediateBuffer {
+		return nil
+	}
 	enabled, _ := ctx.Value(denseMaterialNetworksKey{}).(bool)
 	if !b.denseSpatial || b.adapter == nil || b.adapter.mode < 1 || b.adapter.mode > 4 || !enabled && b.adapter.mode != 1 {
 		return nil

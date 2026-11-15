@@ -63,7 +63,7 @@ func (b *builder) repairPolarUnitGeometry(ctx context.Context, units []denseSpat
 			}
 			continue
 		}
-		if len(units) >= 64 {
+		if len(units) >= 64 || b.polarFrame.compactLongitude {
 			return err
 		}
 		if blocked == nil || len(blocked.entities) == 0 {
@@ -134,7 +134,7 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 		}
 	}
 	// 大厂在每个单元内完整搜索纬度，避免已落位单元被反复移动而耗尽重排预算。
-	flexibleLatitude := len(units) >= 64
+	flexibleLatitude := len(units) >= 64 || b.polarFrame.compactLongitude
 	// 大厂先保护已有物料布局；局部经向避让失败才进入原来的完整经纬扫描，避免把满幅纬向布局挤成长条。
 	seedFirst := flexibleLatitude && largeFactoryWorkload(ctx) && b.adapter != nil && b.adapter.mode == 1 && !b.polarFrame.compactLongitude && b.polarFrame.position != ""
 	makePart := func(unit denseSpatialUnit, dynamic bool) (polarUnitOccupancy, error) {

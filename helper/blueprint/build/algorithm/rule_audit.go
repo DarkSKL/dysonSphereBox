@@ -41,6 +41,11 @@ func validateFinalReferences(ctx context.Context, records []blueprint.Building) 
 
 // validateFinalPlanetRules 职责：以最终数据验证索引、建造盒、动态占用、塔端口和供电覆盖；使用：全部模式共同编码出口；边界：平面为切平面检查，完整游戏状态永不伪装为通过。
 func validateFinalPlanetRules(ctx context.Context, req Request, encoding *surfaceEncoding, records []blueprint.Building) (*RuleAudit, error) {
+	return reuseFinalPlanetRules(ctx, req, encoding, records)
+}
+
+// checkFinalPlanetRules 职责：执行完整终检；使用：首次有效状态或无请求缓存时；边界：失败与超时永不复用。
+func checkFinalPlanetRules(ctx context.Context, req Request, encoding *surfaceEncoding, records []blueprint.Building) (*RuleAudit, error) {
 	profile, err := verifiedRuleProfile()
 	if err != nil {
 		return nil, &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
@@ -90,6 +95,12 @@ func validateFinalPlanetRules(ctx context.Context, req Request, encoding *surfac
 	}
 	if err := validateStationPorts(ctx, records); err != nil {
 		return nil, err
+	}
+	if req.Density == densityDense {
+		if err := encoding.validateStorageRoofClearance(ctx, records); err != nil {
+			return nil, err
+		}
+		audit.Checks = append(audit.Checks, LogisticsCheck{RuleID: "storage-roof-clearance", Status: "passed", Message: "箱体和储液罐顶部在生成器走线高度范围内保留竖向扩建空间，按最终球面带段独立核验"})
 	}
 	if usesDenseBeltCollisions(ctx) {
 		audit.Checks = append(audit.Checks, LogisticsCheck{RuleID: "dense-blueprint-belt-nodes", Status: "passed", Message: "密铺按原版整图单次粘贴处理同批带间豁免，并检查重叠节点合并；未将整段路径粗管或假想节点盒作为额外限制"})

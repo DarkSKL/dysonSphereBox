@@ -74,16 +74,27 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 		if err != nil {
 			return nil, err
 		}
+		normalShapes := len(shapes)
+		if b.adapter != nil && b.adapter.density == densityDense && expandableStorage(entity.record.ItemID) {
+			roof, roofErr := storageRoofCollider(catalog, entity.record.ItemID, entity.record.ModelIndex)
+			if roofErr != nil {
+				return nil, roofErr
+			}
+			shapes = append(append([]placement.Collider{}, shapes...), roof)
+		}
 		origin := placement.Vector{entity.a.x * planarGridLength, entity.a.z*1.3333333 + .2, entity.a.y * planarGridLength}
 		if index.polarFrame != nil {
 			origin = index.polarFrame.world(entity.a, 0)
 		}
-		for _, collider := range shapes {
+		for shapeIndex, collider := range shapes {
 			box, err := encoding.colliderBox(vector{origin[0], origin[1], origin[2]}, entity.record.Yaw, collider)
 			if err != nil {
 				return nil, err
 			}
 			shape := connectedBoxShape("static", box)
+			if shapeIndex >= normalShapes {
+				shape.kind = "storage-roof"
+			}
 			n := len(index.boxes)
 			index.boxes = append(index.boxes, shape)
 			index.origins = append(index.origins, origin)
@@ -247,7 +258,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 				if index.staticQuery.seen(n) {
 					continue
 				}
-				if n < len(index.owners) {
+				if n < len(index.owners) && index.boxes[n].kind != "storage-roof" {
 					owner := index.owners[n]
 					allowed := links[owner]
 					if owner.record.ItemID == 2020 && !index.splitterRouteSpanAllowed(owner, first, second, allowed) {
@@ -387,13 +398,17 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 		if len(path) == 1 && (p.x-endpoint.a.x)*outward.x+(p.y-endpoint.a.y)*outward.y < -1e-6 {
 			return
 		}
-		points := append(append([]vector{}, path...), p)
-		candidate := denseRoutePortal{points: points, cost: denseRouteLength(points)}
-		for _, point := range points {
+		delta := denseRouteWorld(p).Sub(denseRouteWorld(path[len(path)-1]))
+		candidate := denseRoutePortal{cost: denseRouteLength(path) + math.Sqrt(delta.Dot(delta)), height: p.z}
+		for _, point := range path {
 			candidate.height = math.Max(candidate.height, point.z)
 		}
 		old, exists := byExit[p]
-		if !exists || candidate.cost < old.cost-1e-9 || math.Abs(candidate.cost-old.cost) <= 1e-9 && len(points) < len(old.points) {
+		if !exists || candidate.cost < old.cost-1e-9 || math.Abs(candidate.cost-old.cost) <= 1e-9 && len(path)+1 < len(old.points) {
+			// 先比较完整代价，仅为真正获选的出口分配一次路径。
+			candidate.points = make([]vector, len(path)+1)
+			copy(candidate.points, path)
+			candidate.points[len(path)] = p
 			byExit[p] = candidate
 		}
 	}
@@ -508,6 +523,9 @@ func (env *transportEnvironment) densePathClear(points []vector, source, target 
 		if i > 0 {
 			permissions := densePortalLinkPermissions(firstLinks, i-1, i)
 			for owner, allowed := range densePortalLinkPermissions(lastLinks, len(points)-i, len(points)-i-1) {
+				if permissions == nil {
+					permissions = map[*placed][2]bool{}
+				}
 				previous := permissions[owner]
 				permissions[owner] = [2]bool{previous[0] || allowed[0], previous[1] || allowed[1]}
 			}

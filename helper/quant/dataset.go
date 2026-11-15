@@ -38,6 +38,8 @@ type Dataset struct {
 	RecipeByID map[int]int
 	// Choices 职责：每个产物的可选配方序号；使用：一基选项转换；边界：按配方输入顺序。
 	Choices map[string][]int
+	// ExternalOnly 职责：标记没有真实生产配方的原料；使用：作为外部供应节点；边界：不以无中生有伪配方参与求解或菜单。
+	ExternalOnly map[string]bool
 	// Order 职责：产物首次出现顺序；使用：复刻 JS 对象顺序；边界：不使用 map 遍历替代。
 	Order []string
 }
@@ -80,12 +82,23 @@ func LoadDataset(key string) (*Dataset, error) {
 		return nil, qerror("Q_E_DATASET", "数据集缺少游戏版本、物品或配方")
 	}
 	sum := sha256.Sum256(raw)
-	d := &Dataset{Info: DatasetInfo{Key: key, Name: key, GameVersion: input.GameVersion, DataVersion: hex.EncodeToString(sum[:8]), ItemCount: len(input.Items), RecipeCount: len(input.Recipes)}, Items: input.Items, Recipes: input.Recipes, ByID: map[int]Item{}, ByName: map[string]Item{}, RecipeByID: map[int]int{}, Choices: map[string][]int{}}
+	d := &Dataset{Info: DatasetInfo{Key: key, Name: key, GameVersion: input.GameVersion, DataVersion: hex.EncodeToString(sum[:8]) + "-sources-v2", ItemCount: len(input.Items)}, Items: input.Items, ByID: map[int]Item{}, ByName: map[string]Item{}, RecipeByID: map[int]int{}, Choices: map[string][]int{}, ExternalOnly: map[string]bool{}}
 	d.Info.Name = "原版游戏"
 	for _, item := range d.Items {
 		d.ByID[item.ID] = item
 		d.ByName[item.Name] = item
 	}
+	// 数据源尾部的虚拟供给仅声明可采集/外部原料，不再进入配方列表。制造品的外供统一由 MineralizeList 表达。
+	for _, recipe := range input.Recipes {
+		if recipe.Type == -1 {
+			for _, id := range recipe.Results {
+				d.ExternalOnly[d.ByID[id].Name] = true
+			}
+			continue
+		}
+		d.Recipes = append(d.Recipes, recipe)
+	}
+	d.Info.RecipeCount = len(d.Recipes)
 	for i, r := range d.Recipes {
 		if len(r.Items) != len(r.ItemCounts) || len(r.Results) != len(r.ResultCounts) || r.TimeSpend <= 0 {
 			return nil, qerror("Q_E_DATASET", fmt.Sprintf("配方 %d 结构无效", r.ID))
@@ -98,10 +111,16 @@ func LoadDataset(key string) (*Dataset, error) {
 		}
 		for _, id := range r.Results {
 			name := d.ByID[id].Name
+			delete(d.ExternalOnly, name)
 			if _, ok := d.Choices[name]; !ok {
 				d.Order = append(d.Order, name)
 			}
 			d.Choices[name] = append(d.Choices[name], i)
+		}
+	}
+	for _, item := range d.Items {
+		if d.ExternalOnly[item.Name] {
+			d.Order = append(d.Order, item.Name)
 		}
 	}
 	actual, _ := datasetCache.LoadOrStore(key, d)

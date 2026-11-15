@@ -30,6 +30,8 @@ type mode1DeliveryGroup struct {
 	sources map[*transportRow]float64
 	// head/end职责：固定真实尾链身份；使用：路由、裁尾和终检；边界：不能从可变path反推。
 	head, end *placed
+	// entry 职责：在监测开启时固定监测宿主的同高上游；使用：确保尾部不因转弯失去有效采样点；边界：未开启监测时为空。
+	entry *placed
 	// monitor职责：绑定本组唯一边界监测；使用：幂等构造和最终数量复核；边界：机器轨道监测不能冒充该交付监测。
 	monitor *placed
 }
@@ -199,8 +201,14 @@ func (b *builder) prepareMode1Deliveries(ctx context.Context, inputs []vector) e
 		connect(g.head, g.end)
 		g.end.record.Parameters = []int32{int32(g.item), int32(math.Ceil(g.planned))}
 		g.head.record.Parameters = append([]int32{}, g.end.record.Parameters...)
+		endpoint := g.head
+		if b.setting.EnableFlowMonitor {
+			g.entry = b.make(2000+b.setting.BeltLv, position.x+2, position.y, 0)
+			connect(g.entry, g.head)
+			endpoint = g.entry
+		}
 		for _, route := range g.members {
-			route.end = g.head
+			route.end = endpoint
 			route.boundary = g.end
 		}
 	}
@@ -219,8 +227,18 @@ func (b *builder) commitMode1Deliveries() error {
 			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "预先登记交付尾带已改变"}
 		}
 		for _, r := range g.members {
-			if r.end != g.head || r.boundary != g.end || len(r.path) == 0 || r.path[len(r.path)-1] != g.head {
+			endpoint := g.head
+			if g.entry != nil {
+				endpoint = g.entry
+				if g.entry.output != g.head {
+					return transportAllocationError(r.edge, r.rate, "监测前导带断开")
+				}
+			}
+			if r.end != endpoint || r.boundary != g.end || len(r.path) == 0 || r.path[len(r.path)-1] != endpoint {
 				return transportAllocationError(r.edge, r.rate, "交付份额没有抵达预先登记的真实合流头")
+			}
+			if g.entry != nil {
+				r.path = append(r.path, g.head)
 			}
 			r.path = append(r.path, g.end)
 			r.end = g.end
@@ -235,6 +253,9 @@ func (b *builder) preserveMode1Deliveries(required map[*placed]bool) {
 	if p := b.mode1Deliveries; p != nil {
 		for _, g := range p.groups {
 			required[g.head], required[g.end] = true, true
+			if g.entry != nil {
+				required[g.entry] = true
+			}
 		}
 	}
 }

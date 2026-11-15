@@ -2,7 +2,12 @@ package build
 
 // 文件职责：定义六种布局的边界契约；使用：生成服务；边界：不依赖 Wails、数据库或游戏目录。
 
-import "DysonSphereBox/helper/quant"
+import (
+	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build/candidates"
+	"DysonSphereBox/helper/factory/statistics"
+	"DysonSphereBox/helper/quant"
+)
 
 // Setting 职责：镜像参考布局配置；使用：生成请求；边界：缺省补齐后仍做范围验证。
 type Setting struct {
@@ -18,6 +23,8 @@ type Setting struct {
 	NeedPower *bool `json:"needPower,omitempty"`
 	// EnableFlowMonitor 职责：保存是否在独立物料带上创建流速监测器；使用：蓝图生成选项；边界：仅覆盖本次生成，不修改游戏内监测阈值。
 	EnableFlowMonitor bool `json:"enableFlowMonitor"`
+	// EnableIntermediateBuffer 职责：为每行净产物生成中转缓存；使用：可选蓝图功能；边界：固体用箱体、流体用储液罐，有限库存不能抵消持续过剩。
+	EnableIntermediateBuffer bool `json:"enableIntermediateBuffer"`
 	// BeltSpeed 职责：保存参考运力上限每分钟；使用：布局约束；边界：不修改全局设置。
 	BeltSpeed float64 `json:"beltSpeed"`
 	// SmelterMaxCount 职责：保存熔炉单列上限；使用：布局约束；边界：不修改全局设置。
@@ -94,7 +101,7 @@ type SurfaceLayout struct {
 	nativeBand *surfacePackedBand
 	// polarRoot 职责：用目标主区域坐标表达原生球面实体；使用：极区及大厂内部候选；边界：区域元数据仍覆盖全部实体和真实纬带。
 	polarRoot bool
-	// LatitudeZone 职责：保存面向玩家的放置区域选项；使用：密铺按选定原生纬带校验；边界：非空时不允许隐式跨到其它纬带。
+	// LatitudeZone 职责：保存面向玩家的放置起点选项；使用：密铺核验中心或边缘；边界：仅显式ExpandAdjacent允许扩展到相邻原生纬带。
 	LatitudeZone string `json:"latitudeZone,omitempty"`
 	// Mode 职责：选择 planar、autoTropic 或 explicitTropic；使用：生成流程决定是否运行纬圈网格预检；边界：未知值拒绝。
 	Mode string `json:"mode"`
@@ -204,6 +211,12 @@ type ProductionBinding struct {
 
 // Result 职责：承载生成边界数据；使用：服务与预览联动；边界：不承诺游戏实际验收。
 type Result struct {
+	// CandidateDeduplication 职责：汇报所有模式共享的请求内去重；使用：分析接口；边界：规划候选与终检复用分别计数。
+	CandidateDeduplication *candidates.Report `json:"candidateDeduplication,omitempty"`
+	// Statistics 职责：提供最终实体分析数据；使用：后续分析页；边界：只在获选后计算，不计入候选评分。
+	Statistics *statistics.Report `json:"statistics,omitempty"`
+	// statisticsRecords 职责：短暂保留最终记录供一次性统计；使用：正式发布前；边界：不编码、不重复解码蓝图，统计后释放引用。
+	statisticsRecords []blueprint.Building
 	WinnerCandidateID string `json:"winnerCandidateId,omitempty"`
 	// DensityReport 职责：保存实际密度应用与验证范围；使用：前端结果说明；边界：不承诺游戏实测或普通对照收益。
 	DensityReport *DensityReport `json:"densityReport,omitempty"`

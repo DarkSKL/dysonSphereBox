@@ -113,9 +113,9 @@ type LayoutMetrics struct {
 	TotalBeltLengthMeters float64 `json:"totalBeltLengthMeters"`
 	// EnvelopeArea 职责：记录所有 Area 包络面积总和；使用：空间比较；边界：不是建筑占用并集。
 	EnvelopeArea float64 `json:"envelopeArea"`
-	// EnvelopeAspectRatio 职责：记录各 Area 长宽比的面积加权值；使用：偏矩形布局比较；边界：至少为一，不把球面多区假装成同一平面矩形。
+	// EnvelopeAspectRatio 职责：记录布局长宽比；使用：偏矩形比较；边界：原生主区整厂采用共同坐标包络，其余采用各Area面积加权，至少为一。
 	EnvelopeAspectRatio float64 `json:"envelopeAspectRatio"`
-	// ShapeObjective 职责：记录包络面积乘过长惩罚；使用：可行候选排序；边界：长宽比不超过二时不惩罚，不能替代硬规则校验。
+	// ShapeObjective 职责：记录包络面积乘过长惩罚；使用：可行候选排序；边界：普通布局以2:1、超密度以1.4:1为软阈值，不能替代硬规则校验。
 	ShapeObjective float64 `json:"shapeObjective"`
 	// FootprintArea 职责：记录离散格建筑与路线并集；使用：空白率；边界：格网近似而非美术网格。
 	FootprintArea float64 `json:"footprintArea"`

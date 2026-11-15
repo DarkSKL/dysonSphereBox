@@ -39,6 +39,10 @@ func (b *builder) validateFinalMachineIntegrity(ctx context.Context, req Request
 	}
 	claimed := map[*placed]bool{}
 	materialGraph := finalMachineMaterialGraph(b.all)
+	if err := b.validateProductionBuffers(); err != nil {
+		return err
+	}
+	b.appendProductionBufferEdges(materialGraph)
 	for _, registered := range b.machineLines {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "最终机器物料核验已取消或超时"}

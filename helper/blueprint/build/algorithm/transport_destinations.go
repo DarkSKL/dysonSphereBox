@@ -98,6 +98,19 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 	if len(goals) == 0 {
 		return nil, -1, 0
 	}
+	goalLow, goalHigh := goals[0], goals[0]
+	for _, goal := range goals[1:] {
+		goalLow = vector{min(goalLow.x, goal.x), min(goalLow.y, goal.y), min(goalLow.z, goal.z)}
+		goalHigh = vector{max(goalHigh.x, goal.x), max(goalHigh.y, goal.y), max(goalHigh.z, goal.z)}
+	}
+	// 目标通常只占端口周围数格，包络外的展开节点不必反复哈希整组三浮点坐标。
+	goalAt := func(point vector) (int, bool) {
+		if point.x < goalLow.x || point.x > goalHigh.x || point.y < goalLow.y || point.y > goalHigh.y || point.z < goalLow.z || point.z > goalHigh.z {
+			return -1, false
+		}
+		index, exists := goalSet[point]
+		return index, exists
+	}
 	// 去重后的目标及获选后缀在本次搜索内固定；按原目标顺序预取，避免每个节点重复哈希同一组浮点坐标。
 	goalSuffixes := make([]transportDestination, len(goals))
 	for i, goal := range goals {
@@ -108,8 +121,11 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 		if !inside(v) {
 			return false
 		}
-		goal, exists := goalSet[v]
-		return !env.blocked[beltCell(v)] || v == start || exists && candidates[goal].reused != nil
+		if !env.blocked[beltCell(v)] || v == start {
+			return true
+		}
+		goal, exists := goalAt(v)
+		return exists && candidates[goal].reused != nil
 	}
 	env.prepareTransportHeuristic(ctx, goals[0])
 	// 相邻目标共用势场；预取目标势能，避免每个三维节点重复查询五次目标。
@@ -144,9 +160,13 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 		return cost, length
 	}
 	cost, length := heuristic(start)
-	first := &transportPathNode{point: start, score: weight * cost, length: 1, lengthEstimate: 1 + length}
-	queue := &transportDestinationQueue{transportPathQueue{first}}
-	seen := newTransportSearchIndex(start, env.minimum, env.maximum)
+	arena := &env.searchArena
+	arena.used = 0
+	first := arena.add(transportPathNode{point: start, score: weight * cost, length: 1, lengthEstimate: 1 + length, heuristicCost: cost, heuristicLength: length})
+	queue := &transportDestinationQueue{append(env.searchQueue[:0], first)}
+	defer func() { env.searchQueue = queue.transportPathQueue[:0] }()
+	seen := &env.searchIndex
+	seen.reset(start, env.minimum, env.maximum)
 	seen.set(start, first)
 	serial := 0
 	var best *transportPathNode
@@ -162,7 +182,7 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 		current := heap.Pop(queue).(*transportPathNode)
 		current.closed = true
 		steps++
-		if selected, exists := goalSet[current.point]; exists {
+		if selected, exists := goalAt(current.point); exists {
 			suffix := candidates[selected]
 			cost, length := current.distance+suffix.cost, current.length+suffix.length
 			if cost < bestCost || cost == bestCost && length < bestLength {
@@ -179,17 +199,20 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 			if old != nil && old.closed && weight == 1 {
 				continue
 			}
+			distance, length := 0., current.length+1
+			if old != nil {
+				distance = current.distance + env.transportStepCost(current.point, point)
+				// 已知不能改善的邻边无需再做静态净空；发现新节点或确实松弛时仍执行全部几何规则。
+				if old.distance < distance || old.distance == distance && old.length <= length {
+					continue
+				}
+			}
 			if !allowed(point) || !env.denseTransportStepClear(current.point, point) {
 				continue
 			}
-			distance, length := current.distance+env.transportStepCost(current.point, point), current.length+1
-			if old != nil && (old.distance < distance || old.distance == distance && old.length <= length) {
-				continue
-			}
-			remainingCost, remainingLength := heuristic(point)
 			if old != nil {
 				old.parent, old.distance, old.length = current, distance, length
-				old.score, old.lengthEstimate = distance+weight*remainingCost, length+remainingLength
+				old.score, old.lengthEstimate = distance+weight*old.heuristicCost, length+old.heuristicLength
 				if old.closed {
 					old.closed = false
 					heap.Push(queue, old)
@@ -198,8 +221,10 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 				}
 				continue
 			}
+			distance = current.distance + env.transportStepCost(current.point, point)
+			remainingCost, remainingLength := heuristic(point)
 			serial++
-			node := &transportPathNode{point: point, parent: current, distance: distance, score: distance + weight*remainingCost, order: serial, length: length, lengthEstimate: length + remainingLength}
+			node := arena.add(transportPathNode{point: point, parent: current, distance: distance, score: distance + weight*remainingCost, order: serial, length: length, lengthEstimate: length + remainingLength, heuristicCost: remainingCost, heuristicLength: remainingLength})
 			seen.set(point, node)
 			heap.Push(queue, node)
 		}

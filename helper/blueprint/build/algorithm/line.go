@@ -437,14 +437,20 @@ func (b *builder) flowMonitorNodeClear(belt *placed) bool {
 // flowMonitorNodeClearAmong 职责：在同一坐标阶段的实体集合内审计监测器选点；使用：本地移块前及全局路由后；边界：调用方不能混用尚未独立平移的块，最终完整碰撞审计仍保留。
 func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bool {
 	incoming := map[*placed]*placed{}
+	incomingCount := map[*placed]int{}
+	hosts := map[vector][]*placed{}
 	for _, entity := range existing {
+		if surfaceIsBelt(entity.record.ItemID) {
+			hosts[entity.a] = append(hosts[entity.a], entity)
+		}
 		if surfaceIsBelt(entity.record.ItemID) && entity.output != nil && surfaceIsBelt(entity.output.record.ItemID) {
 			incoming[entity.output] = entity
+			incomingCount[entity.output]++
 		}
 	}
 	if b.adapter != nil && b.adapter.density == densityDense {
 		before, after := incoming[belt], belt.output
-		if before == nil || after == nil || !surfaceIsBelt(after.record.ItemID) || math.Abs(before.a.z-belt.a.z) > 1e-6 || math.Abs(after.a.z-belt.a.z) > 1e-6 {
+		if before == nil || incomingCount[belt] != 1 || after == nil || !surfaceIsBelt(after.record.ItemID) || math.Abs(before.a.z-belt.a.z) > 1e-6 || math.Abs(after.a.z-belt.a.z) > 1e-6 {
 			return false
 		}
 		a, c := vector{belt.a.x - before.a.x, belt.a.y - before.a.y, 0}, vector{after.a.x - belt.a.x, after.a.y - belt.a.y, 0}
@@ -464,27 +470,36 @@ func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bo
 	toWorld := func(point vector) placement.Vector {
 		return placement.Vector{point.x * planarGridLength, point.z*1.3333333 + .2, point.y * planarGridLength}
 	}
-	yaw := belt.record.Yaw
 	if b.polarFrame != nil {
 		encoding = &surfaceEncoding{}
 		toWorld = func(point vector) placement.Vector { return b.polarFrame.world(point, 0) }
-		point := toWorld(belt.a)
+	}
+	// 与最终朝向复核使用同一真实带切线。路径创建时的默认Yaw不能作为监测器净空依据。
+	yawFor := func(host *placed) (float32, bool) {
+		if host == nil {
+			return 0, false
+		}
+		point := toWorld(host.a)
 		direction := placement.Vector{}
-		if before := incoming[belt]; before != nil {
+		if before := incoming[host]; before != nil && incomingCount[host] == 1 {
 			direction = direction.Add(surfaceUnit(point.Sub(toWorld(before.a))))
 		}
-		if after := belt.output; after != nil && surfaceIsBelt(after.record.ItemID) {
+		if after := host.output; after != nil && surfaceIsBelt(after.record.ItemID) {
 			direction = direction.Add(surfaceUnit(toWorld(after.a).Sub(point)))
 		}
 		pose, err := encoding.recordPose(vector{point[0], point[1], point[2]}, 0, 0, 0)
 		if err != nil {
-			return false
+			return 0, false
 		}
 		x, y := direction.Dot(pose.axes[0]), direction.Dot(pose.axes[2])
 		if math.Hypot(x, y) < 1e-6 {
-			return false
+			return 0, false
 		}
-		yaw = float32(math.Mod(math.Atan2(x, y)*180/math.Pi+360, 360))
+		return float32(math.Mod(math.Atan2(x, y)*180/math.Pi+360, 360)), true
+	}
+	yaw, valid := yawFor(belt)
+	if !valid {
+		return false
 	}
 	point := toWorld(belt.a)
 	origin := vector{point[0], point[1], point[2]}
@@ -536,8 +551,20 @@ func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bo
 			return false
 		}
 		point := toWorld(other.a)
+		otherYaw := other.record.Yaw
+		if other.record.ItemID == 2030 {
+			host := other.flowMonitorHost
+			if host == nil && len(hosts[other.a]) == 1 {
+				host = hosts[other.a][0]
+			}
+			var valid bool
+			otherYaw, valid = yawFor(host)
+			if !valid {
+				return false
+			}
+		}
 		for _, shape := range shapes {
-			otherBox, err := encoding.colliderBox(vector{point[0], point[1], point[2]}, other.record.Yaw, shape)
+			otherBox, err := encoding.colliderBox(vector{point[0], point[1], point[2]}, otherYaw, shape)
 			if err != nil {
 				return false
 			}

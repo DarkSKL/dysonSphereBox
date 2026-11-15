@@ -507,6 +507,9 @@ func (b *builder) pruneFinalPower(ctx context.Context, encoding *surfaceEncoding
 	}
 	// 到此所有失败与取消检查均完成；提交时不修改原切片的底层数组。
 	b.all, b.zoneRanges, b.surfaceBlocks, b.flyLayoutBlocks = retained, zones, surfaceBlocks, flyBlocks
+	for entity := range removed {
+		delete(b.previewEntities, entity)
+	}
 	for i, current := range encodings {
 		if current != nil && areaMaps[i] != nil {
 			current.byBuilding = areaMaps[i]
@@ -561,8 +564,11 @@ func (b *builder) validateFinalPowerPruneReferences(poll *finalPowerPrunePoll, r
 				return nil
 			}
 			for i := 0; i < value.NumField(); i++ {
-				// all 是装配/空间库存，包含原电塔并不表示物流使用了它；其它 *placed 引用全部检查。
+				// all 是装配/空间库存；previewEntities仅为预览身份表。二者包含原电塔均不表示物流使用。
 				if (kind == builderType || kind == lineType) && kind.Field(i).Name == "all" {
+					continue
+				}
+				if kind == builderType && kind.Field(i).Name == "previewEntities" {
 					continue
 				}
 				if err := visit(value.Field(i)); err != nil {

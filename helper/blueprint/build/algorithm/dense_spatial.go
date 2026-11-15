@@ -7,16 +7,25 @@ import (
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build/placement"
 	"context"
+	"fmt"
 	"math"
 	"sort"
 )
 
-// denseLayoutShapeObjective 职责：为参考图约3:1的合理矩形保留面积收益，继续惩罚更细长的布局；使用：密铺最终择优；边界：普通模式沿用原2:1软目标，不把空白率当密度。
-func denseLayoutShapeObjective(metrics LayoutMetrics) float64 {
-	return metrics.EnvelopeArea * math.Max(1, metrics.EnvelopeAspectRatio/3)
+// densePreferredAspect 职责：让密铺候选优先形成接近正方形的矩形；使用：全场、折排与压缩共用软目标；边界：不改变纬带、碰撞或接线硬规则。
+const densePreferredAspect = 1.4
+
+// denseShapeCost 职责：比较面积与最长边代价；使用：所有密铺形状决策；边界：拉宽空白而不缩短最长边不会降低代价，同分仍优先小面积。
+func denseShapeCost(area, aspect float64) float64 {
+	return area * math.Max(1, aspect/densePreferredAspect)
 }
 
-// betterDenseCandidate 职责：按带长条惩罚的面积和真实线路代价比较完整方案；使用：各超密度模式；边界：允许参考图的合理长矩形，不以2:1一票淘汰更紧凑布局，不奖励带填空。
+// denseLayoutShapeObjective 职责：优先紧凑、近方形密铺；使用：最终择优；边界：普通模式沿用原2:1软目标，不把空白率当密度。
+func denseLayoutShapeObjective(metrics LayoutMetrics) float64 {
+	return denseShapeCost(metrics.EnvelopeArea, metrics.EnvelopeAspectRatio)
+}
+
+// betterDenseCandidate 职责：按近方形代价和真实线路比较完整方案；使用：各超密度模式；边界：只比较已通过硬规则的候选，不奖励带填空。
 func betterDenseCandidate(a, c LayoutMetrics) bool {
 	if first, second := denseLayoutShapeObjective(a), denseLayoutShapeObjective(c); math.Abs(first-second) > 1e-6 {
 		return first < second
@@ -41,6 +50,8 @@ func betterDenseCandidate(a, c LayoutMetrics) bool {
 
 // denseSpatialUnit 职责：保存有局部连接约束的实体集合；使用：全场位置搜索；边界：集合外包矩形不是独占区，内部空隙可以容纳其它集合。
 type denseSpatialUnit struct {
+	// buffer 职责：标记独立缓存单元以保护真实接驳出口；使用：布局净空；边界：不作为制造行，也不重复旋转生产端口元数据。
+	buffer *productionBuffer
 	// bent 职责：标记同生产者短run形成的凹形复合单元；使用：分别维护各run累计朝向与端口；边界：不冻结凹角矩形，也不代表已经全局接线。
 	bent bool
 	// entities 职责：保留实际机器、带和臂；使用：整体姿态变换；边界：不包括尚未创建的全局路线。
@@ -55,6 +66,7 @@ type denseSpatialUnit struct {
 // denseSpatialWire 职责：保存当前集合对已落位对象的一条真实连接；使用：候选位置的距离代价；边界：端点指针随集合旋转更新，不冻结旧坐标。
 type denseSpatialWire struct {
 	moving, fixed *placed
+	weight        float64
 }
 
 // transportRows 职责：统一取得单行或复合街道的容量组；使用：位置代价与累积旋转；边界：不复制transportRow实体。
@@ -75,16 +87,16 @@ func (b *builder) denseSpatialUnitWires(unit denseSpatialUnit, placedEntities ma
 		members[entity] = true
 	}
 	wires := []denseSpatialWire{}
-	for _, routes := range [][]*transportRoute{b.transportRoutes, b.denseStreetRoutes, b.denseMaterialNetworkRoutes(), b.denseProducerSplitRoutes()} {
+	for _, routes := range [][]*transportRoute{b.transportRoutes, b.denseStreetRoutes, b.denseMaterialNetworkRoutes(), b.denseProducerSplitRoutes(), b.productionBufferRoutes(), b.byproductPriorityRoutes()} {
 		for _, route := range routes {
 			if route.start == nil || route.end == nil {
 				continue
 			}
 			if members[route.start] && placedEntities[route.end] {
-				wires = append(wires, denseSpatialWire{route.start, route.end})
+				wires = append(wires, denseSpatialWire{moving: route.start, fixed: route.end, weight: route.placementWeight})
 			}
 			if members[route.end] && placedEntities[route.start] {
-				wires = append(wires, denseSpatialWire{route.end, route.start})
+				wires = append(wires, denseSpatialWire{moving: route.end, fixed: route.start, weight: route.placementWeight})
 			}
 		}
 	}
@@ -95,13 +107,20 @@ func (b *builder) denseSpatialUnitWires(unit denseSpatialUnit, placedEntities ma
 func denseSpatialWireCost(wires []denseSpatialWire, dx, dy float64) float64 {
 	cost := 0.
 	for _, wire := range wires {
-		cost += math.Abs(wire.moving.a.x+dx-wire.fixed.a.x) + math.Abs(wire.moving.a.y+dy-wire.fixed.a.y)
+		weight := wire.weight
+		if weight <= 0 {
+			weight = 1
+		}
+		cost += weight * (math.Abs(wire.moving.a.x+dx-wire.fixed.a.x) + math.Abs(wire.moving.a.y+dy-wire.fixed.a.y))
 	}
 	return cost
 }
 
 // denseSpatialConflict 职责：按单次密铺规则检查实际占位；使用：全场空间索引；边界：带段相交不直接禁止，但节点保留0.35米间距，机器及分拣器规则不缩小。
 func denseSpatialConflict(a, c *connectedPackingShape) bool {
+	if a.kind == "storage-roof" || c.kind == "storage-roof" {
+		return storageRoofConflict(a, c)
+	}
 	if a.kind == "dense-monitor" || c.kind == "dense-monitor" {
 		monitor, arm := a, c
 		if monitor.kind != "dense-monitor" {
@@ -132,6 +151,11 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 		return contour, err
 	}
 	ordinarySpacing := b.adapter != nil && b.adapter.density == densityStandard
+	roofs, err := b.storageRoofContours(unit.entities)
+	if err != nil {
+		return contour, err
+	}
+	contour.shapes = append(contour.shapes, roofs...)
 	world := func(p vector) placement.Vector {
 		return placement.Vector{p.x * planarGridLength, p.z*1.3333333 + .4, p.y * planarGridLength}
 	}
@@ -180,7 +204,11 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 	if unit.row != nil {
 		ports := unit.row.allInputEndpoints()
 		for _, route := range unit.row.outputs {
-			if route.to != nil {
+			if buffer := unit.row.buffers[route.edge.ItemID]; buffer != nil && buffer.detached {
+				ports = append(ports, buffer.source)
+				continue
+			}
+			if route.to != nil || unit.row.buffers[route.edge.ItemID] != nil {
 				ports = append(ports, route.start)
 			}
 		}
@@ -209,6 +237,14 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 		a := world(port.head.a)
 		c := world(vector{port.head.a.x + direction.x*.5, port.head.a.y + direction.y*.5, port.head.a.z})
 		contour.shapes = append(contour.shapes, connectedBeltShape(a, c))
+		if unit.buffer != nil && !ordinarySpacing {
+			// 缓存紧邻主带但仍需一个真实出口升降柱，避免填洞把其唯一出路封在其他箱罐之间。
+			point := world(vector{port.head.a.x + direction.x, port.head.a.y + direction.y, 0})
+			box := placement.Box{Center: point.Add(placement.Vector{0, transportMaxHeight * 1.3333333 / 2, 0}), HalfSize: placement.Vector{.31, transportMaxHeight*1.3333333/2 + .3, .31}, Axes: [3]placement.Vector{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}
+			shape := connectedBoxShape("port", box)
+			shape.gridPort = true
+			contour.shapes = append(contour.shapes, shape)
+		}
 	}
 	priority := func(kind string) int {
 		switch kind {
@@ -231,6 +267,15 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 // placeDenseSpatialUnits 职责：全场搜索实体交错位置和四向姿态；使用：超密度装配；边界：有界搜索不宣称数学全局最优，不以普通区块布局作成功退路。
 func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpatialUnit, heightLimit float64) error {
 	heightLimit = denseLatitudeHeightLimit(ctx, heightLimit)
+	if math.IsInf(heightLimit, 1) {
+		// 普通平面请求以无限高表示不分栏；轮廓搜索必须先转换为有限格数，否则转int会把可搜索行压成零。
+		area := 0.
+		for _, unit := range units {
+			low, high := bounds(unit.entities)
+			area += (math.Ceil(high.x-low.x) + 1) * (math.Ceil(high.y-low.y) + 1)
+		}
+		heightLimit = math.Max(16, math.Ceil(math.Sqrt(area)*1.25))
+	}
 	widthLimit := heightLimit
 	strictHeight := b.denseLatitudeSpan > 0
 	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
@@ -270,6 +315,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 	}
 	packing := &connectedPacking{dense: b.adapter == nil || b.adapter.density == densityDense, cells: map[[3]int][]int{}}
 	placedEntities := map[*placed]bool{}
+	placedStations := []*placed{}
 	for number, unit := range ordered {
 		wires := b.denseSpatialUnitWires(unit, placedEntities)
 		bestArea, bestWire, bestAspect := math.Inf(1), math.Inf(1), math.Inf(1)
@@ -331,7 +377,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 					if score > bestScore || score == bestScore && (area > bestArea || area == bestArea && (wire > bestWire || wire == bestWire && aspect >= bestAspect)) {
 						continue
 					}
-					if !packing.fits(ctx, contour, dx, dy) {
+					if !stationPlacementClear(unit.entities, placedStations, vector{x: dx, y: dy}) || !packing.fits(ctx, contour, dx, dy) {
 						continue
 					}
 					bestArea, bestWire, bestAspect = area, wire, aspect
@@ -343,7 +389,8 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 			rotatePlacedQuarter(unit.entities, 1)
 		}
 		if bestTurns < 0 {
-			return &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: "全场密铺在本次空间预算内未找到可接线的实体位置"}
+			low, high := bounds(unit.entities)
+			return &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: fmt.Sprintf("全场密铺在本次空间预算内未找到可接线的实体位置（单元%d/%d，实体%d，宽高%.2f/%.2f，预算%.2f/%.2f）", number+1, len(ordered), len(unit.entities), high.x-low.x+1, high.y-low.y+1, widthLimit, heightLimit)}
 		}
 		if b.denseRefine && packing.ready {
 			rotatePlacedQuarter(unit.entities, bestTurns)
@@ -372,7 +419,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 					if score > bestScore || score == bestScore && (area > bestArea || area == bestArea && wire >= bestWire) {
 						continue
 					}
-					if !packing.fits(ctx, bestContour, dx, dy) {
+					if !stationPlacementClear(unit.entities, placedStations, vector{x: dx, y: dy}) || !packing.fits(ctx, bestContour, dx, dy) {
 						continue
 					}
 					bestArea, bestWire, bestAspect, bestScore = area, wire, aspect, score
@@ -385,6 +432,9 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 		shift(unit.entities, bestX, bestY, 0)
 		for _, entity := range unit.entities {
 			placedEntities[entity] = true
+			if surfaceIsStation(entity.record.ItemID) {
+				placedStations = append(placedStations, entity)
+			}
 		}
 		for _, row := range unit.transportRows() {
 			row.quarterTurns = (row.quarterTurns + bestTurns) % 4

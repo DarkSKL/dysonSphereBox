@@ -19,6 +19,9 @@ func (b *builder) referenceChemicalFourEligible(p quant.Production, r quant.Reci
 	if b.generationCtx == nil || b.adapter == nil || b.adapter.density != densityDense || b.setting.EnableFlowMonitor {
 		return false
 	}
+	if ground, _ := b.generationCtx.Value(denseGroundTracksKey{}).(bool); ground {
+		return false
+	}
 	enabled, _ := b.generationCtx.Value(chemicalFourKey{}).(bool)
 	return enabled && p.MachineType == 4 && denseReferenceSource(p.MachineID) == 2317 && p.IncreasePoints == 0 && len(r.Items) == 3 && len(r.Results) == 1 && !recipeHasMachineRecycle(r) && referenceSingleArmsSufficient(p, r, b.setting.InserterLv)
 }

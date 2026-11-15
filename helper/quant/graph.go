@@ -73,9 +73,9 @@ type node struct {
 	raw bool
 	// unsupportedFactory 职责：标记需要外供的不支持设施；使用：结果告警；边界：不展开其上游配方。
 	unsupportedFactory bool
-	// runInputs 职责：单次执行的毛原料（含喷涂）；使用：产线物料流；边界：不参与求解。
+	// runInputs 职责：单次执行的毛原料（含喷涂）；使用：依赖闭包及产线物料流；边界：精确求解系数另从原配方重建。
 	runInputs *rates
-	// runOutputs 职责：单次执行的毛产物（含额外产出）；使用：产线物料流；边界：不参与求解。
+	// runOutputs 职责：单次执行的毛产物（含额外产出）；使用：依赖闭包及产线物料流；边界：精确求解系数另从原配方重建。
 	runOutputs *rates
 	// runNet 职责：单次执行的主产物净产出；使用：把求解量换算为执行次数；边界：非正值时节点已标记 invalid。
 	runNet float64
@@ -200,7 +200,7 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 	}
 	g := &graph{nodes: map[string]*node{}, order: append([]string{}, d.Order...), multi: newRates(), settings: s, dataset: d, scheme: scheme}
 	for _, item := range d.Items {
-		if s.MineralizeList[item.Name] && len(d.Choices[item.Name]) == 0 {
+		if s.MineralizeList[item.Name] && len(d.Choices[item.Name]) == 0 && !d.ExternalOnly[item.Name] {
 			g.order = append(g.order, item.Name)
 		}
 	}
@@ -209,7 +209,7 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 	}
 	for _, name := range g.order {
 		n := g.nodes[name]
-		if s.MineralizeList[name] {
+		if s.MineralizeList[name] || d.ExternalOnly[name] {
 			n.raw = true
 			n.rate = math.Pow(100000000, float64(*s.FixedNum+1))
 			continue

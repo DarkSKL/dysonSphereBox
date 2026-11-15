@@ -143,9 +143,11 @@ def parse_item_proto_set(raw):
         r.i32()  # Type
         r.i32()  # SubID
         r.string(); r.string()  # MiningFrom, ProduceFrom
-        r.i32(); r.i32()  # StackSize, Grade
+        m["StackSize"] = r.i32()
+        r.i32()  # Grade
         r.int_array()  # Upgrades
-        r.u8_aligned(); r.u8_aligned()  # IsFluid, IsEntity
+        m["IsFluid"] = bool(r.u8_aligned())
+        r.u8_aligned()  # IsEntity
         m["CanBuild"] = bool(r.u8_aligned())
         r.u8_aligned()  # BuildInGas
         m["IconPath"] = r.string()
@@ -153,9 +155,11 @@ def parse_item_proto_set(raw):
         m["ModelIndex"] = r.i32()
         m["ModelCount"] = r.i32()
         r.i32(); r.i32()  # HpMax, Ability
-        r.i64(); r.i64()  # HeatValue, Potential
+        m["HeatValue"] = r.i64()
+        r.i64()  # Potential
         r.f32()  # ReactorInc
-        r.i32(); r.i32()  # FuelType, CatalystType
+        m["FuelType"] = r.i32()
+        r.i32()  # CatalystType
         r.u8_aligned()  # AmmoType (byte enum)
         r.i32()  # BombType
         for _f in ("CraftType", "BuildIndex", "BuildMode", "GridIndex", "UnlockKey", "PreTechOverride"):

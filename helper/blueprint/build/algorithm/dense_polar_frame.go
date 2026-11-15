@@ -16,11 +16,11 @@ type densePolarFrame struct {
 	latitudeStep, longitudeStep float32
 	// flipHemisphere 职责：在路由结束后以球面半周旋转映射回目标极区；使用：设施对称候选；边界：只写出前应用一次。
 	flipHemisphere bool
-	// longitudeBudget 职责：限制非极区的矩形经向搜索范围；使用：大厂目标球面装箱；边界：零值保留极区原生整圈预算。
+	// longitudeBudget 职责：限制矩形经向搜索范围；使用：大厂或显式邻带装箱；边界：零值保留既有极区整圈预算。
 	longitudeBudget float64
 	// position 职责：保存非极区矩形从中心或南北边缘展开的顺序；使用：大厂球面装箱；边界：空值保留极区既有顺序。
 	position string
-	// compactLongitude 职责：跨纬度比较最短经向右界；使用：独立均衡矩形候选；边界：既有候选不改变扫描顺序。
+	// compactLongitude 职责：跨纬度比较最短经向右界；使用：独立均衡矩形及邻带候选；边界：既有严格选区候选不改变扫描顺序。
 	compactLongitude bool
 }
 
@@ -99,7 +99,8 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 			selection.position = "north"
 		}
 	}
-	bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, 200)
+	expand, _ := ctx.Value(denseAdjacentLatitudeKey{}).(bool)
+	bands := denseLatitudeAllowedBands(selection, expand)
 	budget, _, err := densityContextBand(ctx, zone, 200)
 	if err != nil {
 		return err
@@ -122,7 +123,7 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 			}
 		}
 	}
-	compact := denseBalancedFrameEnabled(ctx) && selection.tier < 5 && len(units) >= 64
+	compact := denseBalancedFrameEnabled(ctx) && (selection.tier < 5 || expand) && (len(units) >= 64 || expand && len(units) > 1)
 	if compact {
 		if err := b.reserveDenseUnitPower(ctx, units); err != nil {
 			return err
@@ -134,16 +135,26 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 	if !compact {
 		height = min(height, int(math.Ceil(high.y-low.y))+5)
 	}
-	start := (bands[0].low + bands[len(bands)-1].high - height + 1) / 2
+	referenceLow, referenceHigh := bands[0].low, bands[len(bands)-1].high
+	if expand {
+		referenceLow, referenceHigh = denseLatitudeReferenceRange(selection)
+	}
+	start := (referenceLow + referenceHigh - height + 1) / 2
 	if selection.position == "south" {
-		start = bands[0].low
+		start = referenceLow
+		if expand {
+			start += 2
+		}
 		if selection.tier == 5 && selection.hemisphere < 0 {
 			// 极点最内侧只剩少量格子；预留四行实体半径，避免把局部单元中心压在极点上。
 			start += 4
 		}
 	}
 	if selection.position == "north" {
-		start = bands[len(bands)-1].high - height + 1
+		start = referenceHigh - height + 1
+		if expand {
+			start -= 2
+		}
 	}
 	step := float32(2*float32(math.Pi)) / 1000
 	segments := 0
@@ -153,7 +164,7 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 	// 寻路采用覆盖区最细的经向格网；若直接沿南极带头的粗网格，靠赤道一侧一步便可能超过合法带长。
 	// 写出前统一换算回主Area原生格距，保持同一球面位置。
 	frame := &densePolarFrame{start: start, height: height, segments: segments, latitudeStep: step, longitudeStep: float32(2*float32(math.Pi)) / float32(segments*5), flipHemisphere: flipHemisphere, compactLongitude: compact}
-	if selection.tier < 5 {
+	if selection.tier < 5 || expand {
 		frame.position = selection.position
 		frame.longitudeBudget = denseTargetLongitudeBudget(frame, units)
 	}

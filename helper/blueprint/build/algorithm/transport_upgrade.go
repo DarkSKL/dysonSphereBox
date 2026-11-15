@@ -141,9 +141,19 @@ func generateWithTransportUpgrades(ctx context.Context, req Request, adapter *mo
 
 // generateTransportAttempt 职责：执行一个已归一化运输等级组合的完整布局；使用：自动升档循环；边界：原生球面回退保持同一等级，最终发布由外层唯一负责。
 func generateTransportAttempt(ctx context.Context, prepared preparedGeneration, adapter *modeAdapter) (Result, error) {
+	return generateTransportWithAdjacent(ctx, prepared, adapter)
+}
+
+// generateFixedTransportAttempt 职责：保留原有严格选区生成；使用：默认路径及扩展方案的可行基线；边界：不隐式跨入相邻纬带。
+func generateFixedTransportAttempt(ctx context.Context, prepared preparedGeneration, adapter *modeAdapter) (Result, error) {
 	req := prepared.request
+	workload, workloadErr := denseNativeWorkload(ctx, prepared)
+	if workloadErr != nil {
+		return Result{}, workloadErr
+	}
+	ctx = context.WithValue(ctx, denseNativeWorkloadKey{}, workload)
 	if req.SurfaceLayout != nil && req.SurfaceLayout.LatitudeZone != "" {
-		if selection, ok := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone); ok && req.Density == densityDense && (selection.tier >= 4 || req.Plan.MachineCount >= denseNativeLargeMachineThreshold) {
+		if selection, ok := densityLatitudeSelectionFor(req.SurfaceLayout.LatitudeZone); ok && req.Density == densityDense && (selection.tier >= 4 || denseNativeLargeRequest(ctx, req)) {
 			return generateDensePolar(ctx, req, adapter)
 		}
 	}

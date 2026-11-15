@@ -20,12 +20,7 @@ func (b *builder) generateStandardFlyField(ctx context.Context, req Request, dat
 	bestFacilities := math.MaxInt
 	var failures []error
 	diagnostics := []SearchCandidateDiagnostic{}
-	options := []struct {
-		scale, latitudeFactor float64
-		order                 int
-		materialOrder         bool
-		consumerFirst         bool
-	}{
+	options := []standardFlyOption{
 		{scale: 1, order: 2},
 		{scale: 1.2, order: 3},
 		{scale: 1, latitudeFactor: .7, order: 3},
@@ -35,6 +30,7 @@ func (b *builder) generateStandardFlyField(ctx context.Context, req Request, dat
 		{scale: 1.2, latitudeFactor: .7, order: 3, materialOrder: true, consumerFirst: true},
 		{scale: 1.2, order: 3, materialOrder: true},
 	}
+	options = b.normalizeStandardFlyOptions(ctx, req, dataset, options)
 	type evaluation struct {
 		out         Result
 		err         error
@@ -43,12 +39,7 @@ func (b *builder) generateStandardFlyField(ctx context.Context, req Request, dat
 	}
 	workers := b.candidateWorkers(ctx, len(options))
 	previews := b.planCandidatePreviews(len(options))
-	err := search.Waves(ctx, options, workers, func(ctx context.Context, variant int, option struct {
-		scale, latitudeFactor float64
-		order                 int
-		materialOrder         bool
-		consumerFirst         bool
-	}) (evaluated evaluation) {
+	err := search.Waves(ctx, options, workers, func(ctx context.Context, variant int, option standardFlyOption) (evaluated evaluation) {
 		ctx, finishPerformance := beginCandidatePerformance(ctx, "standard-fly", variant)
 		defer func() { finishPerformance(evaluated.err) }()
 		candidate, err := b.newCandidateBuilder()

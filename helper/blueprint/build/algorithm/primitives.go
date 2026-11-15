@@ -147,6 +147,10 @@ type flyTransportEndpoint struct {
 
 // builder 职责：收集单次装配；使用：六种模式；边界：不做文件写入。
 type builder struct {
+	// productionBuffers 职责：保存本候选全部产物缓存及进出链；使用：统一终检；边界：不跨候选复用，不作为物流消耗。
+	productionBuffers []*productionBuffer
+	// byproductInputs 职责：登记联产物料优先于补料的真实合流；使用：装配和终检；边界：不替代机器内部催化剂回流。
+	byproductInputs []*byproductPriorityInput
 	// mode1Deliveries 职责：保存独立左侧成品/副产物交付组和被冻结的真实末端；使用：mode1路由、裁尾与终检；边界：不接管塔、配送或混带边界。
 	mode1Deliveries *mode1DeliveryPlan
 	// denseBoundary 职责：保存普通和密铺直连原料及交付端的联合位置；使用：边界创建和局部严格避碰；边界：不跨候选复用。
@@ -204,6 +208,8 @@ type builder struct {
 	directBoundaryLaneLimit float64
 	// directBoundaryExtentScale 职责：按实际核心/附件规模给黑盒有限占位预算；使用：设施成形并裁尾后；边界：零保留调用方预算，候选仍用真实轮廓占位及最终包络评分。
 	directBoundaryExtentScale float64
+	// candidateExtentProbe 职责：只收集排列前的实际模块预算；使用：倍率候选归一化；边界：独立builder，遇到预算点立即退出，不寻路或发布预览。
+	candidateExtentProbe *candidateExtentProbe
 	// denseMaterialNetworks 职责：保存同物料共享消费轨的规范/物理映射；使用：独立密铺网络候选；边界：不能替代最终逐机、容量或真实路线证明。
 	denseMaterialNetworks *denseMaterialNetworkPlan
 	// denseUnitOrder 职责：为独立候选重排完整实体集合的落位顺序；使用：机器、辅助网络和边界设施全部准备后；边界：只允许重排，不改变集合实体、owner或规范生产顺序。

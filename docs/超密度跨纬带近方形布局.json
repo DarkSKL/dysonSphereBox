@@ -1,0 +1,569 @@
+{
+  "schemaVersion": "adjacent-latitude-layout-verification/v1",
+  "status": "verified",
+  "artifactRoot": "../runtime-shots/latitude-square",
+  "request": {
+    "target": "铜块",
+    "ratePerMinute": 6000,
+    "machines": 100,
+    "density": "dense",
+    "mode": "行星内物流塔",
+    "position": "第2档北半球南边缘",
+    "equipment": "默认传送带、分拣器、电弧熔炉",
+    "preference": "以所选位置为基准，允许跨相邻纬带，优先偏方的矩形"
+  },
+  "behavior": {
+    "frontend": "超密度请求默认expandAdjacent=true；没有新增页面。",
+    "compatibility": "接口显式expandAdjacent=false或旧请求缺省false仍保持严格选区。",
+    "anchor": "南边缘向北、北边缘向南、中心两侧展开；新搜索窗口最多112格，保留真实模型半径余量。",
+    "geometry": "使用连续相邻原生纬带及Area父链；同一刚性单元补偿目标格距，跨单元路线在真实球面连接。",
+    "choice": "保留已通过的严格选区方案，额外搜索12至60秒；扩展方案只有完整终检成功才可获选。仍然狭长时继续比较后续窗口，不直接返回第一个可行长条。",
+    "shape": "跨纬带按共同主区的整厂包络评分，不能分别对每条窄Area计形状。",
+    "tradeoff": "当原方案较长而候选进入1.4:1以内、最长边真正缩短时，允许最多50%额外面积获得优先；其余使用既有面积与长边综合代价。禁止通过增加物流设施换形状。",
+    "fallback": "额外搜索未改善或超时保留已经完成的可行方案；用户取消不返回结果。",
+    "previewFix": "电塔去冗余不再将previewEntities身份表当成物流依赖；真实连接和领域引用仍禁止裁剪，提交时清理已删塔的预览索引。"
+  },
+  "cases": [
+    {
+      "name": "ring2-north-south-mode3",
+      "requestAndResult": "final/ring2-north-south-mode3.json",
+      "blueprint": "final/ring2-north-south-mode3.txt",
+      "after": {
+        "aspectRatio": 1.1025641025641026,
+        "envelopeAreaGrid2": 1677,
+        "beltLengthMeters": 1736.556079878544,
+        "buildingCount": 1575,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 84,
+        "layoutWidth": 39,
+        "layoutHeight": 43,
+        "nativeBands": [
+          {
+            "low": 84,
+            "high": 126,
+            "segments": 160
+          }
+        ],
+        "seconds": 39.3726508
+      },
+      "before": {
+        "aspectRatio": 1.8461538461538463,
+        "envelopeAreaGrid2": 1248,
+        "beltLengthMeters": 1407.2133442106983,
+        "buildingCount": 1408,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 85,
+        "layoutWidth": 48,
+        "layoutHeight": 26,
+        "nativeBands": [
+          {
+            "low": 85,
+            "high": 110,
+            "segments": 160
+          }
+        ],
+        "seconds": 6.1765421
+      },
+      "changePercent": {
+        "envelopeAreaGrid2": 34.38,
+        "beltLengthMeters": 23.4
+      }
+    },
+    {
+      "name": "ring3-north-south-mode3",
+      "requestAndResult": "final/ring3-north-south-mode3.json",
+      "blueprint": "final/ring3-north-south-mode3.txt",
+      "after": {
+        "aspectRatio": 1.1666666666666667,
+        "envelopeAreaGrid2": 2393,
+        "beltLengthMeters": 2681.9347812910755,
+        "buildingCount": 2298,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 133,
+        "layoutWidth": 48,
+        "layoutHeight": 56,
+        "nativeBands": [
+          {
+            "low": 133,
+            "high": 155,
+            "segments": 120
+          },
+          {
+            "low": 156,
+            "high": 180,
+            "segments": 100
+          },
+          {
+            "low": 181,
+            "high": 188,
+            "segments": 80
+          }
+        ],
+        "seconds": 19.0749527
+      },
+      "before": {
+        "aspectRatio": 3.869565217391304,
+        "envelopeAreaGrid2": 2047,
+        "beltLengthMeters": 2868.7262203947644,
+        "buildingCount": 2273,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 131,
+        "layoutWidth": 89,
+        "layoutHeight": 23,
+        "nativeBands": [
+          {
+            "low": 131,
+            "high": 153,
+            "segments": 120
+          }
+        ],
+        "seconds": 4.7418652
+      },
+      "changePercent": {
+        "envelopeAreaGrid2": 16.9,
+        "beltLengthMeters": -6.51
+      }
+    },
+    {
+      "name": "ring4-north-south-mode3",
+      "requestAndResult": "final/ring4-north-south-mode3.json",
+      "blueprint": "final/ring4-north-south-mode3.txt",
+      "after": {
+        "aspectRatio": 1,
+        "envelopeAreaGrid2": 2420,
+        "beltLengthMeters": 2643.344851510644,
+        "buildingCount": 2294,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 158,
+        "layoutWidth": 54,
+        "layoutHeight": 54,
+        "nativeBands": [
+          {
+            "low": 158,
+            "high": 180,
+            "segments": 100
+          },
+          {
+            "low": 181,
+            "high": 195,
+            "segments": 80
+          },
+          {
+            "low": 196,
+            "high": 210,
+            "segments": 60
+          },
+          {
+            "low": 211,
+            "high": 211,
+            "segments": 40
+          }
+        ],
+        "seconds": 20.4412125
+      },
+      "before": {
+        "aspectRatio": 4.434782608695652,
+        "envelopeAreaGrid2": 2346,
+        "beltLengthMeters": 3059.6390147948573,
+        "buildingCount": 2394,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 156,
+        "layoutWidth": 102,
+        "layoutHeight": 23,
+        "nativeBands": [
+          {
+            "low": 156,
+            "high": 178,
+            "segments": 100
+          }
+        ],
+        "seconds": 11.1796422
+      },
+      "changePercent": {
+        "envelopeAreaGrid2": 3.15,
+        "beltLengthMeters": -13.61
+      }
+    },
+    {
+      "name": "ring2-south-north-mode3",
+      "requestAndResult": "final/ring2-south-north-mode3.json",
+      "blueprint": "final/ring2-south-north-mode3.txt",
+      "after": {
+        "aspectRatio": 1.1842105263157894,
+        "envelopeAreaGrid2": 1710,
+        "beltLengthMeters": 1901.217197248067,
+        "buildingCount": 1673,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": -128,
+        "layoutWidth": 38,
+        "layoutHeight": 45,
+        "nativeBands": [
+          {
+            "low": -128,
+            "high": -84,
+            "segments": 160
+          }
+        ],
+        "seconds": 15.5562977
+      }
+    },
+    {
+      "name": "ring2-north-center-mode3",
+      "requestAndResult": "final/ring2-north-center-mode3.json",
+      "blueprint": "final/ring2-north-center-mode3.txt",
+      "after": {
+        "aspectRatio": 1.025,
+        "envelopeAreaGrid2": 1640,
+        "beltLengthMeters": 1773.247241689372,
+        "buildingCount": 1585,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 83,
+        "layoutWidth": 40,
+        "layoutHeight": 41,
+        "nativeBands": [
+          {
+            "low": 83,
+            "high": 123,
+            "segments": 160
+          }
+        ],
+        "seconds": 15.6161568
+      }
+    },
+    {
+      "name": "ring5-north-south-mode3",
+      "requestAndResult": "final/ring5-north-south-mode3.json",
+      "blueprint": "final/ring5-north-south-mode3.txt",
+      "after": {
+        "aspectRatio": 1.2777777777777777,
+        "envelopeAreaGrid2": 2422,
+        "beltLengthMeters": 2723.250875244989,
+        "buildingCount": 2422,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 183,
+        "layoutWidth": 69,
+        "layoutHeight": 54,
+        "nativeBands": [
+          {
+            "low": 183,
+            "high": 195,
+            "segments": 80
+          },
+          {
+            "low": 196,
+            "high": 210,
+            "segments": 60
+          },
+          {
+            "low": 211,
+            "high": 220,
+            "segments": 40
+          },
+          {
+            "low": 221,
+            "high": 230,
+            "segments": 32
+          },
+          {
+            "low": 231,
+            "high": 235,
+            "segments": 20
+          },
+          {
+            "low": 236,
+            "high": 236,
+            "segments": 16
+          }
+        ],
+        "seconds": 17.1556565
+      }
+    },
+    {
+      "name": "ring2-north-south-mode1",
+      "requestAndResult": "final-modes/ring2-north-south-mode1.json",
+      "blueprint": "final-modes/ring2-north-south-mode1.txt",
+      "after": {
+        "aspectRatio": 1.1176470588235294,
+        "envelopeAreaGrid2": 1292,
+        "beltLengthMeters": 1284.5361037081443,
+        "buildingCount": 1275,
+        "machineCount": 100,
+        "logisticsFacilityCount": 0,
+        "anchorLatitudeGrid": 81,
+        "layoutWidth": 34,
+        "layoutHeight": 38,
+        "nativeBands": [
+          {
+            "low": 81,
+            "high": 118,
+            "segments": 160
+          }
+        ],
+        "seconds": 51.3124167
+      }
+    },
+    {
+      "name": "ring2-north-south-mode2",
+      "requestAndResult": "final-modes/ring2-north-south-mode2.json",
+      "blueprint": "final-modes/ring2-north-south-mode2.txt",
+      "after": {
+        "aspectRatio": 1.5116279069767442,
+        "envelopeAreaGrid2": 2795,
+        "beltLengthMeters": 4405.732849395792,
+        "buildingCount": 3770,
+        "machineCount": 100,
+        "logisticsFacilityCount": 24,
+        "anchorLatitudeGrid": 81,
+        "layoutWidth": 65,
+        "layoutHeight": 43,
+        "nativeBands": [
+          {
+            "low": 81,
+            "high": 123,
+            "segments": 160
+          }
+        ],
+        "seconds": 185.4651664
+      }
+    },
+    {
+      "name": "ring2-north-south-mode4",
+      "requestAndResult": "final-modes/ring2-north-south-mode4.json",
+      "blueprint": "final-modes/ring2-north-south-mode4.txt",
+      "after": {
+        "aspectRatio": 1.3243243243243243,
+        "envelopeAreaGrid2": 1804,
+        "beltLengthMeters": 2335.9407785257586,
+        "buildingCount": 1915,
+        "machineCount": 100,
+        "logisticsFacilityCount": 3,
+        "anchorLatitudeGrid": 83,
+        "layoutWidth": 37,
+        "layoutHeight": 49,
+        "nativeBands": [
+          {
+            "low": 83,
+            "high": 130,
+            "segments": 160
+          },
+          {
+            "low": 131,
+            "high": 131,
+            "segments": 120
+          }
+        ],
+        "seconds": 28.3180214
+      }
+    }
+  ],
+  "livePreview": {
+    "passed": true,
+    "winnerCandidateId": "candidate-127",
+    "metrics": {
+      "aspectRatio": 1.1025641025641026,
+      "envelopeAreaGrid2": 1677,
+      "beltLengthMeters": 1746.86588915635,
+      "buildingCount": 1580,
+      "machineCount": 100,
+      "logisticsFacilityCount": 3,
+      "anchorLatitudeGrid": 84,
+      "layoutWidth": 39,
+      "layoutHeight": 43,
+      "nativeBands": [
+        {
+          "low": 84,
+          "high": 126,
+          "segments": 160
+        }
+      ],
+      "seconds": 40.9338235
+    },
+    "requestAndResult": "preview-fixed/ring2-north-south-mode3.json"
+  },
+  "random": {
+    "passed": 8,
+    "total": 8,
+    "cases": [
+      {
+        "index": 12,
+        "seed": 20261115,
+        "mode": 1,
+        "targets": [
+          {
+            "itemId": 1205,
+            "ratePerMinute": 120
+          }
+        ],
+        "requestAndResult": "random/case-12.json"
+      },
+      {
+        "index": 13,
+        "seed": 20261115,
+        "mode": 2,
+        "targets": [
+          {
+            "itemId": 6006,
+            "ratePerMinute": 12
+          }
+        ],
+        "requestAndResult": "random/case-13.json"
+      },
+      {
+        "index": 14,
+        "seed": 20261115,
+        "mode": 3,
+        "targets": [
+          {
+            "itemId": 1123,
+            "ratePerMinute": 120
+          }
+        ],
+        "requestAndResult": "random/case-14.json"
+      },
+      {
+        "index": 15,
+        "seed": 20261115,
+        "mode": 4,
+        "targets": [
+          {
+            "itemId": 2003,
+            "ratePerMinute": 3
+          }
+        ],
+        "requestAndResult": "random/case-15.json"
+      },
+      {
+        "index": 20,
+        "seed": 20261115,
+        "mode": 1,
+        "targets": [
+          {
+            "itemId": 1111,
+            "ratePerMinute": 30
+          }
+        ],
+        "requestAndResult": "random/case-20.json"
+      },
+      {
+        "index": 21,
+        "seed": 20261115,
+        "mode": 2,
+        "targets": [
+          {
+            "itemId": 1126,
+            "ratePerMinute": 30
+          }
+        ],
+        "requestAndResult": "random/case-21.json"
+      },
+      {
+        "index": 22,
+        "seed": 20261115,
+        "mode": 3,
+        "targets": [
+          {
+            "itemId": 2202,
+            "ratePerMinute": 3
+          }
+        ],
+        "requestAndResult": "random/case-22.json"
+      },
+      {
+        "index": 23,
+        "seed": 20261115,
+        "mode": 4,
+        "targets": [
+          {
+            "itemId": 1110,
+            "ratePerMinute": 15
+          },
+          {
+            "itemId": 1126,
+            "ratePerMinute": 30
+          }
+        ],
+        "requestAndResult": "random/case-23.json"
+      }
+    ]
+  },
+  "verification": {
+    "latitudeAndModeCases": "9/9通过",
+    "livePreview": "声明与最终提交的获选ID一致；严格解码、产能、实体统计及顶部净空复核通过。",
+    "unitCases": [
+      "所有五档、双半球与位置的连续范围",
+      "保持显式扩展许可",
+      "错误原生段数拒绝",
+      "越过允许范围拒绝",
+      "改变所选锚点拒绝",
+      "跨带整厂形状计算",
+      "不能以空白或额外物流设施换形状",
+      "预览身份不影响电塔裁剪，真实物流引用仍拒绝"
+    ],
+    "builds": [
+      {
+        "command": "go test ./helper/quant ./helper/factory/... ./helper/blueprint/build/... -count=1 -timeout 15m",
+        "result": "passed",
+        "algorithmPackageSeconds": 100.957
+      },
+      {
+        "command": "go build ./...",
+        "result": "passed"
+      },
+      {
+        "command": "npm run build",
+        "directory": "frontend",
+        "result": "passed",
+        "includes": "vue-tsc --noEmit + Vite production build"
+      },
+      {
+        "check": "Wails服务绑定存在且无删除项",
+        "result": "passed"
+      }
+    ]
+  },
+  "limitations": [
+    "优先近方形是软目标，不能覆盖输送、连接、碰撞、供电、球面格距或缓存顶部净空规则。",
+    "占地和带长可能增加；对比记录保留全部变化，不宣称每项指标同时改善。",
+    "耗时含当前机器上的并行负载，仅记录本次运行，不据此宣称提速。",
+    "主区坐标跨多个原生Area时，辅助Area没有独立建筑记录不表示蓝图缺少该纬带的设施。",
+    "目前为离线数值、导出及预览协议验证，未进行游戏内长时间运行实测。"
+  ],
+  "sourceFiles": [
+    "helper/blueprint/build/algorithm/dense_adjacent_latitude.go",
+    "helper/blueprint/build/algorithm/dense_polar.go",
+    "helper/blueprint/build/algorithm/dense_polar_frame.go",
+    "helper/blueprint/build/algorithm/dense_polar_occupancy.go",
+    "helper/blueprint/build/algorithm/dense_polar_encoding.go",
+    "helper/blueprint/build/algorithm/dense_latitude.go",
+    "helper/blueprint/build/algorithm/dense_latitude_bounds.go",
+    "helper/blueprint/build/algorithm/power_prune.go",
+    "frontend/src/composables/dysonSphere/useQuantWorkspace.ts"
+  ],
+  "replay": {
+    "requiredEnvironment": {
+      "DSBOX_LATITUDE_REPORT_DIR": "指定结果输出目录",
+      "DSBOX_LATITUDE_EXPAND": "1",
+      "DSBOX_LATITUDE_ENFORCE": "1",
+      "DSBOX_LATITUDE_ZONES": "ring2-north-south,ring3-north-south,ring4-north-south,ring2-south-north,ring2-north-center,ring5-north-south"
+    },
+    "command": "go test ./helper/blueprint/build/algorithm -run '^TestDenseLatitudeShapeCases$' -v -count=1 -timeout 20m",
+    "previewEnvironment": {
+      "DSBOX_LATITUDE_ZONES": "ring2-north-south",
+      "DSBOX_LATITUDE_PREVIEW": "1"
+    },
+    "modeEnvironment": {
+      "DSBOX_LATITUDE_ZONES": "ring2-north-south",
+      "DSBOX_LATITUDE_ALL_MODES": "1"
+    }
+  },
+  "artifactPathSemantics": "案例及蓝图路径相对于artifactRoot；sourceFiles相对于应用根目录。"
+}

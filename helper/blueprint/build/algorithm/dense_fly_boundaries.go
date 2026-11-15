@@ -241,5 +241,7 @@ func (b *builder) attachDenseFlyBoundaryBranches(facility *denseFlyBoundaryFacil
 // makeDenseFlyBoundaryMonitor 职责：把默认监测器放到预构造的真实直线宿主；使用：设施整体参与全场占位；边界：不在此声称净空或供电成功，后续统一终检仍逐项核验。
 func (b *builder) makeDenseFlyBoundaryMonitor(host *placed) {
 	monitor := b.make(2030, host.a.x, host.a.y, host.a.z)
+	// 各配送附件尚未独立落位，临时坐标可能相同；立即绑定真实宿主，不能在全场裁尾时按坐标猜测。
+	monitor.flowMonitorHost = host
 	monitor.record.Yaw, monitor.record.Yaw2 = host.record.Yaw, host.record.Yaw
 }

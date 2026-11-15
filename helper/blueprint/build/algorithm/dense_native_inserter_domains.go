@@ -49,54 +49,13 @@ func (b *builder) chooseNativeInserterEndpoints(ctx context.Context, records []b
 		sort.SliceStable(domain.choices, func(i, j int) bool { return cost(domain.choices[i]) < cost(domain.choices[j]) })
 	}
 	sort.SliceStable(domains, func(i, j int) bool { return len(domains[i].choices) < len(domains[j].choices) })
-	selected := make([]nativeInserterChoice, len(domains))
-	nodes := 0
-	var search func(int) bool
-	search = func(depth int) bool {
-		if depth == len(domains) {
-			return true
-		}
-		if ctx.Err() != nil || nodes >= 20000 {
-			return false
-		}
-		for _, choice := range domains[depth].choices {
-			nodes++
-			conflict := false
-			for previous := 0; previous < depth && !conflict; previous++ {
-				for _, a := range choice.boxes {
-					for _, c := range selected[previous].boxes {
-						if a.Geometry.Overlaps(c.Geometry) {
-							conflict = true
-							break
-						}
-					}
-					if conflict {
-						break
-					}
-				}
-			}
-			if conflict {
-				continue
-			}
-			selected[depth] = choice
-			if search(depth + 1) {
-				return true
-			}
-			if nodes >= 20000 || ctx.Err() != nil {
-				return false
-			}
-		}
-		return false
-	}
-	if !search(0) {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
-		return 0, &blueprint.Error{Code: "GEN_E_COLLISION", Message: "原生分拣器端点在本次联合搜索内没有互不碰撞的完整组合"}
+	selected, err := solveNativeInserterDomains(ctx, domains)
+	if err != nil {
+		return 0, err
 	}
 	adjusted := 0
 	for i, domain := range domains {
-		candidate, original := selected[i].record, records[domain.index]
+		candidate, original := domain.choices[selected[i]].record, records[domain.index]
 		arm := b.all[domain.index]
 		if candidate.LocalOffset != original.LocalOffset || candidate.LocalOffset2 != original.LocalOffset2 || candidate.Yaw != original.Yaw || candidate.Yaw2 != original.Yaw2 {
 			adjusted++

@@ -72,6 +72,12 @@ func relocatedSurfaceRecords(source *surfaceEncoding, records []blueprint.Buildi
 		}
 		record.LocalOffset, record.Yaw = move.mapPoint(record.LocalOffset, record.Yaw)
 		record.LocalOffset2, record.Yaw2 = move.mapPoint(record.LocalOffset2, record.Yaw2)
+	}
+	if err := alignRelocatedSplitterColumns(move, records, transformed); err != nil {
+		return nil, nil, err
+	}
+	for i := range transformed {
+		record := &transformed[i]
 		view[i] = &placed{record: *record, a: vector{float64(record.LocalOffset.X), float64(record.LocalOffset.Y), float64(record.LocalOffset.Z)}, b: vector{float64(record.LocalOffset2.X), float64(record.LocalOffset2.Y), float64(record.LocalOffset2.Z)}}
 	}
 	low, high := bounds(view)

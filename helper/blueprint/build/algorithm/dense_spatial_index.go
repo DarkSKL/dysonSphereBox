@@ -6,7 +6,7 @@ package build
 // denseShapeKind 职责：归一内部类别键；使用：索引未知类别；边界：未知形状仍参与所有保守查询。
 func denseShapeKind(kind string) string {
 	switch kind {
-	case "static", "splitter-selection", "inserter", "belt", "port", "power", "dense-node", "dense-monitor", "dense-monitor-arm":
+	case "static", "splitter-selection", "inserter", "belt", "port", "power", "dense-node", "dense-monitor", "dense-monitor-arm", "storage-roof":
 		return kind
 	default:
 		return "unknown"
@@ -40,7 +40,9 @@ func (packing *connectedPacking) denseQueryBuckets(kind string) (buckets [6]map[
 	case "dense-monitor-arm":
 		kinds = []string{"dense-monitor"}
 	case "dense-node":
-		kinds = []string{"dense-node"}
+		kinds = []string{"dense-node", "storage-roof"}
+	case "storage-roof":
+		kinds = []string{"dense-node", "belt"}
 	case "power":
 		kinds = []string{"power", "unknown"}
 	case "static":
@@ -50,7 +52,7 @@ func (packing *connectedPacking) denseQueryBuckets(kind string) (buckets [6]map[
 	case "inserter":
 		kinds = []string{"inserter", "splitter-selection", "port", "unknown"}
 	case "belt":
-		kinds = []string{"static", "splitter-selection", "port", "unknown"}
+		kinds = []string{"static", "splitter-selection", "port", "unknown", "storage-roof"}
 	case "port":
 		kinds = []string{"static", "splitter-selection", "inserter", "belt", "port", "unknown"}
 	default:

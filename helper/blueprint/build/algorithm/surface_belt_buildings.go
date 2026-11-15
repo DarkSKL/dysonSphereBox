@@ -200,7 +200,8 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 						if geometry, exists := geometries[box.Owner]; exists && encoding.surfaceAddonBeltPass(i, box.Owner, records, positions, byIndex, geometry) {
 							continue
 						}
-						return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("传送带 %d（局部 %v）侵占建筑 %d（物品 %d，局部 %v）的建造盒且不满足连接/附加通道规则", record.Index, record.LocalOffset, records[box.Owner].Index, records[box.Owner].ItemID, records[box.Owner].LocalOffset)}
+
+						return &blueprint.Error{Code: "GEN_E_COLLISION", Message: fmt.Sprintf("传送带 %d（局部 %v）侵占建筑 %d（物品 %d，局部 %v）的建造盒且不满足连接/附加通道规则；带输入%d:%d、输出%d:%d，建筑朝向%.2f°", record.Index, record.LocalOffset, records[box.Owner].Index, records[box.Owner].ItemID, records[box.Owner].LocalOffset, record.InputObjIdx, record.InputFromSlot, record.OutputObjIdx, record.OutputToSlot, records[box.Owner].Yaw)}
 					}
 				}
 			}

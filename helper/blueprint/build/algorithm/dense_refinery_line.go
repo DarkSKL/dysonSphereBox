@@ -39,6 +39,9 @@ func refineryLayoutVariants(req Request) []bool {
 // denseRefineryEligible 职责：只选择来源已覆盖的三物料单臂配方；使用：局部装配与行预算；边界：不提升分拣器、不伪造其它配方或附属设施。
 func (b *builder) denseRefineryEligible(p quant.Production, r quant.Recipe) bool {
 	if b.generationCtx != nil {
+		if ground, _ := b.generationCtx.Value(denseGroundTracksKey{}).(bool); ground {
+			return false
+		}
 		if enabled, specified := b.generationCtx.Value(refinerySameSideKey{}).(bool); specified && !enabled {
 			return false
 		}
@@ -301,6 +304,11 @@ func (b *builder) layoutDenseSpatialRows(p quant.Production, r quant.Recipe, cou
 		if b.generationCtx != nil {
 			span, _ := b.generationCtx.Value(denseSpatialHolesKey{}).(float64)
 			wholeColumns = span > 0
+		}
+		if b.generationCtx != nil {
+			if ground, _ := b.generationCtx.Value(denseGroundTracksKey{}).(bool); ground {
+				return denseSpatialRowCountsForTemplate(p, r, b.setting, counts, maxSpan, wholeColumns, false)
+			}
 		}
 		return denseSpatialRowCounts(p, r, b.setting, counts, maxSpan, wholeColumns)
 	}

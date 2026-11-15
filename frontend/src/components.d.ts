@@ -23,6 +23,7 @@ declare module 'vue' {
     DysonSphereEnvironmentResourceCard: typeof import('./components/dysonSphere/environment/resource-card.vue')['default']
     DysonSphereFactoryAlgorithmHeatmap: typeof import('./components/dysonSphere/factory/algorithm-heatmap.vue')['default']
     DysonSphereFactoryAlgorithmStage: typeof import('./components/dysonSphere/factory/algorithm-stage.vue')['default']
+    DysonSphereFactoryByproductBalance: typeof import('./components/dysonSphere/factory/byproduct-balance.vue')['default']
     DysonSphereFactoryDensitySummary: typeof import('./components/dysonSphere/factory/density-summary.vue')['default']
     DysonSphereFactoryEventTimeline: typeof import('./components/dysonSphere/factory/event-timeline.vue')['default']
     DysonSphereFactoryFactoryNode: typeof import('./components/dysonSphere/factory/factory-node.vue')['default']

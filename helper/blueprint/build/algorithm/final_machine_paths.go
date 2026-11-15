@@ -163,7 +163,12 @@ func validateFinalLineCoaters(l *line, entities []*placed, graph map[*placed][]f
 	}
 	for _, coater := range l.coaters {
 		angle := (float64(coater.record.Yaw) - 90) * math.Pi / 180
-		point := vector{coater.a.x - math.Cos(angle), coater.a.y + math.Sin(angle), coater.a.z + 1}
+		// 原生球面单元只对经向坐标做统一缩放，供剂槽必须使用同一尺度查找真实带节点。
+		scale := coater.nativeUnitScale
+		if scale <= 0 {
+			scale = 1
+		}
+		point := vector{coater.a.x - math.Cos(angle)*scale, coater.a.y + math.Sin(angle), coater.a.z + 1}
 		var host *placed
 		alive := false
 		for _, entity := range entities {

@@ -132,7 +132,7 @@ func (b *builder) composeDenseBentRows(ctx context.Context, units []denseSpatial
 				}
 				low, high := bounds(entities)
 				width, height := high.x-low.x+1, high.y-low.y+1
-				score := width * height * math.Max(1, math.Max(width, height)/math.Max(1, math.Min(width, height))/3)
+				score := denseShapeCost(width*height, math.Max(width, height)/math.Max(1, math.Min(width, height)))
 				if best == nil || score < best.score {
 					best = &denseBentPlacement{score: score, turns: append([]int{}, turns[:len(units)]...)}
 					for _, entity := range entities {

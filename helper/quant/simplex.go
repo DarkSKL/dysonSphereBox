@@ -1,6 +1,6 @@
 package quant
 
-// 文件职责：自研两阶段单纯形；使用：小规模循环物品 LP；边界：仅连续非负变量，有迭代和上下文截止，无第三方或 cgo。
+// 文件职责：自研两阶段单纯形；使用：有界物料平衡LP；边界：仅连续非负变量，有迭代和上下文截止，无第三方或cgo。
 
 import (
 	"context"
@@ -99,14 +99,14 @@ func (t *tableau) phase(first bool) (bool, error) {
 	}
 }
 
-// minimize 职责：求 min c*x 且 a*x>=b、x>=0；使用：参考物品 LP 模型；边界：输入有限且小于 200 变量，失败不返回近似解。
-func minimize(ctx context.Context, a [][]float64, b, c []float64) ([]float64, float64, error) {
+// minimize 职责：求min c*x且a*x>=b、x>=0并可返回获选基；使用：物料模型及精确回代；边界：最多200变量和约束，失败不返回近似解。
+func minimize(ctx context.Context, a [][]float64, b, c []float64, basisOut ...*[]int) ([]float64, float64, error) {
 	m, n := len(b), len(c)
 	if n == 0 {
 		return []float64{}, 0, nil
 	}
 	if n > 200 || m > 200 {
-		return nil, 0, qerror("Q_E_CYCLE_TOO_LARGE", "循环/多来源变量超过 200 个")
+		return nil, 0, qerror("Q_E_CYCLE_TOO_LARGE", "本次物料平衡的变量或约束超过200个，请拆分目标")
 	}
 	t := tableau{m: m, n: n, basic: make([]int, m), nonbasic: make([]int, n+1), d: make([][]float64, m+2), ctx: ctx}
 	for i := range t.d {
@@ -165,6 +165,9 @@ func minimize(ctx context.Context, a [][]float64, b, c []float64) ([]float64, fl
 		if t.basic[i] >= 0 && t.basic[i] < n {
 			result[t.basic[i]] = math.Max(0, t.d[i][n+1])
 		}
+	}
+	if len(basisOut) > 0 && basisOut[0] != nil {
+		*basisOut[0] = append([]int(nil), t.basic...)
 	}
 	return result, -t.d[m][n+1], nil
 }

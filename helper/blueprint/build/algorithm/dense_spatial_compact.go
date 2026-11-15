@@ -30,7 +30,7 @@ type denseCompactPosition struct {
 func denseCompactObjective(low, high vector) (float64, float64) {
 	w, h := math.Ceil(high.x)-math.Floor(low.x)+1, math.Ceil(high.y)-math.Floor(low.y)+1
 	area := w * h
-	return area * math.Max(1, math.Max(w, h)/math.Max(1, math.Min(w, h))/3), area
+	return denseShapeCost(area, math.Max(w, h)/math.Max(1, math.Min(w, h))), area
 }
 
 // denseCompactBetter 职责：仅接受面积、形状和真实边长均不增加的变化；使用：压缩及内部移近；边界：至少一项严格改善，避免等价位置循环。
@@ -253,6 +253,7 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 		maximumY = math.Min(maximumY, heightLimit-1)
 	}
 	checks, moves := 0, 0
+	var compactIndex *denseCompactIndex
 	for pass := 0; pass < 3 && checks < 4096; pass++ {
 		changed := false
 		for i, unit := range units {
@@ -290,16 +291,20 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 				placed[entity] = true
 			}
 			wires := b.denseSpatialUnitWires(unit, placed)
+			// 压缩阶段保持真实未加权总距离不增加；缓存亲和度仅用于最初落位。
+			for wire := range wires {
+				wires[wire].weight = 0
+			}
 			for _, recycle := range b.machineRecycles {
 				route := recycle.route
 				if route == nil || route.start == nil || route.end == nil {
 					continue
 				}
 				if members[route.start] && placed[route.end] {
-					wires = append(wires, denseSpatialWire{route.start, route.end})
+					wires = append(wires, denseSpatialWire{moving: route.start, fixed: route.end})
 				}
 				if members[route.end] && placed[route.start] {
-					wires = append(wires, denseSpatialWire{route.end, route.start})
+					wires = append(wires, denseSpatialWire{moving: route.end, fixed: route.start})
 				}
 			}
 			globalLow, globalHigh := bounds(b.all)
@@ -377,16 +382,24 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 				}
 				return math.Abs(left.delta.x)+math.Abs(left.delta.y) < math.Abs(right.delta.x)+math.Abs(right.delta.y)
 			})
-			packing := &connectedPacking{dense: b.adapter == nil || b.adapter.density == densityDense, cells: map[[3]int][]int{}}
-			for _, contour := range others {
-				registerDenseStationContour(packing, contour, 0, 0)
+			if len(candidates) == 0 {
+				continue
+			}
+			if compactIndex == nil {
+				compactIndex = &denseCompactIndex{dense: b.adapter == nil || b.adapter.density == densityDense, entries: make([]denseCompactIndexEntry, len(units)+1)}
+				compactIndex.replace(0, fixedContour)
+				for j, contour := range contours {
+					if !frozen[j] {
+						compactIndex.replace(j+1, contour)
+					}
+				}
 			}
 			for number, candidate := range candidates {
 				if number >= 96 || checks >= 4096 {
 					break
 				}
 				checks++
-				if !packing.fits(ctx, contours[i], candidate.delta.x, candidate.delta.y) || !b.denseCompactStationClear(unit, members, candidate.delta) {
+				if !compactIndex.fits(ctx, i+1, contours[i], candidate.delta.x, candidate.delta.y) || !b.denseCompactStationClear(unit, members, candidate.delta) {
 					continue
 				}
 				shift(unit.entities, candidate.delta.x, candidate.delta.y, 0)
@@ -398,6 +411,7 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 				if err != nil {
 					return err
 				}
+				compactIndex.replace(i+1, contours[i])
 				changed, moves = true, moves+1
 				break
 			}

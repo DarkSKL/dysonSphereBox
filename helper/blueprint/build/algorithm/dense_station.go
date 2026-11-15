@@ -21,8 +21,16 @@ const denseStationPairedOutputVariantOffset = 1600
 // denseStationProducerVariantOffset 职责：独立比较紧凑双层分流树；使用：已核对的Model39塔候选；边界：保留原过滤/共享出口方案，仍先满足最少真实塔及完整物流证明。
 const denseStationProducerVariantOffset = 3200
 
-// betterDenseStationCandidate 职责：让新增密铺物流候选同时改善空间与真实线长的综合代价；使用：完成终检且塔数相同的候选比较；边界：既有候选之间沿用原评分，不能用小幅面积收益换取大量绕线。
+// denseStationGroundTracksVariantOffset 职责：保留大型缓存厂的独立地面轨候选；使用：原生均衡布局；边界：不改变公开密度、设备或产量。
+const denseStationGroundTracksVariantOffset = 51200
+
+// betterDenseStationCandidate 职责：先比较近方形代价，再比较同分布局的线路成本；使用：完成终检且塔数相同的候选比较；边界：不因较短线路优先交付极长条布局。
 func betterDenseStationCandidate(a, c *LogisticsSummary) bool {
+	// 总体形状先于绕线收益，避免短线路把近方形可行方案淘汰成长条；小幅同分差异仍比较真实带长。
+	firstShape, secondShape := denseLayoutShapeObjective(a.Metrics), denseLayoutShapeObjective(c.Metrics)
+	if math.Abs(firstShape-secondShape) > 1e-6 {
+		return firstShape < secondShape
+	}
 	combinedCost := false
 	for _, summary := range []*LogisticsSummary{a, c} {
 		for _, check := range summary.Checks {
@@ -30,7 +38,7 @@ func betterDenseStationCandidate(a, c *LogisticsSummary) bool {
 		}
 	}
 	if combinedCost {
-		// 先比较同量纲比例乘积，不能先按面积淘汰以微小面积代价大幅缩短线路的候选；仍保留长条惩罚。
+		// 形状代价相同后，新增物流结构优先减少真实绕线。
 		first := denseLayoutShapeObjective(a.Metrics) * math.Max(1, a.Metrics.TotalBeltLengthMeters)
 		second := denseLayoutShapeObjective(c.Metrics) * math.Max(1, c.Metrics.TotalBeltLengthMeters)
 		if math.Abs(first-second) > 1e-6 {
@@ -47,6 +55,8 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	var diagnostics []SearchCandidateDiagnostic
 	bestTowers := math.MaxInt
 	bestBlackboxVariant := -1
+	evaluated := 0
+	boundedComparison := false
 	budget := 4
 	for index, prepared := range input.Productions {
 		if b.denseStationStreetEligible(input.Plan.Productions[index], prepared.Recipe) {
@@ -61,7 +71,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	}
 	// 塔场路径尚未建立原生单元坐标；根球面候选即使完成平面接线，也会被最终编码明确拒绝。
 	// 提前排除不具备目标坐标能力的候选，把同一总时限留给实际可编码的黑盒与后续单环搜索。
-	if needsLocalRecycle || req.SurfaceLayout != nil && req.SurfaceLayout.polarRoot {
+	if b.setting.EnableIntermediateBuffer || needsByproductPriority(req.Plan, b.flowGraph, dataset) || needsLocalRecycle || req.SurfaceLayout != nil && req.SurfaceLayout.polarRoot {
 		fieldBudget = 0
 	}
 	blackboxBudget := 4
@@ -106,10 +116,17 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		}
 	}
 	if denseBalancedFrameEligible(ctx, req) && len(req.Plan.RawInputs) > 0 {
-		blackboxIndices = append(blackboxIndices, denseBalancedFrameVariantOffset+blackboxIndices[len(blackboxIndices)-1])
+		balanced := denseBalancedFrameVariantOffset + blackboxIndices[len(blackboxIndices)-1]
+		blackboxIndices = append(blackboxIndices, balanced)
+		if req.Setting.EnableIntermediateBuffer {
+			blackboxIndices = append(blackboxIndices, denseStationGroundTracksVariantOffset+balanced)
+		}
 	}
 	// 共享出口同时保留基础容量候选，避免最后一个特殊布局失败时失去全部共享出口方案。
 	lastLayout := blackboxIndices[len(blackboxIndices)-1]
+	if lastLayout >= denseStationGroundTracksVariantOffset {
+		lastLayout -= denseStationGroundTracksVariantOffset
+	}
 	sharedBase := 4
 	if len(req.Plan.RawInputs) > 0 {
 		sharedBase += denseStationSharedInputVariantOffset
@@ -119,6 +136,13 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		blackboxIndices = append(blackboxIndices, denseStationSharedOutputVariantOffset+sharedBase)
 	}
 	if req.Density == densityDense {
+		// 独立塔可围绕生产核心落位；保留固定阵列候选并比较完整路由后的实际代价。
+		for _, variant := range []int{0, 2, sharedBase, sharedBase + 1, sharedBase + 2} {
+			blackboxIndices = append(blackboxIndices, independentStationVariantOffset+denseStationSharedOutputVariantOffset+variant)
+		}
+		for variant := sharedBase; variant < sharedBase+3; variant++ {
+			blackboxIndices = append(blackboxIndices, independentStationVariantOffset+denseSpatialCompactVariantOffset+denseStationSharedOutputVariantOffset+variant)
+		}
 		// 较短单元必须同时比较共享输入/输出，避免仅因分组变细而增加塔数；原成功候选继续保留。
 		for variant := sharedBase; variant < sharedBase+3; variant++ {
 			blackboxIndices = append(blackboxIndices, denseSpatialCompactVariantOffset+variant, denseSpatialCompactVariantOffset+denseStationSharedOutputVariantOffset+variant)
@@ -146,6 +170,11 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			}
 		}
 	}
+	blackboxIndices, err = b.stationCandidateVariants(ctx, req, dataset, "dense-station-blackbox", blackboxIndices)
+	if err != nil {
+		return Result{}, err
+	}
+	recordCandidatePlans(ctx, "dense-station-field", fieldBudget, fieldBudget, 0)
 	blackboxBudget = len(blackboxIndices)
 	budget = fieldBudget + blackboxBudget
 	allPreviews := b.planCandidatePreviews(budget)
@@ -160,8 +189,22 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 	{
 		indices := blackboxIndices
 		previews := allPreviews[:blackboxBudget]
-		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, len(indices)), func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
+		feasibleWave := newCachedStationFeasibleWave(ctx, req)
+		executionCtx := ctx
+		if feasibleWave != nil {
+			executionCtx = feasibleWave.ctx
+		}
+		execute := func(ctx context.Context, localIndex int, variant int) (evaluation stationEvaluation) {
 			baseVariant := variant
+			ground := baseVariant >= denseStationGroundTracksVariantOffset
+			if ground {
+				baseVariant -= denseStationGroundTracksVariantOffset
+				ctx = context.WithValue(ctx, denseGroundTracksKey{}, true)
+			}
+			independentStations := baseVariant >= independentStationVariantOffset
+			if independentStations {
+				baseVariant -= independentStationVariantOffset
+			}
 			shortSpan := 0.
 			if baseVariant >= denseSpatialHolesBentVariantOffset {
 				baseVariant -= denseSpatialHolesBentVariantOffset
@@ -215,6 +258,12 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			}
 			street := candidate != nil && candidate.denseStreetCandidate
 			parameters := fmt.Sprintf("externalStationsOnly=true;internalDirect=true;continuousStreet=%t;variant=%d", street, variant)
+			if ground {
+				parameters += ";groundMachineTracks=true"
+			}
+			if independentStations {
+				parameters += ";independentStations=true"
+			}
 			if baseVariant >= denseBalancedFrameVariantOffset {
 				baseVariant -= denseBalancedFrameVariantOffset
 			}
@@ -253,6 +302,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			}
 			if err != nil {
 				failures = append(failures, err)
+				reportProgress(ctx, "layout-rejected", fmt.Sprintf("密铺塔候选%d未通过：%v", variant, err), localIndex+1, len(indices))
 				if candidate != nil {
 					candidate.rollbackPreview()
 				}
@@ -262,8 +312,11 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			evaluation.variant = variant
 			evaluation.out = out
 			evaluation.count = denseStationFacilityCount(candidate)
+			feasibleWave.complete()
 			return
-		}, func(_ int, evaluation stationEvaluation) error {
+		}
+		reduce := func(_ int, evaluation stationEvaluation) error {
+			evaluated++
 			diagnostics = append(diagnostics, evaluation.diagnostics...)
 			if evaluation.err != nil {
 				failures = append(failures, evaluation.err)
@@ -275,7 +328,19 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 				bestBlackboxVariant = evaluation.variant
 			}
 			return nil
-		})
+		}
+		var waveErr error
+		workers := b.candidateWorkers(ctx, len(indices))
+		if configured, _ := ctx.Value(candidateConcurrencyKey{}).(int); feasibleWave != nil && configured == 0 {
+			workers = min(workers, 2)
+		}
+		if feasibleWave != nil {
+			waveErr = search.Stream(ctx, executionCtx, indices, workers, execute, reduce)
+		} else {
+			waveErr = search.Waves(ctx, indices, workers, execute, reduce)
+		}
+		boundedComparison = feasibleWave != nil && best != nil
+		feasibleWave.close()
 		if waveErr != nil {
 			return Result{}, previewContextError(waveErr)
 		}
@@ -376,6 +441,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 			evaluation.count = denseStationFacilityCount(candidate)
 			return
 		}, func(_ int, evaluation stationEvaluation) error {
+			evaluated++
 			diagnostics = append(diagnostics, evaluation.diagnostics...)
 			if evaluation.err != nil {
 				failures = append(failures, evaluation.err)
@@ -417,6 +483,7 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		cancelNearby()
 		diagnostics = appendSearchCandidateDiagnostics(diagnostics, newSearchCandidateDiagnostic("station-input-ports", budget, fmt.Sprintf("baseVariant=%d;nearbyInputPorts=true", bestBlackboxVariant), "final-validation", err), out.LogisticsSummary)
 		budget++
+		evaluated++
 		if err != nil {
 			failures = append(failures, err)
 			if candidate != nil {
@@ -433,7 +500,10 @@ func (b *builder) generateDenseStationField(ctx context.Context, req Request, da
 		}
 	}
 	best.LogisticsSummary.SearchCandidates = diagnostics
-	best.LogisticsSummary.Metrics.CandidateBudget, best.LogisticsSummary.Metrics.EvaluatedCandidates, best.LogisticsSummary.Metrics.RejectedCandidates = budget, budget, len(failures)
+	best.LogisticsSummary.Metrics.CandidateBudget, best.LogisticsSummary.Metrics.EvaluatedCandidates, best.LogisticsSummary.Metrics.RejectedCandidates = budget, evaluated, len(failures)
+	if boundedComparison {
+		best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-cached-station-search", Status: "passed", Message: "原生缓存或跨纬带塔厂首次完整终检成功后最多继续比较5秒，再按塔数、占地及线长归约已完成候选，未完成候选取消，不返回局部蓝图"})
+	}
 	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "dense-station-field", Status: "passed", Message: fmt.Sprintf("先最少实际物流塔（获选%d塔），同塔数再比较紧凑矩形和真实线路；对外边界黑盒与跨产线共享塔场均执行完整终检，保留塔间距、十二带口、供剂和副产物证明", bestTowers)})
 	return *best, nil
 }

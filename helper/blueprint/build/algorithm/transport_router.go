@@ -31,6 +31,9 @@ type transportPathNode struct {
 	length int
 	// lengthEstimate 职责：保存多终点搜索的节点数下界；使用：同代价时优先较短完整带链；边界：普通单终点队列不读取。
 	lengthEstimate int
+	// heuristicCost/heuristicLength 职责：缓存本次固定目标集的精确下界；使用：节点松弛时复用；边界：每轮搜索重置，旧单终点路径不读取。
+	heuristicCost   float64
+	heuristicLength int
 }
 
 // transportPathQueue 职责：稳定选择估价最低且同分时更接近终点的候选；使用：三维寻路；边界：最终同分按插入顺序而非 map 顺序。
@@ -87,6 +90,11 @@ type transportPathCacheKey struct {
 
 // transportEnvironment 职责：维护静态/动态分层空间哈希和路径缓存；使用：逐 lane 增量提交；边界：失败候选不污染其它排布候选。
 type transportEnvironment struct {
+	// searchQueue 职责：复用本环境串行搜索的堆容量；使用：每轮先清空长度；边界：只保存同一节点工作区的指针，不跨候选共享。
+	searchQueue transportPathQueue
+	// searchArena/searchIndex 职责：复用本候选串行搜索的节点内存；使用：每路开启新代次；边界：不跨环境或并发共享，返回路径只含坐标值。
+	searchArena      transportNodeArena
+	searchIndex      transportSearchIndex
 	blocked          map[vector]bool
 	reserved         map[vector]map[*placed]bool
 	cache            map[transportPathCacheKey][]vector
@@ -136,6 +144,8 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	// 分层接口复用逐段净空接驳；普通模式仍保留普通机器布局及严格带段碰撞规则，不能按整根垂直柱封死另一层入口。
 	preciseRouting := b.denseSpatial || b.denseBoundary != nil
 	routes := append([]*transportRoute{}, b.denseProducerSplitRoutes()...)
+	routes = append(routes, b.productionBufferRoutes()...)
+	routes = append(routes, b.byproductPriorityRoutes()...)
 	routes = append(routes, b.transportRoutes...)
 	routes = append(routes, b.denseStreetRoutes...)
 	routes = append(routes, b.denseMaterialNetworkRoutes()...)
@@ -497,6 +507,12 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	}
 	if b.denseBoundary != nil {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-boundary-separation", Status: "passed", Message: "外部接口位于生产实体的实际高度内，最多三层；入口区禁止独立带段相交，固定短带向内接入，交付口保留独立地面槽"})
+	}
+	if err := b.commitProductionBuffers(); err != nil {
+		return err
+	}
+	if err := b.commitByproductPriorityInputs(); err != nil {
+		return err
 	}
 	return b.commitMode1Deliveries()
 }

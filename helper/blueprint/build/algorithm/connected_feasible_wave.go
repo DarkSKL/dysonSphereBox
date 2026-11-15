@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：在大型原生直连候选已有完整可行结果后，有界结束额外比较。
+// 文件职责：在大型原生或显式跨带候选已有完整可行结果后，有界结束额外比较。
 // 使用：连续候选工作槽的私有执行上下文；边界：不修改父请求，不把取消中的局部实体作为成功结果。
 
 import (
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// connectedFeasibleWave 职责：管理候选执行取消及成功后宽限计时器；使用：大型原生直连候选；边界：只取消执行上下文，调度器继续用父上下文归约完整结果。
+// connectedFeasibleWave 职责：管理候选执行取消及成功后宽限计时器；使用：大型原生候选；边界：只取消执行上下文，调度器继续用父上下文归约完整结果。
 type connectedFeasibleWave struct {
 	// parent/ctx/cancel 职责：区分请求寿命和私有执行寿命；使用：候选执行与父请求错误检查；边界：不取消parent。
 	parent context.Context
@@ -22,10 +22,22 @@ type connectedFeasibleWave struct {
 	closed bool
 }
 
-// newConnectedFeasibleWave 职责：严格限制有界可行收口到大型原生密铺mode1；使用：每个入口候选组开始前；边界：其他请求返回nil，保留原执行上下文与搜索语义。
+// newConnectedFeasibleWave 职责：限制大型原生及显式跨带直连的额外比较；使用：每个候选组开始前；边界：没有完整可行结果不启动计时，其余请求保持原搜索。
 func newConnectedFeasibleWave(parent context.Context, req Request) *connectedFeasibleWave {
 	root, _ := parent.Value(densityPolarRootKey{}).(bool)
-	if !root || req.Mode != 1 || req.Density != densityDense || req.Plan.MachineCount < denseNativeLargeMachineThreshold {
+	adjacent, _ := parent.Value(denseAdjacentLatitudeKey{}).(bool)
+	if !root || req.Mode != 1 || req.Density != densityDense || (!adjacent && !denseNativeLargeRequest(parent, req)) {
+		return nil
+	}
+	ctx, cancel := context.WithCancel(parent)
+	return &connectedFeasibleWave{parent: parent, ctx: ctx, cancel: cancel}
+}
+
+// newCachedStationFeasibleWave 职责：让大型缓存或显式跨带塔厂在完整可行后有界比较；使用：原生球面候选；边界：其余请求保持原搜索，不提交被取消的局部结果。
+func newCachedStationFeasibleWave(parent context.Context, req Request) *connectedFeasibleWave {
+	root, _ := parent.Value(densityPolarRootKey{}).(bool)
+	adjacent, _ := parent.Value(denseAdjacentLatitudeKey{}).(bool)
+	if !root || req.Density != densityDense || (req.Mode != 3 && req.Mode != 4) || (!adjacent && (!req.Setting.EnableIntermediateBuffer || !denseNativeLargeRequest(parent, req))) {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(parent)

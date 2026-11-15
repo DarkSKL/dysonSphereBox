@@ -173,6 +173,19 @@ func BuildFlowGraphContext(ctx context.Context, plan Result) (FlowGraph, error) 
 		out.Balances = append(out.Balances, FlowBalance{ItemID: itemID, SupplyPerMinute: supply, DemandPerMinute: demand, DifferencePerMinute: supply - demand})
 		// 生产端点先于边界，单物品按稳定节点配对；每次至少耗尽一端，避免 all-to-all 碎边。
 		os, ns := offers[itemID], needs[itemID]
+		// 联产优先满足厂内需求，独立生产与外供补缺，避免外部供应先占走氢等物料的消耗份额。
+		priority := func(endpoint flowEndpoint) int {
+			node := nodes[endpoint.node]
+			if node.Kind != "production" {
+				return 2
+			}
+			production := plan.Productions[node.ProductionIndex]
+			if index, ok := d.RecipeByID[production.RecipeID]; ok && len(d.Recipes[index].Results) > 1 {
+				return 0
+			}
+			return 1
+		}
+		sort.SliceStable(os, func(i, j int) bool { return priority(os[i]) < priority(os[j]) })
 		oi, ni := 0, 0
 		for oi < len(os) && ni < len(ns) {
 			rate := math.Min(os[oi].rate, ns[ni].rate)

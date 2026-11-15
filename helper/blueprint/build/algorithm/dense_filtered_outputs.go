@@ -18,6 +18,9 @@ type denseShortPairedOutputsKey struct{}
 
 // usesDensePairedOutputs 职责：统一选择旧多去向与新增短分支双侧几何；使用：局部出货装配；边界：新增范围仅二、三去向、单产物且无机器回流，仍使用原所选等级和完整过滤数量。
 func (b *builder) usesDensePairedOutputs(row *transportRow) bool {
+	if b.setting.EnableIntermediateBuffer {
+		return false
+	}
 	if b.densePairedOutputs && densePairedOutputEligible(row) {
 		return true
 	}

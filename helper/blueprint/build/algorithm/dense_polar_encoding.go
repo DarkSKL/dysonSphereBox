@@ -10,13 +10,13 @@ import (
 	"math"
 )
 
-// preparePolarRootEncoding 职责：保留目标主区坐标的实体并补齐原生Area父链；使用：固定目标球面后的编码；边界：不借缩小Area矩形隐藏实体，不接受超过整圈或所选档位的坐标。
+// preparePolarRootEncoding 职责：保留目标主区实体并补齐原生Area父链；使用：固定球面后的编码；边界：不借缩小Area矩形隐藏实体，不接受超整圈或超出显式允许纬带的坐标。
 func (b *builder) preparePolarRootEncoding(ctx context.Context, layout *SurfaceLayout) (*surfaceEncoding, error) {
 	selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone)
 	if !ok {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "原生球面编码需要有效的五档选区"}
 	}
-	bands := densityLatitudeTierBands(selection.tier, selection.hemisphere, 200)
+	bands := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent)
 
 	if b.polarFrame == nil {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "目标球面路由没有固定的原生单元坐标"}

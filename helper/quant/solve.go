@@ -26,7 +26,7 @@ func MachineKind(id int) (int, int) {
 }
 
 // Solve 职责：执行有界量化；使用：工作区目标请求；边界：最多 5 秒，失败不返回部分结果。
-// 逻辑流：1. 校验目标和版本 => 2. 构图/剥离 => 3. 前向成本及循环 LP => 4. 取整、电力与稳定指纹。
+// 逻辑流：1. 校验目标和版本 => 2. 建立所选配方依赖 => 3. 联立净物料LP并精确复核基 => 4. 取整与能力 => 5. 守恒流图、联产收支及稳定指纹。
 func Solve(parent context.Context, req Request) (Result, error) {
 	out := Result{Productions: []Production{}, RawInputs: []ItemRate{}, ExternalInputItemIDs: []int{}, Leftovers: []ItemRate{}, KeyItems: []int{}, Warnings: []string{}}
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
@@ -47,7 +47,7 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		if !ok {
 			return out, qerror("Q_E_NO_RECIPE", fmt.Sprintf("物品 %d 不在数据集中", target.ItemID))
 		}
-		if len(d.Choices[item.Name]) == 0 && !req.Settings.MineralizeList[item.Name] {
+		if len(d.Choices[item.Name]) == 0 && !d.ExternalOnly[item.Name] && !req.Settings.MineralizeList[item.Name] {
 			return out, qerror("Q_E_NO_RECIPE", fmt.Sprintf("物品 %d %s 没有配方", item.ID, item.Name))
 		}
 		needs.add(item.Name, target.RatePerMinute)
@@ -59,7 +59,7 @@ func Solve(parent context.Context, req Request) (Result, error) {
 	if ctx.Err() != nil {
 		return out, qerror("Q_E_TIMEOUT", "量化超过 5 秒")
 	}
-	amounts, surplus, cost, err := g.calculate(ctx, needs)
+	amounts, surplus, cost, err := g.calculateMaterials(ctx, needs)
 	if err != nil {
 		return out, err
 	}
@@ -103,7 +103,7 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		typ, lv := MachineKind(n.factory.ID)
 		if n.raw || typ < 0 {
 			out.RawInputs = append(out.RawInputs, ItemRate{ItemID: d.ByName[name].ID, Name: name, RatePerMinute: amount})
-			if n.raw {
+			if n.raw && (!d.ExternalOnly[name] || g.settings.MineralizeList[name]) {
 				out.ExternalInputItemIDs = append(out.ExternalInputItemIDs, d.ByName[name].ID)
 			}
 			if n.unsupportedFactory {
@@ -159,6 +159,16 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 	out.FlowGraph = &flowGraph
+	out.Byproducts = byproductBalances(d, out)
+	out.Statistics, err = BuildStatistics(out)
+	if err != nil {
+		return Result{}, qerror("Q_E_STATISTICS", err.Error())
+	}
+	for _, balance := range out.Byproducts {
+		if balance.SurplusPerMinute > 1e-8 {
+			out.Warnings = append(out.Warnings, fmt.Sprintf("%s 持续过剩 %.6g/min：已优先分配内部需求，剩余需从副产物出口持续外运或消耗；出口或缓存装满会阻塞同配方的其他产物", balance.Name, balance.SurplusPerMinute))
+		}
+	}
 	return out, nil
 }
 
