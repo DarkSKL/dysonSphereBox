@@ -41,7 +41,31 @@ export interface AlgoVizBuilding {
   readonly outputId?: string;
   /** 正式记录下标，仅展示用 */
   readonly index?: number;
+  /** 机器配方；由 options.icon 解析为机器上方的配方图标，缺省或 0 表示没有 */
+  readonly recipeId?: number;
+  /** 传送带标记物品（原料入口、成品出口等带节点）；由 options.icon 解析为带节点上方的物品图标 */
+  readonly iconItemId?: number;
 }
+
+/** 图标精灵图中的一格：左上角像素坐标，格边长见 AlgoVizIconSheet.cell */
+export interface AlgoVizIcon {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** 图标精灵图规格：整图像素尺寸与单格边长，格按行列紧密排布 */
+export interface AlgoVizIconSheet {
+  readonly url: string;
+  readonly width: number;
+  readonly height: number;
+  readonly cell: number;
+}
+
+/** 图标分组：belt 为带标记的传送带入口/出口节点（显示标记物品），building 为机器建筑（显示配方产物） */
+export type AlgoVizIconGroup = 'belt' | 'building';
+
+/** 各分组的显示开关；只影响图标的绘制，不改变场景对象与播放 */
+export type AlgoVizIconVisibility = Readonly<Record<AlgoVizIconGroup, boolean>>;
 
 /** 场景操作：新增、替换（位置/外观变化，保留身份）、撤销 */
 export type AlgoVizOperation =
@@ -61,6 +85,8 @@ export interface AlgoVizArea {
 
 /** 一批操作。批内按顺序播放，批与批按入队顺序播放。 */
 export interface AlgoVizBatch {
+  /** 本批所属生成任务；空字符串表示导入蓝图，缺省沿用 beginGeneration 的任务。 */
+  readonly taskId?: string;
   readonly candidateId?: string;
   readonly snapshot?: boolean;
   readonly operations: readonly AlgoVizOperation[];
@@ -106,6 +132,20 @@ export interface AlgoVizProgress {
   readonly paused: boolean;
 }
 
+/** 单栋建筑的操作通知；before/after 以 sequence 关联，打断或撤销的操作只有 before。 */
+export interface AlgoVizBuildingEvent {
+  /** 生成任务 ID；导入蓝图等没有生成任务的场景为空字符串。 */
+  readonly taskId: string;
+  /** 场景内递增的操作序号，重新回放后继续递增；不作为跨场景身份。 */
+  readonly sequence: number;
+  readonly candidateId?: string;
+  readonly id: string;
+  /** 这次操作的建筑快照；temporary 仍表示候选中的临时建筑。 */
+  readonly building: AlgoVizBuilding;
+  /** 新增或替换；同 ID 换模型也属于 replace。 */
+  readonly operation: 'add' | 'replace';
+}
+
 /** 渲染统计 */
 export interface AlgoVizStats {
   readonly fps: number;
@@ -132,7 +172,7 @@ export interface AlgoVizOptions {
    * 游戏只把材质颜色染在遮罩标出的涂装区；未提供时，带原生颜色的材质整体染色。
    */
   maskUrls?: Readonly<Record<string, string>>;
-  /** 场景对象上限，超出的新增操作被忽略，默认 12000 */
+  /** 可选的自定义对象上限；默认不限制数量，完整展示建筑。应用无需传入此选项。 */
   maxObjects?: number;
   /** 空场景提示文案 */
   emptyText?: string;
@@ -142,14 +182,31 @@ export interface AlgoVizOptions {
   injectStyles?: boolean;
   /** 悬停提示文案；缺省时不显示悬停提示 */
   describe?: (building: AlgoVizBuilding) => string;
+  /** 图标精灵图；缺省或加载失败时不绘制任何图标，其余功能不受影响 */
+  iconSheet?: AlgoVizIconSheet;
+  /** 解析建筑上方要显示的图标；返回 null 表示该建筑没有图标。数据迟到时由 refreshIcons 重新解析 */
+  icon?: (building: AlgoVizBuilding) => AlgoVizIcon | null;
+  /** 初始的图标显示开关，缺省的分组默认显示 */
+  iconsVisible?: Partial<AlgoVizIconVisibility>;
   onSelect?: (selection: AlgoVizSelection | null) => void;
+  /**
+   * 选中建筑的屏幕位置变化：相机旋转、平移、缩放、自动取景、建筑动画或容器尺寸变化后回调，
+   * 每个绘制帧最多一次，移动不足半像素不回调；坐标与 AlgoVizSelection.screen 相同（容器内 CSS 像素）。
+   */
+  onSelectionMove?: (screen: { readonly x: number; readonly y: number }) => void;
   /** 进度变化时回调（节流到每帧最多一次） */
   onProgress?: (progress: AlgoVizProgress) => void;
+  /** 建筑操作开始；不依赖 Vue 或应用事件总线，由使用方决定如何转发。 */
+  onBuildingBefore?: (event: AlgoVizBuildingEvent) => void;
+  /** 建筑姿态落定后通知一次；直接落位也触发，撤销和淘汰不触发，不等待模型补加载。 */
+  onBuildingAfter?: (event: AlgoVizBuildingEvent) => void;
   onStats?: (stats: AlgoVizStats) => void;
 }
 
 /** 场景控制器：对外的全部接口 */
 export interface AlgorithmVizController {
+  /** 切换生成任务，只保留当前及上次任务使用的缓存；同一任务回放无需重复切换。 */
+  beginGeneration(taskId: string): void;
   beginCandidate(id: string, ordinal: number): void;
   finishCandidate(id: string, status: 'valid' | 'rejected' | 'pruned'): void;
   finalizeSearch(winnerId: string): void;
@@ -162,7 +219,7 @@ export interface AlgorithmVizController {
   caption(title: string, detail?: string): void;
   /** 清空场景与队列；animate 为 true 时已有对象播放撤销动画 */
   reset(options?: { animate?: boolean }): void;
-  /** 跳过排队动画，立即应用全部待播操作 */
+  /** 跳过过渡动画；大量操作按整帧预算持续应用，避免跳过按钮阻塞页面。 */
   flush(): void;
   setSpeed(speed: number): void;
   getSpeed(): number;
@@ -177,6 +234,11 @@ export interface AlgorithmVizController {
   /** 视角锁定：为 true 时立即强制复位（默认方位 + 自动取景），并禁止旋转、平移、缩放；复位操作仍可用 */
   setViewLocked(locked: boolean): void;
   isViewLocked(): boolean;
+  /** 显示或隐藏某一分组的图标；只切换可见性，不影响场景对象与播放 */
+  setIconsVisible(group: AlgoVizIconGroup, visible: boolean): void;
+  getIconsVisible(): AlgoVizIconVisibility;
+  /** 重新解析全部对象的图标：精灵图、物品数据等外部数据迟到后调用 */
+  refreshIcons(): void;
   /** 选中或取消选中建筑 */
   select(id: string | null): void;
   getProgress(): AlgoVizProgress;

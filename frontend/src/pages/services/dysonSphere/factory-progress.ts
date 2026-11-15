@@ -90,6 +90,8 @@ export const observeFactoryGeneration = (
             return
           }
           if (lastSequence === before || (page.events?.length ?? 0) < 16) return
+          // 连续补页时让出主线程，保留所有序号与控制事件，不把动画队列长度当成停止读取条件。
+          await new Promise<void>(resolve => { window.setTimeout(resolve, 0) })
         }
       } catch {
         failRecovery('过程记录恢复失败，将使用正式结果')

@@ -514,6 +514,8 @@
     }
    ],
    "prefabGeometry": {
+    "selectCenter": [0.0, 1.2, 0.0],
+    "selectSize": [2.7, 2.4, 2.7],
     "portPoses": [
      {
       "position": [0.0, 0.0, 0.25],
@@ -639,6 +641,8 @@
     }
    ],
    "prefabGeometry": {
+    "selectCenter": [0.0, 1.47, 0.0],
+    "selectSize": [2.0, 2.94, 2.7],
     "portPoses": [
      {
       "position": [0.0, 0.0, 0.25],
@@ -820,6 +824,8 @@
     }
    ],
    "prefabGeometry": {
+    "selectCenter": [0.0, 1.48, 0.0],
+    "selectSize": [2.7, 2.96, 2.7],
     "portPoses": [
      {
       "position": [0.0, 1.3333334, 0.25],

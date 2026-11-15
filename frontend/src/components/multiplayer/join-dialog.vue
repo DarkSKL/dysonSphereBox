@@ -3,6 +3,7 @@ import {ArrowRight, KeyRound, LockKeyhole, Users, X} from '@lucide/vue'
 import {computed, ref, watch} from 'vue'
 import type {RoomResolveResult} from '../../types/multiplayer'
 import {portText} from '../../utils/multiplayer'
+import MultiplayerAvatar from './avatar.vue'
 
 // =============== 加入房间对话框 ===============
 // 说明：父页面保存目标并执行 resolve/join；改目标立即清除旧预览，密码仅存在于此表单。
@@ -48,7 +49,8 @@ function close(): void { if (!props.joining) emit('update:show', false) }
       <div v-if="resolved" class="room-preview" aria-live="polite">
         <span class="preview-label">房间信息</span><h3>{{ resolved.room.name }}</h3>
         <dl>
-          <div><dt>房主</dt><dd>{{ resolved.room.hostNickname }}</dd></div>
+          <!-- * 预览与大厅使用同一摘要头像，失败不阻塞加入操作。 -->
+          <div><dt>房主</dt><dd><span class="preview-avatar"><MultiplayerAvatar :source="resolved.room.hostHeaderImg" :identity="resolved.room.roomId" /></span>{{ resolved.room.hostNickname }}</dd></div>
           <div><dt>成员</dt><dd><Users :size="14" /> {{ resolved.room.memberCount }} / {{ resolved.room.maxMembers }}</dd></div>
           <div><dt>游戏端口</dt><dd class="type-mono">{{ (resolved.room.ports ?? []).map(portText).join(' · ') || '—' }}</dd></div>
         </dl>
@@ -87,6 +89,7 @@ dl { margin: 0 0 20px; }
 dl > div { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; font-size: 12px; border-bottom: 1px dashed var(--ds-border-subtle); }
 dt { color: var(--ds-text-secondary); flex-shrink: 0; }
 dd { display: flex; align-items: center; gap: 6px; text-align: right; margin: 0; overflow-wrap: anywhere; }
+.preview-avatar { width: 24px; height: 24px; flex: none; overflow: hidden; border-radius: 4px; }
 .password-field { display: flex; flex-direction: column; gap: 8px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 </style>

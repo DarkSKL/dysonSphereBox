@@ -6,6 +6,7 @@ import Components from 'unplugin-vue-components/vite'
 import {NaiveUiResolver} from 'unplugin-vue-components/resolvers'
 import fs from 'node:fs'
 import path from 'node:path'
+import {modelCompressionPlugin} from './tools/model-compression/vite-plugin.mjs'
 
 // 默认头像位于 frontend 外的 client/resources，开发服务器只额外允许读取该目录；
 // 显式设置 allow 会覆盖默认值，因此同时保留 frontend 根目录。
@@ -40,6 +41,7 @@ function copyBlueprintEditorAssets() {
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
+    modelCompressionPlugin(),
     VueRouter({
       routesFolder: 'src/pages',
       dts: 'src/typed-router.d.ts',

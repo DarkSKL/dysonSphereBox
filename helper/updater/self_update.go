@@ -11,16 +11,17 @@ import (
 
 	updaterApply "DysonSphereBox/helper/updater/apply"
 	updaterClient "DysonSphereBox/helper/updater/client"
+	"DysonSphereBox/helper/updater/progress"
 	updaterRelease "DysonSphereBox/helper/updater/release"
 	selfupdate "github.com/creativeprojects/go-selfupdate"
 )
 
 // UpdateAppSelf 下载最新 Release 附件并替换当前可执行文件。
 // 职责：在存在新版本时下载、校验并应用应用自更新文件。
-// 使用：由系统更新服务在用户确认更新后调用。
+// 使用：由系统更新服务在用户确认更新后调用，report 可为空或接收主更新包下载快照。
 // 边界：写入成功后需要用户重启应用才会运行新版本；无更新时不会下载资产。
 // 逻辑流：1. 复用检查更新结果 => 2. 无更新则直接返回 => 3. 重新检测 Release 防止目标丢失 => 4. 定位当前可执行文件 => 5. 下载校验并替换可执行文件。
-func UpdateAppSelf(ctx context.Context) (*UpdateResult, error) {
+func UpdateAppSelf(ctx context.Context, report progress.Reporter) (*UpdateResult, error) {
 	check, err := CheckAppUpdate(ctx)
 	if err != nil {
 		return nil, err
@@ -44,8 +45,9 @@ func UpdateAppSelf(ctx context.Context) (*UpdateResult, error) {
 		return nil, fmt.Errorf("resolve executable path: %w", err)
 	}
 	if err := updaterApply.ApplyRelease(ctx, source, release, executablePath, updaterApply.Config{
-		CommandName:  appUpdateCommand,
-		ChecksumName: appUpdateChecksum,
+		CommandName:      appUpdateCommand,
+		ChecksumName:     appUpdateChecksum,
+		DownloadProgress: report,
 	}); err != nil {
 		return nil, fmt.Errorf("update app executable: %w", err)
 	}

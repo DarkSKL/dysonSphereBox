@@ -12,6 +12,8 @@ export interface Offset {
 
 /** 一批操作共享的坐标解释与播放节奏 */
 export interface QueueFrame {
+  /** 入队时固定任务身份，避免延迟播放的建筑通知被归到新任务。 */
+  readonly taskId?: string;
   readonly candidateId?: string;
   readonly coordinates: AlgoVizCoordinates;
   /** 区域下标 → 区域原点在整体平面中的偏移（蓝图格） */
@@ -54,27 +56,36 @@ export function areaOffsets(areas: readonly AlgoVizArea[] | undefined): Map<numb
 }
 
 export class OperationQueue {
-  private items: QueueItem[] = [];
+  /** 批次共享原操作数组；入队不再为每个建筑分配包装对象。 */
+  private items: Array<{operations: readonly AlgoVizOperation[]; frame: QueueFrame; cursor: number} | undefined> = [];
   private head = 0;
+  private pending = 0;
 
   get length(): number {
-    return this.items.length - this.head;
+    return this.pending;
   }
 
   push(operations: readonly AlgoVizOperation[], frame: QueueFrame): void {
-    operations.forEach((op, i) => this.items.push({ op, frame, first: i === 0 }));
+    if (!operations.length) return;
+    this.items.push({operations, frame, cursor: 0});
+    this.pending += operations.length;
   }
 
   /** 查看队首而不出队 */
   peek(): QueueItem | undefined {
-    return this.head < this.items.length ? this.items[this.head] : undefined;
+    const batch = this.items[this.head];
+    return batch ? {op: batch.operations[batch.cursor], frame: batch.frame, first: batch.cursor === 0} : undefined;
   }
 
   shift(): QueueItem | undefined {
-    if (this.head >= this.items.length) return undefined;
-    const item = this.items[this.head++];
-    // 已出队部分过多时压缩数组，避免长时间运行占用内存
-    if (this.head > 2048 && this.head * 2 > this.items.length) {
+    const item = this.peek();
+    if (!item) return undefined;
+    const batch = this.items[this.head]!;
+    this.pending--;
+    if (++batch.cursor === batch.operations.length) this.items[this.head++] = undefined;
+    // 批次播完即释放原数组；整队播完不保留最后几千个建筑引用。
+    if (!this.pending) this.clear();
+    else if (this.head > 256 && this.head * 2 > this.items.length) {
       this.items = this.items.slice(this.head);
       this.head = 0;
     }
@@ -84,5 +95,6 @@ export class OperationQueue {
   clear(): void {
     this.items = [];
     this.head = 0;
+    this.pending = 0;
   }
 }

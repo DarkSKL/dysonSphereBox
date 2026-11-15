@@ -52,7 +52,7 @@ viz.dispose(); // 卸载时必须调用
 
 ### 多候选平台
 
-先按后端候选计划调用 `beginCandidate(id, ordinal)`，所有实际候选均完整铺开，不按平台数量截断建筑。未执行的条件回退组不创建假候选；启用新候选组时追加平台。每个候选的对象与连接 ID 均须带任务和候选前缀，避免跨平台串线。
+收到实际 `candidate-start` 时调用 `beginCandidate(id, ordinal)`；候选计划只声明身份，未派发的候选不占平台或建筑资源。活动候选不按平台数量截断建筑。每个候选的对象与连接 ID 均须带任务和候选前缀，避免跨平台串线。
 
 ```ts
 viz.beginCandidate('candidate-1', 1);
@@ -60,13 +60,13 @@ viz.enqueue({candidateId: 'candidate-1', pace: 'cinematic', operations});
 viz.finishCandidate('candidate-1', 'rejected');
 ```
 
-`finishCandidate` 记录计算结果，不越过待播放过程。失败或剪枝候选在队列与建筑动画播放完毕后独立坠落；首次非空画面至少保留约 1.2 个视觉秒。可行候选暂留等待最终结果。
+`finishCandidate` 收到失败或剪枝结果后立即清空该候选待播队列及快照，启动下坠并按帧预算释放已显示对象；暂停播放也不阻止这项回收。同一任务内忽略该候选的迟到入队，防止复活。可行候选保留完整队列并暂留等待最终结果。
 
-最终快照必须先完整组装并校验，再以 `enqueue({...batch, candidateId, snapshot: true})` 提交。快照等待该候选此前的操作和动画结束，再一次性更新全部正式姿态。只有正式生成调用成功且获选身份一致后，才调用 `finalizeSearch(winnerId)`；各落选平台分别退场，最终获选平台平滑归中。`failSearch()` 让本任务所有平台按各自时间线退场，不伪造获选方案。
+最终快照必须先完整组装并校验，再以 `enqueue({...batch, candidateId, snapshot: true})` 提交。快照等待该候选此前的操作和动画结束，再一次性更新全部正式姿态。只有正式生成调用成功且获选身份一致后，才调用 `finalizeSearch(winnerId)`；各落选平台立即丢弃待播内容并退场，最终获选平台平滑归中。`failSearch()` 立即清空本任务所有候选的待播内容并退场，不伪造获选方案。
 
 包只管理视觉队列。应用层的 v4 事件订阅在队列积压约 20000 项时通过后端过程日志延迟消费，保留真实历史；日志最近两次任务、每任务最多 64 MiB、有效期十分钟，日志不足时明确提示并降级到正式结果。暂停不阻塞后端计算，`flush()` 可跳过已入队动画。
 
-`flush()` 跳过动画直接应用全部待播操作。
+`flush()` 跳过动画，按共享帧预算持续应用全部待播操作。积压期间减少中间画面的GPU重绘，数据处理结束立即绘制完整结果。
 
 批次的 `stage` 与上一批不同时，播放到该批会显示阶段标题；`caption(title, detail)` 可随时显示标题。
 
@@ -77,7 +77,7 @@ viz.finishCandidate('candidate-1', 'rejected');
 - `coordinates: 'layout'`：生成过程中的平面装配格，直接使用 `x/y`
 - `coordinates: 'area'`：正式蓝图的区域局部坐标，配合 `areas` 把子区域锚点沿父链累加后拼成整体平面
 
-分拣器使用首端 `x/y/z` 与次端 `x2/y2/z2` 拉伸；传送带通过 `outputId` 连向下游传送带，链首自动补半格。
+分拣器使用首端 `x/y/z` 与次端 `x2/y2/z2` 拉伸；传送带通过 `outputId` 连向下游传送带，链首自动补半格。相邻带段共享斜接截面，使水平转弯、斜坡与垂直升降保持闭合；流动箭头沿路径累计相位，支持 1.5 格等非整数长度，闭环自动匹配整数个箭头周期。
 
 ## 控制器接口
 
@@ -86,18 +86,20 @@ viz.finishCandidate('candidate-1', 'rejected');
 | `supported` | WebGL 是否可用；不可用时显示降级提示，其余方法安全空转 |
 | `enqueue(batch)` | 入队一批操作 |
 | `beginCandidate(id, ordinal)` | 创建候选完整平台，已存在时幂等 |
-| `finishCandidate(id, status)` | 标记 valid / rejected / pruned，等待本候选播放完成 |
+| `finishCandidate(id, status)` | 保留 valid 待播内容；rejected / pruned 立即清队列并退场 |
 | `finalizeSearch(winnerId)` | 正式结果确认后确定唯一获选平台 |
 | `failSearch()` | 无获选结果时让所有候选分别退场 |
 | `caption(title, detail?)` | 显示阶段标题 |
 | `reset({ animate? })` | 清空场景与队列；`animate` 时由内向外依次撤下 |
-| `flush()` | 跳过动画，立即应用全部待播操作 |
+| `flush()` | 跳过动画，按帧预算持续处理至完整最终状态 |
 | `setSpeed(n)` / `getSpeed()` | 播放速度 0.25 ~ 8 |
 | `setPaused(b)` / `isPaused()` | 暂停出队与动画，视角仍可操作 |
 | `setTheme(theme, immediate?)` / `getTheme()` | `'dark' \| 'light'`，默认约 450ms 渐变 |
 | `rotate(steps)` | 以 90° 为步进旋转视角 |
 | `resetView()` | 恢复自动取景 |
 | `select(id \| null)` / `getProgress()` | 选中建筑 / 读取队列与累计统计 |
+| `setIconsVisible(group, b)` / `getIconsVisible()` | 显示或隐藏世界图标，`group` 为 `'belt'`（传送带入口）或 `'building'`（机器建筑）；只切换可见性，不影响对象与播放 |
+| `refreshIcons()` | 重新解析全部对象的图标；精灵图、物品数据迟到后调用 |
 | `dispose()` | 释放全部资源 |
 
 ## 配置项
@@ -109,16 +111,29 @@ interface AlgoVizOptions {
   speed?: number;                            // 默认 1
   modelUrls?: Record<string, string>;        // 模型键 → GLB 地址，键见 ALGORITHM_VIZ_MODEL_KEYS
   transcoderUrls?: { js: string; wasm: string }; // Basis 转码器地址；构建工具重命名资源时必须提供
-  maxObjects?: number;                       // 单平台回放默认 12000；多候选不截断完整建筑
+  maxObjects?: number;                       // 默认无限制；只有显式传入时才限制单平台对象数
   emptyText?: string;                        // 空场景提示
   viewPaddingTop?: number;                   // 顶部被外部工具栏覆盖的像素，取景时让出
   injectStyles?: boolean;                    // 默认 true；false 时自行插入 ALGORITHM_VIZ_CSS
   describe?: (b: AlgoVizBuilding) => string; // 悬停提示文案
+  iconSheet?: { url: string; width: number; height: number; cell: number }; // 图标精灵图；缺省时不绘制图标
+  icon?: (b: AlgoVizBuilding) => { x: number; y: number } | null;          // 解析建筑的图标格，null 为没有
+  iconsVisible?: { belt?: boolean; building?: boolean };                    // 初始显示开关，默认都显示
   onSelect?: (s: AlgoVizSelection | null) => void;
+  onSelectionMove?: (screen: { x: number; y: number }) => void; // 选中建筑的屏幕位置变化，每帧最多一次
   onProgress?: (p: AlgoVizProgress) => void; // 最多每 100ms 一次
   onStats?: (s: AlgoVizStats) => void;
 }
 ```
+
+## 世界图标
+
+传送带入口与机器建筑上方可以显示物品图标：圆角底板 + 指向建筑的小尾巴 + 精灵图中的一格，正对屏幕，边长夹在 12 ~ 40 屏幕像素之间，远景里自然边长过小的图标淡出。全部图标共用一个实例池和一次绘制。
+
+- 数据：`AlgoVizBuilding.iconItemId`（带标记物品，用于原料入口与成品出口的带节点）和 `recipeId`（机器配方）只是原始数据，包本身不认识物品名；由使用方的 `icon(building)` 解析为精灵图中的格坐标，返回 `null` 表示没有图标
+- 精灵图：`iconSheet` 给出整图像素尺寸与单格边长，格按行列紧密排布、原点在左上角；缺省或加载失败时图标层保持为空，其余功能不受影响
+- 开关：`setIconsVisible('belt' | 'building', visible)` 只切换可见性，槽位随写入阶段分配或释放，对象、动画与队列都不受影响；外部数据迟到时调用 `refreshIcons()`
+- 随对象：图标跟随入场下落、平移抬升和候选平台的偏移，失败候选一并标红，坠落候选随深度淡出
 
 ## 模型
 
@@ -132,7 +147,7 @@ interface AlgoVizOptions {
 
 - 左键拖动：旋转视角，松手吸附到最近的 90° 档位；方向键 ← → 同样旋转
 - 右键或 Shift + 左键拖动：平移；滚轮：以指针为锚点缩放；双击空白：复位视角
-- 点击建筑：选中并回调 `onSelect`；Esc 取消选中
+- 点击建筑：选中并回调 `onSelect`；之后相机或建筑移动导致其屏幕位置变化时回调 `onSelectionMove`，供详情面板跟随建筑；Esc 取消选中
 - `prefers-reduced-motion`：关闭下落与流动动画，操作直接落定
 - 容器不可见或页面隐藏时暂停渲染
 
@@ -148,8 +163,8 @@ src/
   styles.ts         覆盖层样式与注入
   scene.ts          场景实现（队列节奏、对象动画、实例写入、交互、渲染循环）
   mock.ts           演示数据 createDemoBatches
-  internal/         调色板、等距相机、操作队列、对象姿态、覆盖层、数学工具
-  render/           着色器、模型库（KTX2 贴图）、实例池、方块平台、天空背景、投影与涟漪
+  internal/         调色板、等距相机、操作队列、对象姿态、覆盖层、数学工具、图标槽位簿记
+  render/           着色器、模型库（KTX2 贴图）、实例池、方块平台、天空背景、投影与涟漪、世界图标
 ```
 
 ## 脚本

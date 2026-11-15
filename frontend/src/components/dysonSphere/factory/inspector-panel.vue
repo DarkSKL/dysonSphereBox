@@ -11,14 +11,16 @@ import {generationDebugOptions} from '../../../composables/dysonSphere/useGenera
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
 const emit = defineEmits<{(event: 'clear'): void}>()
 
-// 设备类型方块组：每组单选；传送带与分拣器写入布局等级，熔炉与工作台写入对应类型配方的设备选择。
+// 设备类型方块组：每组单选；传送带与分拣器写入布局等级，生产设施写入对应类型全部配方的设备选择。
 const beltTiles = [{label: '传送带', value: 1, icon: '传送带'}, {label: '高速传送带', value: 2, icon: '高速传送带'}, {label: '极速传送带', value: 3, icon: '急速传送带'}]
 const inserterTiles = [{label: '分拣器', value: 1, icon: '分拣器'}, {label: '高速分拣器', value: 2, icon: '高速分拣器'}, {label: '极速分拣器', value: 3, icon: '极速分拣器'}, {label: '集装分拣器', value: 4, icon: '集装分拣器'}]
 const equipmentGroups = computed(() => [
   {key: 'belt', label: '传送带', tiles: beltTiles, selected: props.w.layout.beltLv as number | null, pick: (value: number) => { props.w.layout.beltLv = value }},
   {key: 'inserter', label: '分拣器', tiles: inserterTiles, selected: props.w.layout.inserterLv as number | null, pick: (value: number) => { props.w.layout.inserterLv = value }},
   {key: 'smelter', label: '熔炉', tiles: props.w.machineChoices(1), selected: props.w.selectedMachine(1), pick: (value: number) => props.w.selectMachine(1, value)},
-  {key: 'assembler', label: '工作台', tiles: props.w.machineChoices(4), selected: props.w.selectedMachine(4), pick: (value: number) => props.w.selectMachine(4, value)}
+  {key: 'assembler', label: '工作台', tiles: props.w.machineChoices(4), selected: props.w.selectedMachine(4), pick: (value: number) => props.w.selectMachine(4, value)},
+  {key: 'lab', label: '矩阵研究站', tiles: props.w.machineChoices(15), selected: props.w.selectedMachine(15), pick: (value: number) => props.w.selectMachine(15, value)},
+  {key: 'chemical', label: '化工厂', tiles: props.w.machineChoices(2), selected: props.w.selectedMachine(2), pick: (value: number) => props.w.selectMachine(2, value)}
 ].filter(group => group.tiles.length > 0))
 const merges = [{label: '纵向单列', value: 1, icon: ''}, {label: '按宽度换列', value: 2, icon: ''}]
 const densityOptions: {label: string; value: 'standard' | 'dense'; code: string}[] = [{label: '普通', value: 'standard', code: 'STD'}, {label: '超密度', value: 'dense', code: 'DENSE'}]
@@ -177,7 +179,9 @@ const importedRows = computed(() => {
           </div>
         </div>
         <!-- ~ 设备类型 -->
-        <!-- * 说明：每种设备一行小方块，行内单选；选中值写入蓝图参数（带/分拣器等级与熔炉、工作台设备）。 -->
+        <!-- * 说明：传送带、分拣器、熔炉、工作台、矩阵研究站和化工厂各占一行，沿用图标单选。 -->
+        <!-- * 交互：切换等级后更新布局参数或同类配方设备，触发已有的自动量化与蓝图生成。 -->
+        <!-- * 依赖：equipmentGroups 从工作区数据集读取可选生产设施；边界：不展示数据集中没有的设备组。 -->
         <div v-for="group in equipmentGroups" :key="group.key" class="field equip-field">{{ group.label }}
           <div class="tile-group" role="radiogroup" :aria-label="group.label">
             <button v-for="tile in group.tiles" :key="tile.value" type="button" role="radio" class="tile" :class="{'is-active': group.selected === tile.value}" :aria-checked="group.selected === tile.value" :title="tile.label" :aria-label="tile.label" @click="group.pick(tile.value)"><ItemIcon :name="tile.icon" :size="22" /></button>

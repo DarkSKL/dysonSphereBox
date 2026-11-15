@@ -7,8 +7,13 @@ import { castsShadow, copyPose, describeObject, dropHeight, emptyPose, worldPose
 import { Overlay } from './internal/overlay';
 import { clonePalette, lerpPalette, resolvePalette, type Palette } from './internal/palette';
 import { areaOffsets, OperationQueue, type Offset, type QueueFrame, type QueueItem } from './internal/queue';
+import { FrameWorkBudget } from './internal/work-budget';
+import { CandidateSnapshot } from './internal/snapshot';
+import { GenerationCache } from './internal/generation-cache';
+import { BeltFlow, BeltGeometry, BELT_THICKNESS, BELT_WIDTH } from './internal/belts';
 import { BackdropLayer } from './render/backdrop';
 import { RingLayer, ShadowLayer } from './render/effects';
+import { IconLayer } from './render/icons';
 import { IslandLayer } from './render/island';
 import { ModelLibrary, type PartKind } from './render/models';
 import { InstancePool, type InstanceAttributeSpec } from './render/pool';
@@ -17,8 +22,10 @@ import type {
   AlgorithmVizController,
   AlgoVizBatch,
   AlgoVizBuilding,
-  AlgoVizOperation,
+  AlgoVizBuildingEvent,
   AlgoVizCoordinates,
+  AlgoVizIconGroup,
+  AlgoVizIconVisibility,
   AlgoVizOptions,
   AlgoVizProgress,
   AlgoVizTheme,
@@ -34,24 +41,31 @@ const FOLLOW_LAG = 1;
 const FOLLOW_KEEP = 160;
 /** 跟随模式：最低出队速度（每秒，1 倍速），保证队尾线性收敛而不是指数拖尾 */
 const FOLLOW_MIN_RATE = 160;
+/** 跳过动画且仍有工作时降低中间画面的重绘频率，保留主线程处理数据；完成帧始终立即绘制。 */
+const INSTANT_DRAW_INTERVAL_MS = 100;
+const INSTANT_MAX_DRAW_COOLDOWN_MS = 500;
 const DUR_ENTER = 0.78;
 const DUR_MOVE = 0.7;
 const DUR_EXIT = 0.5;
 const THEME_DURATION = 0.45;
 /** 打开页面即预加载的常用模型 */
 const PRELOAD = ['assembler-1', 'assembler-2', 'assembler-3', 'smelter', 'inserter-1', 'inserter-2', 'inserter-3', 'tesla-coil'];
-const BELT_THICKNESS = 0.2;
-const BELT_WIDTH = 0.66;
-/** 相邻传送带节点超过该距离不再连成一段，避免跨区连线 */
-const BELT_LINK_MAX = 6;
 const DRAG_THRESHOLD = 4;
-const CANVAS_LABEL = '蓝图生成算法可视化：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
+/** 图标基准边长（蓝图格）：传送带入口固定；建筑按占地短边的 0.7 倍取值并夹在上下限之间。屏幕边长另由图标层夹取 */
+const ICON_BELT_SIZE = 1.5;
+const ICON_BUILDING_MIN = 1.9;
+const ICON_BUILDING_MAX = 3.4;
+const CANVAS_LABEL = '平面预览器（内测版）：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
 const DEFAULT_EMPTY = '产线计算完成后，算法会在这里逐步搭建蓝图';
 const NO_OFFSETS: ReadonlyMap<number, Offset> = new Map();
 
 const STATE_SPEC: InstanceAttributeSpec = { name: 'aState', itemSize: 4 };
 const COLOR_SPEC: InstanceAttributeSpec = { name: 'aColor', itemSize: 1 };
-const LEN_SPEC: InstanceAttributeSpec = { name: 'aLen', itemSize: 1, fill: [1] };
+const BELT_SPECS: InstanceAttributeSpec[] = [
+  { name: 'aFlow', itemSize: 2 },
+  { name: 'aStartSide', itemSize: 3 }, { name: 'aStartUp', itemSize: 3 },
+  { name: 'aEndSide', itemSize: 3 }, { name: 'aEndUp', itemSize: 3 },
+];
 /** 失败候选标红的逐实例强度 */
 const FAIL_SPEC: InstanceAttributeSpec = { name: 'aFail', itemSize: 1 };
 
@@ -73,7 +87,9 @@ interface PointerState {
 }
 
 interface CandidateStage {
-  snapshot?: {operations: readonly AlgoVizOperation[]; frame: QueueFrame};
+  snapshot?: CandidateSnapshot;
+  /** 包含尚在退场的对象；按实体身份登记，同 ID 换型不会混淆新旧对象。 */
+  readonly objects: Set<VizObject>;
   readonly id: string;
   readonly ordinal: number;
   readonly island: IslandLayer;
@@ -128,15 +144,23 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private island!: IslandLayer;
   private shadows!: ShadowLayer;
   private rings!: RingLayer;
+  private icons!: IconLayer;
+  /** 各分组的图标显示开关：只决定图标是否绘制，对象、动画与队列不受影响 */
+  private iconVisibility: { belt: boolean; building: boolean } = { belt: true, building: true };
   private overlay!: Overlay;
   private models!: ModelLibrary;
   private buildingMaterial!: THREE.ShaderMaterial;
   private beltMaterial!: THREE.ShaderMaterial;
   private unitBox!: THREE.BufferGeometry;
+  private beltBox!: THREE.BufferGeometry;
   private readonly pools = new Map<string, InstancePool>();
+  private readonly poolUsage = new GenerationCache<string>();
+  private cachePrunePending = false;
   /** 自有材质的模型池：释放场景时一并释放其材质 */
   private readonly ownedPools = new Set<InstancePool>();
   private readonly owners = new Map<string, (VizObject | undefined)[]>();
+  /** 阴影实例压实时同步建筑的阴影槽号，避免退场留下空绘制范围。 */
+  private readonly shadowOwners: (VizObject | undefined)[] = [];
   private unsubscribeModels: (() => void) | null = null;
 
   // --- 场景对象 ---
@@ -144,14 +168,28 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 视角锁定：计算期间强制复位并禁止旋转、平移、缩放 */
   private viewLocked = false;
   private readonly animating = new Set<VizObject>();
+  /** 按对象实体保存尚未落定的操作，防止同 ID 换型、撤销或重置后误发完成通知。 */
+  private buildingEvents = new WeakMap<VizObject, AlgoVizBuildingEvent>();
+  private buildingSequence = 0;
+  private generationTaskId = '';
   /** 正在衰减闪白但不在动画中的对象 */
   private readonly glowing = new Set<VizObject>();
   private readonly dirty = new Set<VizObject>();
   /** 下游对象 ID → 指向它的传送带 */
   private readonly beltInputs = new Map<string, Set<VizObject>>();
+  private readonly beltFlow = new BeltFlow();
+  private readonly beltGeometry = new BeltGeometry();
   private queue = new OperationQueue();
   private readonly candidates = new Map<string, CandidateStage>();
+  /** 淘汰身份在任务内保留，防止迟到批次重新创建已经退场的候选。 */
+  private readonly retiredCandidates = new Set<string>();
   private readonly objectCandidates = new Map<string, string>();
+  private memberships = new WeakMap<VizObject, CandidateStage>();
+  /** 模型就绪时只迁移对应占位体，分帧复用同一工作预算。 */
+  private readonly placeholders = new Map<string, Set<VizObject>>();
+  private readonly readyModels = new Set<string>();
+  /** 每帧从上次让出的候选继续，避免大队列独占操作预算。 */
+  private candidateCursor = 0;
   private winnerId = '';
   /** 搜索已有结论（选出获选候选，或整体失败）：此后全部播完即让落选候选同时下坠 */
   private settled = false;
@@ -177,6 +215,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private hoverPending = false;
   private hovered: VizObject | null = null;
   private selected: VizObject | null = null;
+  /** 最近一次通知使用方的选中建筑屏幕坐标 */
+  private readonly selectionScreen = { x: NaN, y: NaN };
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
 
@@ -203,6 +243,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private progressVersion = 0;
   private progressSent = -1;
   private progressAt = 0;
+  private nextInstantDrawAt = 0;
+  private drewLastFrame = false;
+  private lastDrawDurationMs = 0;
   private reducedMotion!: MediaQueryList;
   private resizeObserver!: ResizeObserver;
   private intersectionObserver!: IntersectionObserver;
@@ -213,6 +256,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.options = options;
     this.maxObjects = Math.max(1, options.maxObjects ?? DEFAULT_MAX_OBJECTS);
     this.themeName = options.theme === 'dark' ? 'dark' : 'light';
+    this.iconVisibility = { belt: options.iconsVisible?.belt !== false, building: options.iconsVisible?.building !== false };
     this.speed = clampSpeed(options.speed ?? 1);
     if (options.injectStyles !== false) {
       acquireStyles();
@@ -243,28 +287,26 @@ export class AlgorithmVizScene implements AlgorithmVizController {
 
   enqueue(batch: AlgoVizBatch): void {
     if (this.disposed || !this.supported || !batch?.operations?.length) return;
+    if (batch.candidateId && this.retiredCandidates.has(batch.candidateId)) return;
     const coordinates = batch.coordinates ?? this.lastCoordinates;
     if (batch.areas) this.lastOffsets = areaOffsets(batch.areas);
     this.lastCoordinates = coordinates;
     const stage = batch.stage ?? this.lastStage;
     this.lastStage = stage;
-    const frame: QueueFrame = { candidateId: batch.candidateId, coordinates, offsets: coordinates === 'area' ? this.lastOffsets : NO_OFFSETS, stage, pace: batch.pace ?? 'replay' };
+    const frame: QueueFrame = { taskId: batch.taskId ?? this.generationTaskId, candidateId: batch.candidateId, coordinates, offsets: coordinates === 'area' ? this.lastOffsets : NO_OFFSETS, stage, pace: batch.pace ?? 'replay' };
     const queue = batch.candidateId ? this.candidates.get(batch.candidateId)?.queue : this.queue;
     const candidate = batch.candidateId ? this.candidates.get(batch.candidateId) : undefined;
     if (batch.snapshot && candidate) {
-      candidate.snapshot = {operations: batch.operations, frame};
-      if (this.skipping) this.applyCandidateSnapshot(candidate, true);
-    } else if (this.skipping) {
-      for (const op of batch.operations) this.applyItem({op, frame, first: false}, true);
+      candidate.snapshot = new CandidateSnapshot(batch.operations, frame);
     } else queue?.push(batch.operations, frame);
     this.touch();
   }
 
   beginCandidate(id: string, ordinal: number): void {
-    if (!this.supported || this.disposed || this.candidates.has(id)) return;
+    if (!this.supported || this.disposed || this.candidates.has(id) || this.retiredCandidates.has(id)) return;
     const island = new IslandLayer(this.uniforms);
     this.scene.add(island.group);
-    this.candidates.set(id, {id, ordinal, island, queue: new OperationQueue(), budget: 0, x: 0, z: 0, targetX: 0, targetZ: 0, positioned: false, y: 0, age: 0, failMix: 0, falling: -1});
+    this.candidates.set(id, {id, ordinal, island, objects: new Set(), queue: new OperationQueue(), budget: 0, x: 0, z: 0, targetX: 0, targetZ: 0, positioned: false, y: 0, age: 0, failMix: 0, falling: -1});
     this.island.group.visible = false;
     this.boundsDirty = true;
     this.touch();
@@ -272,11 +314,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
 
   finishCandidate(id: string, status: 'valid' | 'rejected' | 'pruned'): void {
     const candidate = this.candidates.get(id);
-    if (candidate) candidate.status = status;
-    if (candidate && this.skipping) {
-      candidate.age = 100;
-      candidate.shownAt = 0;
-      this.updateCandidates(2);
+    if (candidate) {
+      candidate.status = status;
+      if (status !== 'valid') this.retireCandidate(candidate);
     }
     this.touch();
   }
@@ -284,15 +324,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   finalizeSearch(winnerId: string): void {
     this.winnerId = winnerId;
     this.settled = true;
+    for (const candidate of this.candidates.values()) if (candidate.id !== winnerId) this.retireCandidate(candidate);
     if (this.skipping) {
-      this.updateCandidates(2);
-      this.recomputeBounds();
       const winner = this.candidates.get(winnerId);
       if (winner) {
         winner.x = winner.targetX;
         winner.z = winner.targetZ;
         winner.island.group.position.set(winner.x, winner.y, winner.z);
-        for (const obj of this.objects.values()) this.dirty.add(obj);
+        this.dirtyCandidate(winner);
       }
     }
     this.touch();
@@ -301,10 +340,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   failSearch(): void {
     this.winnerId = '';
     this.settled = true;
-    for (const candidate of this.candidates.values()) candidate.status = 'rejected';
+    for (const candidate of this.candidates.values()) { candidate.status = 'rejected'; this.retireCandidate(candidate); }
     if (this.skipping) {
       for (const candidate of this.candidates.values()) { candidate.age = 100; candidate.shownAt = 0; }
-      this.updateCandidates(2);
     }
     this.touch();
   }
@@ -314,8 +352,33 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.overlay.showCaption(title, detail);
   }
 
+  /** 后端明确淘汰后立即丢弃待播数据并开始下坠，当前已显示对象仍按共享帧预算回收。 */
+  private retireCandidate(candidate: CandidateStage): void {
+    if (this.retiredCandidates.has(candidate.id)) return;
+    this.retiredCandidates.add(candidate.id);
+    candidate.queue.clear();
+    candidate.snapshot = undefined;
+    candidate.budget = 0;
+    if (candidate.falling < 0) candidate.falling = 0;
+    this.settleReadyAt = -1;
+    this.touch();
+  }
+
+  beginGeneration(taskId: string): void {
+    if (this.disposed || !this.supported) return;
+    this.generationTaskId = taskId;
+    if (!this.poolUsage.begin(taskId)) return;
+    this.models.beginGeneration(taskId);
+    this.pruneGenerationCache();
+    for (const pool of this.pools.values()) pool.beginGeneration();
+    this.shadows.beginGeneration();
+    this.icons.beginGeneration();
+    this.touch();
+  }
+
   reset(options: { animate?: boolean } = {}): void {
     if (this.disposed || !this.supported) return;
+    this.buildingEvents = new WeakMap();
     const hadCandidates = this.candidates.size > 0;
     this.queue.clear();
     this.skipping = false;
@@ -324,15 +387,38 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       candidate.island.dispose();
     }
     this.candidates.clear();
+    this.retiredCandidates.clear();
     this.objectCandidates.clear();
     this.winnerId = '';
     this.settled = false;
     this.settleReadyAt = -1;
     this.candidateSpacing = 32;
+    this.candidateCursor = 0;
     this.island.group.visible = true;
     this.budget = 0;
     this.select(null);
     const animate = Boolean(options.animate) && !this.reducedMotion.matches && !hadCandidates;
+    if (!animate) {
+      // 大厂或候选全场重建直接归还实例池；避免逐建筑撤销把下一轮生成阻塞在清场中。
+      this.setHovered(null);
+      for (const pool of this.pools.values()) pool.clear();
+      for (const owners of this.owners.values()) owners.length = 0;
+      this.shadows.clear();
+      this.icons.clear();
+      this.shadowOwners.length = 0;
+      this.objects.clear();
+      this.animating.clear();
+      this.glowing.clear();
+      this.dirty.clear();
+      this.beltInputs.clear();
+      this.beltFlow.clear();
+      this.beltGeometry.beginFrame();
+      this.objectCandidates.clear();
+      this.memberships = new WeakMap();
+      this.placeholders.clear();
+      this.readyModels.clear();
+      this.boundsDirty = true;
+    }
     const live = Array.from(this.objects.values());
     let cx = 0;
     let cz = 0;
@@ -350,22 +436,17 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.stage = '';
     this.lastStage = '';
     if (!animate) this.rings.clear();
+    this.pruneGenerationCache();
     this.touch();
   }
 
   flush(): void {
     if (this.disposed || !this.supported) return;
     this.skipping = true;
-    let item: QueueItem | undefined;
-    while ((item = this.queue.shift())) this.applyItem(item, true);
     for (const candidate of this.candidates.values()) {
-      while ((item = candidate.queue.shift())) this.applyItem(item, true);
-      this.applyCandidateSnapshot(candidate, true);
       candidate.age = 100;
+      candidate.shownAt = 0;
     }
-    for (const obj of Array.from(this.animating)) this.finish(obj);
-    this.updateCandidates(2);
-    if (this.winnerId) this.finalizeSearch(this.winnerId);
     this.budget = 0;
     this.touch();
   }
@@ -397,6 +478,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       lerpPalette(this.palette, this.palettes[theme], this.palettes[theme], 1);
       this.themeT = 1;
       this.themeFrom = null;
+      this.nextInstantDrawAt = 0;
     } else {
       this.themeFrom = clonePalette(this.palette);
       this.themeT = 0;
@@ -422,6 +504,31 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     return this.viewLocked;
   }
 
+  setIconsVisible(group: AlgoVizIconGroup, visible: boolean): void {
+    if (group !== 'belt' && group !== 'building') return;
+    const next = Boolean(visible);
+    if (this.iconVisibility[group] === next) return;
+    this.iconVisibility[group] = next;
+    if (this.disposed || !this.supported) return;
+    // 只重写该分组已有图标的对象；槽位随写入阶段按开关分配或释放，建筑实例本身不动
+    for (const obj of this.objects.values()) if (obj.icon && this.iconGroup(obj) === group) this.dirty.add(obj);
+    this.touch();
+  }
+
+  getIconsVisible(): AlgoVizIconVisibility {
+    return { ...this.iconVisibility };
+  }
+
+  /** 重新解析并重写全部对象的图标；精灵图或物品数据迟到时调用 */
+  refreshIcons(): void {
+    if (this.disposed || !this.supported) return;
+    for (const obj of this.objects.values()) {
+      this.resolveIcon(obj);
+      this.dirty.add(obj);
+    }
+    this.touch();
+  }
+
   rotate(steps: number): void {
     if (this.disposed || !this.supported || this.viewLocked || !Number.isFinite(steps)) return;
     this.rig.rotate(Math.round(steps));
@@ -441,6 +548,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (next === this.selected) return;
     const previous = this.selected;
     this.selected = next;
+    if (this.hovered && (this.hovered === next || this.hovered === previous)) this.overlay.showTooltip(this.hoverText(this.hovered), this.hoverX, this.hoverY);
     if (previous) {
       previous.highlight = previous === this.hovered ? 0.5 : 0;
       this.dirty.add(previous);
@@ -450,21 +558,40 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       return;
     }
     const candidate = this.candidates.get(this.objectCandidates.get(next.id) ?? '');
-    this.v.set(next.pose.x + (candidate?.x ?? 0), next.pose.y + next.height * 0.6 + (candidate?.y ?? 0), next.pose.z + (candidate?.z ?? 0)).project(this.rig.camera);
+    const screen = this.projectSelection(next);
+    this.selectionScreen.x = screen.x;
+    this.selectionScreen.y = screen.y;
     this.options.onSelect?.({
       id: next.id,
       candidateId: candidate?.id,
       candidateOrdinal: candidate?.ordinal,
       building: next.building,
-      screen: { x: ((this.v.x + 1) / 2) * this.width, y: ((1 - this.v.y) / 2) * this.height },
+      screen,
     });
+  }
+
+  /** 选中建筑在容器内的屏幕坐标：取建筑高度六成处，计入候选平台偏移 */
+  private projectSelection(obj: VizObject): { x: number; y: number } {
+    const candidate = this.candidates.get(this.objectCandidates.get(obj.id) ?? '');
+    this.v.set(obj.pose.x + (candidate?.x ?? 0), obj.pose.y + obj.height * 0.6 + (candidate?.y ?? 0), obj.pose.z + (candidate?.z ?? 0)).project(this.rig.camera);
+    return { x: ((this.v.x + 1) / 2) * this.width, y: ((1 - this.v.y) / 2) * this.height };
+  }
+
+  /** 绘制后检查选中建筑的屏幕位置，移动超过半像素时通知使用方，让详情面板跟随建筑 */
+  private trackSelection(): void {
+    if (!this.selected || !this.options.onSelectionMove) return;
+    const screen = this.projectSelection(this.selected);
+    if (Math.abs(screen.x - this.selectionScreen.x) < 0.5 && Math.abs(screen.y - this.selectionScreen.y) < 0.5) return;
+    this.selectionScreen.x = screen.x;
+    this.selectionScreen.y = screen.y;
+    this.options.onSelectionMove(screen);
   }
 
   getProgress(): AlgoVizProgress {
     return {
       candidates: this.candidates.size,
       falling: Array.from(this.candidates.values()).filter(candidate => candidate.falling >= 0).length,
-      pending: this.queue.length + Array.from(this.candidates.values()).reduce((total, candidate) => total + candidate.queue.length + (candidate.snapshot?.operations.length ?? 0), 0),
+      pending: this.queue.length + Array.from(this.candidates.values()).reduce((total, candidate) => total + candidate.queue.length + (candidate.snapshot?.pending ?? 0), 0),
       animating: this.supported ? this.animating.size : 0,
       objects: this.objects.size,
       added: this.added,
@@ -478,6 +605,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.buildingEvents = new WeakMap();
     if (this.supported) {
       this.running = false;
       cancelAnimationFrame(this.rafId);
@@ -488,17 +616,21 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         if (this.ownedPools.has(pool)) pool.disposeMaterials();
       }
       this.pools.clear();
+      this.poolUsage.clear();
       this.ownedPools.clear();
       this.models.dispose();
       this.shadows.dispose();
+      this.icons.dispose();
       this.rings.dispose();
       this.island.dispose();
       for (const candidate of this.candidates.values()) {
         candidate.island.dispose();
         }
       this.candidates.clear();
+      this.retiredCandidates.clear();
       this.backdrop.dispose();
       this.unitBox.dispose();
+      this.beltBox.dispose();
       this.buildingMaterial.dispose();
       this.beltMaterial.dispose();
       this.overlay.dispose();
@@ -509,6 +641,15 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.objects.clear();
     this.animating.clear();
     this.glowing.clear();
+    this.dirty.clear();
+    this.owners.clear();
+    this.shadowOwners.length = 0;
+    this.beltInputs.clear();
+    this.beltFlow.clear();
+    this.beltGeometry.beginFrame();
+    this.objectCandidates.clear();
+    this.placeholders.clear();
+    this.readyModels.clear();
     this.queue.clear();
     this.fallback?.remove();
     this.container.classList.remove('algoviz-root');
@@ -546,10 +687,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.scene.add(this.backdrop.group, this.island.group, this.world);
     this.shadows = new ShadowLayer(this.world, this.uniforms);
     this.rings = new RingLayer(this.world, this.uniforms);
+    // 图标层在全部建筑之后绘制；精灵图缺失或加载失败时保持空层，不影响其余渲染
+    this.icons = new IconLayer(this.world, this.uniforms, this.options.iconSheet, () => this.refreshIcons());
     // 占位体：无贴图的钢灰色机身，跟随主题插值
     this.buildingMaterial = this.createBuildingMaterial(null, null, this.palette.steel, new THREE.Color(0, 0, 0));
     this.beltMaterial = new THREE.ShaderMaterial({ vertexShader: BELT_VERTEX, fragmentShader: BELT_FRAGMENT, uniforms: this.uniforms, side: THREE.DoubleSide });
     this.unitBox = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    // 三段分别负责入口接头、等宽直段和出口接头，接头不会拉伸整条履带。
+    this.beltBox = new THREE.BoxGeometry(1, 1, 1, 3, 1, 1).translate(0, 0.5, 0);
 
     this.models = new ModelLibrary(this.options.modelUrls ?? {}, renderer, this.options.transcoderUrls, this.options.maskUrls);
     this.unsubscribeModels = this.models.onSettled((key) => this.onModelSettled(key));
@@ -604,7 +749,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
    * 建筑材质：共享 uniform + 本材质的原生贴图。tint 直接引用颜色对象，
    * 占位体传入调色板中的钢灰色以随主题插值。
    */
-  private createBuildingMaterial(map: THREE.Texture | null, emissiveMap: THREE.Texture | null, tint: THREE.Color, emissive: THREE.Color, kind: PartKind = 'solid', orm: THREE.Texture | null = null, native = false, mask: THREE.Texture | null = null, normalMap: THREE.Texture | null = null, unlit = false): THREE.ShaderMaterial {
+  private createBuildingMaterial(map: THREE.Texture | null, emissiveMap: THREE.Texture | null, tint: THREE.Color, emissive: THREE.Color, kind: PartKind = 'solid', orm: THREE.Texture | null = null, native = false, mask: THREE.Texture | null = null, normalMap: THREE.Texture | null = null, unlit = false, originalLight: THREE.Texture | null = null, solidEffect = false, lightShape?: 'ring' | 'beam', secondaryLight: THREE.Texture | null = null, labTint?: THREE.Color): THREE.ShaderMaterial {
     const effect = kind === 'effect';
     return new THREE.ShaderMaterial({
       vertexShader: BUILDING_VERTEX,
@@ -621,6 +766,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         uHasOrm: { value: orm ? 1 : 0 },
         uNative: { value: native ? 1 : 0 },
         uUnlit: { value: unlit ? 1 : 0 },
+        uOriginalLight: { value: originalLight },
+        uHasOriginalLight: { value: originalLight ? 1 : 0 },
+        uSolidEffect: { value: solidEffect ? 1 : 0 },
+        uLightShape: { value: lightShape === 'ring' ? 1 : lightShape === 'beam' ? 2 : 0 },
+        uSecondaryLight: { value: secondaryLight },
+        uHasSecondaryLight: { value: secondaryLight ? 1 : 0 },
+        uLabTint: { value: labTint ?? new THREE.Color() },
+        uLabLight: { value: labTint ? 1 : 0 },
         uMask: { value: mask },
         uHasMask: { value: mask ? 1 : 0 },
         uNormal: { value: normalMap },
@@ -638,7 +791,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private showFallback(): void {
     const div = document.createElement('div');
     div.className = 'algoviz-fallback';
-    div.textContent = '当前环境不支持 WebGL，无法显示算法可视化';
+    div.textContent = '当前环境不支持 WebGL，无法显示平面预览器';
     this.container.append(div);
     this.fallback = div;
   }
@@ -647,7 +800,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   // 操作应用
   // -------------------------------------------------------------------------
 
-  private processQueue(dt: number): void {
+  private processQueue(dt: number, work: FrameWorkBudget): void {
     const pending = this.queue.length;
     if (!pending) {
       this.budget = 0;
@@ -655,6 +808,17 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       return;
     }
     let processed = 0;
+    if (this.skipping) {
+      // 仍受全场4ms/1024项预算限制；单队列不再额外卡在128项，候选同时存在时保留轮转份额。
+      const quota = this.candidates.size ? 128 : Infinity;
+      while (this.queue.length && processed < quota && work.take()) {
+        this.applyItem(this.queue.shift() as QueueItem, true);
+        processed++;
+      }
+      this.budget = 0;
+      if (processed) this.touch();
+      return;
+    }
     let rate: number;
     if (this.queue.peek()?.frame.pace === 'cinematic') {
       rate = 60 * this.speed;
@@ -662,7 +826,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     } else if (this.queue.peek()?.frame.pace === 'follow') {
       // 跟随算法：积压超过可动画的上限时，按原顺序立即应用较早的操作（跳过过渡），只为最新的变化播放动画，
       // 使画面始终落后算法约 FOLLOW_LAG 秒以内
-      while (this.queue.length > FOLLOW_KEEP && this.queue.peek()?.frame.pace === 'follow' && processed < 50000) {
+      while (this.queue.length > FOLLOW_KEEP && this.queue.peek()?.frame.pace === 'follow' && processed < 128 && work.take()) {
         this.applyItem(this.queue.shift() as QueueItem, true);
         processed++;
       }
@@ -675,7 +839,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.animScale = 1 / THREE.MathUtils.clamp(Math.sqrt(rate / BASE_RATE), 0.5, 5);
     }
     this.budget += dt * rate;
-    while (this.budget >= 1 && this.queue.length && processed < 4000) {
+    while (this.budget >= 1 && this.queue.length && processed < 128 && work.take()) {
       this.applyItem(this.queue.shift() as QueueItem, false);
       this.budget -= 1;
       processed++;
@@ -712,7 +876,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.replaceObject(existing, op.building, frame, instant);
   }
 
-  private createObject(id: string, building: AlgoVizBuilding, frame: QueueFrame, instant: boolean): VizObject {
+  private createObject(id: string, building: AlgoVizBuilding, frame: QueueFrame, instant: boolean, operation: AlgoVizBuildingEvent['operation'] = 'add'): VizObject {
     const desc = describeObject(id, building, hashString(id));
     const ghost = building.temporary ? 1 : 0;
     const obj: VizObject = {
@@ -721,6 +885,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       slot: -1,
       placeholder: false,
       shadowSlot: -1,
+      iconSlot: -1,
+      icon: null,
       target: worldPose(emptyPose(), building, frame),
       from: emptyPose(),
       pose: emptyPose(),
@@ -744,16 +910,28 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       landed: true,
       removing: false,
     };
+    this.beginBuilding(obj, building, frame, operation);
     copyPose(obj.pose, obj.target);
     copyPose(obj.from, obj.target);
     this.allocSlot(obj);
-    if (castsShadow(obj.kind)) obj.shadowSlot = this.shadows.alloc();
+    if (castsShadow(obj.kind)) {
+      obj.shadowSlot = this.shadows.alloc();
+      this.shadowOwners[obj.shadowSlot] = obj;
+    }
     this.objects.set(id, obj);
+    const candidate = frame.candidateId ? this.candidates.get(frame.candidateId) : undefined;
+    if (candidate) {
+      candidate.objects.add(obj);
+      this.memberships.set(obj, candidate);
+      this.objectCandidates.set(id, candidate.id);
+    }
+    this.resolveIcon(obj);
     this.linkBelt(obj);
     this.markNeighbors(obj);
     if (!instant && !this.reducedMotion.matches) this.startEnter(obj);
     this.dirty.add(obj);
     this.boundsDirty = true;
+    if (instant || this.reducedMotion.matches) this.finishPose(obj);
     return obj;
   }
 
@@ -763,11 +941,13 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       // 换型：旧建筑沉入地面，新建筑在同一身份下重新落位
       const id = obj.id;
       this.startExit(obj, 0, instant);
-      this.createObject(id, building, frame, instant);
+      this.createObject(id, building, frame, instant, 'replace');
       return;
     }
+    this.beginBuilding(obj, building, frame, 'replace');
     this.unlinkBelt(obj);
     obj.building = building;
+    this.resolveIcon(obj);
     if (obj.colorIndex !== desc.colorIndex) {
       obj.colorIndex = desc.colorIndex;
       obj.pool?.set('aColor', obj.slot, obj.colorIndex);
@@ -827,7 +1007,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 开始撤销：对象立即脱离身份表（同 ID 可马上重新加入），播放完动画后释放 */
   private startExit(obj: VizObject, delay: number, instant: boolean): void {
     if (obj.removing) return;
+    this.buildingEvents.delete(obj);
     obj.removing = true;
+    this.untrackPlaceholder(obj);
     if (this.objects.get(obj.id) === obj) this.objects.delete(obj.id);
     this.unlinkBelt(obj);
     this.markNeighbors(obj);
@@ -852,11 +1034,23 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private destroy(obj: VizObject): void {
+    this.beltFlow.delete(obj);
+    this.memberships.get(obj)?.objects.delete(obj);
+    this.memberships.delete(obj);
     this.animating.delete(obj);
+    this.glowing.delete(obj);
     this.dirty.delete(obj);
     this.freeSlot(obj);
+    this.icons.release(obj);
     if (obj.shadowSlot >= 0) {
-      this.shadows.release(obj.shadowSlot);
+      const slot = obj.shadowSlot;
+      this.shadowOwners[slot] = undefined;
+      const from = this.shadows.release(slot);
+      if (from !== undefined) {
+        const moved = this.shadowOwners[from];
+        if (moved) { moved.shadowSlot = slot; this.shadowOwners[slot] = moved; }
+      }
+      this.shadowOwners.length = this.shadows.size;
       obj.shadowSlot = -1;
     }
     if (this.objects.get(obj.id) === obj) this.objects.delete(obj.id);
@@ -936,6 +1130,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private finishPose(obj: VizObject): void {
+    this.animating.delete(obj);
     copyPose(obj.pose, obj.target);
     obj.anim = null;
     obj.t = 1;
@@ -947,6 +1142,31 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     obj.flash = 0;
     obj.ghost = obj.ghostTo;
     obj.landed = true;
+    this.completeBuilding(obj);
+  }
+
+  /** 固定本次操作的建筑快照；后续替换会覆盖旧通知，旧操作不再补发 after。 */
+  private beginBuilding(obj: VizObject, building: AlgoVizBuilding, frame: QueueFrame, operation: AlgoVizBuildingEvent['operation']): void {
+    if (!this.options.onBuildingBefore && !this.options.onBuildingAfter) return;
+    const event: AlgoVizBuildingEvent = {
+      taskId: frame.taskId ?? this.generationTaskId,
+      sequence: ++this.buildingSequence,
+      candidateId: frame.candidateId,
+      id: obj.id,
+      building: {...building},
+      operation,
+    };
+    this.buildingEvents.set(obj, event);
+    this.options.onBuildingBefore?.(event);
+  }
+
+  /** 姿态已落定才消费通知；先删除再回调，重复收尾、撤销及已淘汰候选均不会误发。 */
+  private completeBuilding(obj: VizObject): void {
+    const event = this.buildingEvents.get(obj);
+    if (!event) return;
+    this.buildingEvents.delete(obj);
+    if (this.disposed || obj.removing || this.objects.get(obj.id) !== obj || (event.candidateId && this.retiredCandidates.has(event.candidateId))) return;
+    this.options.onBuildingAfter?.(event);
   }
 
   // -------------------------------------------------------------------------
@@ -962,8 +1182,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     obj.placeholder = false;
     if (obj.kind === 'belt') {
       key = 'belt';
+      geometry = this.beltBox;
       material = this.beltMaterial;
-      specs = [STATE_SPEC, COLOR_SPEC, LEN_SPEC, FAIL_SPEC];
+      specs = [STATE_SPEC, COLOR_SPEC, FAIL_SPEC, ...BELT_SPECS];
     } else if (obj.modelKey) {
       const entry = this.models.get(obj.modelKey);
       if (entry.status === 'ready' && entry.geometry) {
@@ -971,7 +1192,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         geometry = entry.geometry;
         if (!this.pools.has(key)) {
           // 每个模型一组材质：与几何体分组一一对应，采样游戏原生的底色与自发光贴图
-          material = entry.parts.map((part) => this.createBuildingMaterial(part.map, part.emissiveMap, part.color, part.emissive, part.kind, part.orm, part.native, part.mask, part.normalMap, part.unlit));
+          material = entry.parts.map((part) => this.createBuildingMaterial(part.map, part.emissiveMap, part.color, part.emissive, part.kind, part.orm, part.native, part.mask, part.normalMap, part.unlit, part.light, part.kind === 'effect' && !part.map && !part.lightId, part.lightShape, part.secondaryLight, part.labTint));
           owned = true;
         }
         if (obj.kind !== 'sorter') {
@@ -994,38 +1215,87 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.owners.set(key, []);
       if (owned) this.ownedPools.add(pool);
     }
+    this.poolUsage.touch(key);
     obj.pool = pool;
     obj.slot = pool.alloc();
     (this.owners.get(key) as (VizObject | undefined)[])[obj.slot] = obj;
     pool.set('aColor', obj.slot, obj.colorIndex);
+    if (obj.placeholder && obj.modelKey) {
+      let placeholders = this.placeholders.get(obj.modelKey);
+      if (!placeholders) this.placeholders.set(obj.modelKey, (placeholders = new Set()));
+      placeholders.add(obj);
+    }
   }
 
   private freeSlot(obj: VizObject): void {
+    this.untrackPlaceholder(obj);
     if (!obj.pool || obj.slot < 0) return;
-    const owners = this.owners.get(obj.pool.key);
+    const pool = obj.pool;
+    const owners = this.owners.get(pool.key);
     if (owners && owners[obj.slot] === obj) owners[obj.slot] = undefined;
-    obj.pool.release(obj.slot);
+    const from = obj.pool.release(obj.slot);
+    if (owners) {
+      const moved = from === undefined ? undefined : owners[from];
+      if (moved) { moved.slot = obj.slot; owners[obj.slot] = moved; }
+      owners.length = obj.pool.size;
+    }
     obj.pool = null;
     obj.slot = -1;
+    if (!pool.size) this.cachePrunePending = true;
   }
 
-  /** 模型加载完成：把使用占位体的对象迁移到真实模型 */
+  /** 动画退场的旧对象仍占用资源；等最后一个槽位归还后再释放，避免过渡时缺失模型。 */
+  private pruneGenerationCache(): void {
+    this.cachePrunePending = false;
+    for (const key of this.poolUsage.stale()) {
+      const pool = this.pools.get(key);
+      if (pool?.size) continue;
+      if (pool) {
+        pool.dispose();
+        if (this.ownedPools.delete(pool)) pool.disposeMaterials();
+        this.pools.delete(key);
+        this.owners.delete(key);
+      }
+      this.poolUsage.forget(key);
+    }
+    const protectedKeys = new Set(this.pools.keys());
+    for (const key of this.placeholders.keys()) protectedKeys.add(key);
+    this.models.prune(protectedKeys);
+    for (const key of this.readyModels) if (!this.models.peek(key)) this.readyModels.delete(key);
+  }
+
+  private untrackPlaceholder(obj: VizObject): void {
+    if (!obj.modelKey) return;
+    const placeholders = this.placeholders.get(obj.modelKey);
+    placeholders?.delete(obj);
+    if (!placeholders?.size) this.placeholders.delete(obj.modelKey);
+  }
+
+  /** 模型加载回调仅登记待迁移类型，避免冷加载时同步重建整场对象。 */
   private onModelSettled(key: string): void {
     if (this.disposed) return;
-    for (const obj of this.objects.values()) {
-      if (obj.modelKey !== key || !obj.placeholder) continue;
-      this.freeSlot(obj);
-      this.allocSlot(obj);
-      if (!obj.placeholder) {
+    if (this.models.peek(key)?.status === 'ready') this.readyModels.add(key);
+    this.touch();
+  }
+
+  /** 每帧迁移有限占位体；退出和重置同步撤销索引，失败模型保留原占位体。 */
+  private updateModelObjects(work: FrameWorkBudget): void {
+    let processed = 0;
+    for (const key of this.readyModels) {
+      const placeholders = this.placeholders.get(key);
+      if (placeholders) for (const obj of placeholders) {
+        if (processed >= 128 || !work.take()) return;
+        processed++;
+        this.freeSlot(obj);
+        this.allocSlot(obj);
+        if (obj.placeholder) break;
         obj.flash = Math.max(obj.flash, 0.5);
         this.glowing.add(obj);
+        this.dirty.add(obj);
+        this.boundsDirty = true;
       }
-      this.dirty.add(obj);
+      this.readyModels.delete(key);
     }
-    for (const obj of this.animating) {
-      if (obj.removing && obj.modelKey === key && obj.placeholder) this.dirty.add(obj);
-    }
-    this.boundsDirty = true;
   }
 
   // -------------------------------------------------------------------------
@@ -1033,6 +1303,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   // -------------------------------------------------------------------------
 
   private linkBelt(obj: VizObject): void {
+    this.beltFlow.invalidate(obj);
+    for (const input of this.beltInputs.get(obj.id) ?? []) this.beltFlow.invalidate(input);
     const out = obj.kind === 'belt' ? obj.building.outputId : undefined;
     if (!out) return;
     let set = this.beltInputs.get(out);
@@ -1041,6 +1313,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private unlinkBelt(obj: VizObject): void {
+    for (const input of this.beltInputs.get(obj.id) ?? []) this.beltFlow.invalidate(input);
     const out = obj.kind === 'belt' ? obj.building.outputId : undefined;
     if (!out) return;
     const set = this.beltInputs.get(out);
@@ -1048,17 +1321,69 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     set.delete(obj);
     if (!set.size) this.beltInputs.delete(out);
     const target = this.objects.get(out);
-    if (target) this.dirty.add(target);
+    if (target) {
+      this.dirty.add(target);
+      this.markNeighbors(target);
+    }
   }
 
   /** 对象位置或存在性变化后，重绘与它相连的传送带 */
   private markNeighbors(obj: VizObject): void {
+    this.beltGeometry.markVerticalRun(obj, this.objects, this.beltInputs, this.dirty);
     const inputs = this.beltInputs.get(obj.id);
-    if (inputs) for (const belt of inputs) this.dirty.add(belt);
+    if (inputs) for (const belt of inputs) {
+      this.dirty.add(belt);
+      // 输入段的端点截面也依赖本节点的下一段朝向。
+      for (const previous of this.beltInputs.get(belt.id) ?? []) this.dirty.add(previous);
+    }
     if (obj.kind === 'belt' && obj.building.outputId) {
       const out = this.objects.get(obj.building.outputId);
-      if (out && out.kind === 'belt') this.dirty.add(out);
+      if (out && out.kind === 'belt') {
+        this.dirty.add(out);
+        for (const input of this.beltInputs.get(out.id) ?? []) this.dirty.add(input);
+        const next = out.building.outputId ? this.objects.get(out.building.outputId) : undefined;
+        if (next?.kind === 'belt') this.dirty.add(next);
+      }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // 世界图标
+  // -------------------------------------------------------------------------
+
+  /** 图标所属分组：传送带节点为 belt，其余建筑为 building */
+  private iconGroup(obj: VizObject): AlgoVizIconGroup {
+    return obj.kind === 'belt' ? 'belt' : 'building';
+  }
+
+  /** 解析对象的图标并交给写入阶段；数据由外部 icon 回调提供，槽位随开关与精灵图状态在写入时分配或释放 */
+  private resolveIcon(obj: VizObject): void {
+    obj.icon = this.options.icon?.(obj.building) ?? null;
+  }
+
+  /**
+   * 写入对象上方的图标；分配与释放都由同一个判定驱动，开关切换、精灵图迟到、退场对象都会自行归位。
+   * 锚点：建筑为模型顶面上方，传送带为带面上方；跟随入场下落、平移抬升与候选平台偏移。
+   */
+  private writeIcon(obj: VizObject, candidate: CandidateStage | undefined): void {
+    const icon = obj.icon;
+    if (!icon || !this.icons.ready || !this.iconVisibility[this.iconGroup(obj)]) {
+      if (obj.iconSlot >= 0) this.icons.release(obj);
+      return;
+    }
+    this.icons.alloc(obj);
+    const p = obj.pose;
+    let top: number;
+    let size: number;
+    if (obj.kind === 'belt') {
+      top = BELT_THICKNESS + 0.1;
+      size = ICON_BELT_SIZE;
+    } else {
+      const entry = obj.modelKey && !obj.placeholder ? this.models.get(obj.modelKey) : null;
+      top = (entry?.geometry ? entry.center.y + entry.size.y / 2 : obj.height) * obj.scale + 0.25;
+      size = THREE.MathUtils.clamp(Math.min(obj.width, obj.depth) * 0.7, ICON_BUILDING_MIN, ICON_BUILDING_MAX);
+    }
+    this.icons.set(obj.iconSlot, icon, p.x + (candidate?.x ?? 0), p.y + obj.lift + top + (candidate?.y ?? 0), p.z + (candidate?.z ?? 0), size, obj.alpha * (1 - obj.ghost * 0.4), candidate?.failMix ?? 0);
   }
 
   // -------------------------------------------------------------------------
@@ -1071,7 +1396,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (obj.kind === 'belt') this.composeBelt(obj, pool);
     else if (obj.kind === 'sorter') this.composeSorter(obj);
     else this.composeBuilding(obj);
-    const candidate = this.candidates.get(this.objectCandidates.get(obj.id) ?? '');
+    const candidate = this.memberships.get(obj);
     if (candidate) {
       this.m.elements[12] += candidate.x;
       this.m.elements[13] += candidate.y;
@@ -1086,6 +1411,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       const strength = obj.alpha * clamp01(1 - lift / 9) * (1 - obj.ghost * 0.55);
       this.shadows.set(obj.shadowSlot, obj.pose.x + (candidate?.x ?? 0), obj.pose.z + (candidate?.z ?? 0), obj.pose.yaw, obj.width * size, obj.depth * size, candidate && candidate.y < -1 ? 0 : strength);
     }
+    this.writeIcon(obj, candidate);
   }
 
   private composeBuilding(obj: VizObject): void {
@@ -1115,56 +1441,24 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   /**
-   * 传送带：从本节点延伸到下游传送带节点；没有可连接的下游时按朝向画一格。
-   * 链首（没有上游传送带）向后补半格，使整条带首尾完整。
+   * 传送带共享节点截面，升降与转角使用同一斜接边界；箭头沿连接累计相位。
+   * 生长只裁短当前带段，不改变下游的动画原点；链首向后补半格。
    */
   private composeBelt(obj: VizObject, pool: InstancePool): void {
-    const p = obj.pose;
-    const yawRad = Math.PI - p.yaw;
-    let dirX = Math.sin(yawRad);
-    let dirY = 0;
-    let dirZ = -Math.cos(yawRad);
-    let ex = p.x + dirX * 0.5;
-    let ey = p.y;
-    let ez = p.z + dirZ * 0.5;
-    const outId = obj.building.outputId;
-    const out = outId ? this.objects.get(outId) : undefined;
-    if (out && out.kind === 'belt') {
-      const tx = out.pose.x;
-      const ty = out.pose.y + out.lift;
-      const tz = out.pose.z;
-      const d = Math.hypot(tx - p.x, ty - p.y, tz - p.z);
-      if (d > 1e-3 && d <= BELT_LINK_MAX) {
-        ex = tx;
-        ey = ty;
-        ez = tz;
-        dirX = (tx - p.x) / d;
-        dirY = (ty - p.y) / d;
-        dirZ = (tz - p.z) / d;
-      }
-    }
-    let sx = p.x;
-    let sy = p.y;
-    let sz = p.z;
-    if (!this.beltInputs.get(obj.id)?.size) {
-      sx -= dirX * 0.5;
-      sy -= dirY * 0.5;
-      sz -= dirZ * 0.5;
-    }
-    const g = Math.max(obj.grow, 1e-3);
-    ex = sx + (ex - sx) * g;
-    ey = sy + (ey - sy) * g;
-    ez = sz + (ez - sz) * g;
-    const length = Math.max(Math.hypot(ex - sx, ey - sy, ez - sz), 1e-3);
-    this.ax.set((ex - sx) / length, (ey - sy) / length, (ez - sz) / length);
-    this.az.crossVectors(this.ax, this.yAxis);
-    if (this.az.lengthSq() < 1e-6) this.az.set(0, 0, 1);
-    this.az.normalize();
-    this.ay.crossVectors(this.az, this.ax).normalize();
-    const w = BELT_WIDTH * obj.scale;
-    this.m.makeBasis(this.ax.multiplyScalar(length), this.ay.multiplyScalar(BELT_THICKNESS), this.az.multiplyScalar(w));
-    this.m.setPosition((sx + ex) / 2, (sy + ey) / 2 + obj.lift + 0.02, (sz + ez) / 2);
-    pool.set('aLen', obj.slot, length);
+    const shape = this.beltGeometry.shape(obj, this.objects, this.beltInputs);
+    this.ax.subVectors(shape.end, shape.start);
+    this.ay.copy(shape.up).multiplyScalar(BELT_THICKNESS);
+    this.az.copy(shape.side).multiplyScalar(BELT_WIDTH * obj.scale);
+    this.m.makeBasis(this.ax, this.ay, this.az);
+    this.v.addVectors(shape.start, shape.end).multiplyScalar(0.5);
+    this.m.setPosition(this.v);
+    const flow = this.beltFlow.get(obj);
+    pool.set('aFlow', obj.slot, flow.phase - shape.head * flow.frequency,
+      (this.beltGeometry.span(obj, this.objects) + shape.head) * flow.frequency * Math.max(obj.grow, 1e-3));
+    pool.set('aStartSide', obj.slot, shape.startSide.x, shape.startSide.y, shape.startSide.z);
+    pool.set('aStartUp', obj.slot, shape.startUp.x, shape.startUp.y, shape.startUp.z);
+    pool.set('aEndSide', obj.slot, shape.endSide.x, shape.endSide.y, shape.endSide.z);
+    pool.set('aEndUp', obj.slot, shape.endUp.x, shape.endUp.y, shape.endUp.z);
   }
 
   // -------------------------------------------------------------------------
@@ -1272,6 +1566,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         candidate.x = candidate.targetX;
         candidate.z = candidate.targetZ;
         candidate.positioned = true;
+        this.dirtyCandidate(candidate);
       }
       for (const [px, pz] of [[bounds.x, bounds.y], [bounds.z, bounds.y], [bounds.x, bounds.w], [bounds.z, bounds.w]]) {
         for (const height of [-2, 12]) {
@@ -1282,93 +1577,108 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         }
       }
     }
-    for (const obj of this.objects.values()) this.dirty.add(obj);
     this.rig.frameProjected(minR, maxR, minU, maxU, false);
   }
 
-  /** 候选是否仍有对象在播放动画 */
-  private candidateAnimating(id: string): boolean {
-    for (const obj of this.animating) if (this.objectCandidates.get(obj.id) === id) return true;
+  /** 只扫描本候选实体，包含同 ID 换型后尚在退场的旧对象。 */
+  private candidateAnimating(candidate: CandidateStage): boolean {
+    if (!this.animating.size) return false;
+    for (const obj of candidate.objects) if (this.animating.has(obj)) return true;
     return false;
   }
 
-  /** 全部候选的演示都已播完（含最终快照），且每个候选至少展示了最短时间 */
+  private dirtyCandidate(candidate: CandidateStage): void {
+    for (const obj of candidate.objects) this.dirty.add(obj);
+  }
+
+  /** 候选必须完整播完过程、快照及动画后才允许统一退场。 */
   private candidatesReady(): boolean {
     for (const candidate of this.candidates.values()) {
-      if (candidate.queue.length || candidate.snapshot || this.candidateAnimating(candidate.id)) return false;
-      if (candidate.age - (candidate.shownAt ?? 0) < CANDIDATE_MIN_SHOW) return false;
+      if (candidate.queue.length || candidate.snapshot || this.candidateAnimating(candidate)) return false;
+      if (!this.skipping && candidate.age - (candidate.shownAt ?? 0) < CANDIDATE_MIN_SHOW) return false;
     }
     return true;
   }
 
-  private updateCandidates(dt: number): void {
+  /** 候选轮询共用整帧预算，剩余队列与快照原序留到下帧；平台运动只更新所属对象。 */
+  private updateCandidates(dt: number, work = new FrameWorkBudget(), playing = true): void {
     const originalQueue = this.queue;
     const originalBudget = this.budget;
-    // 结果确定后：所有候选演示完毕，停留片刻让失败标注可见，再让全部落选候选同时下坠
     let release = false;
     if (this.settled && this.candidatesReady()) {
       if (this.settleReadyAt < 0) this.settleReadyAt = this.time;
       release = this.skipping || this.reducedMotion.matches || this.time - this.settleReadyAt >= SETTLE_HOLD;
-    } else {
-      this.settleReadyAt = -1;
-    }
-    for (const candidate of this.candidates.values()) {
-      const moving = Math.abs(candidate.x - candidate.targetX) + Math.abs(candidate.z - candidate.targetZ) > 0.001;
-      const blend = this.reducedMotion.matches ? 1 : 1 - Math.exp(-dt * 7);
-      candidate.x = lerp(candidate.x, candidate.targetX, blend);
-      candidate.z = lerp(candidate.z, candidate.targetZ, blend);
-      if (moving) for (const obj of this.objects.values()) if (this.objectCandidates.get(obj.id) === candidate.id) this.dirty.add(obj);
-      candidate.age += dt * this.speed;
-      this.queue = candidate.queue;
-      this.budget = candidate.budget;
-      if (candidate.falling < 0) this.processQueue(dt);
-      candidate.budget = this.budget;
-      const animated = this.candidateAnimating(candidate.id);
-      if (!candidate.queue.length && !animated && candidate.snapshot) this.applyCandidateSnapshot(candidate, false);
-      // 失败标注：播放到该候选的失败节点（过程播完）才变红，计算先于播放结束时不会提前变色
-      const failed = (candidate.status === 'rejected' || candidate.status === 'pruned') && !candidate.queue.length && !animated && !candidate.snapshot;
-      const failGoal = failed ? 1 : 0;
-      if (candidate.failMix !== failGoal) {
-        const step = this.reducedMotion.matches ? 1 : dt * 3;
-        candidate.failMix += Math.sign(failGoal - candidate.failMix) * Math.min(Math.abs(failGoal - candidate.failMix), step);
-        for (const obj of this.objects.values()) if (this.objectCandidates.get(obj.id) === candidate.id) this.dirty.add(obj);
-      }
-      candidate.island.setFail(candidate.failMix);
-      if (release && candidate.falling < 0 && candidate.id !== this.winnerId) candidate.falling = 0;
-      if (candidate.falling >= 0) {
-        candidate.falling += dt * this.speed;
-        candidate.y = this.reducedMotion.matches ? -10000 : -120 * Math.pow(candidate.falling / 0.8, 2);
-        for (const obj of this.objects.values()) if (this.objectCandidates.get(obj.id) === candidate.id) this.dirty.add(obj);
-        if (candidate.falling >= 0.8) {
-          for (const obj of Array.from(this.objects.values())) {
-            if (this.objectCandidates.get(obj.id) !== candidate.id) continue;
-            this.startExit(obj, 0, true);
-            this.objectCandidates.delete(obj.id);
-          }
-          this.scene.remove(candidate.island.group);
-          candidate.island.dispose();
+    } else this.settleReadyAt = -1;
+    const stages = Array.from(this.candidates.values());
+    const first = this.candidateCursor % Math.max(1, stages.length);
+    let nextCursor = (first + 1) % Math.max(1, stages.length);
+    let budgetReached = false;
+    try {
+      for (let offset = 0; offset < stages.length; offset++) {
+        const candidate = stages[(first + offset) % stages.length];
+        if (!playing && !this.retiredCandidates.has(candidate.id)) continue;
+        const moving = Math.abs(candidate.x - candidate.targetX) + Math.abs(candidate.z - candidate.targetZ) > 0.001;
+        const blend = this.reducedMotion.matches || this.skipping ? 1 : 1 - Math.exp(-dt * 7);
+        candidate.x = lerp(candidate.x, candidate.targetX, blend);
+        candidate.z = lerp(candidate.z, candidate.targetZ, blend);
+        if (moving) this.dirtyCandidate(candidate);
+        candidate.age += dt * this.speed;
+        this.queue = candidate.queue;
+        this.budget = candidate.budget;
+        if (candidate.falling < 0) this.processQueue(dt, work);
+        candidate.budget = this.budget;
+        if (!candidate.queue.length && candidate.snapshot && (candidate.snapshot.started || !this.candidateAnimating(candidate))) this.applyCandidateSnapshot(candidate, this.skipping, work);
+        const failed = (candidate.status === 'rejected' || candidate.status === 'pruned') && (this.retiredCandidates.has(candidate.id) || !candidate.queue.length && !candidate.snapshot && !this.candidateAnimating(candidate));
+        const failGoal = failed ? 1 : 0;
+        if (candidate.failMix !== failGoal) {
+          const step = this.reducedMotion.matches || this.skipping ? 1 : dt * 3;
+          candidate.failMix += Math.sign(failGoal - candidate.failMix) * Math.min(Math.abs(failGoal - candidate.failMix), step);
+          this.dirtyCandidate(candidate);
+        }
+        candidate.island.setFail(candidate.failMix);
+        if (release && candidate.falling < 0 && candidate.id !== this.winnerId) candidate.falling = 0;
+        if (candidate.falling >= 0) {
+          candidate.falling += dt * this.speed;
+          const y = this.reducedMotion.matches || this.skipping ? -10000 : -120 * Math.pow(candidate.falling / 0.8, 2);
+          if (candidate.y !== y) { candidate.y = y; this.dirtyCandidate(candidate); }
+          if (this.skipping || candidate.falling >= 0.8) {
+            let removed = 0;
+            for (const obj of candidate.objects) {
+              if (removed >= 128 || !work.take()) break;
+              if (obj.removing) this.destroy(obj);
+              else this.startExit(obj, 0, true);
+              removed++;
+            }
+            if (!candidate.objects.size) {
+              this.scene.remove(candidate.island.group);
+              candidate.island.dispose();
               this.candidates.delete(candidate.id);
-          this.boundsDirty = true;
-          this.touch();
-          continue;
+              this.boundsDirty = true;
+              this.touch();
+              continue;
+            }
+          }
+        }
+        candidate.island.group.position.set(candidate.x, candidate.y, candidate.z);
+        candidate.island.update(dt, this.time, this.reducedMotion.matches);
+        if (!budgetReached && work.exhausted) {
+          nextCursor = (first + offset + 1) % stages.length;
+          budgetReached = true;
         }
       }
-      candidate.island.group.position.set(candidate.x, candidate.y, candidate.z);
-      candidate.island.update(dt, this.time, this.reducedMotion.matches);
+    } finally {
+      this.queue = originalQueue;
+      this.budget = originalBudget;
+      this.candidateCursor = nextCursor;
     }
-    this.queue = originalQueue;
-    this.budget = originalBudget;
   }
 
-  private applyCandidateSnapshot(candidate: CandidateStage, instant: boolean): void {
+  /** 快照的索引、撤销与应用分帧执行；尚未完成时保留游标，不能提前宣布候选已播完。 */
+  private applyCandidateSnapshot(candidate: CandidateStage, instant: boolean, work: FrameWorkBudget): void {
     const snapshot = candidate.snapshot;
     if (!snapshot) return;
-    candidate.snapshot = undefined;
-    const present = new Set(snapshot.operations.map(operation => operation.id));
-    for (const obj of Array.from(this.objects.values())) {
-      if (this.objectCandidates.get(obj.id) === candidate.id && !present.has(obj.id)) this.startExit(obj, 0, instant);
-    }
-    for (const op of snapshot.operations) this.applyItem({op, frame: snapshot.frame, first: false}, instant);
+    snapshot.process(candidate.objects, item => this.applyItem(item, instant), work);
+    if (snapshot.done) candidate.snapshot = undefined;
     this.touch();
   }
 
@@ -1384,9 +1694,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       obj.highlight = 0.5;
       this.dirty.add(obj);
     }
-    const text = obj && this.options.describe ? this.options.describe(obj.building) : null;
+    const text = this.hoverText(obj);
     this.overlay.showTooltip(text, this.hoverX, this.hoverY);
     this.container.style.cursor = obj ? 'pointer' : '';
+  }
+
+  /** 悬停提示文案：选中的建筑由使用方的详情面板展示，不再叠加悬停提示 */
+  private hoverText(obj: VizObject | null): string | null {
+    return obj && obj !== this.selected && this.options.describe ? this.options.describe(obj.building) : null;
   }
 
   private pick(x: number, y: number): VizObject | null {
@@ -1577,6 +1892,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.rig.setViewport(w, h);
     this.uniforms.uAspect.value = w / h;
     this.uniforms.uPixel.value = dpr;
+    this.nextInstantDrawAt = 0;
   }
 
   private updateRunning(): void {
@@ -1598,8 +1914,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     const elapsed = Math.min((now - this.lastNow) / 1000, 1);
     const dt = Math.min(elapsed, 0.1);
     this.lastNow = now;
-    this.frame(dt, elapsed);
-    this.fpsFrames++;
+    if (this.frame(dt, elapsed)) this.fpsFrames++;
     this.fpsTime += elapsed;
     if (this.fpsTime >= 0.5) {
       const info = this.renderer.info.render;
@@ -1609,7 +1924,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     }
   };
 
-  private frame(dt: number, elapsed = dt): void {
+  private frame(dt: number, elapsed = dt): boolean {
     const reduced = this.reducedMotion.matches;
     this.time += dt;
     this.uniforms.uTime.value = this.time;
@@ -1621,11 +1936,23 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       if (this.themeT >= 1) this.themeFrom = null;
     }
 
-    const animDt = this.paused ? 0 : dt;
-    if (!this.paused) this.processQueue(elapsed);
-    if (!this.paused) this.updateCandidates(dt);
+    const work = new FrameWorkBudget();
+    this.updateModelObjects(work);
+    const animDt = this.paused && !this.skipping ? 0 : dt;
+    if (!this.paused || this.skipping) {
+      this.processQueue(elapsed, work);
+      this.updateCandidates(dt, work);
+    } else if (Array.from(this.candidates.values()).some(candidate => candidate.falling >= 0)) {
+      // 暂停只冻结有效候选的演示，不能阻止后端已淘汰候选释放资源。
+      this.updateCandidates(dt, work, false);
+    }
     if (this.animating.size) {
-      for (const obj of Array.from(this.animating)) {
+      for (const obj of this.animating) {
+        if (this.skipping) {
+          if (!work.take()) break;
+          this.finish(obj);
+          continue;
+        }
         if (this.step(obj, animDt)) {
           this.dirty.add(obj);
           if (!obj.removing) this.markNeighbors(obj);
@@ -1653,23 +1980,45 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.selected.highlight = 0.55 + Math.sin(this.time * 5) * 0.25;
       this.dirty.add(this.selected);
     }
+    this.beltFlow.update(this.objects, this.beltInputs, this.dirty);
+    this.beltGeometry.beginFrame();
     for (const obj of this.dirty) if (obj.pool) this.writeObject(obj);
     this.dirty.clear();
+    if (this.cachePrunePending) this.pruneGenerationCache();
     for (const pool of this.pools.values()) pool.commit();
     this.shadows.commit();
+    this.icons.setView(this.rig.worldPerPixel);
+    this.icons.commit();
     this.rings.update(animDt);
 
-    if (this.boundsDirty && (this.boundsAt < 0 || this.time - this.boundsAt > 0.12)) this.recomputeBounds();
+    const instantPending = this.skipping && (this.queue.length > 0 || this.animating.size > 0 || this.readyModels.size > 0
+      || Array.from(this.candidates.values()).some(candidate => candidate.queue.length > 0 || candidate.snapshot || candidate.falling >= 0));
+    // 慢设备的 GPU/驱动阻塞会落在下一次 RAF 间隔里；跳过期间给队列留出计算窗口，避免每次慢绘制后只处理一小批。
+    // 下一帧没有绘制便不再推迟，窗口最长半秒；完成帧始终立即绘制，resize/主题强制刷新仍可把截止清零。
+    if (instantPending && this.drewLastFrame && this.nextInstantDrawAt > 0) {
+      const cooldown = Math.min(INSTANT_MAX_DRAW_COOLDOWN_MS, Math.max(this.lastDrawDurationMs, elapsed * 1000) * 2);
+      this.nextInstantDrawAt = Math.max(this.nextInstantDrawAt, performance.now() + cooldown);
+    }
+    const draw = !instantPending || performance.now() >= this.nextInstantDrawAt;
+    if (draw && this.boundsDirty && (this.boundsAt < 0 || this.time - this.boundsAt > 0.12)) this.recomputeBounds();
     this.island.update(dt, this.time, reduced);
     this.rig.update(dt);
 
-    if (this.hoverPending && !this.pointer) {
+    if (draw && this.hoverPending && !this.pointer) {
       this.hoverPending = false;
       this.setHovered(this.pick(this.hoverX, this.hoverY));
-      if (this.hovered) this.overlay.showTooltip(this.options.describe ? this.options.describe(this.hovered.building) : null, this.hoverX, this.hoverY);
+      if (this.hovered) this.overlay.showTooltip(this.hoverText(this.hovered), this.hoverX, this.hoverY);
     }
 
-    this.renderer.render(this.scene, this.rig.camera);
+    if (draw) {
+      const drawStart = performance.now();
+      this.renderer.render(this.scene, this.rig.camera);
+      this.lastDrawDurationMs = performance.now() - drawStart;
+      this.nextInstantDrawAt = performance.now() + INSTANT_DRAW_INTERVAL_MS;
+      this.trackSelection();
+    }
+    this.drewLastFrame = draw;
     this.emitProgress();
+    return draw;
   }
 }

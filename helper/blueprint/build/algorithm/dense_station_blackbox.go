@@ -15,6 +15,56 @@ import (
 
 // denseStationBlackboxCandidate 职责：把已验证直连核心与实际外部塔组成同一次完整候选；使用：塔模式比较；边界：原请求模式、等级、产量和选区始终保留。
 func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request, dataset *quant.Dataset, config contract.StationConfig, variant int, previews ...*generationPreview) (*builder, error) {
+	shortSpan := 0.
+	if variant >= denseSpatialHolesBentVariantOffset {
+		variant -= denseSpatialHolesBentVariantOffset
+		shortSpan = 18
+	} else if variant >= denseSpatialHolesVariantOffset {
+		variant -= denseSpatialHolesVariantOffset
+		shortSpan = 20
+	}
+	if shortSpan > 0 {
+		ctx = context.WithValue(ctx, denseSpatialHolesKey{}, shortSpan)
+		ctx = context.WithValue(ctx, denseBentRowsKey{}, shortSpan == 18)
+		ctx = context.WithValue(ctx, denseSpatialCompactKey{}, true)
+	}
+	if variant >= denseStationProducerVariantOffset {
+		variant -= denseStationProducerVariantOffset
+		ctx = context.WithValue(ctx, denseProducerSplittersKey{}, true)
+		ctx = context.WithValue(ctx, splitterGateModelKey{}, int16(39))
+	}
+	if variant >= denseStationPairedOutputVariantOffset {
+		variant -= denseStationPairedOutputVariantOffset
+		ctx = context.WithValue(ctx, denseShortPairedOutputsKey{}, true)
+	}
+	if variant >= denseSpatialCompactVariantOffset {
+		variant -= denseSpatialCompactVariantOffset
+		ctx = context.WithValue(ctx, denseSpatialCompactKey{}, true)
+	}
+	if variant >= denseStationSharedOutputVariantOffset {
+		variant -= denseStationSharedOutputVariantOffset
+		ctx = context.WithValue(ctx, denseStationSharedOutputsKey{}, true)
+	}
+	if variant >= denseBalancedFrameVariantOffset {
+		variant -= denseBalancedFrameVariantOffset
+		ctx = denseBalancedFrameContext(ctx)
+		ctx = context.WithValue(ctx, denseUnitPowerRequestedKey{}, req.Setting.NeedPower == nil || *req.Setting.NeedPower)
+	}
+	if variant >= denseStationSharedInputVariantOffset {
+		variant -= denseStationSharedInputVariantOffset
+		ctx = context.WithValue(ctx, denseStationSharedInputsKey{}, true)
+		if root, _ := ctx.Value(densityPolarRootKey{}).(bool); root {
+			ctx = context.WithValue(ctx, densityPrototypeFootprintKey{}, true)
+		}
+	}
+	if variant >= 10 {
+		ctx = context.WithValue(ctx, refineryCollinearKey{}, true)
+		variant -= 3
+	}
+	if variant >= 7 {
+		ctx = context.WithValue(ctx, chemicalFourKey{}, true)
+		variant -= 3
+	}
 	if variant >= 4 {
 		ctx = context.WithValue(ctx, denseMaterialNetworksKey{}, true)
 	}
@@ -70,7 +120,8 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
 		}
 		candidate.denseSpatialOrder = 3
 		candidate.denseMaxSpan = []float64{12, 18, 32}[choice]
-		if scale > 1 {
+		compacted, _ := ctx.Value(denseSpatialCompactKey{}).(bool)
+		if scale > 1 && !compacted {
 			candidate.denseMaxSpan = 32
 		}
 		candidate.denseStreetGroupLimit = -1
@@ -81,6 +132,9 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
 		}
 		candidate.directBoundaryAttach = candidate.attachDenseStationSprayExits
 		candidate.directBoundaryCommit = candidate.commitDenseStationSprayNetwork
+	}
+	if span, _ := ctx.Value(denseSpatialHolesKey{}).(float64); span > 0 {
+		candidate.denseMaxSpan = 32
 	}
 	candidate.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 	candidate.warnings = append([]string(nil), b.warnings...)
@@ -113,7 +167,11 @@ func (b *builder) denseStationBlackboxCandidate(ctx context.Context, req Request
 
 // buildDenseStationBoundaries 职责：创建真实塔与每条独立边界的短带口，再一起交给全场轮廓装箱；使用：机器行完成后的公共hook；边界：塔间固定相对距离是必要设施约束，空隙不作为独占矩形。
 func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contract.StationConfig, variant int) ([]denseSpatialUnit, error) {
-	plan, err := planDenseStationBoundaries(ctx, b.transportRoutes, config.ItemSlots, b.logistics.BeltCapacityPerMinute)
+	boundaryRoutes, err := b.planDenseStationSharedOutputs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := planDenseStationBoundaries(ctx, boundaryRoutes, config.ItemSlots, b.logistics.BeltCapacityPerMinute)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +189,9 @@ func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contra
 	begin := len(b.all)
 	b.owner = -1
 	ports := []denseStreetPort{}
+	units := []denseSpatialUnit{}
 	for i := range plan.towers {
+		unitBegin, portBegin := len(b.all), len(ports)
 		stock := &plan.towers[i]
 		stock.tower = b.createStation(vector{float64(i%columns)*pitch + 5, float64(i/columns)*pitch + 5, 0}, stock.items, config)
 		for slot := 0; slot < 12; slot++ {
@@ -159,6 +219,7 @@ func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contra
 				last.record.OutputToSlot = int8(slot)
 				stock.tower.record.Parameters[base] = 2
 				route.end, route.boundary = head, stock.tower
+				b.bindDenseStationSharedOutputs(route, head, stock.tower)
 				owner = route.from.owner
 			} else {
 				reverse(belts)
@@ -178,8 +239,12 @@ func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contra
 			b.stationLinks = append(b.stationLinks, stationTransportLink{item: route.edge.ItemID, output: output, tower: stock.tower, belt: last, slot: slot, head: head, path: append([]*placed(nil), belts[1:]...), owner: owner, rate: route.rate})
 			ports = append(ports, denseStreetPort{item: route.edge.ItemID, input: output, head: head, inner: belts[1]})
 		}
+		units = append(units, denseSpatialUnit{entities: append([]*placed(nil), b.all[unitBegin:]...), ports: append([]denseStreetPort(nil), ports[portBegin:]...)})
 	}
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-station-facility-bound", Status: "passed", Message: fmt.Sprintf("仅对外%d类供需库存；按所选带速聚合的物料下界%d塔/至少%d带口，当前%d条独立边界lane下界%d塔，实际%d塔；库存槽%d、每塔12口；当前lane分配最少塔搜索证明=%t。内部中间流不占塔槽，未假设运输站堆叠科技", plan.roleCount, plan.materialLowerBound, plan.minimumPorts, len(plan.routes), plan.laneLowerBound, len(plan.towers), config.ItemSlots, plan.proven)})
+	if polar, _ := ctx.Value(densityPolarRootKey{}).(bool); polar {
+		return units, nil
+	}
 	return []denseSpatialUnit{{entities: append([]*placed(nil), b.all[begin:]...), ports: ports}}, nil
 }
 
@@ -239,7 +304,9 @@ func finalizeDenseStationBlackbox(ctx context.Context, b *builder, records []blu
 		}
 	}
 	used := map[*stationTransportLink]float64{}
+	sharedOutputs := map[*stationTransportLink]*denseStationOutputGroup{}
 	shared := map[*stationTransportLink]*denseStationSprayGroup{}
+	sharedMaterials := map[*stationTransportLink]*transportRoute{}
 	matchedOwner := map[*stationTransportLink]bool{}
 	internal := 0
 	for _, route := range b.transportRoutes {
@@ -267,12 +334,35 @@ func finalizeDenseStationBlackbox(ctx context.Context, b *builder, records []blu
 		if b.denseStationSprayNetwork != nil {
 			group = b.denseStationSprayNetwork.byRoute[route]
 		}
-		if group == nil {
+		materialSource, err := b.denseStationSharedInputSource(route, link)
+		if err != nil {
+			return err
+		}
+		outputGroup, err := b.denseStationSharedOutputGroup(route, link)
+		if err != nil {
+			return err
+		}
+		if outputGroup != nil {
+			if group != nil || materialSource != nil || shared[link] != nil || sharedMaterials[link] != nil || used[link] > 0 && sharedOutputs[link] != outputGroup {
+				return transportAllocationError(route.edge, route.rate, "共享出口被不同的物理来源或角色重复使用")
+			}
+			if sharedOutputs[link] == nil {
+				if err := b.validateDenseStationOutputGroup(ctx, outputGroup, link); err != nil {
+					return err
+				}
+			}
+			sharedOutputs[link] = outputGroup
+		} else if group == nil && materialSource != nil {
+			if shared[link] != nil || used[link] > 0 && sharedMaterials[link] != materialSource {
+				return transportAllocationError(route.edge, route.rate, "原料塔口被不同的物理供给或供剂角色重复使用")
+			}
+			sharedMaterials[link] = materialSource
+		} else if group == nil {
 			if used[link] > 0 || owner.owner != link.owner || math.Abs(link.rate-route.rate) > 1e-6 {
 				return transportAllocationError(route.edge, route.rate, "独立塔带口被重复分配或改变份额")
 			}
 		} else {
-			if group.physical.start != head || group.physical.boundary != link.tower || used[link] > 0 && shared[link] != group || math.Abs(group.physical.rate-link.rate) > 1e-6 {
+			if materialSource != nil || sharedMaterials[link] != nil || group.physical.start != head || group.physical.boundary != link.tower || used[link] > 0 && shared[link] != group || math.Abs(group.physical.rate-link.rate) > 1e-6 {
 				return transportAllocationError(route.edge, route.rate, "共享供剂份额未绑定到已验证的同一真实串供口")
 			}
 			shared[link] = group
@@ -288,6 +378,10 @@ func finalizeDenseStationBlackbox(ctx context.Context, b *builder, records []blu
 			return &blueprint.Error{Code: "GEN_E_FLOW", Message: "黑盒实际塔口聚合份额或来源归属不守恒"}
 		}
 	}
+	if len(sharedMaterials) > 0 {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-station-shared-inputs", Status: "passed", Message: fmt.Sprintf("%d个真实原料塔口共享给同物料消费轨，规范份额完整映射到同一物理供给；真实串供链和配置满负荷带宽由公共物流终检逐组复算", len(sharedMaterials))})
+	}
+	b.recordDenseStationOutputSharing()
 	b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-station-blackbox", Status: "passed", Message: fmt.Sprintf("%d条内部lane采用真实传送带，%d条外部lane逐一连接真实库存/带口；全部规范边随后统一验证方向、共享带能力和流量守恒", internal, len(used))})
 	return nil
 }

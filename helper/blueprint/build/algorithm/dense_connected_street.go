@@ -41,12 +41,13 @@ func denseConnectedStreetRowsEligible(rows []*transportRow, setting Setting) boo
 }
 
 // denseConnectedStreetPlanKeys 职责：从同一资格判断和真实容量counts生成每街道组数的规范键；使用：去除完全相同的显式街道计划；边界：auto只在单组时折叠，键不证明几何成功，空键表示没有适配owner。
-func (b *builder) denseConnectedStreetPlanKeys(ctx context.Context, req Request, dataset *quant.Dataset) (map[int]string, error) {
+func (b *builder) denseConnectedStreetPlanKeys(ctx context.Context, req Request, dataset *quant.Dataset, capacityFill ...bool) (map[int]string, error) {
 	probe, err := b.newCandidateBuilder()
 	if err != nil {
 		return nil, err
 	}
 	probe.denseSpatial, probe.denseMaxSpan = true, 0
+	probe.denseCapacityFill = len(capacityFill) > 0 && capacityFill[0]
 	probe.flowGraph = b.flowGraph
 	probe.logistics = newLogisticsSummary(*b.flowGraph, b.setting)
 	rows, err := probe.planTransportRows(ctx, req, dataset)
@@ -299,6 +300,7 @@ func (b *builder) commitDenseConnectedStreets() error {
 	if len(b.denseConnectedStreets) > 0 {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-street-accessories", Status: "passed", Message: fmt.Sprintf("%d套街道核心与独立附件已由%d条真实有向内部线连接；保留可信喷涂参数、供剂毛流、监测宿主和逐机取料顺序，辅助线不重复计入规范净流", len(b.denseConnectedStreets), len(b.denseStreetRoutes))})
 	}
+	if err := b.commitDenseProducerSplits(); err != nil { return err }
 	if err := b.commitDenseMaterialNetworks(); err != nil {
 		return err
 	}

@@ -59,6 +59,11 @@ func normalizeSetting(s Setting) (Setting, error) {
 
 // lineCounts 职责：按单机满负荷毛流、真实带宽和列上限均匀拆列；使用：每条量化产线；边界：不把期望速率均摊到整数机器当作已降速，不丢机器。
 func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([]int, error) {
+	return lineCountsWithStrategy(p, r, s, speed, false)
+}
+
+// lineCountsWithStrategy 职责：在同一真实容量和行上限内选择均衡或优先填满分组；使用：mode1密铺独立候选；边界：默认仍均衡，策略不改变机器数、每台能力或请求设置。
+func lineCountsWithStrategy(p quant.Production, r quant.Recipe, s Setting, speed float64, capacityFill bool) ([]int, error) {
 	capacity, err := transport.BeltCapacityPerMinute(s.BeltLv)
 	if err != nil {
 		return nil, err
@@ -88,6 +93,13 @@ func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([
 		limit = min(limit, s.MaxMachineInALine)
 	}
 	limit = min(limit, theory)
+	if labSevenPorts(p, r) {
+		ports := planLabSevenInserters(p, r, s, p.MachineCount)
+		if ports.capacityError != nil {
+			return nil, ports.capacityError
+		}
+		limit = min(limit, ports.layers)
+	}
 	// 喷涂及自定义倍率以可信计划的单机毛流为准；每种物品独立占带，
 	// 不能累加不同产物，也不能用期望流量/取整机器数低估整行满载需求。
 	inputs, outputs, err := machineInserterRates(p, r)
@@ -127,6 +139,9 @@ func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([
 	}
 	lines := int(math.Ceil(float64(p.MachineCount) / float64(limit)))
 	balanced := int(math.Ceil(float64(p.MachineCount) / float64(lines)))
+	if capacityFill {
+		balanced = limit
+	}
 	result := []int{}
 	for left := p.MachineCount; left > 0; {
 		n := min(left, balanced)

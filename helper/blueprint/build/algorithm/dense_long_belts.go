@@ -13,11 +13,16 @@ const denseLongBeltGridSpan = 1.5
 
 // denseLongBeltLongitudeFactor 职责：按实际选区给出经向物理格宽的保守上界；使用：长带重采样前；边界：旧自动请求覆盖全星球，不以赤道格宽假设高纬或高架安全。
 func denseLongBeltLongitudeFactor(ctx context.Context) float64 {
+	if ctx != nil {
+		if root, _ := ctx.Value(densityPolarRootKey{}).(bool); root {
+			return 4
+		}
+	}
 	low, high := -250, 250
 	nativeScale := 1.
 	if ctx != nil {
 		if zone, _ := ctx.Value(densityLatitudeKey{}).(string); zone != "" {
-			if band, _, err := densityContextBand(ctx,zone,defaultSurfaceGridSegment); err == nil {
+			if band, _, err := densityContextBand(ctx, zone, defaultSurfaceGridSegment); err == nil {
 				low, high = band.low, band.high
 				if selection, ok := densityLatitudeSelectionFor(zone); ok && selection.tier >= 4 {
 					pole := math.Max(math.Abs(float64(low)), math.Abs(float64(high)))
@@ -76,7 +81,13 @@ func (env *transportEnvironment) compactDenseLongRoute(points []vector, source, 
 		// 使用弧长上界保护高架和纬带格宽；选区变窄时不能把平面合法误当作球面长度合法。
 		metersPerGrid := (200.4 + math.Max(first.z, last.z)*1.3333333) * 2 * math.Pi / 1000
 		if axis == 0 {
-			metersPerGrid *= longitudeFactor
+			factor := longitudeFactor
+			if frame := env.densePorts.polarFrame; frame != nil {
+				// 原生极区路线已定位：沿本条纬线计算真实弧长，避免统一最坏格距使长带失效。
+				latitude := (float64(frame.start) + first.y) * float64(frame.latitudeStep)
+				factor = math.Abs(math.Cos(latitude)) * float64(frame.longitudeStep) / (2 * math.Pi / 1000)
+			}
+			metersPerGrid *= factor
 		}
 		span := math.Min(denseLongBeltGridSpan, denseRouteMaximumSpan/metersPerGrid)
 		count := max(1, int(math.Ceil(distance/span-1e-9)))

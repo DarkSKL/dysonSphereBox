@@ -79,6 +79,9 @@ func (b *builder) prepareLeftoverBoundaries(ctx context.Context, inputPositions 
 	if b.busFabric != nil || b.directBoundaryUnits != nil {
 		return nil
 	}
+	if b.adapter != nil && b.adapter.mode == 1 {
+		return b.prepareMode1Deliveries(ctx, inputPositions)
+	}
 	minimum, _ := bounds(b.all)
 	positions, err := transportLeftoverPositions(ctx, b.transportRoutes, inputPositions, minimum)
 	if err != nil {
@@ -106,6 +109,9 @@ func (b *builder) prepareLeftoverBoundaries(ctx context.Context, inputPositions 
 
 // validateLeftoverBoundaries 职责：核实副产物导回出口仍是可取货的独立终点并解释用途；使用：mode1 最终物流核验；边界：不因空间邻近把剩余边冒充原料输入，也不声称游戏内持续产能已经验收。
 func (b *builder) validateLeftoverBoundaries() error {
+	if b.mode1Deliveries != nil {
+		return b.validateMode1Deliveries()
+	}
 	count, rate := 0, 0.
 	inputs := []*placed{}
 	for _, route := range b.transportRoutes {

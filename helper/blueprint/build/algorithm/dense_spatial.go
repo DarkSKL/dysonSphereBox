@@ -41,6 +41,8 @@ func betterDenseCandidate(a, c LayoutMetrics) bool {
 
 // denseSpatialUnit 职责：保存有局部连接约束的实体集合；使用：全场位置搜索；边界：集合外包矩形不是独占区，内部空隙可以容纳其它集合。
 type denseSpatialUnit struct {
+	// bent 职责：标记同生产者短run形成的凹形复合单元；使用：分别维护各run累计朝向与端口；边界：不冻结凹角矩形，也不代表已经全局接线。
+	bent bool
 	// entities 职责：保留实际机器、带和臂；使用：整体姿态变换；边界：不包括尚未创建的全局路线。
 	entities []*placed
 	// row 职责：保留逐物料端口及份额；使用：邻近关联产线与旋转出口；边界：闭合设施集合可以为空。
@@ -73,7 +75,7 @@ func (b *builder) denseSpatialUnitWires(unit denseSpatialUnit, placedEntities ma
 		members[entity] = true
 	}
 	wires := []denseSpatialWire{}
-	for _, routes := range [][]*transportRoute{b.transportRoutes, b.denseStreetRoutes, b.denseMaterialNetworkRoutes()} {
+	for _, routes := range [][]*transportRoute{b.transportRoutes, b.denseStreetRoutes, b.denseMaterialNetworkRoutes(), b.denseProducerSplitRoutes()} {
 		for _, route := range routes {
 			if route.start == nil || route.end == nil {
 				continue
@@ -194,6 +196,13 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 			contour.shapes = append(contour.shapes, shape)
 		}
 	}
+	if unit.bent {
+		ports, err := b.denseBentPortShapes(ctx, unit, turns)
+		if err != nil {
+			return contour, err
+		}
+		contour.shapes = append(contour.shapes, ports...)
+	}
 	for _, port := range unit.ports {
 		direction := port.outward()
 		// 仅保留真实向外半格，跨高度路径由portal及普通带段避碰共同判定。
@@ -226,11 +235,14 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 	strictHeight := b.denseLatitudeSpan > 0
 	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
 	selection, selected := densityLatitudeSelectionFor(zone)
+	polarRoot, _ := ctx.Value(densityPolarRootKey{}).(bool)
+	// 原生球面只固定纬向预算，经向另按实体占地估算；不能把较宽纬带误限成等宽正方形。
+	strictHeight = strictHeight || polarRoot
 	// 窄纬只限制纬向容量，经向预算按实体总占地估算；普通共享布局保留原策略。
 	if selected && selection.tier >= 3 && (b.adapter == nil || b.adapter.density == densityDense) {
 		strictHeight = true
 		// 直连原料入口和配送边界需要更多纬向接线余量；避免较宽核心挤掉内部直连而退回逐物料配送。
-		if b.adapter != nil && b.adapter.mode <= 2 {
+		if b.adapter != nil && b.adapter.mode <= 2 && !polarRoot {
 			heightLimit = math.Min(heightLimit, 17)
 		}
 	}
@@ -273,6 +285,11 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 			}
 			low, high := bounds(unit.entities)
 			width, height := math.Ceil(high.x)-math.Floor(low.x)+1, math.Ceil(high.y)-math.Floor(low.y)+1
+			// 极区单元沿纬线展开，避免纵向长列的统一格距补偿把赤道侧长臂拉出实际范围。
+			if polarRoot && height > width {
+				rotatePlacedQuarter(unit.entities, 1)
+				continue
+			}
 			if strictHeight && height > heightLimit+1e-6 {
 				rotatePlacedQuarter(unit.entities, 1)
 				continue
@@ -283,8 +300,17 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 				maxX, maxY = 0, 0
 			}
 			attempts := 0
+			columns := maxX + 1
+			if columns*(maxY+1) > 8192 {
+				// 大厂仍保留同一搜索预算，但覆盖完整纬向范围；不能把预算全部耗在前几行。
+				columns = max(2, 8192/(maxY+1))
+			}
 			for y := 0; y <= maxY && attempts < 8192; y++ {
-				for x := 0; x <= maxX && attempts < 8192; x++ {
+				for column := 0; column < columns && attempts < 8192; column++ {
+					x := column
+					if columns < maxX+1 {
+						x = column * maxX / (columns - 1)
+					}
 					attempts++
 					if err := b.checkGeneration("全场实体密铺位置搜索"); err != nil {
 						rotatePlacedQuarter(unit.entities, 4-turns)
@@ -371,6 +397,11 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 		}
 		packing.high, packing.ready = bestHigh, true
 		reportProgress(ctx, "dense-placement", "正在按真实占位交错排布生产设备", number+1, len(ordered))
+	}
+	if enabled, _ := ctx.Value(denseSpatialCompactKey{}).(bool); enabled {
+		if err := b.compactDenseSpatialUnits(ctx, ordered, heightLimit); err != nil {
+			return err
+		}
 	}
 	if b.logistics != nil {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-global-occupancy", Status: "passed", Message: "使用全场实体轮廓与四向姿态搜索，取消产线矩形独占和固定行列间隔；局部空隙可交错利用，全部跨线运输仍需统一布线与最终检查"})

@@ -54,7 +54,7 @@ func (b *builder) coaterNetwork(ctx context.Context) error {
 		}
 	}
 	if estimate > blueprint.MaxBuildingCount {
-		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "喷涂供给网络会使建筑超过 20 万，请拆分生成"}
+		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "喷涂供给网络会使建筑超过 30 万，请拆分生成"}
 	}
 	owner := b.owner
 	b.owner = -1

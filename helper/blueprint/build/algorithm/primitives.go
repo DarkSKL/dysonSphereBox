@@ -22,10 +22,22 @@ type vector struct{ x, y, z float64 }
 
 // placed 职责：以指针维护建筑连接；使用：合并重排；边界：最终 index 与数组映射独立赋值。
 type placed struct {
+	// deliveryMonitor 职责：绑定同物品合并交付口的唯一监测器；使用：聚合期望速率和最终记录核验；边界：其它监测器仍保持默认参数合同。
+	deliveryMonitor *mode1DeliveryGroup
+	// splitterPortLink 职责：保留共同门真实槽点与过渡带的受保护身份；使用：旋转、原生比例和最终独立校验；边界：不替代实体连接或profile事实。
+	splitterPortLink *splitterGatePortLink
+	// splitterGate 职责：为共同门本体保留构造和端口角色证明；使用：原料/产物树共享验证；边界：旧设施不伪造此元数据。
+	splitterGate *splitterGateAssembly
+	// flowMonitorHost 职责：保留监测器实际宿主的实体身份；使用：裁剪与最终物料核验；边界：不是带连接，不依赖尚未全场排布的重复局部坐标。
+	flowMonitorHost *placed
 	// densityCargo 职责：保存参考臂实际取放目标与独立物料轨道；使用：最终货物采样重绑；边界：值类型元数据及只读轨道切片可随候选快照安全复制。
 	densityCargo denseCargoTarget
 	// nativeInserterSpan 职责：保存当前原生端点实测跨度；使用：已通过完整几何的本地能力复核；边界：仅高纬适配事务写入。
 	nativeInserterSpan int32
+	// nativeUnitScale 职责：保存原生局部单元的经向格距补偿；使用：箱体槽位证明；边界：不代表碰撞已通过。
+	nativeUnitScale float64
+	// layoutFootprint 职责：保存已核对原型在Yaw零度下的局部格网外包；使用：旋转后的宽高预算；边界：只读共享，不替代真实建造盒。
+	layoutFootprint *[2]vector
 	// densityPattern 职责：记录实际机器局部布局来源；使用：获选候选的密度报告；边界：仅生成器写入，不能由请求自证。
 	densityPattern string
 	// previewID 职责：保存可选任务内对象身份；使用：临时预览增量；边界：不参与记录编号、连接或几何判断。
@@ -135,10 +147,20 @@ type flyTransportEndpoint struct {
 
 // builder 职责：收集单次装配；使用：六种模式；边界：不做文件写入。
 type builder struct {
+	// mode1Deliveries 职责：保存独立左侧成品/副产物交付组和被冻结的真实末端；使用：mode1路由、裁尾与终检；边界：不接管塔、配送或混带边界。
+	mode1Deliveries *mode1DeliveryPlan
+	// denseBoundary 职责：保存普通和密铺直连原料及交付端的联合位置；使用：边界创建和局部严格避碰；边界：不跨候选复用。
+	denseBoundary *denseBoundaryLayout
+	// denseProducerSplits 职责：保存单产物出货树及规范份额身份；使用：独立密铺候选；边界：不跨候选共享，不替代机器取放臂或原回流结构。
+	denseProducerSplits *denseProducerSplitPlan
+	// denseStationOutputs 职责：保存独立候选的共享输出塔口及规范成员；使用：构造和终检；边界：不跨builder共享。
+	denseStationOutputs *denseStationOutputPlan
 	// preview 职责：共享任务内旁路通知器；使用：真实提交和回退；边界：普通生成为空，不参与算法决策。
 	preview *generationPreview
 	// previewActive 职责：区分真实候选与内部几何探测；使用：决定检查点是否可见；边界：新建试装 Builder 默认不发布。
 	previewActive bool
+	// previewEntities 职责：保留最近完整预览的实体身份表；使用：路线仅追加实体时增量发布；边界：完整检查点重建，不能据此推断几何不变。
+	previewEntities map[*placed]string
 	// adapter 职责：保存当前生成组合的阶段实现；使用：统一收尾调用模式钩子；边界：每个 builder 生命周期只绑定一个适配器。
 	adapter *modeAdapter
 	// denseSpatial 职责：启用全场实体占位搜索；使用：超密度及普通模式共享设施候选；边界：具体碰撞与间距仍按适配器密度决定。
@@ -147,6 +169,8 @@ type builder struct {
 	nativeLatitudeScaled bool
 	// nativeLongitudeScale 职责：保存本次原生经向补偿；使用：设施槽位及独立出口一致性检查；边界：没有开启补偿时不用此值。
 	nativeLongitudeScale float64
+	// polarFrame 职责：固定路由与最终编码共用的极区坐标基；使用：原生单元布局；边界：不跨生成请求共享。
+	polarFrame *densePolarFrame
 	// nativeCapacityReserve 职责：为高纬配送回退候选预留三格实际跨度的并联臂数；使用：容量回退；边界：仍按最终实体重新核算，不提高单臂能力。
 	nativeCapacityReserve bool
 	// denseSpatialOrder 职责：选择全场装配顺序；使用：有界密铺比较；边界：只改变空间顺序，不改变物料份额。
@@ -168,6 +192,8 @@ type builder struct {
 	denseStreetGroupLimit int
 	// densePairedOutputs 职责：启用真实多去向双侧过滤候选；使用：缩短单侧长干线；边界：每个抓取点及所选等级过滤臂仍独立。
 	densePairedOutputs bool
+	// denseCapacityFill 职责：为mode1密铺独立候选优先填满单带能力组；使用：本候选原料规划及真实几何；边界：默认均衡，不继承到其它模式或修改请求带臂/研究站层数。
+	denseCapacityFill bool
 	// directBoundaryUnits 职责：为内部直连的黑盒候选提供真实边界设施；使用：机器端口建成后、全场占位前；边界：普通模式为空，回调必须给每条外部边分配真实端点。
 	directBoundaryUnits func(context.Context, []*transportRow) ([]denseSpatialUnit, error)
 	// directBoundaryCommit 职责：在内部共享网络恢复规范路线后提交独立边界网络；使用：真实全图路由完成且未裁尾/补电前；边界：只能改其拥有的规范份额，不覆盖其它网络恢复结果。
@@ -410,7 +436,7 @@ func bounds(all []*placed) (min, max vector) {
 	min = vector{math.Inf(1), math.Inf(1), math.Inf(1)}
 	max = vector{math.Inf(-1), math.Inf(-1), math.Inf(-1)}
 	for _, p := range all {
-		lo, hi := footprint(p.record.ItemID)
+		lo, hi := placedFootprint(p)
 		for _, v := range []vector{p.a, p.b, {p.a.x + lo.x, p.a.y + lo.y, p.a.z}, {p.a.x + hi.x, p.a.y + hi.y, p.a.z}} {
 			min.x = math.Min(min.x, v.x)
 			min.y = math.Min(min.y, v.y)

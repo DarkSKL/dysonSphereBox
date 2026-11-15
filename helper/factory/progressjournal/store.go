@@ -2,6 +2,8 @@ package progressjournal
 
 import (
 	"DysonSphereBox/helper/blueprint/build"
+	"bytes"
+	"compress/flate"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +12,8 @@ import (
 	"time"
 )
 
-const maxBytes = 64 << 20
+// maxBytes 职责：限制单个任务日志的磁盘占用；使用：Append 写入前检查；边界：按压缩后大小计量，预览差量是高度重复的 JSON，压缩后约为原始大小的十分之一。
+const maxBytes = 128 << 20
 const lifetime = 10 * time.Minute
 
 // Page 职责：承载一页不可变过程事件；使用：断流补发；边界：日志缺失必须显式标记，不能冒充完整过程。
@@ -20,6 +23,24 @@ type Page struct {
 	Complete   bool             `json:"complete"`
 	Incomplete bool             `json:"incomplete"`
 	Message    string           `json:"message"`
+}
+
+// writers 复用压缩器：flate 写入器初始化需要数百 KB，逐事件新建会拖慢生成协程。
+var writers = sync.Pool{New: func() any { writer, _ := flate.NewWriter(io.Discard, flate.BestSpeed); return writer }}
+
+// compress 职责：把一条事件 JSON 压成独立的 deflate 流；使用：Append 写盘前；边界：每条事件各自成流，可按偏移随机读取。
+func compress(raw []byte) ([]byte, error) {
+	var buffer bytes.Buffer
+	writer := writers.Get().(*flate.Writer)
+	defer writers.Put(writer)
+	writer.Reset(&buffer)
+	if _, err := writer.Write(raw); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
 }
 
 type entry struct {
@@ -54,7 +75,7 @@ func (s *Store) Begin(taskID string) {
 			}
 		}
 	}
-	file, err := os.CreateTemp("", "dsbox-generation-progress-*.jsonl")
+	file, err := os.CreateTemp("", "dsbox-generation-progress-*.bin")
 	value := &entry{file: file, incomplete: err != nil}
 	s.entries[taskID] = value
 	s.order = append(s.order, taskID)
@@ -91,22 +112,25 @@ func (s *Store) remove(taskID string) {
 // Append 职责：在实时发送前归档同序号值快照；使用：单任务观察者；边界：超出容量后显式标记不完整，不阻止正式生成。
 func (s *Store) Append(event build.Progress) {
 	raw, err := json.Marshal(event)
+	if err == nil {
+		raw, err = compress(raw)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	value := s.entries[event.TaskID]
 	if value == nil || value.incomplete {
 		return
 	}
-	if err != nil || event.Sequence != uint64(len(value.offsets)+1) || value.size+int64(len(raw)+1) > maxBytes {
+	if err != nil || event.Sequence != uint64(len(value.offsets)+1) || value.size+int64(len(raw)) > maxBytes {
 		value.incomplete = true
 		return
 	}
-	if _, err = value.file.Write(append(raw, '\n')); err != nil {
+	if _, err = value.file.Write(raw); err != nil {
 		value.incomplete = true
 		return
 	}
 	value.offsets = append(value.offsets, value.size)
-	value.size += int64(len(raw) + 1)
+	value.size += int64(len(raw))
 }
 
 // Finish 职责：标记所有 worker 与事件汇聚已经退出；使用：Generate 收尾；边界：不等同于计算成功。
@@ -154,7 +178,11 @@ func (s *Store) Read(taskID string, after uint64) Page {
 			return page
 		}
 		var event build.Progress
-		if err := json.Unmarshal(raw, &event); err != nil {
+		plain, err := io.ReadAll(flate.NewReader(bytes.NewReader(raw)))
+		if err == nil {
+			err = json.Unmarshal(plain, &event)
+		}
+		if err != nil {
 			page.Incomplete, page.Message = true, "过程记录校验失败"
 			return page
 		}

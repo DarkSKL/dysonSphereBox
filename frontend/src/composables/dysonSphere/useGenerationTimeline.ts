@@ -3,6 +3,7 @@ import {computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef} from 'v
 import {observeRawFactoryGenerationEvents} from '../../pages/services/dysonSphere/factory-progress'
 import {downloadJson} from '../../utils/download-json'
 import {isFactoryGenerationProgressEvent} from '../../utils/factory-preview-protocol'
+import {createFrameCoalescer} from '../../utils/frame-coalescer'
 
 // =============== 时间流条目 ===============
 // 说明：每条 Wails 生成事件归档为一张只读卡片；原始载荷原样保留，供调试弹窗查看。
@@ -58,12 +59,28 @@ export const useGenerationTimeline = () => {
   /** 按任务暂存差量原文；预览完成时合并成一份样例并自动下载。 */
   const pendingDeltas = new Map<string, unknown[]>()
 
-  const saveTaskDeltas = (taskId: string, deltas: unknown[]): void => {
+  const saveTaskDeltas = (taskId: string, items: unknown[]): void => {
     try {
-      downloadJson(deltas, `preview-delta-${taskId.slice(0, 8) || 'task'}-${Date.now()}.json`)
-      message.success(`已自动保存 ${deltas.length} 条预览差量`)
+      downloadJson(items, `preview-delta-${taskId.slice(0, 8) || 'task'}-${Date.now()}.json`)
+      message.success(`已自动保存 ${items.length} 条预览差量`)
     } catch { message.warning('预览差量自动保存失败，可在事件详情中手动保存') }
   }
+  // 高频原始事件先写有界缓冲；响应式列表每帧发布一次，仍保留最新500项和完整计数。
+  let pending: GenerationTimelineEntry[] = []
+  let pendingPreviews: GenerationTimelineEntry[] = []
+  let received = 0
+  let deltas = 0
+  let completes = 0
+  const writer = createFrameCoalescer<boolean>(() => {
+    dropped.value += Math.max(0, entries.value.length + received - TIMELINE_LIMIT)
+    entries.value = [...pending.slice(-TIMELINE_LIMIT).reverse(), ...entries.value].slice(0, TIMELINE_LIMIT)
+    if (pendingPreviews.length) previewEntries.value = [...pendingPreviews.slice(-TIMELINE_LIMIT).reverse(), ...previewEntries.value].slice(0, TIMELINE_LIMIT)
+    deltaCount.value += deltas
+    completeCount.value += completes
+    pending = []
+    pendingPreviews = []
+    received = deltas = completes = 0
+  })
 
   const record = (payload: unknown): void => {
     if (paused.value) return
@@ -84,28 +101,35 @@ export const useGenerationTimeline = () => {
     if (entry.kind === 'preview-delta' || entry.kind === 'preview-complete') {
       const taskKey = entry.taskId || 'unknown'
       if (entry.kind === 'preview-delta') {
-        deltaCount.value++
-        const deltas = pendingDeltas.get(taskKey) ?? []
-        deltas.push(payload)
-        if (deltas.length > TIMELINE_LIMIT) deltas.shift()
-        pendingDeltas.set(taskKey, deltas)
+        deltas++
+        const list = pendingDeltas.get(taskKey) ?? []
+        list.push(payload)
+        if (list.length > TIMELINE_LIMIT) list.shift()
+        pendingDeltas.set(taskKey, list)
       } else {
-        completeCount.value++
+        completes++
         // 预览结束即自动落盘；同一任务只保存一次，不逐条触发下载。
-        const deltas = pendingDeltas.get(taskKey)
+        const list = pendingDeltas.get(taskKey)
         pendingDeltas.delete(taskKey)
-        if (deltas?.length) saveTaskDeltas(taskKey, deltas)
+        if (list?.length) saveTaskDeltas(taskKey, list)
       }
-      previewEntries.value = [entry, ...previewEntries.value].slice(0, TIMELINE_LIMIT)
+      pendingPreviews.push(entry)
+      if (pendingPreviews.length > TIMELINE_LIMIT * 2) pendingPreviews = pendingPreviews.slice(-TIMELINE_LIMIT)
     }
-    const next = [entry, ...entries.value]
-    if (next.length > TIMELINE_LIMIT) dropped.value += next.length - TIMELINE_LIMIT
-    entries.value = next.slice(0, TIMELINE_LIMIT)
+    pending.push(entry)
+    received++
+    if (pending.length > TIMELINE_LIMIT * 2) pending = pending.slice(-TIMELINE_LIMIT)
+    writer.push(true)
   }
-  const clear = (): void => { entries.value = []; previewEntries.value = []; dropped.value = 0; deltaCount.value = 0; completeCount.value = 0; selected.value = null; pendingDeltas.clear() }
+  const clear = (): void => {
+    writer.cancel()
+    pending = []; pendingPreviews = []; received = deltas = completes = 0
+    entries.value = []; previewEntries.value = []; dropped.value = 0; deltaCount.value = 0; completeCount.value = 0; selected.value = null
+    pendingDeltas.clear()
+  }
   const taskCount = computed(() => new Set(entries.value.map(entry => entry.taskId)).size)
 
   onMounted(() => { stop = observeRawFactoryGenerationEvents(record) })
-  onBeforeUnmount(() => { stop?.(); stop = undefined })
+  onBeforeUnmount(() => { stop?.(); stop = undefined; writer.cancel(); pending = []; pendingPreviews = [] })
   return {entries, previewEntries, paused, selected, dropped, deltaCount, completeCount, taskCount, clear}
 }

@@ -21,8 +21,10 @@ type machineRecycle struct {
 	intake                []*placed
 	outputGate, inputGate *placed
 	fresh, returned       *placed
-	outputSlot            int8
-	route                 *transportRoute
+	// freshPath/returnedPath 职责：保存外端到真实槽口的完整带链；使用：连通与毛流复核；边界：不计入规范净流边。
+	freshPath, returnedPath []*placed
+	outputSlot              int8
+	route                   *transportRoute
 }
 
 // recipeHasMachineRecycle 职责：识别配方层面同物品输入与输出；使用：选择支持本地回流的模式；边界：不把不同生产节点的SCC误作设备内部循环。
@@ -49,7 +51,7 @@ func (b *builder) prepareMachineRecycles(row *transportRow) error {
 	share := float64(row.count) / float64(row.info.MachineCount)
 	inputCursor := math.Inf(1)
 	for _, input := range row.inputs {
-		inputCursor = math.Min(inputCursor, input.a.x-2)
+		inputCursor = math.Min(inputCursor, input.a.x-4)
 	}
 	// 普通产物先在机器旁完成过滤，回流门及其西向回收口再放到整个有限
 	// 过滤区之外；否则外轨产物横带会穿过邻近内轨回收门的真实建造盒。
@@ -85,15 +87,27 @@ func (b *builder) prepareMachineRecycles(row *transportRow) error {
 		// 输入优先门也必须声明真实物品。使用 0 会让粘贴后的游戏过滤器
 		// 失去物品语义，且无法和规范 lane 的物品诊断对应。
 		entry.inputGate = b.recycleGate(inputCursor, stub[0].a.y, 3, item)
-		entry.fresh = b.make(2000+b.setting.BeltLv, inputCursor-1, stub[0].a.y, 0)
-		entry.fresh.output, entry.fresh.record.OutputToSlot = entry.inputGate, 2
+		entry.freshPath, err = b.buildRecyclePort(entry.inputGate, 2, true)
+		if err != nil {
+			return err
+		}
+		entry.fresh = entry.freshPath[0]
 		entry.fresh.record.Parameters = []int32{int32(item), int32(math.Ceil(entry.netInput))}
-		entry.returned = b.make(2000+b.setting.BeltLv, inputCursor, stub[0].a.y+1, 0)
-		entry.returned.output, entry.returned.record.OutputToSlot = entry.inputGate, 3
-		entry.intake = b.straight(inputCursor+1, stub[0].a.y, int(math.Round(stub[0].a.x-inputCursor-1)), 2)
-		entry.intake[0].input, entry.intake[0].record.InputFromSlot = entry.inputGate, 0
-		connect(entry.intake[len(entry.intake)-1], stub[0])
+		entry.returnedPath, err = b.buildRecyclePort(entry.inputGate, 3, true)
+		if err != nil {
+			return err
+		}
+		entry.returned = entry.returnedPath[0]
+		entry.intake, err = b.buildRecyclePort(entry.inputGate, 0, false)
+		if err != nil {
+			return err
+		}
+		middle := b.straight(inputCursor+3, stub[0].a.y, int(math.Round(stub[0].a.x-inputCursor-3)), 2)
+		entry.intake = append(entry.intake, middle...)
 		entry.intake = append(entry.intake, stub...)
+		for i := 0; i+1 < len(entry.intake); i++ {
+			connect(entry.intake[i], entry.intake[i+1])
+		}
 		row.inputs[item] = entry.fresh
 		// 出货门放在所有原料接口西侧，避免其上下优先口落到邻近原料stub上。
 		x := outputCursor
@@ -101,31 +115,39 @@ func (b *builder) prepareMachineRecycles(row *transportRow) error {
 			x = math.Min(x, previous.outputGate.a.x-4)
 		}
 		trunk := output[0]
-		for trunk.a.x > x+1 {
+		for trunk.a.x > x+3 {
 			belt := b.make(2000+b.setting.BeltLv, trunk.a.x-1, trunk.a.y, 0)
 			connect(trunk, belt)
 			entry.source = append(entry.source, belt)
 			trunk = belt
 		}
-		direction := 1.
 		surplusSlot := int8(1)
 		if trunk.a.y < row.line.machines[0].a.y {
-			direction, surplusSlot = -1, 3
+			surplusSlot = 3
 		}
 		// 优先回流沿原出货带向西继续，净产品向机器侧引出；不能把北侧
 		// 优先端放在下一种外轨产物的横带上（真实配方58的石墨轨）。
 		entry.outputSlot = 2
 		entry.outputGate = b.recycleGate(x, trunk.a.y, entry.outputSlot, item)
-		trunk.output, trunk.record.OutputToSlot = entry.outputGate, 0
-		start := b.make(2000+b.setting.BeltLv, x-1, trunk.a.y, 0)
-		start.input, start.record.InputFromSlot = entry.outputGate, entry.outputSlot
+		gateInput, err := b.buildRecyclePort(entry.outputGate, 0, true)
+		if err != nil {
+			return err
+		}
+		connect(trunk, gateInput[0])
+		entry.source = append(entry.source, gateInput...)
+		returnOutput, err := b.buildRecyclePort(entry.outputGate, entry.outputSlot, false)
+		if err != nil {
+			return err
+		}
+		start := returnOutput[0]
 		start.record.Parameters = []int32{int32(item), int32(math.Ceil(rate))}
 		if entry.netOutput > 1e-8 {
-			belt := b.make(2000+b.setting.BeltLv, x, trunk.a.y-direction, 0)
-			belt.input, belt.record.InputFromSlot = entry.outputGate, surplusSlot
-			entry.surplus = []*placed{belt}
+			entry.surplus, err = b.buildRecyclePort(entry.outputGate, surplusSlot, false)
+			if err != nil {
+				return err
+			}
 		}
-		entry.route = &transportRoute{edge: quant.FlowEdge{ID: fmt.Sprintf("machine-recycle:%d:%d:%d", row.owner, len(b.machineRecycles), item), ItemID: item, FlowKind: "machine-recycle"}, rate: rate, from: row, to: row, start: start, end: entry.returned, path: []*placed{start}}
+		entry.route = &transportRoute{edge: quant.FlowEdge{ID: fmt.Sprintf("machine-recycle:%d:%d:%d", row.owner, len(b.machineRecycles), item), ItemID: item, FlowKind: "machine-recycle"}, rate: rate, from: row, to: row, start: start, routingEntry: returnOutput[len(returnOutput)-1], end: entry.returned, path: returnOutput}
 		row.recycles = append(row.recycles, entry)
 		b.machineRecycles = append(b.machineRecycles, entry)
 		inputCursor -= 4
@@ -186,8 +208,13 @@ func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map
 		if err := validateBusFabricChain(route.path, indices); err != nil {
 			return err
 		}
-		if entry.returned.output != entry.inputGate || entry.returned.record.OutputToSlot != 3 || entry.fresh.output != entry.inputGate || entry.fresh.record.OutputToSlot != 2 || entry.fresh == entry.returned || !hasPortItem(entry.fresh, entry.item) {
+		if !recycleInputAttached(entry.returnedPath, entry.returned, entry.inputGate, 3) || !recycleInputAttached(entry.freshPath, entry.fresh, entry.inputGate, 2) || entry.fresh == entry.returned || !hasPortItem(entry.fresh, entry.item) {
 			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "机器回流优先入口或独立新料/预充入口已断开"}
+		}
+		for _, path := range [][]*placed{entry.freshPath, entry.returnedPath} {
+			if err := validateBusFabricChain(path, indices); err != nil {
+				return err
+			}
 		}
 		if _, exists := indices[entry.fresh]; !exists {
 			return &blueprint.Error{Code: "GEN_E_CONNECTIVITY", Message: "机器回流预充入口不属于当前蓝图"}
@@ -228,6 +255,7 @@ func (b *builder) validateMachineRecycles(indices map[*placed]int, beltLoads map
 		// 核算，不能以未承诺的逐帧速度限制假装库存和启动已经验证。
 		seen := map[*placed]bool{}
 		parts := append(append(append(append([]*placed{}, producer...), route.path...), entry.intake...), input...)
+		parts = append(parts, entry.returnedPath...)
 		for _, belt := range parts {
 			if !seen[belt] {
 				beltLoads[belt] += entry.rate

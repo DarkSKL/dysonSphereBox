@@ -36,7 +36,7 @@ func (b *builder) completeConnectedSurfacePower(ctx context.Context, req Request
 	if err != nil {
 		return err
 	}
-	if encoding.planar || len(encoding.areas) != 1 || encoding.plan.GridSegment != 200 {
+	if encoding.planar || (len(encoding.areas) != 1 && !encoding.rootCoordinates) || encoding.plan.GridSegment != 200 {
 		return &blueprint.Error{Code: "GEN_E_SURFACE_UNVERIFIED", Message: "全局紧凑补电目前只接受原版 200 分段的单区域球面候选"}
 	}
 	records, _, _, err := b.records()

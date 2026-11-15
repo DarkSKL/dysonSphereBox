@@ -4,6 +4,7 @@ import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw,
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import AlgorithmHeatmap from '../../components/dysonSphere/factory/algorithm-heatmap.vue'
 import AlgorithmStage from '../../components/dysonSphere/factory/algorithm-stage.vue'
+import GenerationError from '../../components/dysonSphere/factory/generation-error.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
 import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
@@ -86,8 +87,8 @@ const selectedData = computed(() => {
 })
 
 // =============== 预览标签页 ===============
-// 说明：标签状态与切换命令集中在 useBlueprintPreviewTabs；数据层收到候选数据时会命令切到算法可视化。
-// 切走时预览只隐藏不卸载，避免重建 WebGL 视图；算法可视化在首次切换时挂载，之后同样只隐藏。
+// 说明：标签状态与切换命令集中在 useBlueprintPreviewTabs；数据层收到候选数据时会命令切到平面预览器。
+// 切走时预览只隐藏不卸载，避免重建 WebGL 视图；平面预览器在首次切换时挂载，之后同样只隐藏。
 const {tab: previewTab, algorithmMounted, previewTabs, showPreviewTab, showAlgorithmTab} = useBlueprintPreviewTabs()
 const showTab = (key: PreviewTab): void => { if (key === 'preview') showPreviewTab(); else showAlgorithmTab() }
 
@@ -130,7 +131,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
         <n-button size="small" quaternary aria-label="导出方案" :title="'导出方案'" :disabled="!w.plan || w.quantStale || w.solving || w.generating" :loading="w.saving" @click="w.exportWorkspace"><template #icon><FileJson :size="14" /></template>导出方案</n-button>
       </div>
     </header>
-    <n-alert v-if="w.error" type="error" closable class="bench-alert" @close="w.error = null">{{ w.error.message }} <span class="type-mono">{{ w.error.code }}</span></n-alert>
+    <n-alert v-if="w.error" type="error" closable class="bench-alert" @close="w.error = null"><GenerationError :failure="w.error" /></n-alert>
 
     <!-- ~ 上层：网格节点图 -->
     <!-- * 加载顺序：等下方预览器真正渲染出画面后再挂载，确保预览器先于流程图完成加载 -->
@@ -151,7 +152,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
           <button v-for="tab in previewTabs" :id="`preview-tab-${tab.key}`" :key="tab.key" type="button" role="tab" class="preview-tab" :class="{'is-active': previewTab === tab.key}" :aria-selected="previewTab === tab.key" :aria-controls="`preview-panel-${tab.key}`" @click="showTab(tab.key)">{{ tab.label }}</button>
         </div>
         <span class="bar-divider" aria-hidden="true" />
-        <!-- 算法活动热力图：仅在「算法可视化」下显示，占满标签右侧到操作区之间的空间 -->
+        <!-- 算法活动热力图：仅在「平面预览器」下显示，占满标签右侧到操作区之间的空间 -->
         <AlgorithmHeatmap v-if="previewTab === 'algorithm'" />
         <!-- 多目标归属只用于查看与聚焦，真实上下游路线由统一流图决定，不要求用户手工跨区分送。 -->
         <div v-if="previewTab === 'preview' && w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
@@ -181,7 +182,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
           </div>
           <div v-if="w.previewStale && w.code" class="preview-overlay">{{ w.generationFailed ? '最近一次生成未成功，当前显示上次成功结果' : w.generating ? '正在生成，当前显示上次成功结果' : `参数已改变，${w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览'}` }}</div>
         </div>
-        <!-- 算法可视化：首次切换到该标签时才创建场景，之后保持挂载以保留舞台与播放进度 -->
+        <!-- 平面预览器：首次切换到该标签时才创建场景，之后保持挂载以保留舞台与播放进度 -->
         <div v-if="algorithmMounted" v-show="previewTab === 'algorithm'" id="preview-panel-algorithm" class="preview-algorithm" role="tabpanel" aria-labelledby="preview-tab-algorithm"><AlgorithmStage :w="w" :active="previewTab === 'algorithm'" /></div>
       </div>
     </section>

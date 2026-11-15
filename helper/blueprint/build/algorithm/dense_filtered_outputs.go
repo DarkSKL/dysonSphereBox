@@ -1,7 +1,7 @@
 package build
 
 // 文件职责：将同物品多去向的过滤支路交替放到共享主带两侧，减少单侧隔离长干线。
-// 使用：独立dense mode1候选；边界：保留全部净流去向、真实过滤臂及共享带容量，不用普通带T分流。
+// 使用：独立密铺直连与塔黑盒候选；边界：保留全部净流去向、真实过滤臂及共享带容量，不用普通带T分流。
 
 import (
 	"context"
@@ -13,9 +13,32 @@ import (
 	"DysonSphereBox/helper/quant"
 )
 
+// denseShortPairedOutputsKey 职责：显式启用二、三去向行的紧凑双侧过滤；使用：独立密铺候选context；边界：缺省关闭，不改变既有四去向候选或普通布局。
+type denseShortPairedOutputsKey struct{}
+
+// usesDensePairedOutputs 职责：统一选择旧多去向与新增短分支双侧几何；使用：局部出货装配；边界：新增范围仅二、三去向、单产物且无机器回流，仍使用原所选等级和完整过滤数量。
+func (b *builder) usesDensePairedOutputs(row *transportRow) bool {
+	if b.densePairedOutputs && densePairedOutputEligible(row) {
+		return true
+	}
+	if !b.denseSpatial || b.generationCtx == nil || b.adapter != nil && b.adapter.density != densityDense {
+		return false
+	}
+	enabled, _ := b.generationCtx.Value(denseShortPairedOutputsKey{}).(bool)
+	if !enabled || row == nil || len(row.outputs) < 2 || len(row.outputs) > 3 {
+		return false
+	}
+	return densePairedOutputRangeEligible(row, 2)
+}
+
 // densePairedOutputEligible 职责：限制双侧过滤到有收益且无需原优先回收门的单产物组；使用：计划与实际装配同源判断；边界：少于四个去向不新增等价候选。
 func densePairedOutputEligible(row *transportRow) bool {
-	if row == nil || len(row.recipe.Results) != 1 || len(row.outputs) < 4 || recipeHasMachineRecycle(row.recipe) {
+	return densePairedOutputRangeEligible(row, 4)
+}
+
+// densePairedOutputRangeEligible 职责：共用单产物、去向与回流资格；使用：原四路及独立二三路候选；边界：只校验拓扑，实际臂容量和碰撞仍由装配及终检证明。
+func densePairedOutputRangeEligible(row *transportRow, minimum int) bool {
+	if row == nil || len(row.recipe.Results) != 1 || len(row.outputs) < minimum || recipeHasMachineRecycle(row.recipe) {
 		return false
 	}
 	for _, route := range row.outputs {
@@ -135,6 +158,9 @@ func (b *builder) attachDensePairedOutputs(row *transportRow, belts []*placed, r
 	}
 	if b.logistics != nil {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-paired-filtered-outputs", Status: "passed", Message: fmt.Sprintf("产线%d配方%d的%d个净流去向使用%d根所选Mk.%d过滤臂，主带抓取点互不重复、支路交替两侧；每两路保留一个真实主带出口间距，全部共享带仍按净流及自产剂回料毛流累计", row.owner, row.info.RecipeID, len(routes), armCount, b.setting.InserterLv)})
+		if len(routes) >= 2 && len(routes) <= 3 {
+			b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-short-paired-filtered-outputs", Status: "passed", Message: fmt.Sprintf("产线%d配方%d的%d个净流去向复用真实双侧过滤，保留%d根所选Mk.%d臂、各支路流量和完整带链；仅独立候选启用，不以删臂或升级设备缩短接头", row.owner, row.info.RecipeID, len(routes), armCount, b.setting.InserterLv)})
+		}
 	}
 	return cursor, nil
 }

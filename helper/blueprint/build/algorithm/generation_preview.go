@@ -116,7 +116,11 @@ func (b *builder) candidateWorkers(ctx context.Context, count int) int {
 	if configured, _ := ctx.Value(candidateConcurrencyKey{}).(int); configured > 0 {
 		return max(1, min(count, configured))
 	}
-	return search.Concurrency(count)
+	workers := search.Concurrency(count)
+	if largeFactoryWorkload(ctx) {
+		workers = min(workers, 4)
+	}
+	return workers
 }
 
 func (p *generationPreview) finish(status string) {
@@ -125,6 +129,7 @@ func (p *generationPreview) finish(status string) {
 	}
 	p.finished = true
 	p.publish(Progress{Kind: "candidate-finish", CandidateStatus: status})
+	p.notifier.Discard()
 }
 
 // previewFromContext 职责：读取单任务预览会话；使用：Builder 初始化和最终提交；边界：未启用时返回 nil。
@@ -189,6 +194,42 @@ func (b *builder) previewCheckpoint(stage string) {
 	}
 	b.preview.stage = stage
 	b.preview.notifier.Sync(preview.Scene{Objects: objects, Frame: preview.Frame{CoordinateSystem: preview.LayoutCoordinates}})
+	b.previewEntities = ids
+}
+
+// previewRouteAppend 职责：发布一条已提交路线的新带节点及起点连线；使用：routeTransportWithStrategy 的追加事务末端；边界：必须先完整同步全部端口，裁剪、平移和其它更新继续使用完整检查点。
+func (b *builder) previewRouteAppend(base int, source *placed) {
+	if b.preview == nil || !b.previewActive || b.preview.ctx.Err() != nil {
+		return
+	}
+	if base < 0 || base > len(b.all) || len(b.previewEntities) != base || b.previewEntities[source] == "" {
+		b.previewCheckpoint("routing")
+		return
+	}
+	for _, entity := range b.all[base:] {
+		if entity == nil || b.previewEntities[entity] != "" {
+			b.previewCheckpoint("routing")
+			return
+		}
+		b.previewEntities[entity] = b.preview.objectID(entity)
+	}
+	entities := make([]*placed, 1, len(b.all)-base+1)
+	entities[0] = source
+	entities = append(entities, b.all[base:]...)
+	objects := make([]preview.Object, 0, len(entities))
+	for _, entity := range entities {
+		record := entity.record
+		record.Index, record.AreaIndex = -1, 0
+		record.LocalOffset = blueprint.Point{X: float32(entity.a.x), Y: float32(entity.a.y), Z: float32(entity.a.z)}
+		record.LocalOffset2 = blueprint.Point{X: float32(entity.b.x), Y: float32(entity.b.y), Z: float32(entity.b.z)}
+		building := renderPreviewBuilding(record, entity.owner, true)
+		building.InputObjectID, building.OutputObjectID = b.previewEntities[entity.input], b.previewEntities[entity.output]
+		objects = append(objects, preview.Object{ID: b.previewEntities[entity], Building: building})
+	}
+	b.preview.stage = "routing"
+	if !b.preview.notifier.Patch(preview.Frame{CoordinateSystem: preview.LayoutCoordinates}, objects) {
+		b.previewCheckpoint("routing")
+	}
 }
 
 // rollbackPreview 职责：撤下真实失败或被放弃候选的全部临时对象；使用：候选失败边界；边界：不影响实体库存、告警或失败原因。
@@ -206,9 +247,17 @@ func (b *builder) rollbackPreview() {
 	b.previewActive = false
 }
 
-// renderPreviewBuilding 职责：从建筑记录摘取渲染值；使用：临时及最终姿态共用；边界：不复制参数和原始编码尾部，连接身份由调用方填写。
+// renderPreviewBuilding 职责：从建筑记录摘取渲染值；使用：临时及最终姿态共用；边界：不复制参数数组和原始编码尾部，只摘取配方与带标记物品两个图标字段，连接身份由调用方填写。
 func renderPreviewBuilding(record blueprint.Building, owner int, isTemporary bool) preview.Building {
-	return preview.Building{Index: record.Index, IsTemporary: isTemporary, ItemID: record.ItemID, ModelIndex: record.ModelIndex, AreaIndex: record.AreaIndex, LocalOffset: record.LocalOffset, LocalOffset2: record.LocalOffset2, Yaw: record.Yaw, Yaw2: record.Yaw2, Tilt: record.Tilt, Tilt2: record.Tilt2, Pitch: record.Pitch, Pitch2: record.Pitch2, InputFromSlot: record.InputFromSlot, OutputToSlot: record.OutputToSlot, ProductionIndex: owner}
+	return preview.Building{Index: record.Index, IsTemporary: isTemporary, ItemID: record.ItemID, ModelIndex: record.ModelIndex, AreaIndex: record.AreaIndex, LocalOffset: record.LocalOffset, LocalOffset2: record.LocalOffset2, Yaw: record.Yaw, Yaw2: record.Yaw2, Tilt: record.Tilt, Tilt2: record.Tilt2, Pitch: record.Pitch, Pitch2: record.Pitch2, InputFromSlot: record.InputFromSlot, OutputToSlot: record.OutputToSlot, ProductionIndex: owner, RecipeID: max(record.RecipeID, 0), IconItemID: previewBeltMarkerItem(record)}
+}
+
+// previewBeltMarkerItem 职责：取出传送带标记参数里的物品；使用：入口与出口的带标记图标；边界：只认传送带且参数不少于二的记录，其他建筑的参数含义不同，一律返回零。
+func previewBeltMarkerItem(record blueprint.Building) int32 {
+	if !surfaceIsBelt(record.ItemID) || len(record.Parameters) < 2 || record.Parameters[0] <= 0 {
+		return 0
+	}
+	return record.Parameters[0]
 }
 
 // previewAreas 职责：把蓝图区域转换为实时预览契约；使用：候选最终提交；边界：原始 Area 记录继续保持扁平结构。

@@ -31,6 +31,9 @@ const isPreviewBuilding = (value: unknown): boolean => {
     typeof value[key] === 'number' && Number.isFinite(value[key])
   )) && isIntegerAtLeast(value.inputFromSlot, -1) && isIntegerAtLeast(value.outputToSlot, -1)
     && isOptionalIdentity(value.inputObjectId) && isOptionalIdentity(value.outputObjectId)
+    // 图标字段由后端按需省略；出现时必须是非负整数，否则整条事件按协议错误处理
+    && (value.recipeId === undefined || isIntegerAtLeast(value.recipeId, 0))
+    && (value.iconItemId === undefined || isIntegerAtLeast(value.iconItemId, 0))
 }
 
 /** 职责：识别单个渲染操作；使用：事件校验与协议测试；边界：对象身份不能为空，撤销不允许夹带建筑。 */
@@ -79,6 +82,7 @@ const hasBuildingBatch = (value: unknown): boolean => {
 export const isFactoryGenerationProgressEvent = (value: unknown): value is FactoryGenerationProgressEvent => {
   if (!isRecord(value) || typeof value.taskId !== 'string' || !value.taskId
     || typeof value.stage !== 'string' || typeof value.message !== 'string'
+    || !isOptionalIdentity(value.detail)
     || !isIntegerAtLeast(value.current, 0) || !isIntegerAtLeast(value.total, 0)
     || value.total < value.current) return false
   if (value.protocolVersion === undefined && value.kind === undefined) return true

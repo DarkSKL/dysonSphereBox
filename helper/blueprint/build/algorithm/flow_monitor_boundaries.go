@@ -17,6 +17,10 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 	if !b.setting.EnableFlowMonitor || mode != 1 && b.directBoundaryUnits == nil {
 		return nil
 	}
+	monitorFootprint, err := prototypeLayoutFootprint(2030, b.models["2030"])
+	if err != nil {
+		return err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -46,7 +50,7 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 	incoming := make(map[*placed]int, len(b.all))
 	existing := map[vector][]*placed{}
 	items := map[*placed]map[int]bool{}
-	routes := b.denseBoundaryMonitorRoutes()
+	routes := b.uniqueMaterialBoundaryRoutes(b.denseBoundaryMonitorRoutes())
 	for index, entity := range b.all {
 		if index%64 == 0 {
 			if err = b.checkGeneration("原料入口监测占位索引"); err != nil {
@@ -138,6 +142,8 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 				}
 				begin := len(b.all)
 				monitor := b.make(2030, host.a.x, host.a.y, host.a.z)
+				monitor.flowMonitorHost = host
+				monitor.layoutFootprint = monitorFootprint
 				monitor.record.Yaw, monitor.record.Yaw2 = host.record.Yaw, host.record.Yaw
 				if powerErr = b.coverBoundaryFlowMonitor(host); powerErr != nil {
 					b.all = b.all[:begin]
@@ -161,7 +167,10 @@ func (b *builder) completeBoundaryFlowMonitors(ctx context.Context, mode int) (e
 			return boundaryFlowMonitorError(route, "独立原料带在合流前没有满足全布局建造盒与分拣器净空的监测节点")
 		}
 	}
-	if lanes == 0 {
+	if err = b.completeMode1DeliveryMonitors(ctx, monitorFootprint); err != nil {
+		return err
+	}
+	if lanes == 0 && b.mode1Deliveries == nil {
 		return nil
 	}
 	if err = b.validateBoundaryFlowMonitorLayout(ctx); err != nil {
@@ -250,6 +259,29 @@ func boundaryFlowMonitorMatches(host, entity *placed) bool {
 
 // validateBoundaryFlowMonitorLayout 职责：对监测器和补电后的全局实体重新执行静态、动态及供电规则；使用：入口监测收尾；边界：切平面预检不能替代 finish 的实际球面和游戏放置审计。
 func (b *builder) validateBoundaryFlowMonitorLayout(ctx context.Context) error {
+	if b.polarFrame != nil {
+		// 极区已经在原生球面落位，不能再按切平面把格坐标当作等距坐标检查整厂。
+		zone, _ := ctx.Value(densityLatitudeKey{}).(string)
+		layout := &SurfaceLayout{Mode: "autoTropic", GridSegment: 200, LatitudeZone: zone, polarRoot: true}
+		encoding, err := b.preparePolarRootEncoding(ctx, layout)
+		if err != nil {
+			return err
+		}
+		records, _, _, err := b.records()
+		if err != nil {
+			return err
+		}
+		if err := encoding.applyRecords(b.all, records); err != nil {
+			return err
+		}
+		if _, err := b.validateNativeSurfaceCandidates(ctx, Request{Density: densityDense, SurfaceLayout: layout}, encoding, records); err != nil {
+			return err
+		}
+		if b.setting.NeedPower == nil || *b.setting.NeedPower {
+			_, err = validateFinalPowerCoverage(ctx, encoding, records)
+		}
+		return err
+	}
 	records, _, _, err := b.records()
 	if err != nil {
 		return err

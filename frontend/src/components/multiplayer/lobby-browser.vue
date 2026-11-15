@@ -3,6 +3,7 @@ import {ArrowRight, KeyRound, LockKeyhole, Plus, RefreshCw, Search} from '@lucid
 import {computed, ref, watch} from 'vue'
 import type {LobbyQuery, MultiplayerState, RoomSummary} from '../../types/multiplayer'
 import {portText} from '../../utils/multiplayer'
+import MultiplayerAvatar from './avatar.vue'
 
 // =============== 大厅浏览与筛选 ===============
 // 说明：列表来自后端投影；输入草稿提交后才搜索，排序、分页和每页条数交给页面更新请求。
@@ -85,7 +86,8 @@ function createdText(ms: number): string {
             <h3 :title="item.name">{{ item.name }}</h3>
             <p class="port-text" :title="(item.ports ?? []).map(portText).join(' · ')">{{ (item.ports ?? []).map(portText).join(' · ') || '未声明端口' }}</p>
           </div>
-          <span class="col-host host-name" role="cell" :title="item.hostNickname">{{ item.hostNickname }}</span>
+          <!-- * 房主头像复用会话摘要与统一回退，昵称继续截断，窄屏随房主列隐藏。 -->
+          <span class="col-host host-name" role="cell" :title="item.hostNickname"><span class="host-avatar"><MultiplayerAvatar :source="item.hostHeaderImg" :identity="item.roomId" /></span><span class="host-nickname">{{ item.hostNickname }}</span></span>
           <div class="occupancy" role="cell" :aria-label="`${item.memberCount} / ${item.maxMembers} 人`">
             <span class="type-display">{{ item.memberCount }}<small> / {{ item.maxMembers }}</small></span>
             <span class="occupancy-track" aria-hidden="true"><i :style="{width: `${Math.min(100, item.memberCount / Math.max(1, item.maxMembers) * 100)}%`}" /></span>
@@ -141,7 +143,9 @@ function createdText(ms: number): string {
 .room-info { min-width: 0; }
 .room-info h3 { margin: 0 0 4px; font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .port-text { margin: 0; color: var(--ds-text-secondary); font-family: var(--ds-font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.host-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.host-avatar { width: 28px; height: 28px; flex: none; overflow: hidden; border-radius: 4px; }
+.host-nickname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .occupancy { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-size: 15px; font-variant-numeric: tabular-nums; }
 .occupancy small { color: var(--ds-text-secondary); font-size: 12px; }
 .occupancy-track { width: 56px; height: 3px; background: var(--ds-border-default); }

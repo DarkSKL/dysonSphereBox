@@ -11,6 +11,7 @@ import (
 	"io"
 
 	giteeSource "DysonSphereBox/helper/updater/gitee/source"
+	"DysonSphereBox/helper/updater/progress"
 	selfupdate "github.com/creativeprojects/go-selfupdate"
 	selfupdateApply "github.com/creativeprojects/go-selfupdate/update"
 )
@@ -32,7 +33,7 @@ func ApplyRelease(ctx context.Context, source *giteeSource.Source, release *self
 		}
 	}(reader)
 
-	assetData, err := io.ReadAll(reader)
+	assetData, err := progress.ReadAll(reader, int64(release.AssetByteSize), config.DownloadProgress)
 	if err != nil {
 		return fmt.Errorf("read release asset %q: %w", release.AssetName, err)
 	}

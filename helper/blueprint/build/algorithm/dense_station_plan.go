@@ -74,7 +74,7 @@ func (b *builder) assembleDenseStationRows(ctx context.Context, input contract.S
 		for _, work := range zone.Productions {
 			production, recipe := input.Plan.Productions[work.Index], input.Productions[work.Index].Recipe
 			leftovers := b.stationLeftoverKinds(work.Index)
-			counts, err := denseStationRowCounts(production, recipe, b.setting, work.Counts, maxSpan)
+			counts, err := b.layoutDenseSpatialRows(production, recipe, work.Counts, maxSpan)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -161,15 +161,13 @@ func (b *builder) denseStationStreetEligible(production quant.Production, recipe
 	return production.MachineCount > 1 && b.referenceLowTrackEligible(production, recipe)
 }
 
-// denseStationRowCounts 职责：把过长机器链进一步均衡拆分为可交错的有限跨度；使用：矩形塔全场装配；边界：只细分已核验单带组，保持总数与设备等级，研究站按实际分拣能力允许的层数计算。
-func denseStationRowCounts(production quant.Production, recipe quant.Recipe, setting Setting, counts []int, maxSpan float64) ([]int, error) {
-	return denseSpatialRowCounts(production, recipe, setting, counts, maxSpan)
-}
-
 // trimDenseStationTails 职责：在空间搜索前删除实际取放点之外的无用局部带尾；使用：避免预留不存在于最终产物的轮廓；边界：保留喷涂、监测器、机器臂和所有塔入口。
 func (b *builder) trimDenseStationTails(rows []*denseStationRow, routes []denseStationRoute) error {
 	required, removed := map[*placed]bool{}, map[*placed]bool{}
 	preserveDenseCargoNeighborhoods(b.all, required)
+	if err := preserveFlowMonitorHosts(b.all, required); err != nil {
+		return err
+	}
 	for _, entity := range b.all {
 		required[entity.input] = true
 		if !surfaceIsBelt(entity.record.ItemID) {

@@ -19,12 +19,19 @@ const denseRouteMaximumSpan = 2.15
 
 // denseRoutePortIndex 职责：索引当前真实静态盒和带节点；使用：分数接驳及整数边检查；边界：普通模式额外检查带段交叉，超密度保留原路由规则。
 type denseRoutePortIndex struct {
-	boxes []connectedPackingShape
+	// footprintLow/High 职责：保存接线前实体包络；使用：外绕软代价；边界：新增路线不扩大此基准，空索引不启用。
+	footprintLow, footprintHigh vector
+	footprintReady              bool
+	// polarFrame 职责：令所有距离及静态盒使用同一原生球面；使用：跨子环接线；边界：nil仍用既有平面预检。
+	polarFrame *densePolarFrame
+	boxes      []connectedPackingShape
 	// strictBelts 职责：普通布局寻路时禁止与已提交的独立带段相交；使用：共享塔/配送全场候选；边界：超密度保留原带段规则，最终仍统一验收。
 	strictBelts bool
-	belts       []surfaceBeltSpan
-	beltCells   map[[3]int][]int
-	beltEdges   map[[2]*placed]bool
+	// boundary 职责：为左侧输入输出区启用严格带段规则；使用：三层独立接口；边界：厂内密铺不因本字段变成普通碰撞模式。
+	boundary  *denseBoundaryLayout
+	belts     []surfaceBeltSpan
+	beltCells map[[3]int][]int
+	beltEdges map[[2]*placed]bool
 	// origins 职责：保存每个静态盒所属建筑的切平面原点；使用：临界高架顶部的局部球面投影；边界：不修改模型盒尺寸。
 	origins  []placement.Vector
 	owners   []*placed
@@ -35,6 +42,8 @@ type denseRoutePortIndex struct {
 	// integerEdges 职责：缓存实际边界内无权限整数邻边；使用：避免稀疏缓存饱和后重复实算；边界：动态节点及原生端口权限始终独立判断。
 	integerEdges *denseIntegerEdgeCache
 	registered   map[*placed]bool
+	// staticQuery/beltQuery 职责：分别去重静态盒与动态带段的宽相位结果；使用：串行路由查询；边界：两阶段独立，不缓存动态碰撞结论。
+	staticQuery, beltQuery collisionQueryMarks
 }
 
 // newDenseRoutePortIndex 职责：沿用全场真实轮廓的静态模型建立接驳索引；使用：密铺寻路开始；边界：不把分拣器粗矩形加回密铺障碍。
@@ -44,7 +53,16 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 		return nil, err
 	}
 	index := &denseRoutePortIndex{strictBelts: b.adapter != nil && b.adapter.density == densityStandard, cells: map[[3]int][]int{}, nodes: map[[3]int][]*placed{}, previous: map[*placed][]*placed{}, edges: map[[2]vector]bool{}, registered: map[*placed]bool{}, beltCells: map[[3]int][]int{}, beltEdges: map[[2]*placed]bool{}}
+	if len(b.all) > 0 {
+		index.footprintLow, index.footprintHigh = bounds(b.all)
+		index.footprintReady = true
+	}
 	encoding := newPlanarRuleEncoding()
+	if b.polarFrame != nil {
+		frame := *b.polarFrame
+		index.polarFrame = &frame
+		encoding = &surfaceEncoding{}
+	}
 	for _, entity := range b.all {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -52,11 +70,14 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 		if surfaceIsBelt(entity.record.ItemID) || entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
 			continue
 		}
-		shapes, err := catalog.Shapes(entity.record.ItemID, entity.record.ModelIndex)
+		shapes, err := splitterClearanceShapes(catalog, entity.record.ItemID, entity.record.ModelIndex)
 		if err != nil {
 			return nil, err
 		}
 		origin := placement.Vector{entity.a.x * planarGridLength, entity.a.z*1.3333333 + .2, entity.a.y * planarGridLength}
+		if index.polarFrame != nil {
+			origin = index.polarFrame.world(entity.a, 0)
+		}
 		for _, collider := range shapes {
 			box, err := encoding.colliderBox(vector{origin[0], origin[1], origin[2]}, entity.record.Yaw, collider)
 			if err != nil {
@@ -87,6 +108,14 @@ func denseRouteWorld(p vector) placement.Vector {
 	return placement.Vector{p.x * planarGridLength, p.z*1.3333333 + .4, p.y * planarGridLength}
 }
 
+// world 职责：在索引固定坐标系内计算带节点中心；使用：全部边和净距检查；边界：不能混用平面盒和球面点。
+func (index *denseRoutePortIndex) world(p vector) placement.Vector {
+	if index.polarFrame != nil {
+		return index.polarFrame.world(p, .2)
+	}
+	return denseRouteWorld(p)
+}
+
 // denseRouteNodeCell 职责：索引带节点所在的八米空间桶；使用：动态占位；边界：查询会枚举净距球覆盖的所有桶。
 func denseRouteNodeCell(p placement.Vector) [3]int {
 	return [3]int{int(math.Floor(p[0] / 8)), int(math.Floor(p[1] / 8)), int(math.Floor(p[2] / 8))}
@@ -102,13 +131,13 @@ func (index *denseRoutePortIndex) addNode(p *placed) {
 		return
 	}
 	index.registered[p] = true
-	cell := denseRouteNodeCell(denseRouteWorld(p.a))
+	cell := denseRouteNodeCell(index.world(p.a))
 	index.nodes[cell] = append(index.nodes[cell], p)
 }
 
-// addBeltSpan 职责：增量登记真实有向带段；使用：普通全场候选每次提交路线后；边界：仅供寻路避碰，不改变实体连接或密铺模式。
+// addBeltSpan 职责：增量登记真实有向带段；使用：普通全场与密铺外部接口寻路；边界：仅供带段避碰，不改变实体连接或厂内密铺规则。
 func (index *denseRoutePortIndex) addBeltSpan(p *placed) {
-	if !index.strictBelts || p.output == nil || !surfaceIsBelt(p.output.record.ItemID) {
+	if p.output == nil || !surfaceIsBelt(p.output.record.ItemID) || !index.strictBelts && !index.boundarySegment(p.a, p.output.a) {
 		return
 	}
 	key := [2]*placed{p, p.output}
@@ -116,7 +145,7 @@ func (index *denseRoutePortIndex) addBeltSpan(p *placed) {
 		return
 	}
 	index.beltEdges[key] = true
-	first, second := denseRouteWorld(p.a), denseRouteWorld(p.output.a)
+	first, second := index.world(p.a), index.world(p.output.a)
 	span := connectedBeltShape(first, second)
 	index.belts = append(index.belts, span.span)
 	number := len(index.belts) - 1
@@ -126,20 +155,19 @@ func (index *denseRoutePortIndex) addBeltSpan(p *placed) {
 	})
 }
 
-// beltSpanClear 职责：普通模式拒绝穿越已存在带段的新增边；使用：低轨接驳及整数寻路；边界：共同端点由连通性检查处理，静态净空另行检查。
+// beltSpanClear 职责：拒绝普通布局及密铺接口区的独立带段交叉；使用：低轨接驳及整数寻路；边界：共同端点由节点身份/连通性检查处理，静态净空另行检查。
 func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
-	if !index.strictBelts {
+	if !index.strictBelts && !index.boundarySegment(first, second) {
 		return true
 	}
-	a, c := denseRouteWorld(first), denseRouteWorld(second)
+	a, c := index.world(first), index.world(second)
 	candidate := connectedBeltShape(a, c)
-	seen := map[int]bool{}
+	index.beltQuery.begin(len(index.belts))
 	clear := connectedShapeCells(candidate, func(cell [3]int) bool {
 		for _, number := range index.beltCells[cell] {
-			if seen[number] {
+			if index.beltQuery.seen(number) {
 				continue
 			}
-			seen[number] = true
 			existing := index.belts[number]
 			if a == existing.ends[0] || a == existing.ends[1] || c == existing.ends[0] || c == existing.ends[1] {
 				continue
@@ -155,7 +183,7 @@ func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
 
 // nodeClear 职责：检查新节点不会被现有带自动合并；使用：分数接驳；边界：只豁免明确复用的已有端点自身，不豁免其它同物料节点。
 func (index *denseRoutePortIndex) nodeClear(p vector, reused *placed) bool {
-	world := denseRouteWorld(p)
+	world := index.world(p)
 	padding := placement.Vector{denseRouteNodeClearance, denseRouteNodeClearance, denseRouteNodeClearance}
 	low, high := denseRouteNodeCell(world.Sub(padding)), denseRouteNodeCell(world.Add(padding))
 	for x := low[0]; x <= high[0]; x++ {
@@ -165,7 +193,7 @@ func (index *denseRoutePortIndex) nodeClear(p vector, reused *placed) bool {
 					if existing == reused && existing.a == p {
 						continue
 					}
-					delta := world.Sub(denseRouteWorld(existing.a))
+					delta := world.Sub(index.world(existing.a))
 					if delta.Dot(delta) < denseRouteNodeClearance*denseRouteNodeClearance-1e-9 {
 						return false
 					}
@@ -183,6 +211,9 @@ func (index *denseRoutePortIndex) spanClear(first, second vector) bool {
 
 // spanClearWithLinks 职责：只为真实原生端口的有限连接跳数应用逐端点豁免；使用：portal端部；边界：无端口身份时仍按完整静态带段检查，许可不进入无权限缓存。
 func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links map[*placed][2]bool) bool {
+	if !index.boundarySpanAllowed(first, second) {
+		return false
+	}
 	slot, shift := -1, uint(0)
 	if len(links) == 0 {
 		slot, shift = index.integerEdges.slot(first, second)
@@ -202,7 +233,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 			return clear && index.beltSpanClear(first, second)
 		}
 	}
-	a, c := denseRouteWorld(first), denseRouteWorld(second)
+	a, c := index.world(first), index.world(second)
 	delta := a.Sub(c)
 	lengthSquared := delta.Dot(delta)
 	clear := lengthSquared >= denseRouteNodeClearance*denseRouteNodeClearance-1e-9 && lengthSquared <= denseRouteMaximumSpan*denseRouteMaximumSpan+1e-9
@@ -210,15 +241,18 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 		span := connectedBeltShape(a, c)
 		// 曲率只可能把擦顶带向对象局部切平面降低；扩大查询范围以发现跨空间桶的临界顶部，不扩大任何碰撞盒。
 		span.low[1] -= .5
-		seen := map[int]bool{}
+		index.staticQuery.begin(len(index.boxes))
 		connectedShapeCells(span, func(cell [3]int) bool {
 			for _, n := range index.cells[cell] {
-				if seen[n] {
+				if index.staticQuery.seen(n) {
 					continue
 				}
-				seen[n] = true
 				if n < len(index.owners) {
-					allowed := links[index.owners[n]]
+					owner := index.owners[n]
+					allowed := links[owner]
+					if owner.record.ItemID == 2020 && !index.splitterRouteSpanAllowed(owner, first, second, allowed) {
+						allowed = [2]bool{}
+					}
 					if (allowed[0] || allowed[1]) && (allowed[0] || index.boxes[n].box.SegmentDistanceSquared(a, a) >= .23*.23-1e-6) && (allowed[1] || index.boxes[n].box.SegmentDistanceSquared(c, c) >= .23*.23-1e-6) {
 						continue
 					}
@@ -227,7 +261,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 					clear = false
 					break
 				}
-				if n < len(index.origins) && math.Min(a[1], c[1]) > index.boxes[n].high[1] {
+				if index.polarFrame == nil && n < len(index.origins) && math.Min(a[1], c[1]) > index.boxes[n].high[1] {
 					firstCurved := denseRouteCurvedPoint(a, index.origins[n])
 					secondCurved := denseRouteCurvedPoint(c, index.origins[n])
 					if index.boxes[n].box.SegmentDistanceSquared(firstCurved, secondCurved) < .23*.23-1e-6 {
@@ -338,7 +372,7 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 			return false
 		}
 		for _, previous := range path {
-			delta := denseRouteWorld(previous).Sub(denseRouteWorld(p))
+			delta := index.world(previous).Sub(index.world(p))
 			if delta.Dot(delta) < denseRouteNodeClearance*denseRouteNodeClearance-1e-9 {
 				return false
 			}
@@ -427,6 +461,14 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 			return len(a.points) < len(c.points)
 		}
 		x, y := a.points[len(a.points)-1], c.points[len(c.points)-1]
+		// 外供接口同距离先保留直出，避免被两条侧移挤掉形成 U 形绕路；厂内接驳及目标端保留原有候选次序。
+		if sourceSide && index.boundarySegment(endpoint.a, endpoint.a) {
+			forwardA := (x.x-endpoint.a.x)*outward.x + (x.y-endpoint.a.y)*outward.y
+			forwardC := (y.x-endpoint.a.x)*outward.x + (y.y-endpoint.a.y)*outward.y
+			if math.Abs(forwardA-forwardC) > 1e-6 {
+				return forwardA > forwardC
+			}
+		}
 		if x.x != y.x {
 			return x.x < y.x
 		}
@@ -451,6 +493,7 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 func (env *transportEnvironment) densePathClear(points []vector, source, target *placed) bool {
 	firstLinks := env.densePorts.linkedPortBuildings(source, true)
 	lastLinks := env.densePorts.linkedPortBuildings(target, false)
+	self := newDenseRouteSelfIndex(len(points))
 	for i, point := range points {
 		var reused *placed
 		if i == 0 {
@@ -472,107 +515,54 @@ func (env *transportEnvironment) densePathClear(points []vector, source, target 
 				return false
 			}
 		}
-		for j := 0; j < i; j++ {
-			delta := denseRouteWorld(point).Sub(denseRouteWorld(points[j]))
-			if delta.Dot(delta) < denseRouteNodeClearance*denseRouteNodeClearance-1e-9 {
-				return false
-			}
+		if !self.addClear(env.densePorts.world(point)) {
+			return false
 		}
 	}
 	return true
 }
 
-// findDenseTransportPath 职责：把连续端口前后缀和整数A*合成为真实路径；使用：密铺直连及配送；边界：返回包含复用目标但不包含源的路径，合流索引始终对应原完整尾链。
+// findDenseTransportPath 职责：按完整端口路线代价比较最低可行源高度层；使用：密铺直连及配送；边界：返回不含源且包含复用目标的路径，合流索引保持原尾链身份，取消丢弃未提交结果。
 func (env *transportEnvironment) findDenseTransportPath(ctx context.Context, route *transportRoute, tail []*placed, incoming map[*placed]int, preferred vector) (points []vector, tailIndex, expanded, maximum, searches int) {
 	tailIndex = -1
-	source, target := route.start, route.end
+	source, target := route.transportSource(), route.end
 	var targetPortals []denseRoutePortal
 	if len(tail) == 0 {
 		fallback := vector{x: -1}
 		if route.to != nil {
 			fallback = denseRotateVector(fallback, route.to.quarterTurns)
 		}
-		// 裸带回收边界保持既有东向入口；塔/箱黑盒边界由其真实内侧邻居决定接驳方向。
+		// 裸带回收边界保持既有东向入口；塔/箱黑盒由真实内侧邻居确定方向。
 		targetPortals = env.densePortals(target, source, target, fallback, false, route.to == nil && route.edge.FlowKind == "leftover" && route.boundary == route.end)
 	}
-	// 一个整数高度层内的全部半层候选必须一起排序，才能保留全量枚举的原有优先级。
-	// 低层已连通时不构造更高前缀；失败时仍逐层覆盖原先的全部高度，目标集合保持完整。
 	tried := map[vector]bool{}
-	// 既有端点可能略高于搜索顶层；仍保留全量枚举允许的向下短接，搜索上限只限制新增节点。
 	initialHeight := math.Min(transportMaxHeight, math.Max(0, math.Ceil(source.a.z)))
 	for height := initialHeight; height <= transportMaxHeight; height++ {
-		if ctx.Err() != nil {
-			return
-		}
+		var best []vector
+		bestIndex, bestLength, bestCost := -1, math.MaxInt, math.Inf(1)
 		for _, prefix := range env.densePortals(source, source, target, preferred, true, false, height) {
 			if ctx.Err() != nil {
-				return
+				return nil, -1, expanded, maximum, searches
 			}
 			start := prefix.points[len(prefix.points)-1]
 			if tried[start] {
 				continue
 			}
 			tried[start] = true
-			// 临时占位让整数搜索避开自身的分数前缀；查询结束恢复原占位版本。
-			added := map[vector]bool{}
-			for _, point := range prefix.points[1 : len(prefix.points)-1] {
-				cells := map[vector]bool{}
-				blockDenseBeltNode(cells, point)
-				for cell := range cells {
-					if cell != start && !env.blocked[cell] {
-						env.blocked[cell], added[cell] = true, true
-					}
-				}
-			}
-			restore := func() {
-				for point := range added {
-					delete(env.blocked, point)
-				}
-			}
-			if len(tail) > 0 {
-				path, selected, steps := env.findTransportMergePath(ctx, start, tail, source, target, incoming)
-				expanded, maximum, searches = expanded+steps, max(maximum, steps), searches+1
-				restore()
-				if selected >= 0 {
-					full := append(append([]vector{}, prefix.points[:len(prefix.points)-1]...), path...)
-					if env.densePathClear(full, source, tail[selected]) {
-						return full[1:], selected, expanded, maximum, searches
-					}
-				}
+			if env.transportPathCost(prefix.points) > bestCost {
 				continue
 			}
-			goals := make([]vector, 0, len(targetPortals))
-			byGoal := map[vector]denseRoutePortal{}
-			for _, suffix := range targetPortals {
-				goal := suffix.points[len(suffix.points)-1]
-				if !env.blocked[goal] {
-					goals, byGoal[goal] = append(goals, goal), suffix
-				}
+			full, selected, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, route, tail, incoming, prefix, targetPortals)
+			expanded, maximum, searches = expanded+steps, max(maximum, peak), searches+calls
+			if len(full) > 0 && (cost < bestCost || cost == bestCost && length < bestLength) {
+				best, bestIndex, bestCost, bestLength = full, selected, cost, length
 			}
-			// 从低到高提供目标，路径仍由同一次多目标搜索在固定预算内选择。
-			for attempts := 0; attempts < 4 && len(goals) > 0; attempts++ {
-				path, goal, steps := env.findTransportDestinationPath(ctx, start, goals, source, target)
-				expanded, maximum, searches = expanded+steps, max(maximum, steps), searches+1
-				if len(path) == 0 {
-					break
-				}
-				full := append(append([]vector{}, prefix.points[:len(prefix.points)-1]...), path...)
-				suffix := byGoal[goal].points
-				for i := len(suffix) - 2; i >= 0; i-- {
-					full = append(full, suffix[i])
-				}
-				if env.densePathClear(full, source, target) {
-					restore()
-					return full[1:], -1, expanded, maximum, searches
-				}
-				for i, candidate := range goals {
-					if candidate == goal {
-						goals = append(goals[:i], goals[i+1:]...)
-						break
-					}
-				}
-			}
-			restore()
+		}
+		if ctx.Err() != nil {
+			return nil, -1, expanded, maximum, searches
+		}
+		if len(best) > 0 {
+			return best[1:], bestIndex, expanded, maximum, searches
 		}
 	}
 	return

@@ -6,7 +6,7 @@ package build
 // denseShapeKind 职责：归一内部类别键；使用：索引未知类别；边界：未知形状仍参与所有保守查询。
 func denseShapeKind(kind string) string {
 	switch kind {
-	case "static", "inserter", "belt", "port", "power", "dense-node", "dense-monitor", "dense-monitor-arm":
+	case "static", "splitter-selection", "inserter", "belt", "port", "power", "dense-node", "dense-monitor", "dense-monitor-arm":
 		return kind
 	default:
 		return "unknown"
@@ -32,7 +32,7 @@ func (packing *connectedPacking) indexDenseKinds() {
 }
 
 // denseQueryBuckets 职责：按既有denseSpatialConflict分派可能冲突类别；使用：缩小宽相位枚举；边界：未知查询回退完整索引。
-func (packing *connectedPacking) denseQueryBuckets(kind string) (buckets [5]map[[3]int][]int, count int) {
+func (packing *connectedPacking) denseQueryBuckets(kind string) (buckets [6]map[[3]int][]int, count int) {
 	var kinds []string
 	switch kind {
 	case "dense-monitor":
@@ -44,13 +44,15 @@ func (packing *connectedPacking) denseQueryBuckets(kind string) (buckets [5]map[
 	case "power":
 		kinds = []string{"power", "unknown"}
 	case "static":
-		kinds = []string{"static", "belt", "port", "unknown"}
+		kinds = []string{"static", "splitter-selection", "belt", "port", "unknown"}
+	case "splitter-selection":
+		kinds = []string{"static", "splitter-selection", "inserter", "belt", "port", "unknown"}
 	case "inserter":
-		kinds = []string{"inserter", "port", "unknown"}
+		kinds = []string{"inserter", "splitter-selection", "port", "unknown"}
 	case "belt":
-		kinds = []string{"static", "port", "unknown"}
+		kinds = []string{"static", "splitter-selection", "port", "unknown"}
 	case "port":
-		kinds = []string{"static", "inserter", "belt", "port", "unknown"}
+		kinds = []string{"static", "splitter-selection", "inserter", "belt", "port", "unknown"}
 	default:
 		buckets[0] = packing.cells
 		return buckets, 1

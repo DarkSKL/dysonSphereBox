@@ -32,6 +32,13 @@ type connectedLayoutVariant struct {
 	streetGroupLimit int
 	// pairedOutputs 职责：标识真实双侧过滤布局；使用：有限多去向候选；边界：旧单侧可行候选继续独立保留。
 	pairedOutputs bool
+	// capacityFill 职责：选择单带能力优先填满的独立密铺分组；使用：有界布局比较；边界：原均衡候选和请求设置保持不变。
+	capacityFill bool
+	// producerSplits/splitterModel 职责：选择独立产物分流树及其真实形态；使用：有限几何候选；边界：原过滤候选保留，模型改变必须重新装配并通过完整校验。
+	producerSplits bool
+	splitterModel  int16
+	// bentRows 职责：选择真实短run的L/U折行；使用：独立密铺候选；边界：直线方案保留，不按外包矩形独占折角空间。
+	bentRows bool
 }
 
 // connectedLayoutVariants 职责：生成有限的矩形/轮廓排版候选；使用：布局测试与生成器扩展；边界：不扩大候选预算，不绕过碰撞和路线规则。
@@ -66,6 +73,9 @@ func connectedLayoutVariants(req Request, limits []float64) []connectedLayoutVar
 
 // generateConnected 职责：在固定预算内选择最小面积可行候选；使用：直连带主链；边界：候选必须通过最终数值、连通和编码检查，不以矩形面积替代可行性。
 func (b *builder) generateConnected(ctx context.Context, req Request, dataset *quant.Dataset) (Result, error) {
+	if denseNativeLatitude(req) && req.Plan.MachineCount >= 90 {
+		ctx = context.WithValue(ctx, denseMaterialNetworksKey{}, true)
+	}
 	limits, err := b.layoutHeightCandidates(ctx, req, dataset, true)
 	if err != nil {
 		return Result{}, err
@@ -73,11 +83,18 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 	variants := connectedLayoutVariants(req, limits)
 	removed := 0
 	if req.Density == densityDense {
+		variants = appendDenseCapacityFillVariants(req, variants)
+		variants = appendDenseSplitterVariants(req, variants)
+		variants = appendDenseBentVariants(req, limits, variants)
 		keys, err := b.denseConnectedStreetPlanKeys(ctx, req, dataset)
 		if err != nil {
 			return Result{}, err
 		}
-		variants, removed = deduplicateDenseStreetVariants(variants, keys)
+		capacityKeys, err := b.denseConnectedStreetPlanKeys(ctx, req, dataset, true)
+		if err != nil {
+			return Result{}, err
+		}
+		variants, removed = deduplicateDenseStreetVariants(variants, keys, capacityKeys)
 		paired, err := b.hasDensePairedOutputGroups(ctx, req, dataset)
 		if err != nil {
 			return Result{}, err
@@ -85,7 +102,7 @@ func (b *builder) generateConnected(ctx context.Context, req Request, dataset *q
 		if paired {
 			original := append([]connectedLayoutVariant{}, variants...)
 			for _, variant := range original {
-				if variant.street && variant.streetGroupLimit == 0 {
+				if variant.street && variant.streetGroupLimit == 0 && !variant.capacityFill {
 					variant.pairedOutputs = true
 					variants = append(variants, variant)
 				}
@@ -104,12 +121,15 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 	layouts := len(variants)
 	budget := layouts * 2
 	var best *Result
+	var bestKey string
 	var lastError error
 	var searchCandidates []SearchCandidateDiagnostic
 	evaluated, rejected := 0, 0
+	stoppedAfterFeasibleWave := false
 	type connectedEvaluation struct {
 		out         Result
 		dense       bool
+		key         string
 		err         error
 		diagnostics []SearchCandidateDiagnostic
 	}
@@ -125,12 +145,25 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 			indices[index] = group*layouts + index
 		}
 		previews := b.planCandidatePreviews(layouts)
-		waveErr := search.Waves(ctx, indices, b.candidateWorkers(ctx, layouts), func(ctx context.Context, localIndex int, candidateIndex int) (evaluation connectedEvaluation) {
+		workers := b.candidateWorkers(ctx, layouts)
+		feasibleWave := newConnectedFeasibleWave(ctx, req)
+		executionCtx := ctx
+		if feasibleWave != nil {
+			executionCtx = feasibleWave.ctx
+		}
+		execute := func(_ context.Context, localIndex int, candidateIndex int) (evaluation connectedEvaluation) {
+			ctx := executionCtx
 			ctx, finishPerformance := beginCandidatePerformance(ctx, "connected", candidateIndex)
 			defer func() { finishPerformance(evaluation.err) }()
 			var lastError error
 			var searchCandidates []SearchCandidateDiagnostic
-			defer func() { evaluation.err = lastError; evaluation.diagnostics = searchCandidates }()
+			defer func() {
+				evaluation.err = lastError
+				evaluation.diagnostics = searchCandidates
+				if lastError == nil && evaluation.out.LogisticsSummary != nil {
+					feasibleWave.complete()
+				}
+			}()
 			legacyInputs := candidateIndex >= layouts
 			layoutIndex := candidateIndex % layouts
 			limit, compact := variants[layoutIndex].Limit, variants[layoutIndex].Compact
@@ -167,6 +200,16 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 				candidate.denseStreetCandidate, candidate.denseStreetRotation = variants[layoutIndex].street, variants[layoutIndex].streetRotation
 				candidate.denseStreetGroupLimit = variants[layoutIndex].streetGroupLimit
 				candidate.densePairedOutputs = variants[layoutIndex].pairedOutputs
+				candidate.denseCapacityFill = req.Mode == 1 && variants[layoutIndex].capacityFill
+				if variants[layoutIndex].producerSplits {
+					ctx = context.WithValue(ctx, denseProducerSplittersKey{}, true)
+				}
+				if variants[layoutIndex].splitterModel != 0 {
+					ctx = context.WithValue(ctx, splitterGateModelKey{}, variants[layoutIndex].splitterModel)
+				}
+				if variants[layoutIndex].bentRows {
+					ctx = context.WithValue(ctx, denseBentRowsKey{}, true)
+				}
 				candidate.connectedGlobalPower = req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "planar"
 			}
 			candidate.generationCtx = ctx
@@ -179,7 +222,11 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 				if candidate.denseStreetCandidate {
 					parameters += fmt.Sprintf(";continuousStreet=true;streetRotation=%d;streetGroupLimit=%d", candidate.denseStreetRotation, candidate.denseStreetGroupLimit)
 				}
-				parameters += fmt.Sprintf(";pairedOutputs=%t", candidate.densePairedOutputs)
+				parameters += fmt.Sprintf(";pairedOutputs=%t;capacityFill=%t", candidate.densePairedOutputs, candidate.denseCapacityFill)
+				producerSplits, _ := ctx.Value(denseProducerSplittersKey{}).(bool)
+				splitterModel, _ := splitterGateModel(ctx)
+				parameters += fmt.Sprintf(";producerSplits=%t;splitterModel=%d", producerSplits, splitterModel)
+				parameters += fmt.Sprintf(";bentRows=%t", variants[layoutIndex].bentRows)
 			}
 			if err = candidate.assembleConnectedVariant(ctx, req, dataset, limit, compact); err != nil {
 				searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "assembly", err), candidate.logistics)
@@ -202,12 +249,16 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 				candidate.rollbackPreview()
 				return
 			}
-			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", nil), out.LogisticsSummary)
+			parameters += fmt.Sprintf(";area=%.3f;beltMeters=%.3f;externalInputs=%d", out.LogisticsSummary.Metrics.EnvelopeArea, out.LogisticsSummary.Metrics.TotalBeltLengthMeters, out.LogisticsSummary.Metrics.ExternalInputCount)
+			diagnostic := newSearchCandidateDiagnostic("connected-layout", candidateIndex, parameters, "final-validation", nil)
+			searchCandidates = appendSearchCandidateDiagnostics(searchCandidates, diagnostic, out.LogisticsSummary)
 
 			evaluation.out = out
 			evaluation.dense = candidate.denseSpatial
+			evaluation.key = diagnostic.Key
 			return
-		}, func(_ int, evaluation connectedEvaluation) error {
+		}
+		reduce := func(_ int, evaluation connectedEvaluation) error {
 			evaluated++
 			searchCandidates = append(searchCandidates, evaluation.diagnostics...)
 			if evaluation.err != nil {
@@ -230,9 +281,21 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 			}
 			if better {
 				best = &out
+				bestKey = evaluation.key
 			}
 			return nil
-		})
+		}
+		var waveErr error
+		if feasibleWave != nil {
+			waveErr = search.Stream(ctx, executionCtx, indices, workers, execute, reduce)
+		} else {
+			waveErr = search.Waves(ctx, indices, workers, execute, reduce)
+		}
+		feasibleWave.close()
+		if waveErr == nil && feasibleWave != nil && best != nil {
+			stoppedAfterFeasibleWave = true
+			break
+		}
 		if waveErr != nil {
 			return Result{}, previewContextError(waveErr)
 		}
@@ -251,6 +314,11 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 	}
 	best.LogisticsSummary.Metrics.EvaluatedCandidates = evaluated
 	best.LogisticsSummary.Metrics.RejectedCandidates = rejected
+	for i := range searchCandidates {
+		if searchCandidates[i].Key == bestKey {
+			searchCandidates[i].Reason = "通过完整检查并获选"
+		}
+	}
 	best.LogisticsSummary.SearchCandidates = searchCandidates
 	searchMessage := fmt.Sprintf("最多 %d 个候选：先比较 %d 个就近入口矩形/轮廓布局，仅在全部不可行时独立重建兼容入口布局；评估 %d、拒绝 %d，按面积和内部带长选择可行方案，不代表数学全局最优", budget, layouts, evaluated, rejected)
 	if req.Density == densityDense {
@@ -260,6 +328,9 @@ func (b *builder) generateConnectedVariants(ctx context.Context, req Request, da
 				searchMessage += "；第3档指定边缘优先选择实际靠边且通过完整校验的候选，再比较空间与线路"
 			}
 		}
+	}
+	if stoppedAfterFeasibleWave {
+		searchMessage += "；大型原生直连连续复用空闲计算槽，首个完整候选通过终检后最多比较5秒，并按原索引归约所有已完成候选；临近父截止时预留5秒返回，未完成候选取消且不作为部分蓝图返回"
 	}
 	best.LogisticsSummary.Checks = append(best.LogisticsSummary.Checks, LogisticsCheck{RuleID: "bounded-layout-search", Status: "passed", Message: searchMessage})
 	return *best, nil
@@ -498,11 +569,17 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			columnWidth = math.Max(columnWidth, placementX-x+width)
 		}
 		if len(b.all) > blueprint.MaxBuildingCount {
-			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "机器和过滤端口超过 20 万建筑，请拆分目标"}
+			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "机器和过滤端口超过 30 万建筑，请拆分目标"}
 		}
 	}
 	if b.denseMaterialNetworks != nil {
 		denseUnits, err = b.prepareDenseMaterialNetworkGeometry(ctx, denseUnits)
+		if err != nil {
+			return err
+		}
+	}
+	if b.denseProducerSplits != nil {
+		denseUnits, err = b.prepareDenseProducerSplitters(ctx, denseUnits)
 		if err != nil {
 			return err
 		}
@@ -546,6 +623,10 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			}
 			denseUnits[i].entities = entities
 		}
+		denseUnits, err = b.prepareDenseBentRows(ctx, denseUnits)
+		if err != nil {
+			return err
+		}
 		if b.directBoundaryUnits != nil && b.directBoundaryExtentScale > 0 {
 			// 包络只用于估算有限搜索空间；实际摆放仍允许这些独立实体轮廓交错，不占据整块矩形。
 			area, shortest := 0., 0.
@@ -580,6 +661,9 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 			low, _ := bounds(b.all)
 			shift(b.all, -math.Floor(low.x), -math.Floor(low.y), 0)
 		}
+		if err := b.placePolarUnitFrames(ctx, denseUnits); err != nil {
+			return err
+		}
 	}
 	// 规范边全部接好后已成为整体物理图，不能再由旧的逐产线块装箱移动并拉断跨块路线。
 	b.surfaceBlocks = nil
@@ -600,6 +684,9 @@ func (b *builder) prepareConnectedRows(ctx context.Context, req Request, dataset
 
 // attachFilteredOutputs 职责：从逐产物独立出货带按消费者流量拆出过滤支路；使用：机器行平移前；边界：不同产物不共享机器干线，同物品各份额仍合并核算带容量。
 func (b *builder) attachFilteredOutputs(row *transportRow) error {
+	if handled, err := b.planDenseProducerSplit(row); handled {
+		return err
+	}
 	// output 职责：保存同一产物的独立机器带和消费者分支；使用：物理轨位排序；边界：不同产物绝不借用同一机器输出干线。
 	type output struct {
 		belts  []*placed
@@ -669,7 +756,7 @@ func (b *builder) attachFilteredOutputs(row *transportRow) error {
 			}
 			continue
 		}
-		if b.densePairedOutputs && !recycled && densePairedOutputEligible(row) {
+		if !recycled && b.usesDensePairedOutputs(row) {
 			var err error
 			cursor, err = b.attachDensePairedOutputs(row, group.belts, group.routes, cursor)
 			if err != nil {
@@ -830,17 +917,22 @@ func (b *builder) connectedBlockShape(ctx context.Context, row *transportRow, bl
 		if p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
 			continue
 		}
-		shapes, err := catalog.Shapes(p.record.ItemID, p.record.ModelIndex)
+		shapes, err := splitterClearanceShapes(catalog, p.record.ItemID, p.record.ModelIndex)
 		if err != nil {
 			return out, &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 		}
-		for _, shape := range shapes {
+		for shapeIndex, shape := range shapes {
 			position := world(p.a)
 			box, err := encoding.colliderBox(vector{position[0], position[1], position[2]}, p.record.Yaw, shape)
 			if err != nil {
 				return out, err
 			}
-			out.shapes = append(out.shapes, connectedBoxShape("static", box))
+			kind := "static"
+			if p.record.ItemID == 2020 && shapeIndex == len(shapes)-1 {
+				// 原生static与臂仍可互免；额外选择包络独立保留真实臂盒净空。
+				kind = "splitter-selection"
+			}
+			out.shapes = append(out.shapes, connectedBoxShape(kind, box))
 		}
 		if surfaceIsPowerNode(p.record.ItemID) {
 			point := world(p.a)
@@ -909,6 +1001,9 @@ func shiftedConnectedShape(shape connectedPackingShape, dx, dy float64) connecte
 
 // connectedShapesConflict 职责：按静态/动态/带/电力规则区分轮廓冲突；使用：空间哈希窄相位；边界：最终检查的连接豁免只用于块内，跨块不允许借用别的物品端点。
 func connectedShapesConflict(a, c *connectedPackingShape) bool {
+	if a.kind == "splitter-selection" || c.kind == "splitter-selection" {
+		return splitterSelectionPackingConflict(a, c)
+	}
 	known := func(kind string) bool {
 		return kind == "static" || kind == "inserter" || kind == "belt" || kind == "power" || kind == "port"
 	}
@@ -981,7 +1076,7 @@ func (packing *connectedPacking) fits(ctx context.Context, contour connectedBloc
 			packing.querySerial = 1
 		}
 		serial := packing.querySerial
-		buckets, bucketCount := [5]map[[3]int][]int{packing.cells}, 1
+		buckets, bucketCount := [6]map[[3]int][]int{packing.cells}, 1
 		if packing.dense {
 			buckets, bucketCount = packing.denseQueryBuckets(shape.kind)
 		}

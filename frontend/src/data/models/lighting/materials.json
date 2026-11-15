@@ -1,0 +1,367 @@
+{
+  "accumulator": {
+    "kind": "emission",
+    "texture": "light-3272"
+  },
+  "accumulator-effect-1": {
+    "kind": "effect",
+    "texture": "light-4546"
+  },
+  "assembler-mk-1": {
+    "kind": "emission",
+    "texture": "light-3851"
+  },
+  "assembler-mk-2": {
+    "kind": "emission",
+    "texture": "light-3851"
+  },
+  "assembler-mk-3": {
+    "kind": "emission",
+    "texture": "light-3851"
+  },
+  "assembler-mk-4": {
+    "kind": "emission",
+    "texture": "light-5311"
+  },
+  "assembler-mk-4-eff": {
+    "kind": "effect",
+    "texture": "light-2038-mask-3748"
+  },
+  "battle-base": {
+    "kind": "emission",
+    "texture": "light-3868"
+  },
+  "charging-pole": {
+    "kind": "emission",
+    "texture": "light-4739"
+  },
+  "charging-pole-effect": {
+    "kind": "effect",
+    "texture": "light-4699"
+  },
+  "chemical-plant": {
+    "kind": "emission",
+    "texture": "light-2447"
+  },
+  "chemical-plant-2": {
+    "kind": "emission",
+    "texture": "light-5651"
+  },
+  "delivery-machine": {
+    "kind": "emission",
+    "texture": "light-4988"
+  },
+  "delivery-machine-eff": {
+    "kind": "effect",
+    "texture": "light-3432"
+  },
+  "em-rail-ejector": {
+    "kind": "emission",
+    "texture": "light-2443"
+  },
+  "em-rail-ejector-effect": {
+    "kind": "effect",
+    "texture": "light-2526-mask-4424"
+  },
+  "energy-exchanger": {
+    "kind": "emission",
+    "texture": "light-3688"
+  },
+  "energy-exchanger-effect": {
+    "kind": "effect",
+    "texture": "light-5470-mask-3374"
+  },
+  "fractionator": {
+    "kind": "emission",
+    "texture": "light-4668"
+  },
+  "fusion-reactor": {
+    "kind": "emission",
+    "texture": "light-2549"
+  },
+  "fusion-reactor-effect": {
+    "color": [
+      0.9811320900917053,
+      0.48424017429351807,
+      0.0971875861287117
+    ],
+    "kind": "effect"
+  },
+  "geothermal-power-station": {
+    "kind": "emission",
+    "texture": "light-4127"
+  },
+  "geothermal-power-station-effect-0": {
+    "kind": "effect",
+    "texture": "light-2906-mask-3464"
+  },
+  "hadron-collider": {
+    "kind": "emission",
+    "texture": "light-2914"
+  },
+  "interstellar-logistic-station": {
+    "kind": "emission",
+    "texture": "light-1149"
+  },
+  "lighthouse": {
+    "kind": "emission",
+    "texture": "light-4026"
+  },
+  "lighthouse-eff-ground": {
+    "kind": "effect",
+    "texture": "light-4961-mask-2548"
+  },
+  "mining-drill": {
+    "kind": "emission",
+    "texture": "light-2986"
+  },
+  "mining-drill-mk2": {
+    "kind": "emission",
+    "texture": "light-2310"
+  },
+  "mining-drill-mk2-effect": {
+    "color": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "kind": "glass"
+  },
+  "mining-drill-mk2-effect-1": {
+    "kind": "effect",
+    "texture": "light-3790-mask-3129"
+  },
+  "oil-extractor": {
+    "kind": "emission",
+    "texture": "light-5636"
+  },
+  "oil-extractor-effect-1": {
+    "kind": "effect",
+    "texture": "light-4849"
+  },
+  "oil-extractor-effect-2": {
+    "kind": "effect",
+    "texture": "light-2136"
+  },
+  "oil-refinery": {
+    "kind": "emission",
+    "texture": "light-3496"
+  },
+  "oil-refinery-effect": {
+    "kind": "effect",
+    "texture": "light-5540"
+  },
+  "orbital-collector": {
+    "kind": "emission",
+    "texture": "light-5409"
+  },
+  "orbital-substation": {
+    "kind": "emission",
+    "texture": "light-2241"
+  },
+  "orbital-substation-effect": {
+    "kind": "effect",
+    "texture": "light-4425-mask-4041"
+  },
+  "piler": {
+    "kind": "emission",
+    "texture": "light-4866"
+  },
+  "piler-effect": {
+    "kind": "effect",
+    "texture": "light-2665"
+  },
+  "power-generator-fusion": {
+    "kind": "emission",
+    "texture": "light-4986"
+  },
+  "power-generator-fusion-effect": {
+    "kind": "effect",
+    "texture": "light-5468"
+  },
+  "power-generator-thermal": {
+    "kind": "emission",
+    "texture": "light-2319"
+  },
+  "power-generator-thermal-effect": {
+    "kind": "effect",
+    "texture": "light-3320"
+  },
+  "ray-receiver": {
+    "kind": "emission",
+    "texture": "light-1984"
+  },
+  "ray-receiver-eff": {
+    "kind": "effect",
+    "texture": "light-5085-mask-2486"
+  },
+  "ray-receiver-effect": {
+    "color": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "kind": "glass"
+  },
+  "science-academy-1": {
+    "color": [
+      0.21226415038108826,
+      0.41199442744255066,
+      1.0
+    ],
+    "kind": "emission",
+    "secondary": "light-5181",
+    "texture": "light-2832"
+  },
+  "science-academy-2": {
+    "color": [
+      0.21226415038108826,
+      0.41199442744255066,
+      1.0
+    ],
+    "kind": "emission",
+    "secondary": "light-3963",
+    "texture": "light-2873"
+  },
+  "science-academy-effect": {
+    "color": [
+      0.31603768467903137,
+      0.5127941966056824,
+      1.0
+    ],
+    "kind": "effect",
+    "texture": "light-4919-mask-2659"
+  },
+  "smelter-2-effect": {
+    "kind": "effect",
+    "texture": "light-5579-mask-5057"
+  },
+  "smelter-2-effect-1": {
+    "kind": "effect",
+    "texture": "light-3789-mask-4756"
+  },
+  "smelter-2-effect-2": {
+    "kind": "effect",
+    "texture": "light-5090-mask-3997"
+  },
+  "smelter-2-effect-3": {
+    "kind": "effect",
+    "texture": "light-5579-mask-4756"
+  },
+  "smelter-2-glass-1": {
+    "kind": "emission",
+    "texture": "light-4504"
+  },
+  "smelter-2-glass-2": {
+    "kind": "emission",
+    "texture": "light-4504"
+  },
+  "smelter-2-lod0": {
+    "kind": "emission",
+    "texture": "light-5196"
+  },
+  "smelter-3-eff": {
+    "kind": "effect",
+    "texture": "light-4894-mask-3944"
+  },
+  "smelter-3-lod0": {
+    "kind": "emission",
+    "texture": "light-4789"
+  },
+  "smelter-lod0": {
+    "kind": "emission",
+    "texture": "light-4083"
+  },
+  "solar-panel": {
+    "kind": "emission",
+    "texture": "light-4914"
+  },
+  "spray-coater-lod0": {
+    "kind": "emission",
+    "texture": "light-2799"
+  },
+  "spray-coater-water": {
+    "color": [
+      1.0,
+      0.6380854845046997,
+      0.1650943160057068
+    ],
+    "kind": "glass"
+  },
+  "storage": {
+    "kind": "emission",
+    "texture": "light-4481"
+  },
+  "storage-tank": {
+    "kind": "emission",
+    "texture": "light-4929"
+  },
+  "tesla-tower-1": {
+    "kind": "emission",
+    "texture": "light-3850"
+  },
+  "turret-cannon": {
+    "kind": "emission",
+    "texture": "light-4709"
+  },
+  "turret-disturb": {
+    "kind": "emission",
+    "texture": "light-4885"
+  },
+  "turret-gauss-lod0": {
+    "kind": "emission",
+    "texture": "light-4077"
+  },
+  "turret-laser-lod0": {
+    "kind": "emission",
+    "texture": "light-4874"
+  },
+  "turret-missile": {
+    "kind": "emission",
+    "texture": "light-4389"
+  },
+  "turret-plasma-ground": {
+    "kind": "emission",
+    "texture": "light-4548"
+  },
+  "turret-plasma-ground-eff": {
+    "kind": "effect",
+    "texture": "light-4631"
+  },
+  "turret-plasma-lod0": {
+    "kind": "emission",
+    "texture": "light-4477"
+  },
+  "turret-sheild-eff": {
+    "kind": "effect",
+    "texture": "light-3389"
+  },
+  "turret-shield": {
+    "kind": "emission",
+    "texture": "light-4015"
+  },
+  "turret-signal-eff1": {
+    "kind": "effect",
+    "texture": "light-5471-mask-2724"
+  },
+  "turret-signal-eff2": {
+    "kind": "effect",
+    "texture": "light-4586-mask-3283"
+  },
+  "turret-signal-lod0": {
+    "kind": "emission",
+    "texture": "light-5443"
+  },
+  "vl-silo": {
+    "kind": "emission",
+    "texture": "light-3960"
+  },
+  "water-pump": {
+    "kind": "emission",
+    "texture": "light-3843"
+  },
+  "wind-turbine-mat": {
+    "kind": "emission",
+    "texture": "light-4208"
+  }
+}

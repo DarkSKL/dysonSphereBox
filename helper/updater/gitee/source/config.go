@@ -19,11 +19,15 @@ const (
 	// 使用：NewSource 初始化 apiBaseURL 时读取。
 	// 边界：只包含 API 根路径，不包含仓库 owner/repo。
 	defaultGiteeAPIBaseURL = "https://gitee.com/api/v5"
-	// defaultHTTPTimeout 是 Gitee 更新请求默认超时时间。
-	// 职责：避免更新检查或资产下载无限阻塞。
+	// defaultHTTPTimeout 是 Gitee 发布元数据请求默认超时时间。
+	// 职责：避免更新检查无限阻塞，不限制附件下载耗时。
 	// 使用：NewSource 在未注入 HTTPClient 时创建默认客户端。
 	// 边界：调用方提供 HTTPClient 时该值不生效。
 	defaultHTTPTimeout = 30 * time.Second
+	// defaultDownloadTimeout 是更新附件下载的完整请求超时。
+	// 职责：允许大体积更新包在慢速网络下完成读取；使用：NewSource 创建附件客户端时读取。
+	// 边界：涵盖重定向和响应体读取，仍受调用方 context 的更短期限或取消约束。
+	defaultDownloadTimeout = 30 * time.Minute
 )
 
 // Config 描述 Gitee Release 更新源配置。
@@ -42,8 +46,8 @@ type Config struct {
 	// 边界：当前不做持久化和脱敏日志输出。
 	Token string
 	// HTTPClient 是可选的自定义 HTTP 客户端。
-	// 职责：允许调用方注入代理、测试客户端或自定义超时。
-	// 使用：NewSource 优先使用该客户端。
-	// 边界：为空时创建带 defaultHTTPTimeout 的默认客户端。
+	// 职责：允许调用方注入代理、测试传输或元数据请求超时。
+	// 使用：NewSource 使用该客户端读取元数据，并复制其配置用于附件下载。
+	// 边界：为空时使用默认客户端；附件副本的 Timeout 独立使用 defaultDownloadTimeout，不修改传入对象。
 	HTTPClient *http.Client
 }

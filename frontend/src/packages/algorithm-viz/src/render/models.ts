@@ -2,12 +2,23 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { GRID_METERS } from '../defaults';
+import { GenerationCache } from '../internal/generation-cache';
 import { HIDDEN_PARTS, NATIVE_COLORS } from './native-colors';
+import originalLighting from '../../../../data/models/lighting/materials.json';
+
+interface OriginalLight {
+  readonly kind: 'emission' | 'effect' | 'glass';
+  readonly texture?: string;
+  readonly secondary?: string;
+  readonly color?: readonly number[];
+}
+
+const ORIGINAL_LIGHT: Readonly<Record<string, OriginalLight>> = originalLighting as Record<string, OriginalLight>;
 
 /**
  * 模型库：按需加载 GLB，保留游戏原生贴图颜色。
  *
- * - 贴图为 KTX2/Basis 压缩格式，通过 KTX2Loader + Basis 转码器解码；只取底色与自发光贴图，法线等贴图不使用
+ * - 贴图为 KTX2/Basis 压缩格式，通过 KTX2Loader + Basis 转码器解码
  * - 同一模型的网格按材质分组合并为一个几何体（position / uv / index + groups），单位换算为蓝图格
  * - 加载失败的模型标记为 missing，场景继续使用占位体，不中断播放
  */
@@ -43,6 +54,14 @@ export interface ModelPart {
   readonly unlit: boolean;
   /** 涂装遮罩贴图（单通道，亮处为涂装区）；由模型库按编号共享加载，未提供或加载失败时为 null */
   mask: THREE.Texture | null;
+  /** 原版发光或特效贴图，与涂装遮罩共用加载和回收机制。 */
+  readonly lightId?: string;
+  light?: THREE.Texture | null;
+  readonly secondaryLightId?: string;
+  secondaryLight?: THREE.Texture | null;
+  readonly labTint?: THREE.Color;
+  /** 效果代理网格由预览器展开，使用独立的衰减曲线。 */
+  readonly lightShape?: 'ring' | 'beam';
 }
 
 export interface ModelEntry {
@@ -65,14 +84,19 @@ export interface TranscoderUrls {
 /** 同时加载的模型数上限，避免解析集中在同一帧造成卡顿 */
 const MAX_CONCURRENT = 3;
 
-/** 名称中带有低精度层级或碰撞体标记的网格不参与合并 */
-const SKIP_MESH = /(lod[1-9]|collider|-cl$|shadow)/i;
+/** 低精度层级和辅助网格不参与合并；hadron-collider 是建筑本体名称。 */
+const SKIP_MESH = /(lod[1-9]|-cl$|shadow)/i;
+const isCollisionMesh = (name: string): boolean =>
+  /collider/i.test(name) && !/^hadron-collider(?:-\d+)*$/i.test(name);
 
 /** 按材质名判断类别：玻璃罩、特效面片（光效 / 遮罩 / 水面）之外都是机身 */
 const classifyPart = (name: string): PartKind => (/glass/i.test(name) ? 'glass' : /(effect|-eff|mask|-water$)/i.test(name) ? 'effect' : 'solid');
 
 export class ModelLibrary {
   private readonly entries = new Map<string, ModelEntry>();
+  private readonly usage = new GenerationCache<string>();
+  private readonly pending = new Map<ModelEntry, MergedModel>();
+  private readonly discarded = new WeakSet<MergedModel>();
   private readonly loader: GLTFLoader;
   private readonly ktx2: KTX2Loader;
   private readonly waiting: string[] = [];
@@ -83,7 +107,7 @@ export class ModelLibrary {
 
   private readonly maskLoader = new THREE.TextureLoader();
   /** 遮罩编号 → 加载结果；多个模型 / 材质共用同一张遮罩，失败记为 null 不再重试 */
-  private readonly masks = new Map<string, Promise<THREE.Texture | null>>();
+  private readonly masks = new Map<string, { promise: Promise<THREE.Texture | null>; texture: THREE.Texture | null }>();
 
   constructor(
     private readonly urls: Readonly<Record<string, string>>,
@@ -107,6 +131,7 @@ export class ModelLibrary {
 
   /** 读取模型条目；首次读取时排队加载 */
   get(key: string): ModelEntry {
+    this.usage.touch(key);
     let entry = this.entries.get(key);
     if (!entry) {
       entry = { key, status: 'idle', geometry: null, parts: [], size: new THREE.Vector3(1, 1, 1), center: new THREE.Vector3() };
@@ -120,6 +145,33 @@ export class ModelLibrary {
       }
     }
     return entry;
+  }
+
+  /** 异步回调只查看状态，不把旧任务的迟到结果记为当前任务使用。 */
+  peek(key: string): ModelEntry | undefined {
+    return this.entries.get(key);
+  }
+
+  beginGeneration(taskId: string): void {
+    this.usage.begin(taskId);
+  }
+
+  /** 先由场景释放实例池，再回收更早任务独占的模型及共享贴图。 */
+  prune(protectedKeys: ReadonlySet<string>): void {
+    for (const key of this.usage.stale()) {
+      if (protectedKeys.has(key)) continue;
+      const entry = this.entries.get(key);
+      if (entry) {
+        entry.geometry?.dispose();
+        const merged = this.pending.get(entry);
+        if (merged) this.discard(merged);
+        this.pending.delete(entry);
+        this.entries.delete(key);
+      }
+      this.usage.forget(key);
+      for (let i = this.waiting.length - 1; i >= 0; i--) if (this.waiting[i] === key) this.waiting.splice(i, 1);
+    }
+    this.pruneTextures();
   }
 
   /** 预加载一组模型 */
@@ -138,27 +190,44 @@ export class ModelLibrary {
     this.listeners.clear();
     this.waiting.length = 0;
     for (const entry of this.entries.values()) entry.geometry?.dispose();
+    for (const merged of this.pending.values()) this.discard(merged);
+    this.pending.clear();
     for (const texture of this.textures) texture.dispose();
+    for (const mask of this.masks.values()) mask.texture?.dispose();
     this.textures.clear();
     this.masks.clear();
     this.entries.clear();
+    this.usage.clear();
     this.ktx2.dispose();
   }
 
   private pump(): void {
     while (!this.disposed && this.active < MAX_CONCURRENT && this.waiting.length) {
       const key = this.waiting.shift() as string;
+      const entry = this.entries.get(key);
+      if (!entry) continue;
+      let merged: MergedModel | null = null;
       this.active++;
       this.loader
         .loadAsync(this.urls[key])
         .then(async (gltf) => {
-          const merged = mergeScene(gltf);
-          if (merged) await this.attachMasks(merged);
-          this.settle(key, merged);
+          merged = mergeScene(gltf, key);
+          if (merged && !this.disposed && this.entries.get(key) === entry) {
+            this.pending.set(entry, merged);
+            for (const texture of baseTextures(merged.parts)) this.textures.add(texture);
+            await this.attachMaterialTextures(merged);
+            this.pending.delete(entry);
+          }
+          this.settle(entry, merged);
         })
         .catch((err: unknown) => {
-          console.warn(`[algorithm-viz] 模型 ${key} 加载失败，改用占位体`, err);
-          this.settle(key, null);
+          this.pending.delete(entry);
+          if (merged) this.discard(merged);
+          this.pruneTextures();
+          if (!this.disposed && this.entries.get(key) === entry) {
+            console.warn(`[algorithm-viz] 模型 ${key} 加载失败，改用占位体`, err);
+            this.settle(entry, null);
+          }
         })
         .finally(() => {
           this.active--;
@@ -168,10 +237,17 @@ export class ModelLibrary {
   }
 
   /** 给带遮罩编号的分组挂上遮罩贴图；遮罩缺失时该分组整体染色，不影响模型显示 */
-  private async attachMasks(merged: MergedModel): Promise<void> {
+  private async attachMaterialTextures(merged: MergedModel): Promise<void> {
     await Promise.all(
       merged.parts.map(async (part) => {
-        if (part.maskId) part.mask = await this.loadMask(part.maskId);
+        const [mask, light, secondaryLight] = await Promise.all([
+          part.maskId ? this.loadMask(part.maskId) : null,
+          part.lightId ? this.loadMask(part.lightId) : null,
+          part.secondaryLightId ? this.loadMask(part.secondaryLightId) : null,
+        ]);
+        part.mask = mask;
+        part.light = light;
+        part.secondaryLight = secondaryLight;
       }),
     );
   }
@@ -179,8 +255,10 @@ export class ModelLibrary {
   private loadMask(id: string): Promise<THREE.Texture | null> {
     let task = this.masks.get(id);
     if (!task) {
+      const record = { promise: Promise.resolve<THREE.Texture | null>(null), texture: null as THREE.Texture | null };
+      this.masks.set(id, record);
       const url = this.maskUrls[id];
-      task = url
+      record.promise = url
         ? this.maskLoader
             .loadAsync(url)
             .then((texture) => {
@@ -188,8 +266,11 @@ export class ModelLibrary {
               texture.flipY = false;
               texture.colorSpace = THREE.NoColorSpace;
               texture.needsUpdate = true;
-              if (this.disposed) texture.dispose();
-              else this.textures.add(texture);
+              if (this.disposed || this.masks.get(id) !== record) {
+                texture.dispose();
+                return null;
+              }
+              record.texture = texture;
               return texture;
             })
             .catch((err: unknown) => {
@@ -197,19 +278,18 @@ export class ModelLibrary {
               return null;
             })
         : Promise.resolve(null);
-      this.masks.set(id, task);
+      task = record;
     }
-    return task;
+    return task.promise;
   }
 
-  private settle(key: string, merged: MergedModel | null): void {
-    if (this.disposed) {
-      merged?.geometry.dispose();
-      merged?.parts.forEach((part) => { part.map?.dispose(); part.emissiveMap?.dispose(); part.orm?.dispose(); part.normalMap?.dispose(); });
+  /** 已淘汰任务的异步结果不能覆盖同名的新条目。 */
+  private settle(entry: ModelEntry, merged: MergedModel | null): void {
+    if (this.disposed || this.entries.get(entry.key) !== entry) {
+      if (merged) this.discard(merged);
+      this.pruneTextures();
       return;
     }
-    const entry = this.entries.get(key);
-    if (!entry) return;
     if (merged) {
       const geometry = merged.geometry;
       geometry.computeBoundingBox();
@@ -219,18 +299,49 @@ export class ModelLibrary {
       box.getCenter(entry.center);
       entry.geometry = geometry;
       entry.parts = merged.parts;
-      for (const part of merged.parts) {
-        if (part.map) this.textures.add(part.map);
-        if (part.emissiveMap) this.textures.add(part.emissiveMap);
-        if (part.orm) this.textures.add(part.orm);
-        if (part.normalMap) this.textures.add(part.normalMap);
-      }
+      for (const texture of baseTextures(merged.parts)) this.textures.add(texture);
       entry.status = 'ready';
     } else {
       entry.status = 'missing';
     }
-    for (const listener of this.listeners) listener(key);
+    for (const listener of this.listeners) listener(entry.key);
   }
+
+  private discard(merged: MergedModel): void {
+    if (this.discarded.has(merged)) return;
+    this.discarded.add(merged);
+    merged.geometry.dispose();
+    for (const texture of baseTextures(merged.parts)) this.textures.add(texture);
+  }
+
+  /** 遮罩可能被多个模型和未完成的加载共享，只有没有任何引用时才释放。 */
+  private pruneTextures(): void {
+    const retained = new Set<THREE.Texture>();
+    const maskIds = new Set<string>();
+    for (const model of [...this.entries.values(), ...this.pending.values()]) {
+      for (const texture of baseTextures(model.parts)) retained.add(texture);
+      for (const part of model.parts) {
+        if (part.maskId) maskIds.add(part.maskId);
+        if (part.lightId) maskIds.add(part.lightId);
+        if (part.secondaryLightId) maskIds.add(part.secondaryLightId);
+      }
+    }
+    for (const texture of this.textures) if (!retained.has(texture)) {
+      texture.dispose();
+      this.textures.delete(texture);
+    }
+    for (const [id, mask] of this.masks) if (!maskIds.has(id)) {
+      this.masks.delete(id);
+      mask.texture?.dispose();
+    }
+  }
+}
+
+/** 底色等贴图属于模型，遮罩另按编号共享管理；同一材质复用的贴图只计一次。 */
+function baseTextures(parts: readonly ModelPart[]): Set<THREE.Texture> {
+  const textures = new Set<THREE.Texture>();
+  for (const part of parts) for (const texture of [part.map, part.emissiveMap, part.orm, part.normalMap]) if (texture) textures.add(texture);
+  return textures;
 }
 
 interface MergedModel {
@@ -249,7 +360,7 @@ interface Bucket {
  * 把 glTF 场景内的全部网格按世界变换合并：同一材质的网格放进同一分组，只保留位置、UV 与索引，
  * 并把米换算为蓝图格。量化或交错存储的顶点属性通过 getX/getY/getZ 统一读出。
  */
-function mergeScene(gltf: GLTF): MergedModel | null {
+function mergeScene(gltf: GLTF, key: string): MergedModel | null {
   const root = gltf.scene;
   root.updateMatrixWorld(true);
   const buckets = new Map<THREE.Material, Bucket>();
@@ -258,16 +369,17 @@ function mergeScene(gltf: GLTF): MergedModel | null {
   const used = new Set<THREE.Texture>();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.geometry || SKIP_MESH.test(mesh.name)) return;
+    if (!mesh.isMesh || !mesh.geometry || SKIP_MESH.test(mesh.name) || isCollisionMesh(mesh.name)) return;
     const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
     const source = mesh.geometry;
     const position = source.getAttribute('position');
     if (!position || position.itemSize < 3) return;
-    const kind = classifyPart(material.name);
+    const light = ORIGINAL_LIGHT[material.name];
+    const kind = light && light.kind !== 'emission' ? light.kind : classifyPart(material.name);
     // 预览器里隐藏的特效面片（未通电）与 alpha 丢失后会画成白板的面片不绘制
-    if (HIDDEN_PARTS.has(material.name)) return;
+    if (HIDDEN_PARTS.has(material.name) && !light) return;
     // 没有贴图的特效面片（遮罩、水面等）没有可绘制内容，直接略过
-    if (kind === 'effect' && !material.map) return;
+    if (kind === 'effect' && !material.map && !light) return;
     let bucket = buckets.get(material);
     if (!bucket) {
       // 名称含 black 的无贴图材质在游戏中为深色部件，glTF 中缺省底色为白色，这里按名称还原
@@ -284,7 +396,7 @@ function mergeScene(gltf: GLTF): MergedModel | null {
           orm,
           normalMap,
           emissiveMap: kind === 'solid' ? (material.emissiveMap ?? null) : null,
-          color: dark ? new THREE.Color(0x1c2028) : native ? new THREE.Color().setRGB(...native.color, THREE.LinearSRGBColorSpace) : (material.color?.clone() ?? new THREE.Color(1, 1, 1)),
+          color: light?.color && light.kind !== 'emission' ? new THREE.Color().fromArray(light.color) : dark ? new THREE.Color(0x1c2028) : native ? new THREE.Color().setRGB(...native.color, THREE.LinearSRGBColorSpace) : (material.color?.clone() ?? new THREE.Color(1, 1, 1)),
           emissive: hasEmissiveMap
             ? (native?.emissive ? new THREE.Color().setRGB(...native.emissive, THREE.LinearSRGBColorSpace) : new THREE.Color(1, 1, 1))
             : (kind === 'solid' ? (material.emissive?.clone() ?? new THREE.Color(0, 0, 0)) : new THREE.Color(0, 0, 0)),
@@ -292,6 +404,9 @@ function mergeScene(gltf: GLTF): MergedModel | null {
           maskId: native?.mask ?? null,
           unlit: Boolean(native?.unlit),
           mask: null,
+          lightId: light?.texture,
+          secondaryLightId: light?.secondary,
+          labTint: light?.color && material.name.startsWith('science-academy-') ? new THREE.Color().fromArray(light.color) : undefined,
         },
         positions: [],
         uvs: [],
@@ -344,6 +459,33 @@ function mergeScene(gltf: GLTF): MergedModel | null {
     for (const index of bucket.indices) indices.push(index + offset);
     geometry.addGroup(start, bucket.indices.length, parts.length);
     parts.push(bucket.part);
+  }
+  // Unity 会在顶点 Shader 中展开这两种代理；GLB 只有很小的占位网格。
+  // 以建筑局部坐标生成光环和光束，保留蓝图旋转并随实例一起绘制。
+  if (key === 'lighthouse' || key === 'ray-receiver') {
+    const ring = key === 'lighthouse';
+    const fx = ring
+      ? new THREE.RingGeometry(1.0, 1.9, 48).rotateX(-Math.PI / 2).translate(0, 0.10, 0)
+      : new THREE.CylinderGeometry(0.36, 1.9, 11, 28, 1, true).translate(0, 13.5, 0);
+    const position = fx.getAttribute('position');
+    const uv = fx.getAttribute('uv');
+    const index = fx.getIndex()!;
+    const start = indices.length;
+    const offset = positions.length / 3;
+    for (let i = 0; i < position.count; i++) {
+      positions.push(position.getX(i) * scale, position.getY(i) * scale, position.getZ(i) * scale);
+      uvs.push(uv.getX(i), uv.getY(i));
+    }
+    for (let i = 0; i < index.count; i++) indices.push(offset + index.getX(i));
+    geometry.addGroup(start, index.count, parts.length);
+    parts.push({
+      kind: 'effect', map: null, emissiveMap: null, orm: null, normalMap: null,
+      color: ring ? new THREE.Color(0.67, 1, 0.50) : new THREE.Color(0.65, 0.86, 1),
+      emissive: new THREE.Color(0, 0, 0), native: false, maskId: null, mask: null, unlit: false,
+      lightId: ring ? 'light-3543' : ORIGINAL_LIGHT['ray-receiver-eff']?.texture,
+      lightShape: ring ? 'ring' : 'beam',
+    });
+    fx.dispose();
   }
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));

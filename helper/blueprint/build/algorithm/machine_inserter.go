@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：在六个真实机器槽位内规划分拣器轨位、并联臂和研究站堆叠高度。
+// 文件职责：规划南北六槽的分拣器轨位、并联臂和堆叠高度，并分派研究站第三侧出货方案。
 // 使用：机器行装配与独立能力预检共用；边界：不改变机器数、配方、流量或分拣器等级，无解时保留明确的未验证原因。
 
 import (
@@ -13,9 +13,11 @@ import (
 
 // machineInserterPort 职责：绑定一个逻辑物料口与同侧真实机器槽位；使用：生成直臂；边界：slots 为同侧三个槽的局部索引，不能重复占用。
 type machineInserterPort struct {
-	top   bool
-	reach int
-	slots []int
+	// lateral 职责：标识研究站西侧独立出货口；使用：七物料单列；边界：不参与南北六槽分配。
+	lateral bool
+	top     bool
+	reach   int
+	slots   []int
 }
 
 // machineInserterPlan 职责：保存有界搜索的完整机器端方案；使用：buildLine；边界：只有实际能力不足可结构导出，capacityError中的数值或拓扑错误必须硬拒绝。
@@ -106,8 +108,11 @@ func machineInserterPlanError(p quant.Production, recipe quant.Recipe, setting S
 	return nil
 }
 
-// planMachineInserters 职责：确定性搜索两侧轨位与有限槽位，并优先保持研究站紧凑堆叠；使用：所有基础机器行；边界：最多枚举六种物料口的排列与十五层，不制造虚拟端口。
+// planMachineInserters 职责：搜索两侧有限槽位，七物料研究站分派第三侧出货；使用：所有基础机器行；边界：通用枚举最多六物料、十五层，研究站专用方案不占用已有输入槽。
 func planMachineInserters(p quant.Production, recipe quant.Recipe, setting Setting, count int) machineInserterPlan {
+	if !setting.UseMixed && labSevenPorts(p, recipe) {
+		return planLabSevenInserters(p, recipe, setting, count)
+	}
 	layers := 1
 	if p.MachineType == 6 {
 		layers = max(1, min(count, setting.MaxLays))

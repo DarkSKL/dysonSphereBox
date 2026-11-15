@@ -134,6 +134,14 @@ uniform float uHasOrm;
 uniform float uNative;
 // 自发光依赖供电（未通电的建筑不发光）
 uniform float uUnlit;
+uniform sampler2D uOriginalLight;
+uniform float uHasOriginalLight;
+uniform float uSolidEffect;
+uniform float uLightShape;
+uniform sampler2D uSecondaryLight;
+uniform float uHasSecondaryLight;
+uniform vec3 uLabTint;
+uniform float uLabLight;
 // 涂装遮罩（亮处为涂装区）与法线贴图
 uniform sampler2D uMask;
 uniform sampler2D uNormal;
@@ -152,8 +160,34 @@ void main() {
   if (holo > 0.5 && mod(floor(gl_FragCoord.y), 3.0) < 1.0) discard;
   // 特效面片：游戏中是黑底发光贴图，按亮度加法叠加，不写深度
   if (uKind > 1.5) {
-    vec3 fx = texture2D(uMap, vUv).rgb;
-    float a = max(fx.r, max(fx.g, fx.b)) * vState.x * (1.0 - holo * 0.85);
+    if (uLightShape > 0.5) {
+      float band = uLightShape < 1.5
+        ? exp(-pow((length(vUv - 0.5) - 0.38) * 20.0, 2.0))
+        : smoothstep(0.0, 0.13, vUv.y) * (1.0 - smoothstep(0.35, 1.0, vUv.y));
+      vec2 flowUv = uLightShape < 1.5 ? vUv : fract(vUv + vec2(0.0, -uTime * 0.08));
+      vec4 layer = uHasOriginalLight > 0.5 ? texture2D(uOriginalLight, flowUv) : vec4(1.0);
+      float pattern = dot(layer.rgb, vec3(0.2126, 0.7152, 0.0722)) * layer.a;
+      float strength = band * (0.20 + pattern * 0.55) * vState.x * (1.0 - holo * 0.85);
+      if (strength < 0.01) discard;
+      gl_FragColor = vec4(failTint(uTint, vFail), strength);
+      #include <colorspace_fragment>
+      return;
+    }
+    if (uLabLight > 0.5 && uHasOriginalLight > 0.5) {
+      vec4 lab = texture2D(uOriginalLight, vUv);
+      float energy = max(lab.r, max(lab.g, lab.b)) * sqrt(lab.a);
+      float opacity = energy * 1.8 * vState.x * (1.0 - holo * 0.85);
+      if (opacity < 0.012) discard;
+      gl_FragColor = vec4(failTint(uLabTint, vFail), min(opacity, 0.8));
+      #include <colorspace_fragment>
+      return;
+    }
+    if (uHasOriginalLight < 0.5 && uHasMap < 0.5 && uSolidEffect < 0.5) discard;
+    vec4 texel = uHasOriginalLight > 0.5 ? texture2D(uOriginalLight, vUv) : vec4(1.0);
+    vec3 fx = uHasOriginalLight > 0.5 ? pow(texel.rgb, vec3(2.2)) :
+      (uSolidEffect > 0.5 ? uTint : texture2D(uMap, vUv).rgb);
+    float strength = uSolidEffect > 0.5 ? 0.18 : max(fx.r, max(fx.g, fx.b)) * texel.a * 0.7;
+    float a = strength * vState.x * (1.0 - holo * 0.85);
     if (a < 0.02) discard;
     gl_FragColor = vec4(failTint(fx, vFail) * 0.9, a);
     #include <colorspace_fragment>
@@ -163,7 +197,11 @@ void main() {
   // 玻璃罩：纯白贴图不能当底色，改为冷色半透明（隔点镂空，保持深度正确且无需排序）
   if (uKind > 0.5) {
     if (bayer4(gl_FragCoord.xy) < 0.55) discard;
-    vec3 gcol = mvShade(vec3(0.42, 0.6, 0.78), n, vWorld.y);
+    vec3 gcol = mvShade(mix(vec3(0.42, 0.6, 0.78), uTint, 0.35), n, vWorld.y);
+    if (uHasOriginalLight > 0.5) {
+      vec4 e = texture2D(uOriginalLight, vUv);
+      gcol += pow(e.rgb, vec3(2.2)) * e.a * 0.4;
+    }
     gcol = mvHaze(failTint(gcol, vFail), vWorld.y);
     gl_FragColor = vec4(gcol, 1.0);
     #include <colorspace_fragment>
@@ -218,12 +256,19 @@ void main() {
   float spec = pow(max(dot(nb, normalize(lightV + viewV)), 0.0), mix(160.0, 22.0, rough));
   spec *= (0.1 + metal * 0.6) * (1.0 - rough * 0.6);
   col += vec3(0.8, 0.88, 1.0) * spec * 0.25;
-  // 自发光：依赖供电的材质在预览器里未通电，完全不发光（GLB 的自发光贴图丢了 alpha，强行开启会把机身照白）；
-  // 不依赖供电的按遮罩颜色发光
-  vec3 glow = uEmissiveTint;
-  if (uHasEmissive > 0.5) {
+  // 有原版贴图时用完整 RGBA 自发光；GLB 缺少原通道时继续使用原来的保守降级。
+  vec3 glow = uEmissiveTint * (1.0 - uUnlit);
+  if (uHasOriginalLight > 0.5) {
+    vec4 e = texture2D(uOriginalLight, vUv);
+    glow = pow(e.rgb, vec3(2.2)) * e.a * 0.65;
+  } else if (uHasEmissive > 0.5) {
     vec3 e = texture2D(uEmissiveMap, vUv).rgb;
     glow = e * uEmissiveTint * (uNative > 0.5 ? 0.5 * (1.0 - uUnlit) : 0.4);
+  }
+  // 实验室的专用贴图含打包通道；预览从稀疏绿通道取灯带，避免将整片洋红底当成发光。
+  if (uHasSecondaryLight > 0.5) {
+    float labStrip = texture2D(uSecondaryLight, vUv).g;
+    glow += uLabTint * smoothstep(0.10, 0.70, labStrip) * 0.85;
   }
   col += glow;
   // 预览器的后期：饱和度 1.1、对比度 1.1，压住灰白、让涂装色更实
@@ -243,24 +288,41 @@ void main() {
 }
 `;
 
-/** 传送带：单位盒按长度拉伸；暗色履带上流动着等级色的发光箭头 */
+/** 传送带：共享端点截面连接带面，箭头沿整条路径连续流动。 */
 export const BELT_VERTEX = /* glsl */ `
 attribute vec4 aState;
 attribute float aColor;
-attribute float aLen;
+attribute vec2 aFlow;
+attribute vec3 aStartSide;
+attribute vec3 aStartUp;
+attribute vec3 aEndSide;
+attribute vec3 aEndUp;
 attribute float aFail;
 uniform vec3 uTiers[3];
 varying vec3 vWorld;
 varying vec3 vLocal;
 varying vec3 vTier;
 varying vec4 vState;
-varying float vLen;
+varying float vFlow;
 varying float vFail;
 varying float vSteep;
 void main() {
   vec4 world = vec4(position, 1.0);
+  float along = position.x + 0.5;
   #ifdef USE_INSTANCING
-    world = instanceMatrix * world;
+    // 只在半个带宽以内斜接；中间两排顶点保持本段的正交截面，避免整段扭曲。
+    float join = min(0.25, 0.33 / max(length(instanceMatrix[0].xyz), 1e-4));
+    if (along < 0.333334) along *= 3.0 * join;
+    else if (along > 0.666666) along = 1.0 - (1.0 - along) * 3.0 * join;
+    else along = join + (along - 0.333333) * 3.0 * (1.0 - 2.0 * join);
+    float startJoin = 1.0 - smoothstep(0.0, join, along);
+    float endJoin = smoothstep(1.0 - join, 1.0, along);
+    vec3 side = instanceMatrix[2].xyz;
+    vec3 up = instanceMatrix[1].xyz;
+    side += (aStartSide - side) * startJoin + (aEndSide - side) * endJoin;
+    up += (aStartUp - up) * startJoin + (aEndUp - up) * endJoin;
+    world = instanceMatrix * vec4(along - 0.5, 0.0, 0.0, 1.0);
+    world.xyz += side * position.z + up * position.y;
     // 实例矩阵第一列是 运输方向 × 长度：竖直分量占比大即为陡坡带
     vSteep = step(0.35, abs(instanceMatrix[0].y) / max(length(instanceMatrix[0].xyz), 1e-4));
   #else
@@ -271,7 +333,7 @@ void main() {
   vLocal = position;
   vTier = uTiers[int(clamp(aColor, 0.0, 2.0) + 0.5)];
   vState = aState;
-  vLen = aLen;
+  vFlow = aFlow.x + along * aFlow.y;
   vFail = aFail;
   gl_Position = projectionMatrix * viewMatrix * world;
 }
@@ -287,7 +349,7 @@ varying vec3 vWorld;
 varying vec3 vLocal;
 varying vec3 vTier;
 varying vec4 vState;
-varying float vLen;
+varying float vFlow;
 void main() {
   if (vState.x < 0.999 && vState.x <= bayer4(gl_FragCoord.xy)) discard;
   float holo = vState.z;
@@ -298,9 +360,8 @@ void main() {
   // 陡坡带（升降）的顶面容易背向或正对视线，顶底两面都绘制箭头，任何视角都能看见流向
   float top = max(step(0.99, vLocal.y), vSteep * step(vLocal.y, 0.01));
   float across = abs(vLocal.z) * 2.0;
-  float u = (vLocal.x + 0.5) * vLen;
   // 箭头尖端在带中线、两翼向后张开，整体沿运输方向（局部 +x）移动
-  float c = fract(u * 0.85 + across * 0.42 - uTime * uFlow);
+  float c = fract(vFlow + across * 0.42 - uTime * uFlow);
   float chevron = smoothstep(0.0, 0.07, c) * (1.0 - smoothstep(0.26, 0.34, c));
   float inner = 1.0 - smoothstep(0.58, 0.66, across);
   vec3 col = mvShade(uBelt, n, vWorld.y + 1.6);
@@ -399,6 +460,89 @@ void main() {
   float a = (1.0 - smoothstep(0.0, 1.0, d)) * vStrength * uParams.z;
   if (a < 0.003) discard;
   gl_FragColor = vec4(uShadowColor, a);
+  #include <colorspace_fragment>
+}
+`;
+
+/**
+ * 世界图标：正对屏幕的公告牌，圆角底板 + 指向建筑的小尾巴 + 精灵图中的一格物品图标。
+ * 锚点在尾尖；尺寸按屏幕像素夹在上下限之间，缩小取景时仍可辨认、放大时不会无限膨胀。
+ * 不写深度也不测深度：图标始终浮在建筑上方，由 aIcon.x 控制整体透明度（含退场淡出）。
+ */
+export const ICON_VERTEX = /* glsl */ `
+attribute vec4 aRect;
+attribute vec2 aIcon;
+uniform float uWorldPerPixel;
+// x 屏幕最小边长、y 最大边长（CSS 像素）
+uniform vec2 uIconPx;
+// 自然屏幕边长低于 x 时完全隐藏、达到 y 时完全显示，避免远景里图标挤成一片
+uniform vec2 uIconFade;
+varying vec2 vLocal;
+varying vec4 vRect;
+varying vec2 vIcon;
+varying float vWorldY;
+varying float vFade;
+void main() {
+  vec3 anchor = vec3(0.0);
+  float size = 1.0;
+  #ifdef USE_INSTANCING
+    anchor = instanceMatrix[3].xyz;
+    size = length(instanceMatrix[0].xyz);
+  #endif
+  // 视图矩阵的前两行即相机在世界中的右、上方向
+  vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+  vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+  float pixel = max(uWorldPerPixel, 1e-5);
+  vFade = smoothstep(uIconFade.x, uIconFade.y, size / pixel);
+  size = clamp(size, uIconPx.x * pixel, uIconPx.y * pixel);
+  vec3 base = (modelMatrix * vec4(anchor, 1.0)).xyz;
+  vec3 world = base + right * (position.x * size) + up * ((position.y + 0.5) * size);
+  vLocal = position.xy;
+  vRect = aRect;
+  vIcon = aIcon;
+  vWorldY = world.y;
+  gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+}
+`;
+
+export const ICON_FRAGMENT = /* glsl */ `
+${COMMON}
+uniform sampler2D uIconMap;
+uniform vec3 uRim;
+varying vec2 vLocal;
+varying vec4 vRect;
+varying vec2 vIcon;
+varying float vWorldY;
+varying float vFade;
+void main() {
+  // 坠落中的候选平台带着图标一起沉入深处，随深度淡出
+  float alpha = vIcon.x * vFade * smoothstep(-30.0, -6.0, vWorldY);
+  if (alpha < 0.02) discard;
+  vec2 p = vLocal;
+  // 圆角底板占上方 0.8×0.8，下方留出指向建筑的小尾巴
+  vec2 c = vec2(0.0, 0.1);
+  float d = length(max(abs(p - c) - vec2(0.3), 0.0)) - 0.1;
+  float aa = max(fwidth(d), 1e-4);
+  float plate = 1.0 - smoothstep(-aa, aa, d);
+  float rim = plate * smoothstep(-0.05 - aa, -0.05 + aa, d);
+  float tailWidth = 0.13 * clamp((p.y + 0.5) / 0.22, 0.0, 1.0);
+  float tail = smoothstep(-aa, aa, tailWidth - abs(p.x)) * step(p.y, -0.28) * step(-0.5, p.y);
+  vec3 plateCol = mix(uShadow, uHaze, 0.18);
+  vec3 col = mix(plateCol, uRim, rim * 0.9);
+  col = mix(col, uRim, tail * (1.0 - plate));
+  float a = max(plate * 0.88, tail * 0.95);
+  // 图标占底板中央 0.6×0.6；贴图已按 flipY 上传，uv 由 iconRect 换算
+  vec2 uv = clamp((p - c) / 0.6 + 0.5, 0.0, 1.0);
+  float inside = step(abs(p.x - c.x), 0.3) * step(abs(p.y - c.y), 0.3);
+  vec4 tex = texture2D(uIconMap, vRect.xy + uv * vRect.zw);
+  float ia = tex.a * inside * plate;
+  col = mix(col, tex.rgb, ia);
+  a = max(a, ia);
+  col = failTint(col, vIcon.y);
+  col = mvHaze(col, vWorldY);
+  a *= alpha;
+  if (a < 0.01) discard;
+  gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
 }
 `;

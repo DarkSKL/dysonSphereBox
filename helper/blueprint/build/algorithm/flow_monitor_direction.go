@@ -11,6 +11,50 @@ import (
 	"math"
 )
 
+// preserveFlowMonitorHosts 职责：保留实际监测器宿主及其有向带邻居；使用：带尾裁剪前；边界：按唯一同点实体确认身份，不依赖可能临时关闭的监测开关，不在丢失后猜测或重绑宿主。
+func preserveFlowMonitorHosts(all []*placed, required map[*placed]bool) error {
+	monitors := []*placed{}
+	for _, entity := range all {
+		if entity.record.ItemID == 2030 {
+			monitors = append(monitors, entity)
+		}
+	}
+	if len(monitors) == 0 {
+		return nil
+	}
+	hosts := map[vector][]*placed{}
+	previous := map[*placed][]*placed{}
+	present := map[*placed]bool{}
+	for _, entity := range all {
+		present[entity] = true
+		if surfaceIsBelt(entity.record.ItemID) {
+			hosts[entity.a] = append(hosts[entity.a], entity)
+			previous[entity.output] = append(previous[entity.output], entity)
+		}
+	}
+	for _, entity := range monitors {
+		host := entity.flowMonitorHost
+		if host == nil {
+			if len(hosts[entity.a]) != 1 {
+				return &blueprint.Error{Code: "GEN_E_FLOW_MONITOR", Message: "带尾裁剪前监测器宿主缺失或不唯一"}
+			}
+			host = hosts[entity.a][0]
+			entity.flowMonitorHost = host
+		}
+		if !present[host] || !surfaceIsBelt(host.record.ItemID) {
+			return &blueprint.Error{Code: "GEN_E_FLOW_MONITOR", Message: "带尾裁剪前监测器的原始宿主已丢失"}
+		}
+		required[host] = true
+		if host.output != nil && surfaceIsBelt(host.output.record.ItemID) {
+			required[host.output] = true
+		}
+		for _, node := range previous[host] {
+			required[node] = true
+		}
+	}
+	return nil
+}
+
 // alignFlowMonitorDirections 职责：按同区同点唯一宿主的实际输送切线同步朝向；使用：几何检查前；边界：每次重新计算，不把历史Yaw相等当作真实方向证明。
 func (b *builder) alignFlowMonitorDirections(ctx context.Context, encoding *surfaceEncoding, records []blueprint.Building, updatePlaced bool) error {
 	monitors := []int{}

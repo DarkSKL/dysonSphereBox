@@ -112,6 +112,8 @@ func newConnectedPowerSolver(index *connectedPowerIndex, consumers []connectedPo
 		}
 		centers[consumer.world] = true
 		domain := connectedPowerDomain{consumer: consumer}
+		// 两套格网可能重合；塔位只计一次，防止合法域剩余数和前向约束被重复项放大。
+		seenValues := map[int]bool{}
 		domainNumber := len(solver.domains)
 		// 所有消费者共用同一半格格网，避免以各自小数中心重复生成大量相邻塔位。
 		origin := vector{math.Round(consumer.center.x*2) / 2, math.Round(consumer.center.y*2) / 2, 0}
@@ -145,7 +147,10 @@ func newConnectedPowerSolver(index *connectedPowerIndex, consumers []connectedPo
 				key := connectedPowerCell(world[0], world[2])
 				solver.choiceCells[key] = append(solver.choiceCells[key], number)
 			}
-			domain.values = append(domain.values, number)
+			if !seenValues[number] {
+				seenValues[number] = true
+				domain.values = append(domain.values, number)
+			}
 			return nil
 		}
 		for offsetNumber, offset := range offsets {
@@ -158,19 +163,25 @@ func newConnectedPowerSolver(index *connectedPowerIndex, consumers []connectedPo
 			}
 		}
 		if len(domain.values) < 8 && !index.encoding.planar {
-			// 球面收缩后的窄缝可能落在半格点之间；只细化稀缺域，不放宽实际几何或供电规则。
+			// 球面补偿后的窄缝可能位于任意小数坐标。先保留共享格网，仍稀缺时再沿真实耗电中心的相对格网采样。
+			// 后者恢复原始局部几何的平移相位；所有候选继续通过同一个米制覆盖和原生净空检查。
 			limit := int(math.Ceil(index.coverRadius / planarGridLength * 4))
-			for x := -limit; x <= limit; x++ {
-				if index.ctx.Err() != nil {
-					return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "球面补电窄缝细化已取消或超时"}
+			for phase, center := range []vector{origin, {consumer.center.x, consumer.center.y, 0}} {
+				if len(domain.values) >= 8 {
+					break
 				}
-				for y := -limit; y <= limit; y++ {
-					if x%2 == 0 && y%2 == 0 {
-						continue
+				for x := -limit; x <= limit; x++ {
+					if index.ctx.Err() != nil {
+						return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "球面补电窄缝细化已取消或超时"}
 					}
-					point := vector{origin.x + float64(x)/4, origin.y + float64(y)/4, 0}
-					if err := add(point); err != nil {
-						return nil, err
+					for y := -limit; y <= limit; y++ {
+						if phase == 0 && x%2 == 0 && y%2 == 0 {
+							continue
+						}
+						point := vector{center.x + float64(x)/4, center.y + float64(y)/4, 0}
+						if err := add(point); err != nil {
+							return nil, err
+						}
 					}
 				}
 			}

@@ -33,8 +33,20 @@ export class ShadowLayer {
     return this.pool.alloc();
   }
 
-  release(slot: number): void {
-    this.pool.release(slot);
+  /** 返回补位阴影原槽号，由场景同步持有该阴影的建筑引用。 */
+  release(slot: number): number | undefined {
+    return this.pool.release(slot);
+  }
+
+  get size(): number { return this.pool.size; }
+
+  /** 无动画整场重建时回收全部投影槽位，避免按候选数量反复释放。 */
+  clear(): void {
+    this.pool.clear();
+  }
+
+  beginGeneration(): void {
+    this.pool.beginGeneration();
   }
 
   /** 写入投影：中心 (x, z)、旋转 yaw、尺寸 (w, d)、强度 */
@@ -101,7 +113,11 @@ export class RingLayer {
       const ring = this.rings[i];
       ring.t += dt / ring.duration;
       if (ring.t >= 1) {
-        this.pool.release(ring.slot);
+        const from = this.pool.release(ring.slot);
+        if (from !== undefined) {
+          const moved = this.rings.find(other => other.slot === from);
+          if (moved) moved.slot = ring.slot;
+        }
         this.rings.splice(i, 1);
       } else {
         this.pool.set('aRing', ring.slot, ring.t, ring.strength);
@@ -111,8 +127,8 @@ export class RingLayer {
   }
 
   clear(): void {
-    for (const ring of this.rings) this.pool.release(ring.slot);
     this.rings.length = 0;
+    this.pool.clear();
     this.pool.commit();
   }
 

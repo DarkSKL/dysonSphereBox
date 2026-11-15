@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /**
  * 实例池：一个几何体 + 一个材质对应一个 InstancedMesh，按槽位分配给场景对象。
  *
- * - 槽位释放后写入零缩放矩阵（不可见），并进入空闲表复用；count 只覆盖到最高已用槽位
+ * - 活动槽位连续存放；释放时用末端实例补位，调用方同步迁移后的对象引用，绘制数量等于活动数量
  * - 容量不足时翻倍重建 InstancedMesh，并拷贝全部实例数据
  * - 自定义的逐实例属性（状态、颜色索引、长度等）挂在池自有的几何体上，基础网格属性共享
  */
@@ -21,10 +21,12 @@ export class InstancePool {
   mesh: THREE.InstancedMesh;
   private capacity: number;
   private used = 0;
-  private readonly free: number[] = [];
+  private generationPeak = 0;
+  private readonly minimumCapacity: number;
   private readonly arrays = new Map<string, Float32Array>();
-  private dirtyMatrix = false;
-  private readonly dirtyAttributes = new Set<string>();
+  private matrixLow = Infinity;
+  private matrixHigh = -1;
+  private readonly dirtyAttributes = new Map<string, {low: number; high: number}>();
 
   constructor(
     readonly key: string,
@@ -36,50 +38,70 @@ export class InstancePool {
     private readonly renderOrder = 0,
   ) {
     this.capacity = Math.max(8, initialCapacity);
+    this.minimumCapacity = this.capacity;
     for (const spec of specs) this.arrays.set(spec.name, new Float32Array(this.capacity * spec.itemSize));
     this.mesh = this.createMesh();
     parent.add(this.mesh);
   }
 
-  /** 已用槽位数（含空洞） */
+  /** 活动槽位数，与GPU绘制数量一致。 */
   get size(): number {
-    return this.used - this.free.length;
+    return this.used;
+  }
+
+  /** 无过渡重建时整池归零，保留 GPU 容量复用；新槽位由 alloc 重置，不逐个遍历旧建筑。 */
+  clear(): void {
+    this.used = 0;
+    this.mesh.count = 0;
+    this.matrixLow = Infinity;
+    this.matrixHigh = -1;
+    this.dirtyAttributes.clear();
+  }
+
+  /** 保留上次任务的容量需求；更早大蓝图留下的空闲缓冲在新任务开始时缩小。 */
+  beginGeneration(): void {
+    const required = Math.max(this.minimumCapacity, this.used, this.generationPeak);
+    let capacity = this.minimumCapacity;
+    while (capacity < required) capacity *= 2;
+    if (capacity < this.capacity) this.resize(capacity);
+    this.generationPeak = 0;
   }
 
   alloc(): number {
-    const slot = this.free.length ? (this.free.pop() as number) : this.used++;
-    if (slot >= this.capacity) this.grow(Math.max(this.capacity * 2, slot + 1));
+    const slot = this.used++;
+    this.generationPeak = Math.max(this.generationPeak, this.used);
+    if (slot >= this.capacity) this.resize(Math.max(this.capacity * 2, slot + 1));
     for (const spec of this.specs) {
       const array = this.arrays.get(spec.name) as Float32Array;
       for (let i = 0; i < spec.itemSize; i++) array[slot * spec.itemSize + i] = spec.fill?.[i] ?? 0;
-      this.dirtyAttributes.add(spec.name);
+      this.markAttribute(spec.name, slot * spec.itemSize, spec.itemSize);
     }
     this.mesh.setMatrixAt(slot, ZERO);
     this.mesh.count = this.used;
-    this.dirtyMatrix = true;
+    this.markMatrix(slot);
     return slot;
   }
 
-  release(slot: number): void {
-    if (slot < 0 || slot >= this.used) return;
-    this.mesh.setMatrixAt(slot, ZERO);
-    this.dirtyMatrix = true;
-    if (slot === this.used - 1) {
-      this.used--;
-      // 收缩尾部连续的空闲槽位，减少无效绘制
-      while (this.used > 0 && this.free.includes(this.used - 1)) {
-        this.free.splice(this.free.indexOf(this.used - 1), 1);
-        this.used--;
+  /** 释放并压实实例；返回补位实例原槽号，调用方必须更新其身份映射。释放末槽或无效槽不产生迁移。 */
+  release(slot: number): number | undefined {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= this.used) return;
+    const last = --this.used;
+    if (slot !== last) {
+      this.mesh.instanceMatrix.array.copyWithin(slot * 16, last * 16, last * 16 + 16);
+      this.markMatrix(slot);
+      for (const spec of this.specs) {
+        const array = this.arrays.get(spec.name) as Float32Array;
+        array.copyWithin(slot * spec.itemSize, last * spec.itemSize, (last + 1) * spec.itemSize);
+        this.markAttribute(spec.name, slot * spec.itemSize, spec.itemSize);
       }
-      this.mesh.count = this.used;
-    } else {
-      this.free.push(slot);
     }
+    this.mesh.count = this.used;
+    return slot !== last ? last : undefined;
   }
 
   setMatrix(slot: number, matrix: THREE.Matrix4): void {
     this.mesh.setMatrixAt(slot, matrix);
-    this.dirtyMatrix = true;
+    this.markMatrix(slot);
   }
 
   set(name: string, slot: number, a: number, b = 0, c = 0, d = 0): void {
@@ -91,22 +113,39 @@ export class InstancePool {
     if (size > 1) array[offset + 1] = b;
     if (size > 2) array[offset + 2] = c;
     if (size > 3) array[offset + 3] = d;
-    this.dirtyAttributes.add(name);
+    this.markAttribute(name, offset, size);
   }
 
   /** 把本帧的修改提交到 GPU；包围球失效后由拾取或剔除按需重算 */
   commit(): void {
-    if (this.dirtyMatrix) {
+    if (this.matrixHigh >= 0) {
+      this.mesh.instanceMatrix.addUpdateRange(this.matrixLow * 16, (this.matrixHigh - this.matrixLow + 1) * 16);
       this.mesh.instanceMatrix.needsUpdate = true;
       this.mesh.boundingSphere = null;
       this.mesh.boundingBox = null;
-      this.dirtyMatrix = false;
+      this.matrixLow = Infinity;
+      this.matrixHigh = -1;
     }
-    for (const name of this.dirtyAttributes) {
+    for (const [name, range] of this.dirtyAttributes) {
       const attribute = this.mesh.geometry.getAttribute(name) as THREE.InstancedBufferAttribute | undefined;
-      if (attribute) attribute.needsUpdate = true;
+      if (attribute) {
+        attribute.addUpdateRange(range.low, range.high - range.low);
+        attribute.needsUpdate = true;
+      }
     }
     this.dirtyAttributes.clear();
+  }
+
+  /** 合并本帧改动范围；只上传变更槽位，未渲染的范围由 three.js 在真正上传后清理。 */
+  private markMatrix(slot: number): void {
+    this.matrixLow = Math.min(this.matrixLow, slot);
+    this.matrixHigh = Math.max(this.matrixHigh, slot);
+  }
+
+  private markAttribute(name: string, offset: number, size: number): void {
+    const range = this.dirtyAttributes.get(name);
+    if (range) { range.low = Math.min(range.low, offset); range.high = Math.max(range.high, offset + size); }
+    else this.dirtyAttributes.set(name, {low: offset, high: offset + size});
   }
 
   dispose(): void {
@@ -149,27 +188,24 @@ export class InstancePool {
     return mesh;
   }
 
-  private grow(capacity: number): void {
+  private resize(capacity: number): void {
     const oldMesh = this.mesh;
-    const oldCapacity = this.capacity;
     this.capacity = capacity;
     for (const spec of this.specs) {
       const next = new Float32Array(capacity * spec.itemSize);
-      next.set(this.arrays.get(spec.name) as Float32Array);
+      next.set((this.arrays.get(spec.name) as Float32Array).subarray(0, next.length));
       this.arrays.set(spec.name, next);
     }
     this.mesh = this.createMesh();
-    const matrix = new THREE.Matrix4();
-    for (let i = 0; i < oldCapacity; i++) {
-      oldMesh.getMatrixAt(i, matrix);
-      this.mesh.setMatrixAt(i, matrix);
-    }
-    for (let i = oldCapacity; i < capacity; i++) this.mesh.setMatrixAt(i, ZERO);
+    this.mesh.instanceMatrix.array.set(oldMesh.instanceMatrix.array.subarray(0, this.mesh.instanceMatrix.array.length));
+    this.matrixLow = Infinity;
+    this.matrixHigh = -1;
+    this.dirtyAttributes.clear();
     this.parent.remove(oldMesh);
     oldMesh.geometry.dispose();
     oldMesh.dispose();
     this.parent.add(this.mesh);
-    this.dirtyMatrix = true;
-    for (const spec of this.specs) this.dirtyAttributes.add(spec.name);
+    if (this.used) { this.markMatrix(0); this.markMatrix(this.used - 1); }
+    for (const spec of this.specs) this.markAttribute(spec.name, 0, this.used * spec.itemSize);
   }
 }

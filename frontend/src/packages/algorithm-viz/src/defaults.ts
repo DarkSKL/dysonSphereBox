@@ -13,8 +13,8 @@ export const HEIGHT_SCALE = LAYER_METERS / GRID_METERS;
 export const SPEED_MIN = 0.25;
 export const SPEED_MAX = 8;
 
-/** 场景对象默认上限 */
-export const DEFAULT_MAX_OBJECTS = 12000;
+/** 默认完整展示全部建筑；内存按实际对象和实例池容量增长，不因默认数量阈值丢弃操作。 */
+export const DEFAULT_MAX_OBJECTS = Infinity;
 
 /** 画质档位：像素比上限与抗锯齿 */
 export interface AlgoVizQualityPreset {

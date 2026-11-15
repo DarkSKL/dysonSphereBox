@@ -8,8 +8,8 @@ import (
 	"math"
 )
 
-// denseSpatialRowCounts 职责：将已核验容量组拆为指定最大跨度的均衡子组；使用：密铺矩形候选；边界：研究站按真实端口所允许层数计算地面列数。
-func denseSpatialRowCounts(production quant.Production, recipe quant.Recipe, setting Setting, counts []int, maxSpan float64) ([]int, error) {
+// denseSpatialRowCounts 职责：将已核验容量组拆为指定跨度的子组；使用：原密铺候选均分，填洞候选可按研究站完整堆叠列优先填满；边界：每个原容量组独立守恒，层数仍来自真实端口能力。
+func denseSpatialRowCounts(production quant.Production, recipe quant.Recipe, setting Setting, counts []int, maxSpan float64, wholeColumns bool) ([]int, error) {
 	reference := referenceLowRecipe(production, recipe) && referenceSingleArmsSufficient(production, recipe, setting.InserterLv)
 	paired := densePairRecipe(production, recipe) && densePairPortsSupported(production, recipe, setting)
 	pitch, err := denseLineSpacing(production.MachineType, setting.extraSpace(production.MachineType))
@@ -41,6 +41,10 @@ func denseSpatialRowCounts(production quant.Production, recipe quant.Recipe, set
 			part := count / parts
 			if i < count%parts {
 				part++
+			}
+			if wholeColumns && production.MachineType == 6 {
+				// 仅填洞候选按完整堆叠列优先装满，避免均分后每个短组都新增一根不满列。
+				part = min(limit, count-i*limit)
 			}
 			result = append(result, part)
 		}

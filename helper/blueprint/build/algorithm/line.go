@@ -44,7 +44,7 @@ type geometry struct {
 
 // line 职责：保留一条产线的入口/机器引用；使用：配送和总线装配；边界：归属由 builder 登记。
 type line struct {
-	// referenceLowTracks 职责：标识参考图的低双层带单元；使用：局部容量与供电；边界：不跳过最终规则。
+	// referenceLowTracks 职责：标识来源型紧凑轨道单元；使用：局部容量与供电；边界：包括低层轨道及同侧地面三轨，不跳过最终规则。
 	referenceLowTracks bool
 	// densePaired 职责：标识不可拆分的相向双排单元；使用：设施周边放置；边界：不能按独立机器行再次拆开。
 	densePaired bool
@@ -106,7 +106,7 @@ func (s Setting) maxCount(typ int) int {
 	return s.MaxMachineInALine
 }
 
-// buildLine 职责：装配基础机器行与逐产物独立输出；使用：所有生成策略；边界：输入和产物合计不超过六个真实槽位，容量无解不伪造拓扑。
+// buildLine 职责：装配基础机器行与逐产物独立输出；使用：所有生成策略；边界：通用两侧六槽，七物料研究站使用独立西侧槽，容量无解不伪造拓扑。
 func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lineIndex int, last bool) (*line, error) {
 	if err := b.checkGeneration("机器行装配"); err != nil {
 		return nil, err
@@ -114,11 +114,17 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	if count <= 0 || count > 10000 {
 		return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "机器行必须包含1到10000台真实机器，拒绝空行或超限行"}
 	}
-	if b.setting.UseMixed || len(r.Items)+len(r.Results) > 6 || len(r.Results) == 0 {
+	if b.setting.UseMixed || len(r.Items)+len(r.Results) > 6 && !labSevenPorts(p, r) || len(r.Results) == 0 {
 		return nil, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: "独立物料带需要至少一种产物且原料与产物合计至多六种；旧循环混带尚无按所选分拣器等级逐物品验证的实体端口拓扑，需要独立规划"}
 	}
 	if _, err := productionMaterialFlows(p, r); err != nil {
 		return nil, err
+	}
+	if b.denseRefineryEligible(p, r) {
+		return b.buildDenseRefineryLine(p, r, count, mode, lineIndex, last)
+	}
+	if b.referenceChemicalFourEligible(p, r) {
+		return b.buildReferenceLowLine(p, r, count, mode, lineIndex, last)
 	}
 	if b.referenceLowTrackEligible(p, r) {
 		return b.buildReferenceLowLine(p, r, count, mode, lineIndex, last)
@@ -134,10 +140,16 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	}
 	l := &line{recipe: r, info: p}
 	ports := planMachineInserters(p, r, b.setting, count)
+	if labSevenPorts(p, r) && count > ports.layers {
+		return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "七物料研究站单元必须按实际堆叠能力拆列"}
+	}
 	bottom := ports.bottom
 	pre := 0.
 	if p.IncreasePoints > 0 && p.ProductionMode >= 0 {
 		pre = 4
+	}
+	if labSevenPorts(p, r) {
+		pre += 4
 	}
 	ground := count
 	pairCount := 0
@@ -164,7 +176,11 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 	machineX := math.Floor(conf.Left + conf.Start + pre)
 	machineY := float64(bottom) + conf.Bottom
 	belts := make([][]*placed, 0, len(r.Items)+len(r.Results))
-	for i := 0; i < len(r.Items)+len(r.Results); i++ {
+	trackCount := len(r.Items) + len(r.Results)
+	if labSevenPorts(p, r) {
+		trackCount--
+	}
+	for i := 0; i < trackCount; i++ {
 		if err := b.checkGeneration("机器行传送带装配"); err != nil {
 			return nil, err
 		}
@@ -188,6 +204,10 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 		l.inputs = append(l.inputs, belts[track])
 	}
 	for _, port := range ports.outputs {
+		if port.lateral {
+			l.outputs = append(l.outputs, b.straight(0, machineY, int(machineX)-1, 2))
+			continue
+		}
 		track := bottom - port.reach
 		if port.top {
 			track = bottom + port.reach - 1
@@ -265,6 +285,10 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			}
 		}
 		for index, port := range ports.outputs {
+			if port.lateral {
+				b.buildLabSideOutput(m, l.outputs[index])
+				continue
+			}
 			filter := 0
 			if len(r.Results) > 1 {
 				filter = r.Results[index]
@@ -279,7 +303,7 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 			return nil, err
 		}
 	}
-	if pre > 0 {
+	if p.IncreasePoints > 0 && p.ProductionMode >= 0 {
 		for _, row := range l.inputs {
 			c := b.make(2313, 2, row[0].a.y, 0)
 			c.record.OutputToSlot = 14
@@ -312,6 +336,19 @@ func (b *builder) buildLine(p quant.Production, r quant.Recipe, count, mode, lin
 
 // finishLocalLine 职责：为已装配机器单元补齐设施、供电与容量证据；使用：普通和参考密铺共同出口；边界：不重新排列机器或改写参考臂姿态。
 func (b *builder) finishLocalLine(l *line, conf geometry, p quant.Production, mode, lineIndex int, last bool, start int) (*line, error) {
+	if b.adapter != nil && b.adapter.density == densityDense && b.generationCtx != nil {
+		root, _ := b.generationCtx.Value(densityPolarRootKey{}).(bool)
+		precise, _ := b.generationCtx.Value(densityPrototypeFootprintKey{}).(bool)
+		if root && precise {
+			footprint, err := prototypeLayoutFootprint(int16(p.MachineID), b.models[itoa(p.MachineID)])
+			if err != nil {
+				return nil, err
+			}
+			for _, machine := range l.machines {
+				machine.layoutFootprint = footprint
+			}
+		}
+	}
 	b.previewCheckpoint("assembly")
 	if b.adapter != nil && b.adapter.lineAssembly.useFlyTransport {
 		if err := b.prepareFlyInletCoaters(l); err != nil {
@@ -354,6 +391,10 @@ func (b *builder) finishLocalLine(l *line, conf geometry, p quant.Production, mo
 // addLineFlowMonitors 在每条独立物料带上选取空闲节点安装监测器。
 // 使用：buildLine 已创建机器、分拣器和物料带后调用；边界：监测器与宿主带同点共存，不更改带链和过滤参数。
 func (b *builder) addLineFlowMonitors(l *line, begin int) error {
+	monitorFootprint, err := prototypeLayoutFootprint(2030, b.models["2030"])
+	if err != nil {
+		return err
+	}
 	rows := append(append([][]*placed{}, l.inputs...), l.outputRows()...)
 	seen := map[*placed]bool{}
 	for _, row := range rows {
@@ -378,6 +419,8 @@ func (b *builder) addLineFlowMonitors(l *line, begin int) error {
 			return &blueprint.Error{Code: "GEN_E_COLLISION", Message: "产线物料带没有可安全安装流速监测器的空闲节点"}
 		}
 		monitor := b.make(2030, selected.a.x, selected.a.y, selected.a.z)
+		monitor.flowMonitorHost = selected
+		monitor.layoutFootprint = monitorFootprint
 		monitor.record.Yaw = selected.record.Yaw
 		monitor.record.Yaw2 = selected.record.Yaw
 		seen[selected] = true
@@ -418,17 +461,40 @@ func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bo
 		return false
 	}
 	encoding := newPlanarRuleEncoding()
-	origin := vector{belt.a.x * planarGridLength, belt.a.z*1.3333333 + .2, belt.a.y * planarGridLength}
+	toWorld := func(point vector) placement.Vector {
+		return placement.Vector{point.x * planarGridLength, point.z*1.3333333 + .2, point.y * planarGridLength}
+	}
+	yaw := belt.record.Yaw
+	if b.polarFrame != nil {
+		encoding = &surfaceEncoding{}
+		toWorld = func(point vector) placement.Vector { return b.polarFrame.world(point, 0) }
+		point := toWorld(belt.a)
+		direction := placement.Vector{}
+		if before := incoming[belt]; before != nil {
+			direction = direction.Add(surfaceUnit(point.Sub(toWorld(before.a))))
+		}
+		if after := belt.output; after != nil && surfaceIsBelt(after.record.ItemID) {
+			direction = direction.Add(surfaceUnit(toWorld(after.a).Sub(point)))
+		}
+		pose, err := encoding.recordPose(vector{point[0], point[1], point[2]}, 0, 0, 0)
+		if err != nil {
+			return false
+		}
+		x, y := direction.Dot(pose.axes[0]), direction.Dot(pose.axes[2])
+		if math.Hypot(x, y) < 1e-6 {
+			return false
+		}
+		yaw = float32(math.Mod(math.Atan2(x, y)*180/math.Pi+360, 360))
+	}
+	point := toWorld(belt.a)
+	origin := vector{point[0], point[1], point[2]}
 	monitorBoxes := make([]placement.Box, 0, len(monitorShapes))
 	for _, shape := range monitorShapes {
-		box, err := encoding.colliderBox(origin, belt.record.Yaw, shape)
+		box, err := encoding.colliderBox(origin, yaw, shape)
 		if err != nil {
 			return false
 		}
 		monitorBoxes = append(monitorBoxes, box)
-	}
-	toWorld := func(point vector) placement.Vector {
-		return placement.Vector{point.x * planarGridLength, point.z*1.3333333 + .2, point.y * planarGridLength}
 	}
 	for index, other := range existing {
 		if index%64 == 0 && b.checkGeneration("流速监测器选点") != nil {
@@ -440,13 +506,14 @@ func (b *builder) flowMonitorNodeClearAmong(belt *placed, existing []*placed) bo
 		if surfaceIsBelt(other.record.ItemID) {
 			// 与终检使用相同的0.2米节点抬升及缩短胶囊，低层轨道不能只测未抬升的节点中心。
 			point := toWorld(other.a)
-			center := point.Add(placement.Vector{0, .2, 0})
+			lift := encoding.localUp(point).Scale(.2)
+			center := point.Add(lift)
 			first, second := center, center
 			if before, after := incoming[other], other.output; before != nil && after != nil && surfaceIsBelt(after.record.ItemID) {
 				first = point.Add(toWorld(before.a).Sub(point).Scale(.65))
 				second = point.Add(toWorld(after.a).Sub(point).Scale(.65))
 				delta := second.Sub(first).Scale(.45)
-				first, second = first.Add(delta).Add(placement.Vector{0, .2, 0}), second.Sub(delta).Add(placement.Vector{0, .2, 0})
+				first, second = first.Add(delta).Add(lift), second.Sub(delta).Add(lift)
 			}
 			for _, box := range monitorBoxes {
 				if box.SegmentDistanceSquared(center, center) < .23*.23 && box.SegmentDistanceSquared(first, second) < .23*.23 {

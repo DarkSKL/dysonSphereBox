@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>模型压缩画质对比</title>
+  <style>
+    body { margin:0; overflow:auto; background:var(--ds-bg-app,#020409); color:var(--ds-text-primary,#eceef8); }
+    main { max-width:1600px; padding:26px 28px; margin:auto; }
+    h1 { margin:0 0 8px; font-size:24px; font-weight:600; }
+    p { margin:0; color:var(--ds-text-secondary,#9ca8bf); font-size:13px; line-height:1.8; }
+    .summary { display:grid; grid-template-columns:repeat(3,1fr); padding:20px 0; margin-top:18px; border-block:1px solid #33415555; }
+    .summary span { display:block; font-size:12px; color:var(--ds-text-secondary,#9ca8bf); }
+    .summary strong { font-family:var(--ds-font-display,system-ui); font-size:29px; font-weight:500; }
+    .summary small { padding-left:10px; color:var(--ds-success,#3ee0b0); }
+    .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:18px 0; font-size:13px; }
+    select,button { color:inherit; font:inherit; background:var(--ds-bg-panel,#0a0f1a); border:1px solid #64748b66; border-radius:4px; padding:7px 11px; }
+    button { cursor:pointer; } button:hover { border-color:var(--ds-brand,#4cc2ff); }
+    #status { margin-left:auto; font-size:12px; color:var(--ds-text-secondary,#9ca8bf); }
+    .columns { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid #33415555; }
+    .column + .column { border-left:1px solid #33415555; }
+    .label { display:flex; justify-content:space-between; padding:14px; background:var(--ds-bg-panel,#0a0f1a); gap:8px; }
+    .label b { font-size:14px; font-weight:500; } .size { font-family:var(--ds-font-display,system-ui); font-size:14px; }
+    .stage { height:520px; overflow:hidden; }
+    .details { display:flex; justify-content:space-between; padding:12px 14px; font-size:12px; color:var(--ds-text-secondary,#9ca8bf); border-top:1px solid #33415555; }
+    .foot { margin-top:14px; }
+    @media (max-width:900px) { main{padding:18px 12px}.columns{grid-template-columns:1fr}.column+.column{border-left:0;border-top:1px solid #33415555}.stage{height:420px}.summary strong{font-size:23px} }
+  </style>
+</head>
+<body>
+<main>
+  <h1>模型压缩画质对比</h1>
+  <p>同一个模型、相同材质与光照。开发时保留原版，正式构建自动使用压缩版。</p>
+  <div class="summary">
+    <div><span>完整模型目录 · 原始版</span><strong id="total-original">—</strong></div>
+    <div><span>1024 分辨率</span><strong id="total-1024">—</strong><small id="saving-1024"></small></div>
+    <div><span>512 分辨率 · 默认打包档位</span><strong id="total-512">—</strong><small id="saving-512"></small></div>
+  </div>
+  <div class="toolbar">
+    <label for="model">对比建筑</label>
+    <select id="model">
+      <option value="assembler-1">制造台 Mk.I</option>
+      <option value="interstellar-logistic-station">星际物流运输站</option>
+      <option value="turret-plasma">电浆炮塔</option>
+      <option value="smelter-2">位面熔炉</option>
+      <option value="mining-drill-mk2">大型采矿机</option>
+    </select>
+    <button id="zoom" type="button">放大检查</button>
+    <button id="rotate" type="button">旋转 90°</button>
+    <button id="reset" type="button">复位视角</button>
+    <button id="theme" type="button">切换日间</button>
+    <span id="status" role="status">正在读取压缩报告…</span>
+  </div>
+  <div class="columns">
+    <section class="column"><div class="label"><b>开发原版</b><span class="size" id="size-original">—</span></div><div class="stage" id="view-original"></div><div class="details"><span>原始 GLB</span><span id="resolution-original">—</span></div></section>
+    <section class="column"><div class="label"><b>打包 · 1024</b><span class="size" id="size-1024">—</span></div><div class="stage" id="view-1024"></div><div class="details"><span>更细致的近景</span><span id="resolution-1024">—</span></div></section>
+    <section class="column"><div class="label"><b>打包 · 512</b><span class="size" id="size-512">—</span></div><div class="stage" id="view-512"></div><div class="details"><span>默认体积优先档位</span><span id="resolution-512">—</span></div></section>
+  </div>
+  <p class="foot">拖动画布旋转，滚轮缩放；三个视图会同步。可切换建筑和“放大检查”比较表面细节。</p>
+  <p class="foot" id="note">首次打开请先在 frontend 执行 npm run models:compare，再启动开发服务器。</p>
+</main>
+<script type="module" src="./preview.js"></script>
+</body>
+</html>

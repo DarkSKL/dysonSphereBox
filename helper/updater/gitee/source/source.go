@@ -28,10 +28,14 @@ type Source struct {
 	// 边界：不写入日志，不用于非 Gitee 请求。
 	token string
 	// httpClient 是更新源专用 HTTP 客户端。
-	// 职责：执行 Release 列表和附件下载请求。
-	// 使用：ListReleases 与 DownloadReleaseAsset 调用 Do。
+	// 职责：执行 Release 列表请求。
+	// 使用：ListReleases 调用 Do。
 	// 边界：只实现 go-selfupdate.Source 所需的数据访问，不提供 Mod 市场或账号 API。
 	httpClient *http.Client
+	// downloadClient 是附件下载专用客户端。
+	// 职责：为大体积附件提供独立的完整请求超时；使用：DownloadReleaseAsset 调用 Do。
+	// 边界：与元数据客户端共享传输和重定向配置，不修改调用方注入的客户端。
+	downloadClient *http.Client
 	// assets 缓存最近一次 Release 列表中的附件。
 	// 职责：让 DownloadReleaseAsset 可通过 go-selfupdate 回传的 assetID 找到下载地址。
 	// 使用：ListReleases 刷新，DownloadReleaseAsset 读取。
@@ -56,5 +60,13 @@ func NewSource(config Config) (*Source, error) {
 	if httpClient == nil {
 		httpClient = core.NewHTTPStandardClient(defaultHTTPTimeout)
 	}
-	return &Source{apiBaseURL: apiBaseURL, token: strings.TrimSpace(config.Token), httpClient: httpClient, assets: make(map[int64]giteeAsset)}, nil
+	downloadClient := *httpClient
+	downloadClient.Timeout = defaultDownloadTimeout
+	return &Source{
+		apiBaseURL:     apiBaseURL,
+		token:          strings.TrimSpace(config.Token),
+		httpClient:     httpClient,
+		downloadClient: &downloadClient,
+		assets:         make(map[int64]giteeAsset),
+	}, nil
 }

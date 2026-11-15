@@ -35,6 +35,8 @@ type LinkState struct {
 // Member 是房间成员（不含房主）。
 // 职责：描述成员身份、临时 PeerID 与链路；使用：RoomSnapshot.members 与 member.join 事件；边界：link 尚未上报时为 null。
 type Member struct {
+	// HeaderImg 职责：保留鉴权头像原值；使用：成员座位展示；边界：握手快照，缺省为空，不附凭证。
+	HeaderImg string `json:"headerImg,omitempty"`
 	// UserID 职责：账户 ID，房间内唯一；使用：踢人、链路投影；边界：number。
 	UserID int64 `json:"userId"`
 	// Nickname 职责：昵称；使用：界面展示；边界：只展示。
@@ -50,6 +52,8 @@ type Member struct {
 // RoomHost 是 RoomSnapshot 中的房主信息。
 // 职责：描述房主身份；使用：界面展示与角色判断；边界：不含地址。
 type RoomHost struct {
+	// HeaderImg 职责：保留房主鉴权头像；使用：房间座位展示；边界：握手快照，缺省为空。
+	HeaderImg string `json:"headerImg,omitempty"`
 	// UserID 职责：房主账户 ID；使用：角色判断；边界：number。
 	UserID int64 `json:"userId"`
 	// Nickname 职责：房主昵称；使用：界面展示；边界：只展示。
@@ -86,6 +90,8 @@ type RoomSnapshot struct {
 // RoomSummary 是大厅与预览中的房间条目。
 // 职责：描述可加入房间的摘要；使用：lobby.list、lobby.change、room.resolve；边界：不含任何地址。
 type RoomSummary struct {
+	// HostHeaderImg 职责：保留房主头像原值；使用：大厅及预览；边界：缺省为空，由界面解析安全地址。
+	HostHeaderImg string `json:"hostHeaderImg,omitempty"`
 	// RoomID 职责：房间 ID；使用：加入参数；边界：字符串。
 	RoomID string `json:"roomId"`
 	// Name 职责：房间名；使用：展示；边界：只展示。
@@ -140,6 +146,8 @@ type PunchPeer struct {
 // UserInfo 是 session.open 回复中的当前用户。
 // 职责：描述账户身份；使用：识别自己是否是事件中的成员或房主；边界：昵称取自 token。
 type UserInfo struct {
+	// HeaderImg 职责：保留当前会话的鉴权头像；使用：账户投影；边界：握手快照，缺省为空。
+	HeaderImg string `json:"headerImg,omitempty"`
 	// UserID 职责：账户 ID；使用：身份判断；边界：number。
 	UserID int64 `json:"userId"`
 	// Nickname 职责：昵称；使用：展示；边界：只展示。

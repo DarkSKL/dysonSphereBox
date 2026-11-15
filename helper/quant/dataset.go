@@ -1,7 +1,7 @@
 package quant
 
 // 文件职责：加载授权内置数据并建立保序名称索引；使用：量化、检查与布局；边界：只读 go:embed，无运行时联网。
-// 数据原样来自 dsp-calc（神不在的黄昏提供，MulanPSL-2.0）。
+// 数据基于 dsp-calc（神不在的黄昏提供，MulanPSL-2.0），原版原型字段与本地游戏提取结果对齐。
 
 import (
 	"bytes"
@@ -69,17 +69,18 @@ func LoadDataset(key string) (*Dataset, error) {
 		return nil, qerror("Q_E_DATASET", "原版内置数据集不存在")
 	}
 	var input struct {
-		Items   []Item
-		Recipes []Recipe
+		GameVersion string `json:"gameVersion"`
+		Items       []Item
+		Recipes     []Recipe
 	}
 	if err := json.Unmarshal(bytes.TrimPrefix(raw, []byte{239, 187, 191}), &input); err != nil {
 		return nil, qerror("Q_E_DATASET", "内置数据损坏")
 	}
-	if len(input.Items) == 0 || len(input.Recipes) == 0 {
-		return nil, qerror("Q_E_DATASET", "数据集为空")
+	if input.GameVersion == "" || len(input.Items) == 0 || len(input.Recipes) == 0 {
+		return nil, qerror("Q_E_DATASET", "数据集缺少游戏版本、物品或配方")
 	}
 	sum := sha256.Sum256(raw)
-	d := &Dataset{Info: DatasetInfo{Key: key, Name: key, GameVersion: "0.10.34.28524", DataVersion: hex.EncodeToString(sum[:8]), ItemCount: len(input.Items), RecipeCount: len(input.Recipes)}, Items: input.Items, Recipes: input.Recipes, ByID: map[int]Item{}, ByName: map[string]Item{}, RecipeByID: map[int]int{}, Choices: map[string][]int{}}
+	d := &Dataset{Info: DatasetInfo{Key: key, Name: key, GameVersion: input.GameVersion, DataVersion: hex.EncodeToString(sum[:8]), ItemCount: len(input.Items), RecipeCount: len(input.Recipes)}, Items: input.Items, Recipes: input.Recipes, ByID: map[int]Item{}, ByName: map[string]Item{}, RecipeByID: map[int]int{}, Choices: map[string][]int{}}
 	d.Info.Name = "原版游戏"
 	for _, item := range d.Items {
 		d.ByID[item.ID] = item

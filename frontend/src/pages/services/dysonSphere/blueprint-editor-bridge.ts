@@ -14,6 +14,16 @@ import type {
 } from '../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js'
 
 type BlueprintEditorModule = typeof import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
+// =============== 模型资产映射 ===============
+// 说明：库产物里的 models/ 不随宿主构建复制（basis/、img/ 由 vite 插件复制到同目录），
+//       因此用 ?url 让 Vite 接管 GLB 地址（开发原版、打包压缩档 + 内容哈希），再交给库的映射钩子。
+// 边界：键必须是库内部使用的相对路径（models/xxx.glb）；未命中的路径仍回退库的默认拼接。
+const bundledModelUrls: Record<string, string> = {}
+for (const [filePath, url] of Object.entries(
+  import.meta.glob<string>('../../../packages/dsp-blueprint-editor/models/*.glb', {query: '?url', import: 'default', eager: true}),
+)) {
+  bundledModelUrls[`models/${filePath.split('/').pop()}`] = url
+}
 
 // =============== 宿主端口 ===============
 
@@ -93,12 +103,18 @@ export const BLANK_BLUEPRINT = 'BLUEPRINT:1,10,0,0,0,0,0,0,639273500692970000,0.
 
 // =============== 预览器模块加载 ===============
 // 说明：按需导入本地 ESM 产物；库以 import.meta.url 定位同目录的 models/、img/，开发期无需额外配置。
+//       导入完成后立即注册模型地址映射，保证首次创建实例前钩子已就位。
 // 边界：缓存导入 Promise 避免重复求值；失败时清空缓存，让下一次加载可以重试。
 let blueprintEditorModule: Promise<BlueprintEditorModule> | null = null
 
 const ensureBlueprintEditor = (): Promise<BlueprintEditorModule> => {
   if (!blueprintEditorModule) {
     blueprintEditorModule = import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
+      .then((module) => {
+        // 未命中即返回 null → 回退库的默认拼接
+        module.configureAssetUrlMapper(path => bundledModelUrls[path] ?? null)
+        return module
+      })
       .catch((error: unknown) => {
         blueprintEditorModule = null
         throw error

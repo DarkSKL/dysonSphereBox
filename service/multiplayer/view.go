@@ -75,6 +75,8 @@ type ConnectionView struct {
 
 // AccountView 是当前账户。
 type AccountView struct {
+	// HeaderImg 职责：当前会话头像原值；使用：前端身份投影；边界：会话未打开或旧服务缺省时为空。
+	HeaderImg string `json:"headerImg,omitempty"`
 	// LoggedIn 职责：本地是否持有 token；使用：提示登录；边界：不保证 token 有效。
 	LoggedIn bool `json:"loggedIn"`
 	// UserID 职责：账户 ID；使用：识别自己；边界：会话打开前为 0。

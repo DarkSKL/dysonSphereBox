@@ -1319,6 +1319,7 @@ func (c *controller) snapshotState() State {
 	slices.Sort(state.Pending)
 	if sess := c.sess; sess != nil {
 		state.Account.UserID, state.Account.Nickname = sess.info.User.UserID, sess.info.User.Nickname
+		state.Account.HeaderImg = sess.info.User.HeaderImg
 		if sess.info.SessionID != "" {
 			state.Session = &SessionView{SessionID: sess.info.SessionID, PeerID: sess.host.ID().String(),
 				ListenPort: sess.port, Limits: sess.info.Limits, Policy: sess.info.Policy, Capabilities: sess.info.Capabilities, Relays: sess.host.RelayStates()}

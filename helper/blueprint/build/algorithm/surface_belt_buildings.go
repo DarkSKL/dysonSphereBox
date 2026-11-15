@@ -12,8 +12,12 @@ import (
 	"DysonSphereBox/helper/blueprint/build/placement"
 )
 
-// surfaceBeltBuildingLink 职责：识别游戏预览支持的三跳塔口连接及两跳堆叠分流器连接；使用：带与建筑盒相交后的豁免；边界：只沿 input 或 output 同向追溯，不做无界连通分量豁免。
+// surfaceBeltBuildingLink 职责：识别非分流器建筑的原生三跳连接及监测器宿主；使用：带与建筑盒相交后的豁免；边界：只沿input或output同向追溯，分流器必须另按真实槽位几何复核。
 func surfaceBeltBuildingLink(belt, building int, records []blueprint.Building, byIndex map[int32]int) bool {
+	// 分流器另按真实模型槽位、方向及高度复核短接头，不继承此通用三跳规则。
+	if records[building].ItemID == 2020 {
+		return false
+	}
 	// 流速监测器按游戏规则直接落在宿主带节点；只豁免同 Area、同坐标且同朝向的这一对实体。
 	if records[building].ItemID == 2030 {
 		host := records[building]
@@ -34,9 +38,6 @@ func surfaceBeltBuildingLink(belt, building int, records []blueprint.Building, b
 				break
 			}
 			if next == building {
-				return true
-			}
-			if hop <= 2 && records[building].ItemID == 2020 && (records[building].InputObjIdx == index || records[building].OutputObjIdx == index) {
 				return true
 			}
 			if !surfaceIsBelt(records[next].ItemID) {
@@ -150,7 +151,7 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 			boxes = append(boxes, placement.OwnedBox{Owner: i, Geometry: box})
 		}
 	}
-	const radius = .23
+	const radius = surfaceBeltNodeRadius
 	for i, record := range records {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "传送带建筑占用检查已取消或超时"}
@@ -159,22 +160,16 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 			continue
 		}
 		point := placement.Vector{positions[i].x, positions[i].y, positions[i].z}
-		radial := encoding.localUp(point).Scale(.2)
-		center, first, second := point.Add(radial), point, point
 		input, hasInput := byIndex[record.InputObjIdx]
 		output, hasOutput := byIndex[record.OutputObjIdx]
-		if hasInput && hasOutput && surfaceIsBelt(records[input].ItemID) && surfaceIsBelt(records[output].ItemID) {
-			first = point.Add(placement.Vector{positions[input].x, positions[input].y, positions[input].z}.Sub(point).Scale(.65))
-			second = point.Add(placement.Vector{positions[output].x, positions[output].y, positions[output].z}.Sub(point).Scale(.65))
-			delta := second.Sub(first).Scale(.45)
-			if encoding.planar {
-				first, second = first.Add(delta), second.Sub(delta)
-			} else {
-				length := math.Sqrt(point.Dot(point))
-				first, second = surfaceUnit(first.Add(delta)).Scale(length), surfaceUnit(second.Sub(delta)).Scale(length)
-			}
+		before, after := point, point
+		through := hasInput && hasOutput && surfaceIsBelt(records[input].ItemID) && surfaceIsBelt(records[output].ItemID)
+		if through {
+			before = placement.Vector{positions[input].x, positions[input].y, positions[input].z}
+			after = placement.Vector{positions[output].x, positions[output].y, positions[output].z}
 		}
-		first, second = first.Add(radial), second.Add(radial)
+		probe := encoding.beltNodeProbe(point, before, after, through)
+		center, first, second := probe.center, probe.span.ends[0], probe.span.ends[1]
 		seen := map[int]bool{}
 		for x := int(math.Floor((center[0] - radius) / 8)); x <= int(math.Floor((center[0]+radius)/8)); x++ {
 			for y := int(math.Floor((center[1] - radius) / 8)); y <= int(math.Floor((center[1]+radius)/8)); y++ {
@@ -191,7 +186,15 @@ func (encoding *surfaceEncoding) validateBeltBuildingOccupancy(ctx context.Conte
 							continue
 						}
 						narrow++
-						if box.Geometry.SegmentDistanceSquared(first, second) >= radius*radius-1e-6 || surfaceBeltBuildingLink(i, box.Owner, records, byIndex) {
+						linked := surfaceBeltBuildingLink(i, box.Owner, records, byIndex)
+						if records[box.Owner].ItemID == 2020 {
+							end := i
+							if hasOutput && surfaceIsBelt(records[output].ItemID) {
+								end = output
+							}
+							linked = encoding.splitterShortConnectionAllowed(i, box.Owner, end, records, positions, byIndex)
+						}
+						if box.Geometry.SegmentDistanceSquared(first, second) >= radius*radius-1e-6 || linked {
 							continue
 						}
 						if geometry, exists := geometries[box.Owner]; exists && encoding.surfaceAddonBeltPass(i, box.Owner, records, positions, byIndex, geometry) {

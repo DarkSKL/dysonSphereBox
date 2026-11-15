@@ -138,9 +138,13 @@ func (b *builder) addFlyPower(center vector, begin int) error {
 // ensureFlyPower 职责：为独立配送端点复用或创建感应塔；使用：简单几何调用；边界：完整行装配使用带错误返回的 completeFlyPower。
 func (b *builder) ensureFlyPower(center vector) { _ = b.addFlyPower(center, 0) }
 
-// completeFlyPower 职责：逐个覆盖本地机器、分拣器和高层配送端；使用：mode2/5 替代跨行复用电杆；边界：不借用随后会独立平移的其它产线块。
+// completeFlyPower 职责：按真实接电位置覆盖本地机器、分拣器和高层配送端；使用：独立机器块落位前补电；边界：研究站仅复用同块内有效堆叠链的底层，不借用随后会独立平移的其它块。
 func (b *builder) completeFlyPower(begin int) error {
 	end := len(b.all)
+	present := make(map[*placed]bool, end-begin)
+	for _, p := range b.all[begin:end] {
+		present[p] = true
+	}
 	for _, p := range b.all[begin:end] {
 		if err := b.checkGeneration("配送消费者供电"); err != nil {
 			return err
@@ -148,7 +152,11 @@ func (b *builder) completeFlyPower(begin int) error {
 		if !finalPowerConsumer(p.record) {
 			continue
 		}
-		center := p.a
+		// 与全局补电和最终审计共用底层接电语义；高层配送器仍使用自身三维位置。
+		center, err := connectedPowerConsumerCenter(p, present)
+		if err != nil {
+			return fmt.Errorf("产线 %d 的本地供电中心无效：%w", b.owner, err)
+		}
 		if err := b.addFlyPower(center, begin); err != nil {
 			return err
 		}

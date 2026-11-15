@@ -16,6 +16,9 @@ import (
 // connectedPowerCellSize 职责：限定米制平面占位桶边长；使用：局部净空和供电查询；边界：高度始终进入三维窄相位，不用二维相邻代替三维覆盖。
 const connectedPowerCellSize = 8.
 
+// connectedPowerObstacleCellSize 职责：让细小感应塔净空只枚举邻近障碍；使用：占位桶登记与查询；边界：覆盖和求解索引仍用原八米桶，跨桶形状完整登记。
+const connectedPowerObstacleCellSize = 2.
+
 // connectedPowerObstacle 职责：缓存单个实体的精确静态盒或带/分拣器线段；使用：候选塔窄相位；边界：电力节点另按原版三维间距检查。
 type connectedPowerObstacle struct {
 	entity *placed
@@ -23,6 +26,8 @@ type connectedPowerObstacle struct {
 	first  placement.Vector
 	second placement.Vector
 	radius float64
+	// nodeProbe 职责：保存正式节点球与缩短胶囊；使用：均衡候选供电净空；边界：不影响既有粗筛候选。
+	nodeProbe *surfaceBeltNodeProbe
 }
 
 // connectedPowerIndex 职责：索引已固定的全局占位及已登记电塔；使用：避免每个消费者扫描全部实体；边界：新增电塔必须同步登记，线段覆盖其经过的全部平面桶。
@@ -40,6 +45,11 @@ type connectedPowerIndex struct {
 	coverRadius float64
 	clearance   float64
 	rejected    map[vector]bool
+	// nodeInputs/nodeMembers 职责：按最终记录顺序解析实际带邻居；使用：精确节点几何；边界：仅引用当前实体。
+	nodeInputs  map[*placed]*placed
+	nodeMembers map[*placed]bool
+	// query 职责：复用净空宽相位的形状去重；使用：单候选串行available调用；边界：只去重本轮，不复用动态占位结果。
+	query collisionQueryMarks
 }
 
 // connectedPowerConsumer 职责：保留真实耗电中心及失败定位身份；使用：补电枚举和有限约束求解；边界：中心不随求解改变，分拣器和堆叠规则由统一解析负责。
@@ -224,9 +234,31 @@ func newConnectedPowerIndexForEncoding(ctx context.Context, b *builder, encoding
 		encoding = newPlanarRuleEncoding()
 	}
 	index := &connectedPowerIndex{builder: b, ctx: ctx, catalog: catalog, encoding: encoding, positions: map[vector]placement.Vector{}, cells: map[[2]int][]int{}, poles: map[[2]int][]*placed{}, poleWorlds: map[*placed]placement.Vector{}, rejected: map[vector]bool{}, poleShapes: shapes, coverRadius: radius}
+	if reserve, _ := ctx.Value(denseUnitPowerReserveKey{}).(bool); reserve {
+		index.coverRadius *= .9
+	}
 	if b.connectedGlobalPower && encoding.planar {
 		// 平面兼容候选保留原额外预排余量；真实球面候选直接执行原型盒，不重复补偿纬向投影。
 		index.clearance = .05
+	}
+	if denseBalancedFrameEnabled(ctx) && usesDenseBeltCollisions(ctx) {
+		index.nodeInputs = map[*placed]*placed{}
+		index.nodeMembers = map[*placed]bool{}
+		for _, p := range b.all {
+			if surfaceIsBelt(p.record.ItemID) {
+				index.nodeMembers[p] = true
+			}
+		}
+		for _, p := range b.all {
+			if index.nodeMembers[p] && index.nodeMembers[p.input] {
+				index.nodeInputs[p] = p.input
+			}
+		}
+		for _, p := range b.all {
+			if index.nodeMembers[p] && index.nodeMembers[p.output] {
+				index.nodeInputs[p.output] = p
+			}
+		}
 	}
 	for _, entity := range b.all {
 		if err := index.add(entity); err != nil {
@@ -293,6 +325,9 @@ func (index *connectedPowerIndex) insideArea(point vector) bool {
 
 // areaAt 职责：把装配坐标解析到唯一可编码的纬带；使用：最终补电候选与新增塔归属；边界：保留各 Area 经度比例及纬向原点，纬带缝隙不伪造落点。
 func (index *connectedPowerIndex) areaAt(point vector) (int, bool) {
+	if index.encoding.rootCoordinates {
+		return 0, point.x >= 0 && point.y >= 0 && point.x <= float64(index.encoding.plan.LayoutWidth-1) && point.y <= float64(index.encoding.plan.LayoutHeight-1)
+	}
 	for i, area := range index.encoding.areas {
 		x, y := point.x, point.y-float64(index.encoding.latitudeOffsets[i])
 		if len(index.encoding.longitudeScales) > 0 {
@@ -310,10 +345,19 @@ func connectedPowerCell(x, y float64) [2]int {
 	return [2]int{int(math.Floor(x / connectedPowerCellSize)), int(math.Floor(y / connectedPowerCellSize))}
 }
 
+// connectedPowerObstacleCell 职责：取得净空专用细桶键；使用：add与available必须成对使用；边界：向负无穷取整，不能用于供电覆盖和求解器的八米桶。
+func connectedPowerObstacleCell(x, y float64) [2]int {
+	return [2]int{int(math.Floor(x / connectedPowerObstacleCellSize)), int(math.Floor(y / connectedPowerObstacleCellSize))}
+}
+
 // add 职责：登记整个静态建造盒或带/分拣器线段经过的桶；使用：首次建索引及每个新增电塔；边界：电力节点的间距范围也并入占位，不只登记首端所在桶。
 func (index *connectedPowerIndex) add(entity *placed) error {
 	if index.ctx.Err() != nil {
 		return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全局供电占位索引已取消或超时"}
+	}
+	// 同批预览中分拣器与非分拣器互免；分拣器仍由消费者集合执行真实供电校验。
+	if denseBalancedFrameEnabled(index.ctx) && usesDenseBeltCollisions(index.ctx) && entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
+		return nil
 	}
 	obstacle := connectedPowerObstacle{entity: entity}
 	first, err := index.world(entity.a)
@@ -321,7 +365,27 @@ func (index *connectedPowerIndex) add(entity *placed) error {
 		return err
 	}
 	low, high := first, first
-	if surfaceIsBelt(entity.record.ItemID) || entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
+	if index.nodeInputs != nil && surfaceIsBelt(entity.record.ItemID) {
+		before, after := first, first
+		previous := index.nodeInputs[entity]
+		through := previous != nil && index.nodeMembers[entity.output]
+		if through {
+			before, err = index.world(previous.a)
+			if err != nil {
+				return err
+			}
+			after, err = index.world(entity.output.a)
+			if err != nil {
+				return err
+			}
+		}
+		probe := index.encoding.beltNodeProbe(first, before, after, through)
+		obstacle.nodeProbe = &probe
+		for axis := range low {
+			low[axis] = probe.center[axis] - surfaceBeltNodeRadius
+			high[axis] = probe.center[axis] + surfaceBeltNodeRadius
+		}
+	} else if surfaceIsBelt(entity.record.ItemID) || entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
 		obstacle.first, obstacle.second, obstacle.radius = first, first, .25
 		if surfaceIsBelt(entity.record.ItemID) && entity.output != nil && surfaceIsBelt(entity.output.record.ItemID) {
 			obstacle.second, err = index.world(entity.output.a)
@@ -342,7 +406,8 @@ func (index *connectedPowerIndex) add(entity *placed) error {
 			high[axis] = math.Max(obstacle.first[axis], obstacle.second[axis]) + obstacle.radius
 		}
 	} else {
-		shapes, err := index.catalog.Shapes(entity.record.ItemID, entity.record.ModelIndex)
+		// 补电必须沿用最终出口的完整分流器净空，避免已完成布线后又把电塔放进选择体积。
+		shapes, err := splitterClearanceShapes(index.catalog, entity.record.ItemID, entity.record.ModelIndex)
 		if err != nil {
 			return &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
 		}
@@ -371,7 +436,7 @@ func (index *connectedPowerIndex) add(entity *placed) error {
 	}
 	entry := len(index.obstacles)
 	index.obstacles = append(index.obstacles, obstacle)
-	minimum, maximum := connectedPowerCell(low[0], low[2]), connectedPowerCell(high[0], high[2])
+	minimum, maximum := connectedPowerObstacleCell(low[0], low[2]), connectedPowerObstacleCell(high[0], high[2])
 	for x := minimum[0]; x <= maximum[0]; x++ {
 		if index.ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全局供电跨桶登记已取消或超时"}
@@ -393,6 +458,9 @@ func (index *connectedPowerIndex) add(entity *placed) error {
 			area, valid := index.areaAt(entity.a)
 			if !valid {
 				return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "新增感应塔缺少合法最终区域"}
+			}
+			if index.encoding.rootCoordinates {
+				area = 0
 			}
 			index.encoding.byBuilding[entity] = area
 		}
@@ -443,7 +511,7 @@ func (index *connectedPowerIndex) poleGeometry(point vector) (placement.Vector, 
 	return world, boxes, nil
 }
 
-// available 职责：按与 addFlyPower 相同的间距、静态盒及胶囊规则检查候选；使用：局部空间桶窄相位；边界：不按首端十格裁剪，负坐标、大盒及跨桶长臂必须被完整检测。
+// available 职责：按设施间距、静态盒和当前候选的带臂规则检查塔位；使用：局部空间桶窄相位；边界：既有候选保留粗筛，均衡候选使用正式节点形状和同批分拣器互免，不省略静态盒或真实供电终检。
 func (index *connectedPowerIndex) available(point vector) (bool, error) {
 	if index.rejected[point] || !index.insideArea(point) {
 		return false, nil
@@ -459,16 +527,17 @@ func (index *connectedPowerIndex) available(point vector) (bool, error) {
 			low[axis], high[axis] = math.Min(low[axis], boxLow[axis]), math.Max(high[axis], boxHigh[axis])
 		}
 	}
-	minimum, maximum := connectedPowerCell(low[0], low[2]), connectedPowerCell(high[0], high[2])
-	seen := map[int]bool{}
+	minimum, maximum := connectedPowerObstacleCell(low[0], low[2]), connectedPowerObstacleCell(high[0], high[2])
+	index.query.begin(len(index.obstacles))
+	seenCount := 0
 	for x := minimum[0]; x <= maximum[0]; x++ {
 		for y := minimum[1]; y <= maximum[1]; y++ {
 			for _, number := range index.cells[[2]int{x, y}] {
-				if seen[number] {
+				if index.query.seen(number) {
 					continue
 				}
-				seen[number] = true
-				if len(seen)%64 == 0 && index.ctx.Err() != nil {
+				seenCount++
+				if seenCount%64 == 0 && index.ctx.Err() != nil {
 					return false, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全局供电候选净空检查已取消或超时"}
 				}
 				obstacle := index.obstacles[number]
@@ -482,7 +551,11 @@ func (index *connectedPowerIndex) available(point vector) (bool, error) {
 					}
 				}
 				for _, box := range boxes {
-					if obstacle.radius > 0 && box.SegmentDistanceSquared(obstacle.first, obstacle.second) < obstacle.radius*obstacle.radius {
+					if obstacle.nodeProbe != nil && obstacle.nodeProbe.overlapsBox(box) {
+						index.rejected[point] = true
+						return false, nil
+					}
+					if obstacle.radius > 0 && collisionSegmentWithinRadius(box, obstacle.first, obstacle.second, obstacle.radius*obstacle.radius) {
 						index.rejected[point] = true
 						return false, nil
 					}

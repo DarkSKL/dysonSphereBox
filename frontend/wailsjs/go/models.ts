@@ -1085,6 +1085,7 @@ export namespace build {
 	    sequence: number;
 	    stage: string;
 	    message: string;
+	    detail?: string;
 	    current: number;
 	    total: number;
 	    coordinateSystem?: string;
@@ -1116,6 +1117,7 @@ export namespace build {
 	        this.sequence = source["sequence"];
 	        this.stage = source["stage"];
 	        this.message = source["message"];
+	        this.detail = source["detail"];
 	        this.current = source["current"];
 	        this.total = source["total"];
 	        this.coordinateSystem = source["coordinateSystem"];
@@ -3406,6 +3408,8 @@ export namespace factorycontract {
 	export class ChunkResponse {
 	    code: string;
 	    message: string;
+	    suggestion?: string;
+	    detail?: string;
 	    data?: ChunkResult;
 	
 	    static createFrom(source: any = {}) {
@@ -3416,6 +3420,8 @@ export namespace factorycontract {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
 	        this.message = source["message"];
+	        this.suggestion = source["suggestion"];
+	        this.detail = source["detail"];
 	        this.data = this.convertValues(source["data"], ChunkResult);
 	    }
 	
@@ -3479,6 +3485,8 @@ export namespace factorycontract {
 	export class DatasetDetailResponse {
 	    code: string;
 	    message: string;
+	    suggestion?: string;
+	    detail?: string;
 	    data?: DatasetDetail;
 	
 	    static createFrom(source: any = {}) {
@@ -3489,6 +3497,8 @@ export namespace factorycontract {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
 	        this.message = source["message"];
+	        this.suggestion = source["suggestion"];
+	        this.detail = source["detail"];
 	        this.data = this.convertValues(source["data"], DatasetDetail);
 	    }
 	
@@ -3513,6 +3523,8 @@ export namespace factorycontract {
 	export class DatasetResponse {
 	    code: string;
 	    message: string;
+	    suggestion?: string;
+	    detail?: string;
 	    data: quant.DatasetInfo[];
 	
 	    static createFrom(source: any = {}) {
@@ -3523,6 +3535,8 @@ export namespace factorycontract {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
 	        this.message = source["message"];
+	        this.suggestion = source["suggestion"];
+	        this.detail = source["detail"];
 	        this.data = this.convertValues(source["data"], quant.DatasetInfo);
 	    }
 	
@@ -3561,6 +3575,8 @@ export namespace factorycontract {
 	export class DecodeResponse {
 	    code: string;
 	    message: string;
+	    suggestion?: string;
+	    detail?: string;
 	    data?: blueprint.Document;
 	
 	    static createFrom(source: any = {}) {
@@ -3571,6 +3587,8 @@ export namespace factorycontract {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
 	        this.message = source["message"];
+	        this.suggestion = source["suggestion"];
+	        this.detail = source["detail"];
 	        this.data = this.convertValues(source["data"], blueprint.Document);
 	    }
 	
@@ -3629,6 +3647,8 @@ export namespace factorycontract {
 	export class EncodeResponse {
 	    code: string;
 	    message: string;
+	    suggestion?: string;
+	    detail?: string;
 	    data?: blueprint.EncodeResult;
 	
 	    static createFrom(source: any = {}) {
@@ -3639,6 +3659,8 @@ export namespace factorycontract {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
 	        this.message = source["message"];
+	        this.suggestion = source["suggestion"];
+	        this.detail = source["detail"];
 	        this.data = this.convertValues(source["data"], blueprint.EncodeResult);
 	    }
 	
@@ -3663,6 +3685,8 @@ export namespace factorycontract {
 	export class GenerateResponse {
 	    code: string;
 	    message: string;
+	    suggestion?: string;
+	    detail?: string;
 	    data?: build.Result;
 	
 	    static createFrom(source: any = {}) {
@@ -3673,6 +3697,8 @@ export namespace factorycontract {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
 	        this.message = source["message"];
+	        this.suggestion = source["suggestion"];
+	        this.detail = source["detail"];
 	        this.data = this.convertValues(source["data"], build.Result);
 	    }
 	
@@ -3787,6 +3813,8 @@ export namespace factorycontract {
 	export class InspectResponse {
 	    code: string;
 	    message: string;
+	    suggestion?: string;
+	    detail?: string;
 	    data?: Inspection;
 	
 	    static createFrom(source: any = {}) {
@@ -3797,6 +3825,8 @@ export namespace factorycontract {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
 	        this.message = source["message"];
+	        this.suggestion = source["suggestion"];
+	        this.detail = source["detail"];
 	        this.data = this.convertValues(source["data"], Inspection);
 	    }
 	
@@ -3823,6 +3853,8 @@ export namespace factorycontract {
 	export class QuantResponse {
 	    code: string;
 	    message: string;
+	    suggestion?: string;
+	    detail?: string;
 	    data?: quant.Result;
 	
 	    static createFrom(source: any = {}) {
@@ -3833,6 +3865,8 @@ export namespace factorycontract {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
 	        this.message = source["message"];
+	        this.suggestion = source["suggestion"];
+	        this.detail = source["detail"];
 	        this.data = this.convertValues(source["data"], quant.Result);
 	    }
 	
@@ -4194,6 +4228,7 @@ export namespace modTranslation {
 export namespace multiplayer {
 	
 	export class AccountView {
+	    headerImg?: string;
 	    loggedIn: boolean;
 	    userId: number;
 	    nickname: string;
@@ -4204,6 +4239,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.headerImg = source["headerImg"];
 	        this.loggedIn = source["loggedIn"];
 	        this.userId = source["userId"];
 	        this.nickname = source["nickname"];
@@ -4412,6 +4448,7 @@ export namespace multiplayer {
 	    }
 	}
 	export class RoomSummary {
+	    hostHeaderImg?: string;
 	    roomId: string;
 	    name: string;
 	    hostNickname: string;
@@ -4427,6 +4464,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hostHeaderImg = source["hostHeaderImg"];
 	        this.roomId = source["roomId"];
 	        this.name = source["name"];
 	        this.hostNickname = source["hostNickname"];
@@ -4490,6 +4528,7 @@ export namespace multiplayer {
 		}
 	}
 	export class Member {
+	    headerImg?: string;
 	    userId: number;
 	    nickname: string;
 	    peerId: string;
@@ -4502,6 +4541,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.headerImg = source["headerImg"];
 	        this.userId = source["userId"];
 	        this.nickname = source["nickname"];
 	        this.peerId = source["peerId"];
@@ -4657,6 +4697,7 @@ export namespace multiplayer {
 		}
 	}
 	export class RoomHost {
+	    headerImg?: string;
 	    userId: number;
 	    nickname: string;
 	    peerId: string;
@@ -4667,6 +4708,7 @@ export namespace multiplayer {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.headerImg = source["headerImg"];
 	        this.userId = source["userId"];
 	        this.nickname = source["nickname"];
 	        this.peerId = source["peerId"];
@@ -5034,6 +5076,8 @@ export namespace preview {
 	    inputFromSlot: number;
 	    outputToSlot: number;
 	    productionIndex: number;
+	    recipeId?: number;
+	    iconItemId?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Building(source);
@@ -5059,6 +5103,8 @@ export namespace preview {
 	        this.inputFromSlot = source["inputFromSlot"];
 	        this.outputToSlot = source["outputToSlot"];
 	        this.productionIndex = source["productionIndex"];
+	        this.recipeId = source["recipeId"];
+	        this.iconItemId = source["iconItemId"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

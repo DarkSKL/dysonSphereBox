@@ -48,6 +48,8 @@ func (b *builder) connectedSurfacePathRefs() []*[]*placed {
 		addPath(&entry.source)
 		addPath(&entry.intake)
 		addPath(&entry.surplus)
+		addPath(&entry.freshPath)
+		addPath(&entry.returnedPath)
 	}
 	return refs
 }
@@ -291,7 +293,7 @@ func (b *builder) applyConnectedSurfaceChunks(ctx context.Context, layout *Surfa
 		}
 		points := surfaceBusBandPath([]vector{p.a, other.a})
 		if len(b.all)+len(points)-2 > blueprint.MaxBuildingCount {
-			return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "直连图跨纬带接驳超过 20 万建筑预算"}
+			return nil, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "直连图跨纬带接驳超过 30 万建筑预算"}
 		}
 		if len(points) <= 2 {
 			continue

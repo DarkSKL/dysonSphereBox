@@ -18,7 +18,7 @@ const transportSearchLimit = 300000
 // transportMaxHeight 职责：限定已经过带距离预检的候选高度层；使用：三维路由；边界：失败不无限堆高规避规则。
 const transportMaxHeight = 32
 
-// transportPathNode 职责：保存三维 A* 候选；使用：稳定最小堆；边界：已关闭节点不会重新展开。
+// transportPathNode 职责：保存三维 A* 候选；使用：稳定最小堆；边界：精确搜索不重开关闭节点，有界引导搜索允许更低代价重新打开。
 type transportPathNode struct {
 	point        vector
 	parent       *transportPathNode
@@ -94,6 +94,8 @@ type transportEnvironment struct {
 	minimum, maximum vector
 	// searchCalls/cacheHits 职责：累计确定性寻路次数和当前占位版本缓存命中；使用：routing-budget 诊断；边界：不包含墙钟时间。
 	searchCalls, cacheHits int
+	// guidedCalls 职责：累计大型原生网格的有界代价搜索次数；使用：获选结果诊断；边界：不改变搜索展开计数或实际带流量。
+	guidedCalls int
 	// totalExpanded/maxExpanded 职责：累计及记录单次最高展开数；使用：检查固定搜索预算；边界：缓存命中为零展开，不因此放宽硬约束。
 	totalExpanded, maxExpanded int
 	// preferCorridor 职责：为直连带优先复用平面走廊；使用：运输A*；边界：不强制升高，不改变碰撞、端口、高度或预算。
@@ -102,7 +104,7 @@ type transportEnvironment struct {
 	beltCorridors map[[2]int]bool
 	// corridorPotential 职责：缓存当前路线的平面松弛势场；使用：相邻端口下界复用；边界：占位版本变化即失效。
 	corridorPotential *transportCorridorPotential
-	// densePorts 职责：核验连续低轨接驳与真实整段静态净空；使用：仅密铺路由；边界：普通模式保持为空。
+	// densePorts 职责：核验接驳与真实整段静态净空；使用：密铺路由及普通分层接口；边界：普通模式同时启用严格独立带段避碰。
 	densePorts *denseRoutePortIndex
 }
 
@@ -131,7 +133,10 @@ func (b *builder) routeTransportWithInputs(ctx context.Context, inputPositions [
 
 // routeTransportWithStrategy 职责：以相同实体端点选择走廊软代价；使用：公开默认策略与同布局回归比较；边界：仅改变寻路目标，不改变物料图、硬约束或预算，不新增用户配置。
 func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions []vector, preferCorridor bool) error {
-	routes := append([]*transportRoute{}, b.transportRoutes...)
+	// 分层接口复用逐段净空接驳；普通模式仍保留普通机器布局及严格带段碰撞规则，不能按整根垂直柱封死另一层入口。
+	preciseRouting := b.denseSpatial || b.denseBoundary != nil
+	routes := append([]*transportRoute{}, b.denseProducerSplitRoutes()...)
+	routes = append(routes, b.transportRoutes...)
 	routes = append(routes, b.denseStreetRoutes...)
 	routes = append(routes, b.denseMaterialNetworkRoutes()...)
 	for _, recycle := range b.machineRecycles {
@@ -162,6 +167,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			route.end = b.make(2000+b.setting.BeltLv, p.a.x+2, p.a.y, 0)
 			route.end.record.Parameters = []int32{int32(route.edge.ItemID), int32(math.Ceil(route.rate))}
 		}
+		b.appendDenseInputStem(route)
 		external++
 	}
 	if external != len(inputPositions) {
@@ -174,7 +180,9 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	minimum, maximum := bounds(b.all)
 	var buildingBlocked map[vector]bool
 	var err error
-	if b.denseSpatial {
+	if b.polarFrame != nil {
+		buildingBlocked = map[vector]bool{}
+	} else if b.denseSpatial {
 		buildingBlocked, err = denseTransportObstacles(ctx, b.all)
 	} else {
 		buildingBlocked, err = stationBuildingObstacles(ctx, b.all)
@@ -183,27 +191,41 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		return err
 	}
 	env := &transportEnvironment{blocked: buildingBlocked, reserved: map[vector]map[*placed]bool{}, cache: map[transportPathCacheKey][]vector{}, minimum: vector{math.Floor(minimum.x) - 8, math.Floor(minimum.y) - 8, 0}, maximum: vector{math.Ceil(maximum.x) + 8, math.Ceil(maximum.y) + 8, transportMaxHeight}, preferCorridor: preferCorridor, beltCorridors: map[[2]int]bool{}}
+	if b.polarFrame != nil {
+		env.minimum.x = math.Max(env.minimum.x, -8)
+		env.maximum.x = math.Min(env.maximum.x, b.polarFrame.longitudeLimit()+8)
+	}
 	if b.denseSpatial && b.denseLatitudeSpan > 0 {
 		env.minimum.y = math.Max(env.minimum.y, 0)
 		env.maximum.y = math.Min(env.maximum.y, b.denseLatitudeSpan-1)
 	}
-	if b.denseSpatial {
+	if preciseRouting {
 		env.densePorts, err = b.newDenseRoutePortIndex(ctx)
 		if err != nil {
 			return err
 		}
+		if b.denseBoundary != nil {
+			env.minimum.x = max(env.minimum.x, b.denseBoundary.minimumX)
+			env.densePorts.boundary = b.denseBoundary
+			for _, entity := range b.all {
+				if surfaceIsBelt(entity.record.ItemID) {
+					env.densePorts.addBeltSpan(entity)
+				}
+			}
+		}
 		env.densePorts.integerEdges = newDenseIntegerEdgeCache(env.minimum, env.maximum)
 	}
+	env.reserveDenseBoundaryEscapes(routes)
 	for _, p := range b.all {
 		if surfaceIsBelt(p.record.ItemID) {
-			if b.denseSpatial {
-				blockDenseBeltNode(env.blocked, p.a)
+			if preciseRouting {
+				env.densePorts.blockNode(env.blocked, p.a)
 			} else {
 				env.blocked[beltCell(p.a)] = true
 			}
 			env.beltCorridors[beltColumn(p.a)] = true
 		}
-		if !b.denseSpatial && p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
+		if !preciseRouting && p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
 			// 分拣器胶囊通道也进入离散占位，最终仍由版本化 slotPose 精确预检决定。
 			for x := math.Floor(math.Min(p.a.x, p.b.x)); x <= math.Ceil(math.Max(p.a.x, p.b.x)); x++ {
 				for y := math.Floor(math.Min(p.a.y, p.b.y)); y <= math.Ceil(math.Max(p.a.y, p.b.y)); y++ {
@@ -214,9 +236,9 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	}
 	// 为所有未来入口预留落地柱，防止先路由的高架封死尚未接线的端口。
 	for _, route := range routes {
-		if b.denseSpatial {
+		if preciseRouting {
 			// 低轨可共享XY而位于不同真实高度；整数整列预留会把彼此的合法接驳全部封死。
-			// 密铺由portal逐节点/逐段检查并在提交后登记真实占位，普通模式保留原列预留。
+			// 分层接口由portal逐节点/逐段检查并在提交后登记真实占位，未采用此接口的兼容模式保留原列预留。
 			continue
 		}
 		if route.to == nil && route.from != nil && route.end == nil {
@@ -230,7 +252,7 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			if i == 0 && route.from == nil {
 				direction = 1
 			}
-			if i == 1 && route.to == nil && route.edge.FlowKind == "leftover" {
+			if i == 1 && route.to == nil && (route.edge.FlowKind == "leftover" || b.mode1DeliveryGroup(route) != nil) {
 				direction = 1
 			}
 			offset := vector{x: direction}
@@ -270,6 +292,9 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			incomingCounts[p.output]++
 		}
 	}
+	// 外供端口及球面位置已冻结；之后每条路线只追加带节点并更新源端 output。
+	b.previewCheckpoint("routing")
+	b.orderDenseBoundaryRoutes(routes)
 	for index, route := range routes {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
@@ -278,7 +303,8 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		if route.to == nil && route.from != nil && route.end == nil {
 			continue
 		}
-		start := route.start.a
+		source := route.transportSource()
+		start := source.a
 		if route.from == nil {
 			offset := denseExternalStep(route)
 			start.x += offset.x
@@ -289,8 +315,8 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 			start.y += offset.y
 		}
 		end := vector{route.end.a.x - 1, route.end.a.y, route.end.a.z}
-		if route.to == nil && route.edge.FlowKind == "leftover" {
-			// 副产物从原料区向西出货，最后一段由东侧进入，避免把回收口变成朝机器的反向出口。
+		if route.to == nil && (route.edge.FlowKind == "leftover" || b.mode1DeliveryGroup(route) != nil) {
+			// 独立交付从原料区向西出货，最后一段由东侧进入，避免把交付口变成朝机器的反向出口。
 			end.x = route.end.a.x + 1
 		}
 		if route.to != nil {
@@ -302,9 +328,9 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		destination := end
 		points, steps := []vector(nil), 0
 		maxSearchExpanded, searches := 0, 0
-		if b.denseSpatial {
+		if preciseRouting {
 			var tailIndex int
-			preferred := vector{start.x - route.start.a.x, start.y - route.start.a.y, 0}
+			preferred := vector{start.x - source.a.x, start.y - source.a.y, 0}
 			points, tailIndex, steps, maxSearchExpanded, searches = env.findDenseTransportPath(ctx, route, tail, incomingCounts, preferred)
 			if tailIndex >= 0 {
 				merge, tail = tail[tailIndex], tail[tailIndex:]
@@ -393,23 +419,24 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 				target = merge
 			}
 			var removed int
-			points, removed = env.compactDenseLongRoute(points, route.start, target, denseLongBeltLongitudeFactor(ctx))
+			points, removed = env.compactDenseLongRoute(points, source, target, denseLongBeltLongitudeFactor(ctx))
 			if removed > 0 && b.logistics != nil {
 				b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-long-belt-segments", Status: "passed", Message: fmt.Sprintf("物品%d自由直带采用最长1.5格节点间距，减少%d个带节点；保留端部接驳及转角，实际带速和容量不变，最终球面规则继续核验", route.edge.ItemID, removed)})
 			}
 		}
-		if len(b.all)+len(points) > blueprint.MaxBuildingCount {
-			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "完整物料路线会使建筑超过 20 万，请拆分目标"}
+		if len(b.all)+len(points) > generationBuildingBudget(ctx) {
+			return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: fmt.Sprintf("完整物料路线会使建筑超过本次预算 %d，请拆分目标", generationBuildingBudget(ctx))}
 		}
 		b.owner = -1
-		if merge != nil || b.denseSpatial {
+		if merge != nil || preciseRouting {
 			points = points[:len(points)-1]
 		}
+		previewBase := len(b.all)
 		path := b.byPath(points)
 		for _, point := range path {
 			incomingCounts[point]++
 		}
-		previous := route.start
+		previous := source
 		if len(path) > 0 {
 			connect(previous, path[0])
 			previous = path[len(path)-1]
@@ -427,26 +454,26 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 		// 合流锚点随新入带向上游推进，避免所有供应者把同一格的四个邻位耗尽。
 		// 保存完整下游尾链，诊断检查的仍是此物料实际抵达消费者的连续路线。
 		incoming[route.end] = append([]*placed{}, path...)
-		if b.denseSpatial && denseIntegerNode(route.start.a) {
+		if preciseRouting && denseIntegerNode(source.a) {
 			// 整数源本身也是合法有向尾链的一部分；保留它供短接路线的下一供应者合流。
-			incoming[route.end] = append([]*placed{route.start}, incoming[route.end]...)
+			incoming[route.end] = append([]*placed{source}, incoming[route.end]...)
 		}
 		for _, point := range points {
-			if b.denseSpatial {
-				blockDenseBeltNode(env.blocked, point)
+			if preciseRouting {
+				env.densePorts.blockNode(env.blocked, point)
 			} else {
 				env.blocked[beltCell(point)] = true
 			}
 			env.beltCorridors[beltColumn(point)] = true
 		}
 		if env.densePorts != nil {
-			env.densePorts.addNode(route.start)
+			env.densePorts.addNode(source)
 			for _, point := range path {
 				env.densePorts.addNode(point)
 			}
 		}
 		env.version++
-		b.previewCheckpoint("routing")
+		b.previewRouteAppend(previewBase, source)
 	}
 	inserterStatus := "passed"
 	inserterMessage := "机器单臂及逐物品过滤分支按实际跨度和已验证保守吞吐检查，不把带容量当作分拣器容量"
@@ -462,7 +489,16 @@ func (b *builder) routeTransportWithStrategy(ctx context.Context, inputPositions
 	if env.preferCorridor {
 		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "stacked-corridor-routing", Status: "passed", Message: "独立传送带优先复用既有带的平面走廊，以不同高度区分并在端点真实逐格升降；走廊水平代价1、外扩1.25、升降1.5，不强制空场高架；平面下界预计算最多300000格，碰撞、端口权限、高度32和单次三维300000预算不变"})
 	}
-	return nil
+	if env.guidedCalls > 0 {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "bounded-native-routing", Status: "passed", Message: fmt.Sprintf("大型原生网格执行%d次有界代价搜索；单次整数主路及目标后缀保留2倍代价界，允许重开节点，碰撞、容量、高度及展开预算不变；不宣称整厂全局最优", env.guidedCalls)})
+	}
+	if err := b.validateDenseBoundaryRoutes(ctx); err != nil {
+		return err
+	}
+	if b.denseBoundary != nil {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-boundary-separation", Status: "passed", Message: "外部接口位于生产实体的实际高度内，最多三层；入口区禁止独立带段相交，固定短带向内接入，交付口保留独立地面槽"})
+	}
+	return b.commitMode1Deliveries()
 }
 
 // reservedByOther 职责：在路径终点筛选前排除未来端口的垂直净空；使用：同物品 lane 寻路；边界：仅放行当前 route 自己拥有的端点柱。

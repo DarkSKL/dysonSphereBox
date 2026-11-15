@@ -29,7 +29,7 @@ func referenceLowRecipe(p quant.Production, r quant.Recipe) bool {
 
 // appendReferenceThirdPort 职责：以同侧剩余真实槽位及0.3125层独立带扩展一个物料；使用：参考变体装配；边界：不存在空槽或容量不足时拒绝，保留原双层轨道。
 func (b *builder) appendReferenceThirdPort(l *line, anchors []float64, bandY, left, right float64) error {
-	input := len(l.recipe.Items) == 2
+	input := len(l.recipe.Items) >= 2
 	height, portY := .3125, l.inputs[0][0].a.y-3
 	if !input {
 		portY = l.outputs[0][0].a.y + 3

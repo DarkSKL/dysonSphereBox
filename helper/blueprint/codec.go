@@ -22,7 +22,7 @@ import (
 const MaxTextBytes = 8 << 20
 
 // MaxBuildingCount 职责：统一生成和编解码的建筑安全上限；使用：大规模产线预算与负载检查；边界：不保证游戏放置、预览性能，文本及解压限制仍独立生效。
-const MaxBuildingCount = 200000
+const MaxBuildingCount = 300000
 
 // maxPayloadBytes 职责：限制解压内存；使用：拒绝压缩炸弹；边界：不执行文件导入。
 const maxPayloadBytes = 64 << 20

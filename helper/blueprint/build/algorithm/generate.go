@@ -91,6 +91,7 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	defer cancel()
 	ctx = context.WithValue(ctx, generationTaskIDKey{}, req.TaskID)
 	ctx = context.WithValue(ctx, candidateConcurrencyKey{}, req.CandidateConcurrency)
+	ctx = context.WithValue(ctx, generationWorkloadKey{}, req.Plan.MachineCount)
 	ctx = withGenerationPreview(ctx, req)
 	defer func() {
 		if generateErr != nil {
@@ -125,7 +126,7 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	req.SurfaceLayout = surface
 	if surface != nil && surface.LatitudeZone != "" {
 		ctx = context.WithValue(ctx, densityLatitudeKey{}, surface.LatitudeZone)
-		if selection, ok := densityLatitudeSelectionFor(surface.LatitudeZone); ok && selection.tier == 5 && req.Density == densityDense {
+		if selection, ok := densityLatitudeSelectionFor(surface.LatitudeZone); ok && req.Density == densityDense && (selection.tier >= 4 || req.Plan.MachineCount >= denseNativeLargeMachineThreshold) {
 			return generateDensePolar(ctx, req, adapter)
 		}
 	}
@@ -135,6 +136,11 @@ func Generate(parent context.Context, req Request) (result Result, generateErr e
 	}
 	prepared.builder.beginPreview()
 	generated, err := adapter.generate(ctx, prepared.builder, prepared.request, prepared.dataset)
+	if err != nil && ctx.Err() == nil && denseNativeLayoutRetryable(prepared.request, err) {
+		prepared.builder.rollbackPreview()
+		reportProgress(ctx, "dense-native-retry", "正在按所选纬带的真实球面重新排布与接线", 0, 0)
+		return generateDensePolar(ctx, prepared.request, adapter)
+	}
 	return publishFinalBlueprintProgress(ctx, prepared.request, prepared.dataset, generated, err)
 }
 
@@ -236,8 +242,8 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 			return result, err
 		}
 	}
-	if len(b.all) > blueprint.MaxBuildingCount {
-		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "建筑超过 20 万，请拆分生成"}
+	if len(b.all) > generationBuildingBudget(ctx) {
+		return result, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: fmt.Sprintf("建筑数量超过本次预算 %d，请拆分生成", generationBuildingBudget(ctx))}
 	}
 	if len(b.all) > 100000 {
 		b.warnings = append(b.warnings, "建筑超过 10 万，生成和游戏内粘贴可能较慢；建议按产物拆分，并关闭实时预览")
@@ -352,6 +358,11 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if err := validateDensityLatitudePlan(req.SurfaceLayout, surfacePlan); err != nil {
 		return result, err
 	}
+	if req.Density == densityDense && surface != nil {
+		if err := surface.validateDenseStaticLatitude(ctx, req.SurfaceLayout, records); err != nil {
+			return result, err
+		}
+	}
 	reportProgress(ctx, "rules", "正在核验最终建筑、路线、槽位和供电规则", 0, 0)
 	if err := b.rebindReferenceCargo(ctx, surface, records); err != nil {
 		return result, err
@@ -398,6 +409,15 @@ func (b *builder) finish(ctx context.Context, req Request, dataset *quant.Datase
 	if req.Density == densityDense {
 		document.Description += "；密铺按整图单次粘贴规则生成，已有场景接入和连续拖拽复制需另行验证"
 		document.Description += densityLatitudePlacementHint(surfacePlan)
+	}
+	// 封面按用户目标顺序展示产物，不以中间原料、设备或产线排序代替目标。
+	iconItems := make([]int, 0, len(req.Plan.Targets))
+	for _, target := range req.Plan.Targets {
+		iconItems = append(iconItems, target.ItemID)
+	}
+	document, err = blueprint.WithItemIcons(document, iconItems)
+	if err != nil {
+		return result, err
 	}
 	reportProgress(ctx, "encode", "正在编码并校验蓝图", 0, 0)
 	encoded, err := blueprint.Encode(document, 1)
