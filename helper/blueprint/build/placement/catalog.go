@@ -140,9 +140,20 @@ func (catalog *Catalog) Geometry(item, model int16) (PrefabGeometry, error) {
 	if exists {
 		for _, id := range entry.Items {
 			if id == int(item) && entry.Geometry != nil {
-				return *entry.Geometry, nil
+				return clonePrefabGeometry(*entry.Geometry), nil
 			}
 		}
 	}
 	return PrefabGeometry{}, fmt.Errorf("物品 %d / 模型 %d 缺少已核对的 PrefabDesc 端口几何", item, model)
+}
+
+// clonePrefabGeometry 职责：隔离设备事实中的所有可变切片；使用：目录查询向候选交接值时调用；边界：不修改共享目录，不改变数值与端口顺序。
+func clonePrefabGeometry(source PrefabGeometry) PrefabGeometry {
+	result := source
+	result.PortPoses = append([]Pose(nil), source.PortPoses...)
+	result.SlotPoses = append([]Pose(nil), source.SlotPoses...)
+	result.AddonAreaColPoses = append([]Pose(nil), source.AddonAreaColPoses...)
+	result.AddonAreaPoses = append(source.AddonAreaPoses[:0:0], source.AddonAreaPoses...)
+	result.AddonAreaSize = append([][3]float32(nil), source.AddonAreaSize...)
+	return result
 }

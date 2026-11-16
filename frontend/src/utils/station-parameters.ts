@@ -4,7 +4,7 @@ import type {StationFacts, StationLogic, StationParameters} from '../types/build
 // 说明：解析蓝图记录中物流运输站的 2048 字参数，供建筑面板只读展示。
 // 布局：物品槽从 0 起每 6 字为 [物品, 本地逻辑, 星际逻辑, 上限, 保持模式]；320 起依次为充能功率（每 tick）、运输机路程（余弦 × 1e8）、
 //       运输船路程（米 / 100）、轨道采集器、曲速启用路程（米）、翘曲器必备、运输机与运输船起送量、集装数量。
-//       与生成器 helper/blueprint/build/algorithm/station.go 写入的布局一致，换算规则与内置蓝图编辑器相同。
+//       与生成器 helper/blueprint/build/core/station.go 写入的布局一致，换算规则与内置蓝图编辑器相同。
 // 边界：只读解析，不校验也不修改参数；参数长度不足时返回 null。
 
 /** 数值核对 helper/transport/data/infrastructure-25955035.json（游戏 0.10.35 PrefabDesc 事实）；充能上限取图鉴工作功率 */

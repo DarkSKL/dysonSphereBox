@@ -1,0 +1,105 @@
+schemaVersion: 1
+id: standard
+# 大模式参数入口；四子模式只定义覆盖，原子实现及候选、几何和校验工作链均在共享库中唯一维护。
+parameters:
+  stationFamily: all
+  standardRowSpans: [8, 12]
+  distributorStrategies:
+    - {"scale": 1, "order": 2}
+    - {"scale": 1.2, "order": 3}
+    - {"scale": 1, "order": 3, "latitudeFactor": 0.7}
+    - {"scale": 1, "order": 3, "latitudeFactor": 0.85}
+    - {"scale": 1.2, "order": 2, "latitudeFactor": 0.75}
+    - {"scale": 1, "order": 3, "latitudeFactor": 0.85, "materialOrder": true}
+    - {"scale": 1.2, "order": 3, "latitudeFactor": 0.7, "materialOrder": true, "consumerFirst": true}
+    - {"scale": 1.2, "order": 3, "materialOrder": true}
+  distributorRowStrategies:
+    - {"scale": 1.2, "order": 0}
+    - {"scale": 1.2, "order": 2}
+flow:
+  - id: entry
+    call: entry
+subflows:
+  entry:
+    flow:
+      - id: mode-defaults
+        tool: mode.configure@1
+        with:
+          stationFamily: {$param: stationFamily}
+      - id: submode
+        switch:
+          value: {$state: mode.family}
+          cases:
+            connected:
+              - id: connected-parameters
+                tool: mode.submode@1
+                with: {bentSpans: [12, 18]}
+            station:
+              - id: station-parameters
+                tool: mode.submode@1
+                with: {stationFamily: all}
+            distributor:
+              - id: distributor-parameters
+                tool: mode.submode@1
+            bus:
+              - id: bus-parameters
+                tool: mode.submode@1
+                with: {busTighten: true}
+          otherwise:
+            - id: unsupported-submode
+              fail: unsupported-layout-family
+      - id: geographic-policy
+        switch:
+          value: {$state: mode.geo.longitude-boundary}
+          cases:
+            reduced-ring:
+              - id: reduced-ring-policy
+                switch:
+                  value: {$state: mode.geo.hemisphere}
+                  cases:
+                    south:
+                      - id: south-ring
+                        tool: mode.geography@1
+                        with: {streetRotations: [2, 3, 0, 1]}
+                  otherwise:
+                    - id: north-ring-default
+                      tool: mode.geography@1
+          otherwise:
+            - id: geographic-default
+              tool: mode.geography@1
+      - id: surface-workchain
+        call: common/selected-surface
+  layout:
+    flow:
+      - id: family
+        switch:
+          value: {$state: mode.family}
+          cases:
+            connected:
+              - id: connected
+                call: connected/search
+            distributor:
+              - id: distributor-specs
+                tool: distributor.enumerate@1
+                with:
+                  standard: {$param: distributorStrategies}
+                  standardRows: {$param: distributorRowStrategies}
+                  standardRowSpans: {$param: standardRowSpans}
+                  standardRowPacking: true
+              - id: distributor
+                call: distributor/search
+            station:
+              - id: station-specs
+                tool: station.enumerate@1
+                with:
+                  family: {$param: stationFamily}
+                  standardRowSpans: {$param: standardRowSpans}
+                  standardRowPacking: true
+              - id: station
+                call: station/attempts
+            bus:
+              - id: bus
+                call: bus/search
+          otherwise:
+            - id: unknown-family
+              fail: unsupported-layout-family

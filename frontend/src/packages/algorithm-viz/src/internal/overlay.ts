@@ -76,6 +76,7 @@ export class Overlay {
     this.empty.classList.toggle('is-visible', visible);
   }
 
+
   setEmptyText(text: string): void {
     this.empty.textContent = text;
   }

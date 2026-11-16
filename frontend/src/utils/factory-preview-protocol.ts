@@ -89,11 +89,15 @@ export const isFactoryGenerationProgressEvent = (value: unknown): value is Facto
   if (!isIntegerAtLeast(value.sequence, 1)) return false
   if (value.protocolVersion === 4) {
     if (value.kind === 'candidate-plan') return Array.isArray(value.candidates) && value.candidates.every(candidate => isRecord(candidate) && typeof candidate.id === 'string' && candidate.id.length > 0 && isIntegerAtLeast(candidate.ordinal, 1))
-    if (value.kind === 'search-start' || value.kind === 'search-failed') return true
+    if (value.kind === 'search-start' || value.kind === 'search-failed' || value.kind === 'candidate-best-cleared') return true
     if (typeof value.candidateId !== 'string' || !value.candidateId) return false
     if (!isIntegerAtLeast(value.candidateSequence, 1)) return false
     if (value.kind === 'candidate-start') return isIntegerAtLeast(value.candidateOrdinal, 1)
     if (value.kind === 'candidate-finish') return ['valid', 'rejected', 'pruned'].includes(String(value.candidateStatus))
+    if (value.kind === 'candidate-best') return isIntegerAtLeast(value.candidateOrdinal, 1)
+      && value.coordinateSystem === 'blueprint-area-local-v1'
+      && isIntegerAtLeast(value.snapshotRevision, 1) && isIntegerAtLeast(value.chunkCount, 1)
+      && isIntegerAtLeast(value.buildingCount, 1)
     if (value.kind === 'preview-snapshot') return value.coordinateSystem === 'blueprint-area-local-v1'
       && hasAreaFrame(value) && isIntegerAtLeast(value.snapshotRevision, 1)
       && isIntegerAtLeast(value.chunkCount, 1) && isIntegerAtLeast(value.chunkIndex ?? 0, 0)

@@ -10,6 +10,10 @@ export function DescribeDataset(arg1) {
   return window['go']['factory']['Service']['DescribeDataset'](arg1);
 }
 
+export function DescribeWorkflow() {
+  return window['go']['factory']['Service']['DescribeWorkflow']();
+}
+
 export function Encode(arg1) {
   return window['go']['factory']['Service']['Encode'](arg1);
 }
@@ -26,6 +30,10 @@ export function Generate(arg1) {
   return window['go']['factory']['Service']['Generate'](arg1);
 }
 
+export function GetWorkflowTask(arg1) {
+  return window['go']['factory']['Service']['GetWorkflowTask'](arg1);
+}
+
 export function Inspect(arg1) {
   return window['go']['factory']['Service']['Inspect'](arg1);
 }
@@ -40,6 +48,10 @@ export function ReadBlueprintChunk(arg1) {
 
 export function ReadGenerationProgress(arg1, arg2) {
   return window['go']['factory']['Service']['ReadGenerationProgress'](arg1, arg2);
+}
+
+export function ReadWorkflowEvents(arg1, arg2, arg3) {
+  return window['go']['factory']['Service']['ReadWorkflowEvents'](arg1, arg2, arg3);
 }
 
 export function Solve(arg1) {

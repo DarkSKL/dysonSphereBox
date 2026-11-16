@@ -8,6 +8,7 @@ import (
 
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build/contract"
+	"DysonSphereBox/helper/transport"
 )
 
 // routeKinds 职责：统计独立输入输出物品及实际供剂口；使用：分组与交接校验共用同一预算；边界：同物品同时出入仍占两个方向，不按净流抵消物理接口。
@@ -27,7 +28,14 @@ func routeKinds(prepared contract.PreparedStationProduction) int {
 
 // Validate 职责：拒绝漏产线、重复装配、零分组及超容量布局；使用：布局到装配交接；边界：只接受完整计划，失败时尚未创建实体。
 func Validate(ctx context.Context, input contract.StationLayoutInput, plan contract.StationLayoutPlan, config contract.StationConfig) error {
-	if input.FlowGraph == nil || len(input.Productions) != len(input.Plan.Productions) || plan.ProductionCount != len(input.Plan.Productions) || len(plan.Zones) == 0 || config.ItemSlots <= 0 || config.ItemSlots > 12 {
+	if err := ValidateConfiguration(config); err != nil {
+		return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: err.Error()}
+	}
+	portCount, err := transport.StationPortCount(config.StationID)
+	if err != nil {
+		return &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: err.Error()}
+	}
+	if input.FlowGraph == nil || len(input.Productions) != len(input.Plan.Productions) || plan.ProductionCount != len(input.Plan.Productions) || len(plan.Zones) == 0 || config.ItemSlots <= 0 || config.ItemSlots > portCount {
 		return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "物流塔布局阶段输出不完整"}
 	}
 	seen := make([]bool, len(input.Plan.Productions))
@@ -58,7 +66,7 @@ func Validate(ctx context.Context, input contract.StationLayoutInput, plan contr
 				total += count
 			}
 			portsPerRow := max(1, min(routeKinds(prepared), config.ItemSlots)+len(LeftoverKinds(input.FlowGraph, work.Index)))
-			if total != input.Plan.Productions[work.Index].MachineCount || work.PerGroup > 12/portsPerRow {
+			if total != input.Plan.Productions[work.Index].MachineCount || work.PerGroup > portCount/portsPerRow {
 				return &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "物流塔布局机器数不守恒或超过十二口预算"}
 			}
 		}

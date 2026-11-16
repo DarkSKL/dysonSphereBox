@@ -5,15 +5,19 @@ go 1.24.11
 require (
 	github.com/creativeprojects/go-selfupdate v1.5.2
 	github.com/glebarez/sqlite v1.10.0
+	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/libp2p/go-libp2p v0.47.0
 	github.com/multiformats/go-multiaddr v0.16.1
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/sys v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/datatypes v1.2.7
 	gorm.io/gorm v1.31.1
 )
+
+require github.com/goccy/go-json v0.12.0
 
 require (
 	code.gitea.io/sdk/gitea v0.22.1 // indirect

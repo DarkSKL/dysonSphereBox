@@ -1,0 +1,56 @@
+schemaVersion: 1
+id: station
+# 纯共享工作库：入口参数与工作链选择归standard/dense，此处只复用唯一候选、几何及规则步骤。
+flow:
+  - id: entry
+    call: search
+subflows:
+  search:
+    flow:
+      - id: station-specs
+        tool: station.enumerate@1
+        with: {family: {$state: mode.station-family}}
+      - id: attempts
+        call: attempts
+  attempts:
+    flow:
+      - id: station-attempts
+        candidates:
+          comparator: layout
+          parallel: 10
+          settleMs: 5000
+          items: {$state: station.candidates}
+          inputs:
+            index: {type: integer, required: true}
+          flow:
+            - id: solve
+              tool: station.assemble@1
+              with: {index: {$input: index}}
+            - id: finalize-geometry
+              call: geometry/finalize
+            - id: validate
+              call: rules/validate
+      - id: prepare-refinement
+        tool: station.prepare-refinement@1
+        with: {enabled: true}
+      - id: optional-nearby-ports
+        candidates:
+          comparator: station-refinement
+          includeCurrent: true
+          reserveMs: 20000
+          parallel: 1
+          timeoutMs: 15000
+          timeoutFailure: optimization-deadline
+          items: {$state: station.refinement-candidates}
+          inputs:
+            specification: {type: object, required: true}
+          flow:
+            - id: solve-refinement
+              tool: station.assemble-spec@1
+              with: {specification: {$input: specification}}
+            - id: finalize-geometry
+              call: geometry/finalize
+            - id: validate-refinement
+              call: rules/validate
+      - id: select-final
+        tool: factory.select@1

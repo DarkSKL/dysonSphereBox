@@ -6,12 +6,15 @@ import (
 	"DysonSphereBox/core"
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build"
+	"DysonSphereBox/helper/blueprint/build/workflow"
 	factoryHelper "DysonSphereBox/helper/factory"
 	contract "DysonSphereBox/helper/factory/contract"
 	"DysonSphereBox/helper/factory/progressjournal"
+	"DysonSphereBox/helper/factory/workflowjournal"
 	"DysonSphereBox/helper/quant"
 	systemHelper "DysonSphereBox/helper/system"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"strings"
@@ -20,6 +23,8 @@ import (
 
 // Service 职责：校验输入、保存有限方案快照并编排纯引擎；使用：Wails 绑定；边界：构造无副作用，不将账号或真实游戏资源纳入计算。
 type Service struct {
+	// workflow 职责：保存真实工作流增量轨迹；使用：Generate 生命周期及只读跟踪接口；边界：有界内存，独立于实体预览日志，零值可用。
+	workflow workflowjournal.Store
 	progress progressjournal.Store
 	// mu 职责：保护快照；使用：Solve/Generate；边界：计算不持锁。
 	mu sync.Mutex
@@ -116,7 +121,45 @@ func (s *Service) Encode(req contract.EncodeRequest) contract.EncodeResponse {
 }
 
 // Generate 职责：复核方案后取消旧生成并串行接替、自检；使用：生成按钮；边界：只接受可信方案，被替代任务不返回成功结果。
-func (s *Service) Generate(req build.Request) contract.GenerateResponse {
+func (s *Service) Generate(req build.Request) (response contract.GenerateResponse) {
+	// 先原子占用任务身份再做输入校验或取消旧请求，避免重复 ID 把旧任务的预览与轨迹混到新任务。
+	var writer *workflowjournal.Writer
+	var engineLost uint64
+	boundWorkflow := false
+	if req.TaskID != "" {
+		var reserveErr error
+		writer, reserveErr = s.workflow.Reserve(req.TaskID)
+		if reserveErr != nil {
+			var journalErr *workflowjournal.Error
+			if errors.As(reserveErr, &journalErr) && journalErr.Code == "conflict" {
+				return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_TASK_CONFLICT", Message: "任务身份已使用，请使用新的任务身份"}}
+			}
+			if errors.As(reserveErr, &journalErr) && journalErr.Code == "invalid_argument" {
+				return contract.GenerateResponse{Status: contract.Status{Code: "GEN_E_TASK_ID", Message: "任务身份格式无效"}}
+			}
+			// 日志容量或关闭只影响旁路可用性，不阻止已有蓝图生成流程。
+		}
+	}
+	defer func() {
+		if writer == nil {
+			return
+		}
+		code, message := response.Code, response.Message
+		if code == "" {
+			code, message = "GEN_E_INTERNAL", "生成异常终止"
+		}
+		if !boundWorkflow {
+			_ = writer.FinishBeforeStart(code, message)
+			return
+		}
+		state := "failed"
+		if code == "OK" {
+			state = "succeeded"
+		} else if code == "GEN_E_CANCELED" {
+			state = "canceled"
+		}
+		_ = writer.FinishWithLost(state, code, message, engineLost)
+	}()
 	density, densityErr := build.NormalizeDensity(req.Density)
 	if densityErr != nil {
 		return contract.GenerateResponse{Status: factoryHelper.Status(densityErr)}
@@ -158,6 +201,19 @@ func (s *Service) Generate(req build.Request) contract.GenerateResponse {
 		generationContext = factoryHelper.GenerationContext(ctx, req.TaskID, s.progress.Append)
 	} else {
 		generationContext = factoryHelper.GenerationContext(ctx, req.TaskID)
+	}
+	if writer != nil {
+		generationContext = build.WithWorkflowStart(generationContext, func(graph workflow.PlanDescription) error {
+			boundWorkflow = true
+			_ = writer.BindPlan(graph)
+			return nil
+		})
+		generationContext = build.WithWorkflowTracking(generationContext, writer.Append)
+		generationContext = build.WithWorkflowFinish(generationContext, func(trace *workflow.RunResult, _ error) {
+			if trace != nil {
+				engineLost = trace.ExecutionEventsLost
+			}
+		})
 	}
 	data, err := build.Generate(generationContext, req)
 	if ctx.Err() != nil {

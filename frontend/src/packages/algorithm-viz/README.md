@@ -173,3 +173,10 @@ src/
 ```bash
 npm run typecheck   # 严格模式类型检查（tsc -p tsconfig.json --noEmit）
 ```
+
+
+## 实时候选展示（2026-11-16）
+
+实时使用固定3×3共9个显示槽（包含最佳和退场平台），原槽回收后新候选原地升起。`beginCandidate`排入显示等候；`finishCandidate`后，非当前最佳的舞台停止装配、变红下坠并按帧预算释放。`setBestCandidate(id)`只接受后台的真实最佳事件，`null`撤销当前最佳。最佳及最终结果通过完整`snapshot`批次恢复，不补播已结束候选的历史队列。使用方须先`beginCandidate`并`enqueue`快照，再设置最佳；任务级最终确认仍调用`finalizeSearch`。
+
+平台移动复用局部矩阵；真实建筑/连接/模型变化继续重算局部几何。暂停不阻止失效候选释放，现有非候选蓝图回放接口不变。协议字段见[蓝图预览协议v4](../../../../docs/蓝图预览协议-v4.md)。

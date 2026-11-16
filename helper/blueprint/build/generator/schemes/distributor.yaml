@@ -1,0 +1,26 @@
+schemaVersion: 1
+id: distributor
+# 纯共享工作库：入口参数与工作链选择归standard/dense，此处只复用唯一候选、几何及规则步骤。
+flow:
+  - id: entry
+    call: search
+subflows:
+  search:
+    flow:
+      - id: distributor-attempts
+        candidates:
+          comparator: layout
+          parallel: 10
+          groups: {$state: distributor.groups}
+          inputs:
+            index: {type: integer, required: true}
+          flow:
+            - id: solve
+              tool: distributor.assemble@1
+              with: {index: {$input: index}}
+            - id: finalize-geometry
+              call: geometry/finalize
+            - id: validate
+              call: rules/validate
+      - id: select-final
+        tool: factory.select@1

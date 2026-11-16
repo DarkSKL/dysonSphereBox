@@ -1,0 +1,39 @@
+schemaVersion: 1
+id: input
+subflows:
+  prepare-production:
+    flow:
+      - id: normalize-request
+        tool: input.normalize@1
+      - id: load-dataset-facts
+        tool: input.load-data@1
+      - id: validate-plan-source
+        tool: input.validate-source@1
+      - id: normalize-production-rates
+        tool: input.production-rates@1
+      - id: build-conserved-flow
+        tool: input.build-flow@1
+      - id: validate-production-capacity
+        tool: input.validate-production@1
+      - id: plan-minimum-transport
+        tool: input.minimum-transport@1
+      - id: validate-transport-capacity
+        tool: input.validate-transport@1
+      - id: estimate-native-workload
+        tool: input.estimate-workload@1
+      - id: compose-prepared-input
+        tool: input.compose-production@1
+  prepare-transport:
+    inputs:
+      index: {type: integer, required: true}
+    flow:
+      - id: apply-exact-transport-level
+        tool: input.apply-transport@1
+        with:
+          index: {$input: index}
+      - id: validate-exact-transport-capacity
+        tool: input.validate-transport-candidate@1
+      - id: estimate-exact-transport-workload
+        tool: input.estimate-transport-workload@1
+      - id: compose-transport-input
+        tool: input.compose-transport@1

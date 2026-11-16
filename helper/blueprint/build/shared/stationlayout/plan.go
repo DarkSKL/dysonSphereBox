@@ -10,15 +10,23 @@ import (
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build/contract"
 	"DysonSphereBox/helper/blueprint/build/shared/zoning"
+	"DysonSphereBox/helper/transport"
 )
 
 // Plan 职责：生成可独立验证的分区与塔组计划；使用：组合布局阶段；边界：只返回完整计划，输入切片与规范物料图保持只读。
 // 逻辑流：1. 校验阶段输入 => 2. 创建并稳定排序分区 => 3. 均衡机器行 => 4. 为规范剩余边预留出口。
 func Plan(ctx context.Context, input contract.StationLayoutInput, config contract.StationConfig) (contract.StationLayoutPlan, error) {
+	if err := ValidateConfiguration(config); err != nil {
+		return contract.StationLayoutPlan{}, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: err.Error()}
+	}
+	portCount, err := transport.StationPortCount(config.StationID)
+	if err != nil {
+		return contract.StationLayoutPlan{}, &blueprint.Error{Code: "GEN_E_PORT_UNVERIFIED", Message: err.Error()}
+	}
 	if input.FlowGraph == nil {
 		return contract.StationLayoutPlan{}, &blueprint.Error{Code: "GEN_E_FLOW", Message: "物流塔生成缺少规范物料图"}
 	}
-	if len(input.Productions) != len(input.Plan.Productions) || config.ItemSlots <= 0 || config.ItemSlots > 12 {
+	if len(input.Productions) != len(input.Plan.Productions) || config.ItemSlots <= 0 || config.ItemSlots > portCount {
 		return contract.StationLayoutPlan{}, &blueprint.Error{Code: "GEN_E_LAYOUT", Message: "物流塔布局准备结果或槽位配置无效"}
 	}
 	if ctx.Err() != nil {
@@ -54,7 +62,7 @@ func Plan(ctx context.Context, input contract.StationLayoutInput, config contrac
 				return contract.StationLayoutPlan{}, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "物流塔布局拆列与规范机器总数不一致"}
 			}
 			leftovers := len(LeftoverKinds(input.FlowGraph, index))
-			perGroup = min(perGroup, max(1, 12/max(1, min(routeCount, config.ItemSlots)+leftovers)))
+			perGroup = min(perGroup, max(1, portCount/max(1, min(routeCount, config.ItemSlots)+leftovers)))
 			zonePlan.Productions = append(zonePlan.Productions, contract.StationProductionPlan{Index: index, Counts: counts, PerGroup: perGroup})
 		}
 		plan.Zones = append(plan.Zones, zonePlan)

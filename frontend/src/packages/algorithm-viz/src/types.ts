@@ -99,7 +99,7 @@ export interface AlgoVizBatch {
   /**
    * 播放节奏：
    * - 'replay'（缺省）：回放已有结果，按节奏逐个落位，长队列在数秒内播完
-   * - 'follow'：跟随正在运行的算法，最多落后约 1 秒；积压时按顺序立即应用较早的操作，只为最新变化播放动画
+   * - 'follow'：跟随正在运行的算法；同对象的新完整状态覆盖尚未播放的旧状态，帧预算内优先追上最新变化
    */
   readonly pace?: 'follow' | 'replay' | 'cinematic';
 }
@@ -221,6 +221,8 @@ export interface AlgorithmVizController {
   beginGeneration(taskId: string): void;
   beginCandidate(id: string, ordinal: number): void;
   finishCandidate(id: string, status: 'valid' | 'rejected' | 'pruned'): void;
+  /** 设置后台确认的当前最佳；null撤销，不能由前端根据完成顺序猜测。 */
+  setBestCandidate(id: string | null): void;
   finalizeSearch(winnerId: string): void;
   failSearch(): void;
   /** WebGL 是否可用；不可用时显示降级提示，其余方法仍可安全调用 */

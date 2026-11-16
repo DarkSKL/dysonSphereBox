@@ -1,6 +1,6 @@
 package build
 
-import algorithm "DysonSphereBox/helper/blueprint/build/algorithm"
+import algorithm "DysonSphereBox/helper/blueprint/build/core"
 
 // Setting 职责：公开生成设置；使用：请求配置；边界：与引擎类型保持一致。
 type Setting = algorithm.Setting

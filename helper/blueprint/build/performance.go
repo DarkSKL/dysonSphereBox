@@ -3,7 +3,7 @@ package build
 import (
 	"context"
 
-	algorithm "DysonSphereBox/helper/blueprint/build/algorithm"
+	algorithm "DysonSphereBox/helper/blueprint/build/core"
 )
 
 // GenerationPerformance 职责：公开生成性能统计；使用：诊断订阅；边界：不参与生成决策。

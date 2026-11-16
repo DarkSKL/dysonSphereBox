@@ -1,0 +1,28 @@
+schemaVersion: 1
+id: factory
+flow:
+  - id: normalize
+    call: input/prepare-production
+  - id: transport-options
+    tool: transport.enumerate@1
+  - id: transport-attempts
+    candidates:
+      selection: first
+      parallel: 1
+      advanceOn: [GEN_E_INSERTER_CAPACITY, GEN_E_BELT_CAPACITY, GEN_E_PORT_CAPACITY, GEN_E_OVERFLOW]
+      items: {$state: transport.candidates}
+      inputs:
+        index: {type: integer, required: true}
+      flow:
+        - id: prepare-transport
+          call: input/prepare-transport
+          with:
+            index: {$input: index}
+        - id: choose-surface
+          call: common/surface
+  - id: validate-selected-regions
+    call: common/selected-regions
+  - id: encode-winner
+    tool: blueprint.encode@1
+  - id: compose-result
+    call: result/compose

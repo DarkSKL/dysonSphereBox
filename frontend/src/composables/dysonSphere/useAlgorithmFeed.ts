@@ -39,7 +39,11 @@ export interface AlgorithmPhase {
 
 export type AlgorithmFeedSource = 'idle' | 'live' | 'replay'
 
-const LIVE_STAGE_LABELS: Record<string, string> = {layout: '布局装配', assembly: '装配机器行', routing: '连接物料路线'}
+const LIVE_STAGE_LABELS: Record<string, string> = {
+  layout: '布局装配', assembly: '装配机器行', routing: '连接物料路线',
+  rules: '校验建筑与物流', power: '完善供电网络', records: '整理建筑归属',
+  surface: '适配行星网格', 'surface-retry': '调整纬带布局',
+}
 
 const liveAreas = (areas?: readonly FactoryPreviewArea[]): AlgoVizArea[] | undefined => areas?.length
   ? areas.map(area => ({index: area.index, parentIndex: area.parentIndex, anchorX: area.anchorLocalOffset.x, anchorY: area.anchorLocalOffset.y, width: area.size.x, height: area.size.y}))
@@ -61,10 +65,12 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
   let liveTask = ''
   let liveComplete = false
   let liveWinner = ''
+  let liveBest = ''
   let liveV4 = false
   let streamNotice = ''
   const candidateSequences = new Map<string, number>()
   const snapshots = new Map<string, {revision: number; count: number; chunks: Map<number, readonly FactoryPreviewOperation[]>; areas?: readonly AlgoVizArea[]}>()
+  const snapshotRevisions = new Map<string, number>()
   let phaseStage = ''
   let phaseTask = ''
   let lastSourceKey = ''
@@ -90,7 +96,13 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     const transition = animate && mirror.size <= CHUNK
     mirror.clear()
     candidateObjects.clear()
+    liveBest = ''
     getViz()?.reset({animate: transition})
+  }
+  // 已结束候选的镜像不保留全体历史；当前最佳及正式快照可独立恢复完整场景。
+  const forgetCandidate = (id: string): void => {
+    for (const object of candidateObjects.get(id) ?? []) mirror.delete(object)
+    candidateObjects.delete(id)
   }
 
   // =============== 实时差量 ===============
@@ -122,7 +134,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     if (event.stage === 'preview-stream-end' && event.taskId === liveTask && liveV4 && !liveComplete) {
       liveComplete = true
       getViz()?.failSearch()
-      notice.value = '本次计算未成功，继续演示候选退场过程'
+      notice.value = '本次计算未成功，已清理候选预览'
       return
     }
     if (event.stage === 'preview-stream-incomplete') {
@@ -146,6 +158,7 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
         notice.value = ''
         candidateSequences.clear()
         snapshots.clear()
+        snapshotRevisions.clear()
         decodeVersion++
         decoding.value = false
         source.value = 'live'
@@ -154,6 +167,12 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
       if (event.taskId !== liveTask) return
       const viz = getViz()
       if (!viz) return
+      if (event.kind === 'candidate-best-cleared') {
+        forgetCandidate(liveBest)
+        liveBest = ''
+        viz.setBestCandidate(null)
+        return
+      }
       const failStream = (message: string): void => {
         liveTask = ''
         liveV4 = false
@@ -175,13 +194,14 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
         viz.beginCandidate(event.candidateId, event.candidateOrdinal ?? 1)
       } else if (event.kind === 'candidate-finish' && event.candidateId && event.candidateStatus) {
         viz.finishCandidate(event.candidateId, event.candidateStatus)
-        if (event.candidateStatus !== 'valid') {
-          for (const id of candidateObjects.get(event.candidateId) ?? []) mirror.delete(id)
-          candidateObjects.delete(event.candidateId)
+        if (event.candidateStatus !== 'valid' || event.candidateId !== liveBest) {
+          forgetCandidate(event.candidateId)
           snapshots.delete(event.candidateId)
         }
+        if (event.candidateId === liveBest && event.candidateStatus !== 'valid') liveBest = ''
       } else if (event.kind === 'preview-snapshot' && event.candidateId && event.operations) {
         const revision = event.snapshotRevision ?? 0
+        if (revision <= (snapshotRevisions.get(event.candidateId) ?? 0)) { failStream('候选快照版本没有递增，等待正式结果回放'); return }
         const count = event.chunkCount ?? 0
         const snapshot = snapshots.get(event.candidateId) ?? {revision, count, chunks: new Map<number, readonly FactoryPreviewOperation[]>(), areas: liveAreas(event.areas)}
         const index = event.chunkIndex ?? 0
@@ -197,9 +217,10 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
           if (operation.type === 'add' ? exists : !exists) { failStream('候选对象变化不连续，等待正式结果回放'); return }
           changes.set(operation.id, operation.type !== 'remove')
         }
-        commit(operations, {candidateId: event.candidateId, coordinates, areas: liveAreas(event.areas), stage: LIVE_STAGE_LABELS[event.stage] ?? event.stage, pace: 'cinematic'})
-      } else if (event.kind === 'preview-complete') {
+        commit(operations, {candidateId: event.candidateId, coordinates, areas: liveAreas(event.areas), stage: LIVE_STAGE_LABELS[event.stage] ?? event.stage, pace: 'follow'})
+      } else if (event.kind === 'preview-complete' || event.kind === 'candidate-best') {
         const candidateId = event.candidateId ?? ''
+        if (event.kind === 'preview-complete' && event.winnerCandidateId !== candidateId) { failStream('获选身份与最终快照不一致，等待正式结果回放'); return }
         const snapshot = snapshots.get(candidateId)
         if (!snapshot || snapshot.revision !== event.snapshotRevision || snapshot.chunks.size !== snapshot.count || snapshot.count !== event.chunkCount) {
           failStream('候选最终快照不完整，等待正式结果回放')
@@ -212,17 +233,32 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
           return
         }
         const operations = records.map(operation => liveOperation(`${event.taskId}:${candidateId}`, operation))
-        mirror.clear()
-        candidateObjects.clear()
-        commit(operations, {candidateId, coordinates: 'area', areas: snapshot.areas, pace: 'cinematic', snapshot: true})
+        if (event.kind === 'preview-complete') {
+          mirror.clear()
+          candidateObjects.clear()
+        } else {
+          if (liveBest && liveBest !== candidateId) forgetCandidate(liveBest)
+          forgetCandidate(candidateId)
+        }
+        viz.beginCandidate(candidateId, event.candidateOrdinal ?? 1)
+        commit(operations, {candidateId, coordinates: 'area', areas: snapshot.areas, pace: 'follow', snapshot: true})
+        snapshotRevisions.set(candidateId, snapshot.revision)
+        snapshots.delete(candidateId)
+        liveBest = candidateId
+        viz.setBestCandidate(candidateId)
+        if (event.kind === 'candidate-best') return
         snapshots.clear()
         liveComplete = true
         liveWinner = event.winnerCandidateId ?? ''
         if (w.generated?.winnerCandidateId === liveWinner) viz.finalizeSearch(liveWinner)
       } else if (event.kind === 'search-failed') {
         liveComplete = true
+        liveBest = ''
+        mirror.clear()
+        candidateObjects.clear()
+        snapshots.clear()
         viz.failSearch()
-        notice.value = '本次搜索未找到可用方案，继续演示各候选的失败过程'
+        notice.value = '本次搜索未找到可用方案，已清理候选预览'
       }
       return
     }

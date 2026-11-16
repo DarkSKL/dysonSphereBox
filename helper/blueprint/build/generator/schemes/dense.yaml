@@ -1,0 +1,169 @@
+schemaVersion: 1
+id: dense
+# 大模式参数入口；四子模式只定义覆盖，原子实现及候选、几何和校验工作链均在共享库中唯一维护。
+parameters:
+  rowSpans: [12, 18, 24, 32]
+  denseOrders: [0, 1, 2, 3]
+  distributorStrategies:
+    - {"scale": 0.85, "order": 2}
+    - {"scale": 0.85, "order": 3}
+    - {"scale": 1, "order": 2}
+    - {"scale": 1, "order": 3}
+    - {"scale": 1.2, "order": 2}
+    - {"scale": 1.2, "order": 3}
+  nativeDistributorStrategies:
+    - {"scale": 0.85, "order": 2}
+    - {"scale": 0.85, "order": 3}
+    - {"scale": 1, "order": 2}
+    - {"scale": 1, "order": 3}
+    - {"scale": 1.2, "nativeReserve": true}
+    - {"scale": 1.2, "order": 1, "nativeReserve": true}
+  distributorTopologies:
+    - {"topology": "dense-blackbox"}
+    - {"topology": "dense-blackbox", "street": true}
+    - {"topology": "dense-detached"}
+    - {"topology": "dense-detached", "street": true}
+  distributorFallbackTopologies:
+    - {"topology": "dense-detached", "street": true, "groups": 3, "clearance": 0.04}
+    - {"topology": "dense-detached", "street": true, "groups": 2, "clearance": 0.2}
+    - {"topology": "dense-detached", "street": true, "groups": 2, "clearance": 0.4}
+    - {"topology": "dense-detached", "street": true, "groups": 2, "clearance": 0.6}
+    - {"topology": "dense-detached", "street": true, "groups": 1, "clearance": 0.04}
+  distributorGroundFallback: true
+  distributorStreetFallback: true
+flow:
+  - id: entry
+    call: entry
+subflows:
+  entry:
+    flow:
+      - id: mode-defaults
+        tool: mode.configure@1
+        with:
+          rowSpans: {$param: rowSpans}
+          denseOrders: {$param: denseOrders}
+      - id: submode
+        switch:
+          value: {$state: mode.family}
+          cases:
+            connected:
+              - id: connected-parameters
+                tool: mode.submode@1
+                with: {bentSpans: [12, 18]}
+            station:
+              - id: station-parameters
+                tool: mode.submode@1
+                with: {stationFamily: all}
+            distributor:
+              - id: distributor-parameters
+                tool: mode.submode@1
+            bus:
+              - id: bus-parameters
+                tool: mode.submode@1
+                with: {busTighten: true}
+          otherwise:
+            - id: unsupported-submode
+              fail: unsupported-layout-family
+      - id: geographic-policy
+        call: geography
+      - id: surface-workchain
+        call: common/selected-surface
+  # 优先级：已授权跨带→极区→经度段收缩环→赤道完整环→明确默认。
+  # 经向边界源自原生纬圈段数，不代表不存在于请求中的绝对经度坐标。
+  geography:
+    flow:
+      - id: cross-band-priority
+        switch:
+          value: {$state: mode.geo.cross-bands}
+          cases:
+            "true":
+              - id: authorized-cross-band
+                tool: mode.geography@1
+                with: {denseOrders: [0, 2, 1, 3]}
+          otherwise:
+            - id: latitude-policy
+              switch:
+                value: {$state: mode.geo.class}
+                cases:
+                  polar:
+                    - id: polar-policy
+                      call: polar-policy
+                otherwise:
+                  - id: longitude-policy
+                    switch:
+                      value: {$state: mode.geo.longitude-boundary}
+                      cases:
+                        reduced-ring:
+                          - id: reduced-ring-policy
+                            call: hemisphere-policy
+                        equatorial-ring:
+                          - id: equatorial-policy
+                            tool: mode.geography@1
+                            with: {streetRotations: [0, 1, 2, 3]}
+                      otherwise:
+                        - id: geographic-default
+                          tool: mode.geography@1
+  polar-policy:
+    flow:
+      - id: hemisphere
+        switch:
+          value: {$state: mode.geo.hemisphere}
+          cases:
+            south:
+              - id: south-polar
+                tool: mode.geography@1
+                with: {polarWindowRows: [24, 40, 32, 48, 56, 64], streetRotations: [2, 3, 0, 1]}
+            north:
+              - id: north-polar
+                tool: mode.geography@1
+                with: {polarWindowRows: [24, 32, 48, 40, 56, 64], streetRotations: [0, 1, 2, 3]}
+          otherwise:
+            - id: polar-default
+              tool: mode.geography@1
+  hemisphere-policy:
+    flow:
+      - id: hemisphere
+        switch:
+          value: {$state: mode.geo.hemisphere}
+          cases:
+            south:
+              - id: south-reduced-ring
+                tool: mode.geography@1
+                with: {streetRotations: [2, 3, 0, 1]}
+            north:
+              - id: north-reduced-ring
+                tool: mode.geography@1
+                with: {streetRotations: [0, 1, 2, 3]}
+          otherwise:
+            - id: reduced-ring-default
+              tool: mode.geography@1
+  layout:
+    flow:
+      - id: family
+        switch:
+          value: {$state: mode.family}
+          cases:
+            connected:
+              - id: connected
+                call: connected/search
+            distributor:
+              - id: distributor-specs
+                tool: distributor.enumerate@1
+                with:
+                  dense: {$param: distributorStrategies}
+                  nativeDense: {$param: nativeDistributorStrategies}
+                  denseTopologies: {$param: distributorTopologies}
+                  groundFallback: {$param: distributorGroundFallback}
+                  streetFallback: {$param: distributorStreetFallback}
+                  streetFallbackTopologies: {$param: distributorFallbackTopologies}
+              - id: distributor
+                call: distributor/search
+            station:
+              - id: station
+                call: station/search
+            bus:
+              - id: bus
+                call: bus/search
+          otherwise:
+            - id: unknown-family
+              fail: unsupported-layout-family

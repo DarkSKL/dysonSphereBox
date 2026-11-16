@@ -17,5 +17,6 @@ func (g *ServiceGroup) RegisterServices() []interface{} { return []interface{}{&
 func (g *ServiceGroup) ReleaseResources(ctx context.Context) error {
 	err := g.FactoryService.generation.Shutdown(ctx)
 	g.FactoryService.progress.Close()
+	g.FactoryService.workflow.Close()
 	return err
 }

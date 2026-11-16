@@ -1,0 +1,5676 @@
+{
+  "$defs": {
+    "node": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "blueprint.encode@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "bus.assemble@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "bus.enumerate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "tighten": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "cargo.bind@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "connected.assemble@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "connected.enumerate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bentCapacityModes": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "bentRows": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "bentSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array",
+                          "x-unit": "grid"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "capacityFill": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "capacityStreetPreference": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "denseOrders": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "denseSpanRepeat": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "denseSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array",
+                          "x-unit": "grid"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "heightLimits": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array",
+                          "x-unit": "grid"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "inputGroups": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "layout": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "compactModes": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "globalPower": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "horizontal": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "horizontalFactor": {
+                              "anyOf": [
+                                {
+                                  "allOf": [
+                                    {
+                                      "minimum": 0
+                                    }
+                                  ],
+                                  "type": "number",
+                                  "x-unit": "ratio"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "minimumPowerLimit": {
+                              "anyOf": [
+                                {
+                                  "allOf": [
+                                    {
+                                      "minimum": 0
+                                    }
+                                  ],
+                                  "type": "number",
+                                  "x-unit": "grid"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "powerFactor": {
+                              "anyOf": [
+                                {
+                                  "allOf": [
+                                    {
+                                      "minimum": 0
+                                    }
+                                  ],
+                                  "type": "number",
+                                  "x-unit": "ratio"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "powerQuantum": {
+                              "anyOf": [
+                                {
+                                  "allOf": [
+                                    {
+                                      "minimum": 0
+                                    }
+                                  ],
+                                  "type": "number",
+                                  "x-unit": "grid"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "wideLimitFactor": {
+                              "anyOf": [
+                                {
+                                  "allOf": [
+                                    {
+                                      "minimum": 0
+                                    }
+                                  ],
+                                  "type": "number",
+                                  "x-unit": "ratio"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            }
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "materialNetworkThreshold": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer",
+                          "x-unit": "machine"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "measureHeightLimits": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "pairedOutputs": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "producerSplits": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "refineOrders": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "splitterCapacityLimit": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "splitterModels": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 32767,
+                                "minimum": -32768,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "street": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetGroups": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetRotations": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "translateCompact": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "distributor.assemble@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "distributor.enumerate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "autoMode5Heights": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "dense": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "consumerFirst": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "latitudeFactor": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "materialOrder": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "nativeReserve": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "order": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "maximum": 3,
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "maximum": 9223372036854775807,
+                                        "minimum": -9223372036854775808,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "scale": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "denseTopologies": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "clearance": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "grid"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "compact": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "consumerFirst": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "fallback": {
+                                    "anyOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "afterGroups": {
+                                            "anyOf": [
+                                              {
+                                                "items": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "string"
+                                                    },
+                                                    {
+                                                      "$ref": "#/$defs/reference"
+                                                    }
+                                                  ]
+                                                },
+                                                "type": "array"
+                                              },
+                                              {
+                                                "$ref": "#/$defs/reference"
+                                              }
+                                            ]
+                                          },
+                                          "excludedFailureCode": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "$ref": "#/$defs/reference"
+                                              }
+                                            ]
+                                          },
+                                          "requireFailure": {
+                                            "anyOf": [
+                                              {
+                                                "type": "boolean"
+                                              },
+                                              {
+                                                "$ref": "#/$defs/reference"
+                                              }
+                                            ]
+                                          },
+                                          "requireNoSuccess": {
+                                            "anyOf": [
+                                              {
+                                                "type": "boolean"
+                                              },
+                                              {
+                                                "$ref": "#/$defs/reference"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "type": "object"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "ground": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "groupId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "groupRows": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "groups": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "maximum": 9223372036854775807,
+                                        "minimum": -9223372036854775808,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "heightLimit": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "grid"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "id": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "latitudeFactor": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "materialOrder": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "nativeReserve": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "order": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "maximum": 3,
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "maximum": 9223372036854775807,
+                                        "minimum": -9223372036854775808,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "scale": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "street": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "surfacePairs": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "topology": {
+                                    "anyOf": [
+                                      {
+                                        "enum": [
+                                          "standard-field",
+                                          "dense-blackbox",
+                                          "dense-detached",
+                                          "internal-mode5"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "groundFallback": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "internalMode5": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "compact": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "groupRows": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "heightLimit": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "grid"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "surfacePairs": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "mode5SurfacePairs": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "nativeDense": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "consumerFirst": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "latitudeFactor": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "materialOrder": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "nativeReserve": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "order": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "maximum": 3,
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "maximum": 9223372036854775807,
+                                        "minimum": -9223372036854775808,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "scale": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "standard": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "consumerFirst": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "latitudeFactor": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "materialOrder": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "nativeReserve": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "order": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "maximum": 3,
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "maximum": 9223372036854775807,
+                                        "minimum": -9223372036854775808,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "scale": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetFallback": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetFallbackTopologies": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "clearance": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "grid"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "compact": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "consumerFirst": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "fallback": {
+                                    "anyOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "afterGroups": {
+                                            "anyOf": [
+                                              {
+                                                "items": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "string"
+                                                    },
+                                                    {
+                                                      "$ref": "#/$defs/reference"
+                                                    }
+                                                  ]
+                                                },
+                                                "type": "array"
+                                              },
+                                              {
+                                                "$ref": "#/$defs/reference"
+                                              }
+                                            ]
+                                          },
+                                          "excludedFailureCode": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "$ref": "#/$defs/reference"
+                                              }
+                                            ]
+                                          },
+                                          "requireFailure": {
+                                            "anyOf": [
+                                              {
+                                                "type": "boolean"
+                                              },
+                                              {
+                                                "$ref": "#/$defs/reference"
+                                              }
+                                            ]
+                                          },
+                                          "requireNoSuccess": {
+                                            "anyOf": [
+                                              {
+                                                "type": "boolean"
+                                              },
+                                              {
+                                                "$ref": "#/$defs/reference"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "type": "object"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "ground": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "groupId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "groupRows": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "groups": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "maximum": 9223372036854775807,
+                                        "minimum": -9223372036854775808,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "heightLimit": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "grid"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "id": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "latitudeFactor": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "materialOrder": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "nativeReserve": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "order": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "maximum": 3,
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "maximum": 9223372036854775807,
+                                        "minimum": -9223372036854775808,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "scale": {
+                                    "anyOf": [
+                                      {
+                                        "allOf": [
+                                          {
+                                            "minimum": 0
+                                          }
+                                        ],
+                                        "type": "number",
+                                        "x-unit": "ratio"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "street": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "surfacePairs": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  },
+                                  "topology": {
+                                    "anyOf": [
+                                      {
+                                        "enum": [
+                                          "standard-field",
+                                          "dense-blackbox",
+                                          "dense-detached",
+                                          "internal-mode5"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/reference"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "factory.select@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "factory.validate-regions@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "geometry.check-region@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "boundarySampleLimit": {
+                      "anyOf": [
+                        {
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "geometry.describe-regions@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "geometry.freeze@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "geometry.measure-range@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "geometry.position@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "geometry.relocate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.apply-transport@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.build-flow@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.compose-production@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.compose-transport@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.estimate-transport-workload@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.estimate-workload@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.load-data@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.minimum-transport@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.normalize@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.production-rates@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.validate-production@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.validate-source@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.validate-transport-candidate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "input.validate-transport@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "mode.configure@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bentSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "busTighten": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "denseOrders": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "polarWindowRows": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "rowSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "stationFamily": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetGroups": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetRotations": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "mode.defaults@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bentSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "busTighten": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "denseOrders": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "polarWindowRows": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "rowSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "stationFamily": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetGroups": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetRotations": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "mode.geography@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bentSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "busTighten": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "denseOrders": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "polarWindowRows": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "rowSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "stationFamily": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetGroups": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetRotations": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "mode.submode@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bentSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "busTighten": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "denseOrders": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "polarWindowRows": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "rowSpans": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "stationFamily": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetGroups": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "streetRotations": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "monitors.align@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "power.prune@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "power.repair@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "production.annotate-rates@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "result.compose@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "result.transport-upgrade@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.belt-building-occupancy@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.belt-crossings@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.belt-distance@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.boundaries@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.buffers@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.byproduct-priority@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.complete@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.conservation@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.deliveries@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.density-report@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.inserter-geometry@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.latitude@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.layout-metrics@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.leftovers@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.machines@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.material-networks@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.monitors@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.pasted-slots@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.power-network@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.power-spacing@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.producer-splits@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.recycles@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.references@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.routes@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.self-spray@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.shared-capacity@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.splitter-clearance@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.spray-channels@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.static-colliders@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.station-ports@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.station-spacing@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.storage-roof@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.tank-ports@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "rules.transport-topology@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "station.assemble-spec@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "specification": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "balancedFrame": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "baseLayout": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "bentRows": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "chemicalFour": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "compact": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "consumerFirst": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "density": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "fieldVariant": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "groundTracks": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "groups": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "heightChoice": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "holeSpan": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "independentStations": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "inputFingerprint": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "latitudeSpan": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "linearTowers": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "materialNetworks": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "materialOrder": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "maxSpan": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "nearbyInputPorts": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "order": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "pairedOutputs": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "producerSplits": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "refine": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "refineryCollinear": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "rotation": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "sharedInputs": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "sharedOutputs": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "sourceVariant": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "splitterModel": {
+                              "anyOf": [
+                                {
+                                  "maximum": 32767,
+                                  "minimum": -32768,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "stationId": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            },
+                            "street": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
+                            }
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "station.assemble@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "station.enumerate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "family": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "",
+                            "all",
+                            "blackbox",
+                            "field"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "station.prepare-refinement@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "stats.calculate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "surface.enumerate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expandAdjacent": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "includeBandFallback": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "polarWindowRows": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array",
+                          "x-unit": "grid-row"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "preciseFootprint": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "strategy": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "strict",
+                            "native"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "surface.prepare@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "transport.bind-records@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "transport.commit-priorities@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "const": "transport.enumerate@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "sequence": {
+              "items": {
+                "$ref": "#/$defs/node"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "sequence"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "fail": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "fail"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "call": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "with": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "call"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "switch": {
+              "additionalProperties": false,
+              "properties": {
+                "cases": {
+                  "additionalProperties": {
+                    "items": {
+                      "$ref": "#/$defs/node"
+                    },
+                    "type": "array"
+                  },
+                  "type": "object"
+                },
+                "otherwise": {
+                  "items": {
+                    "$ref": "#/$defs/node"
+                  },
+                  "type": "array"
+                },
+                "value": {}
+              },
+              "required": [
+                "value",
+                "cases",
+                "otherwise"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "switch"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "regions": {
+              "additionalProperties": false,
+              "properties": {
+                "flow": {
+                  "items": {
+                    "$ref": "#/$defs/node"
+                  },
+                  "type": "array"
+                },
+                "items": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "anyOf": [
+                          {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/$defs/reference"
+                          }
+                        ]
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    {
+                      "$ref": "#/$defs/reference"
+                    }
+                  ]
+                },
+                "reset": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "items",
+                "flow"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "regions"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "candidates": {
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "else": {
+                    "properties": {
+                      "items": {
+                        "minItems": 1
+                      }
+                    }
+                  },
+                  "if": {
+                    "properties": {
+                      "includeCurrent": {
+                        "const": true
+                      }
+                    },
+                    "required": [
+                      "includeCurrent"
+                    ]
+                  },
+                  "then": {
+                    "not": {
+                      "required": [
+                        "groups"
+                      ]
+                    },
+                    "properties": {
+                      "selection": {
+                        "const": "best"
+                      }
+                    }
+                  }
+                }
+              ],
+              "if": {
+                "required": [
+                  "groups"
+                ]
+              },
+              "oneOf": [
+                {
+                  "not": {
+                    "required": [
+                      "groups"
+                    ]
+                  },
+                  "required": [
+                    "items"
+                  ]
+                },
+                {
+                  "not": {
+                    "required": [
+                      "items"
+                    ]
+                  },
+                  "required": [
+                    "groups"
+                  ]
+                }
+              ],
+              "properties": {
+                "advanceOn": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "comparator": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "fallback": {
+                  "items": {
+                    "$ref": "#/$defs/node"
+                  },
+                  "type": "array"
+                },
+                "fallbackOn": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "flow": {
+                  "items": {
+                    "$ref": "#/$defs/node"
+                  },
+                  "type": "array"
+                },
+                "groups": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "afterNoSuccess": {
+                            "items": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "excludeFailureCodes": {
+                            "items": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "items": {
+                            "items": {
+                              "type": "object"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "items"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "$ref": "#/$defs/reference"
+                    }
+                  ]
+                },
+                "includeCurrent": {
+                  "type": "boolean"
+                },
+                "inputs": {
+                  "additionalProperties": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "default": {
+                        "not": {
+                          "type": "null"
+                        }
+                      },
+                      "required": {
+                        "type": "boolean"
+                      },
+                      "type": {
+                        "enum": [
+                          "string",
+                          "integer",
+                          "number",
+                          "boolean",
+                          "object",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "object"
+                },
+                "items": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "$ref": "#/$defs/reference"
+                          }
+                        ]
+                      },
+                      "minItems": 0,
+                      "type": "array"
+                    },
+                    {
+                      "$ref": "#/$defs/reference"
+                    }
+                  ]
+                },
+                "parallel": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "reserveMs": {
+                  "maximum": 9223372036854775807,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "scorer": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "selection": {
+                  "enum": [
+                    "best",
+                    "first"
+                  ]
+                },
+                "settleMs": {
+                  "maximum": 86400000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "timeoutFailure": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "timeoutMs": {
+                  "maximum": 86400000,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "flow"
+              ],
+              "then": {
+                "properties": {
+                  "advanceOn": {
+                    "maxItems": 0
+                  },
+                  "selection": {
+                    "const": "best"
+                  },
+                  "settleMs": {
+                    "const": 0
+                  }
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "candidates"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "reference": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "$param": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "$param"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "$input": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "$input"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "$state": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "$state"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "flow": {
+      "items": {
+        "$ref": "#/$defs/node"
+      },
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "subflows": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "flow": {
+            "items": {
+              "$ref": "#/$defs/node"
+            },
+            "type": "array"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "default": {
+                  "not": {
+                    "type": "null"
+                  }
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "enum": [
+                    "string",
+                    "integer",
+                    "number",
+                    "boolean",
+                    "object",
+                    "array"
+                  ]
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "flow"
+        ],
+        "type": "object"
+      },
+      "type": "object"
+    },
+    "toolDefaults": {
+      "additionalProperties": {
+        "type": "object"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,76 @@
+schemaVersion: 1
+id: rules
+flow:
+  - id: entry
+    call: validate
+subflows:
+  validate:
+    flow:
+      - id: references
+        tool: rules.references@1
+      - id: latitude
+        tool: rules.latitude@1
+      - id: pasted-slots
+        tool: rules.pasted-slots@1
+      - id: belt-distance
+        tool: rules.belt-distance@1
+      - id: static-colliders
+        tool: rules.static-colliders@1
+      - id: tank-ports
+        tool: rules.tank-ports@1
+      - id: power-spacing
+        tool: rules.power-spacing@1
+      - id: station-spacing
+        tool: rules.station-spacing@1
+      - id: belt-crossings
+        tool: rules.belt-crossings@1
+      - id: belt-building-occupancy
+        tool: rules.belt-building-occupancy@1
+      - id: inserter-geometry
+        tool: rules.inserter-geometry@1
+      - id: splitter-clearance
+        tool: rules.splitter-clearance@1
+      - id: station-ports
+        tool: rules.station-ports@1
+      - id: storage-roof
+        tool: rules.storage-roof@1
+      - id: power-network
+        tool: rules.power-network@1
+      - id: transport-topology
+        tool: rules.transport-topology@1
+      - id: byproduct-priority
+        tool: rules.byproduct-priority@1
+      - id: buffers
+        tool: rules.buffers@1
+      - id: machines
+        tool: rules.machines@1
+      - id: spray-channels
+        tool: rules.spray-channels@1
+      - id: deliveries
+        tool: rules.deliveries@1
+      - id: producer-splits
+        tool: rules.producer-splits@1
+      - id: material-networks
+        tool: rules.material-networks@1
+      - id: routes
+        tool: rules.routes@1
+      - id: recycles
+        tool: rules.recycles@1
+      - id: self-spray
+        tool: rules.self-spray@1
+      - id: leftovers
+        tool: rules.leftovers@1
+      - id: shared-capacity
+        tool: rules.shared-capacity@1
+      - id: conservation
+        tool: rules.conservation@1
+      - id: boundaries
+        tool: rules.boundaries@1
+      - id: monitors
+        tool: rules.monitors@1
+      - id: layout-metrics
+        tool: rules.layout-metrics@1
+      - id: density-report
+        tool: rules.density-report@1
+      - id: complete
+        tool: rules.complete@1

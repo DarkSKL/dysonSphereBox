@@ -3,7 +3,7 @@ package build
 import (
 	"context"
 
-	algorithm "DysonSphereBox/helper/blueprint/build/algorithm"
+	algorithm "DysonSphereBox/helper/blueprint/build/core"
 	"DysonSphereBox/helper/blueprint/build/preview"
 )
 

@@ -15,8 +15,9 @@ import { BackdropLayer } from './render/backdrop';
 import { RingLayer, ShadowLayer } from './render/effects';
 import { IconLayer } from './render/icons';
 import { IslandLayer } from './render/island';
-import { ModelLibrary, type PartKind } from './render/models';
+import { ModelLibrary, type ModelEntry, type PartKind } from './render/models';
 import { InstancePool, type InstanceAttributeSpec } from './render/pool';
+import { PoolWarmup } from './render/warmup';
 import { BELT_FRAGMENT, BELT_VERTEX, BUILDING_FRAGMENT, BUILDING_VERTEX } from './render/shaders';
 import type {
   AlgorithmVizController,
@@ -70,11 +71,6 @@ const BELT_SPECS: InstanceAttributeSpec[] = [
 /** 失败候选标红的逐实例强度 */
 const FAIL_SPEC: InstanceAttributeSpec = { name: 'aFail', itemSize: 1 };
 
-/** 结果确定后，全部候选播完到落选候选一起下坠之间的停留秒数（让失败标注可见） */
-const SETTLE_HOLD = 1.1;
-/** 每个候选至少展示的秒数（视觉时钟） */
-const CANDIDATE_MIN_SHOW = 1.2;
-
 const clampSpeed = (value: number): number => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, SPEED_MIN, SPEED_MAX) : 1);
 
 interface PointerState {
@@ -87,14 +83,21 @@ interface PointerState {
   mode: 'pending' | 'rotate' | 'pan';
 }
 
-interface CandidateStage {
-  snapshot?: CandidateSnapshot;
-  /** 包含尚在退场的对象；按实体身份登记，同 ID 换型不会混淆新旧对象。 */
-  readonly objects: Set<VizObject>;
+/** 待展示候选只保存真实最新队列，不分配平台或GPU实体。 */
+interface PendingCandidate {
   readonly id: string;
   readonly ordinal: number;
-  readonly island: IslandLayer;
   readonly queue: OperationQueue;
+  snapshot?: CandidateSnapshot;
+  status?: 'valid' | 'rejected' | 'pruned';
+}
+
+interface CandidateStage extends PendingCandidate {
+  /** 完整快照提交后平台直接对齐实际范围，避免旧布局地块残留在最终取景外。 */
+  alignIsland?: boolean;
+  /** 包含尚在退场的对象；按实体身份登记，同 ID 换型不会混淆新旧对象。 */
+  readonly objects: Set<VizObject>;
+  readonly island: IslandLayer;
   budget: number;
   x: number;
   z: number;
@@ -104,10 +107,14 @@ interface CandidateStage {
   y: number;
   age: number;
   shownAt?: number;
+  /** 已结束候选停止装配，保留变红和下坠过渡；原槽位在回收完成前不会复用。 */
+  discarding: boolean;
+  displaySlot: number;
+  enterFrom: number;
+  enterElapsed: number;
+  exitElapsed: number;
   /** 失败标注的渐变进度（0 正常，1 全红） */
   failMix: number;
-  falling: number;
-  status?: 'valid' | 'rejected' | 'pruned';
 }
 
 /**
@@ -150,6 +157,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private iconVisibility: { belt: boolean; building: boolean } = { belt: true, building: true };
   private overlay!: Overlay;
   private models!: ModelLibrary;
+  private warmup!: PoolWarmup;
   private buildingMaterial!: THREE.ShaderMaterial;
   private beltMaterial!: THREE.ShaderMaterial;
   private unitBox!: THREE.BufferGeometry;
@@ -176,14 +184,21 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 正在衰减闪白但不在动画中的对象 */
   private readonly glowing = new Set<VizObject>();
   private readonly dirty = new Set<VizObject>();
+  /** 局部构形与平台平移分开失效；平台运动不重算带段截面和邻接几何。 */
+  private localMatrices = new WeakMap<VizObject, THREE.Matrix4>();
+  private readonly movedCandidates = new Set<CandidateStage>();
   /** 下游对象 ID → 指向它的传送带 */
   private readonly beltInputs = new Map<string, Set<VizObject>>();
   private readonly beltFlow = new BeltFlow();
   private readonly beltGeometry = new BeltGeometry();
   private queue = new OperationQueue();
   private readonly candidates = new Map<string, CandidateStage>();
+  /** 后台并发不受显示槽限制；等空位的在算候选仅合并最新状态，已结束的直接移除。 */
+  private readonly waitingCandidates = new Map<string, PendingCandidate>();
   /** 淘汰身份在任务内保留，防止迟到批次重新创建已经退场的候选。 */
   private readonly retiredCandidates = new Set<string>();
+  /** 后台共同评分确认的当前最佳；与最终winner分开，前端不推断优劣。 */
+  private bestId = '';
   private readonly objectCandidates = new Map<string, string>();
   private memberships = new WeakMap<VizObject, CandidateStage>();
   /** 模型就绪时只迁移对应占位体，分帧复用同一工作预算。 */
@@ -192,9 +207,11 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 每帧从上次让出的候选继续，避免大队列独占操作预算。 */
   private candidateCursor = 0;
   private winnerId = '';
-  /** 搜索已有结论（选出获选候选，或整体失败）：此后全部播完即让落选候选同时下坠 */
+  /** 搜索已有结论；最终快照收敛后只保留获选方案。 */
   private settled = false;
-  private settleReadyAt = -1;
+  private winnerFocusStarted = -1;
+  private winnerFocusDone = false;
+  private focusWinnerNow = false;
   private candidateSpacing = 32;
   private budget = 0;
   private animScale = 1;
@@ -295,21 +312,29 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     const stage = batch.stage ?? this.lastStage;
     this.lastStage = stage;
     const frame: QueueFrame = { taskId: batch.taskId ?? this.generationTaskId, candidateId: batch.candidateId, coordinates, offsets: coordinates === 'area' ? this.lastOffsets : NO_OFFSETS, stage, pace: batch.pace ?? 'replay' };
-    const queue = batch.candidateId ? this.candidates.get(batch.candidateId)?.queue : this.queue;
-    const candidate = batch.candidateId ? this.candidates.get(batch.candidateId) : undefined;
+    const displayed = batch.candidateId ? this.candidates.get(batch.candidateId) : undefined;
+    const candidate = displayed ?? (batch.candidateId ? this.waitingCandidates.get(batch.candidateId) : undefined);
+    const queue = batch.candidateId ? candidate?.queue : this.queue;
     if (batch.snapshot && candidate) {
+      candidate.queue.clear();
+      if (displayed?.discarding) {
+        displayed.discarding = false;
+        displayed.enterFrom = displayed.y;
+        displayed.enterElapsed = 0;
+        displayed.exitElapsed = 0;
+        displayed.failMix = 0;
+        for (const obj of displayed.objects) if (obj.placeholder && obj.modelKey) this.readyModels.add(obj.modelKey);
+      }
       candidate.snapshot = new CandidateSnapshot(batch.operations, frame);
+      if (displayed) this.dirtyCandidate(displayed);
     } else queue?.push(batch.operations, frame);
     this.touch();
   }
 
   beginCandidate(id: string, ordinal: number): void {
-    if (!this.supported || this.disposed || this.candidates.has(id) || this.retiredCandidates.has(id)) return;
-    const island = new IslandLayer(this.uniforms);
-    this.scene.add(island.group);
-    this.candidates.set(id, {id, ordinal, island, objects: new Set(), queue: new OperationQueue(), budget: 0, x: 0, z: 0, targetX: 0, targetZ: 0, positioned: false, y: 0, age: 0, failMix: 0, falling: -1});
+    if (!this.supported || this.disposed || this.candidates.has(id) || this.waitingCandidates.has(id) || this.retiredCandidates.has(id)) return;
+    this.waitingCandidates.set(id, {id, ordinal, queue: new OperationQueue()});
     this.island.group.visible = false;
-    this.boundsDirty = true;
     this.touch();
   }
 
@@ -318,13 +343,22 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (candidate) {
       candidate.status = status;
       if (status !== 'valid') this.retireCandidate(candidate);
+      else if (id !== this.bestId) this.discardCandidate(candidate);
     }
+    const waiting = this.waitingCandidates.get(id);
+    if (waiting) {
+      waiting.status = status;
+      if (status !== 'valid' || id !== this.bestId) this.waitingCandidates.delete(id);
+    }
+    if (status !== 'valid') this.retiredCandidates.add(id);
     this.touch();
   }
 
   finalizeSearch(winnerId: string): void {
     this.winnerId = winnerId;
+    this.setBestCandidate(winnerId);
     this.settled = true;
+    for (const id of this.waitingCandidates.keys()) if (id !== winnerId) this.waitingCandidates.delete(id);
     for (const candidate of this.candidates.values()) if (candidate.id !== winnerId) this.retireCandidate(candidate);
     if (this.skipping) {
       const winner = this.candidates.get(winnerId);
@@ -339,6 +373,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   failSearch(): void {
+    this.waitingCandidates.clear();
+    this.bestId = '';
     this.winnerId = '';
     this.settled = true;
     for (const candidate of this.candidates.values()) { candidate.status = 'rejected'; this.retireCandidate(candidate); }
@@ -353,16 +389,88 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.overlay.showCaption(title, detail);
   }
 
-  /** 后端明确淘汰后立即丢弃待播数据并开始下坠，当前已显示对象仍按共享帧预算回收。 */
+  /** 当前最佳只接受后台事件；上一个最佳停止占用舞台，正式快照负责恢复新最佳的完整实体。 */
+  setBestCandidate(id: string | null): void {
+    const previous = this.candidates.get(this.bestId);
+    if (this.bestId !== id) this.waitingCandidates.delete(this.bestId);
+    this.bestId = id ?? '';
+    if (previous && previous.id !== this.bestId) this.discardCandidate(previous);
+    const best = this.candidates.get(this.bestId);
+    if (best) {
+      best.discarding = false;
+      best.island.group.visible = true;
+    }
+    this.boundsDirty = true;
+    this.touch();
+  }
+
+  /** 固定3×3槽位包含当前最佳与退场动画；旧台完全回收后，新候选才从同一槽位升起。 */
+  private promoteWaitingCandidates(): void {
+    const occupied = new Set(Array.from(this.candidates.values()).map(candidate => candidate.displaySlot));
+    const waiting = Array.from(this.waitingCandidates.values());
+    const best = waiting.findIndex(candidate => candidate.id === this.bestId);
+    if (best > 0) waiting.unshift(...waiting.splice(best, 1));
+    for (const pending of waiting) {
+      let slot = 0;
+      while (occupied.has(slot) && slot < 9) slot++;
+      if (slot === 9) break;
+      occupied.add(slot);
+      this.waitingCandidates.delete(pending.id);
+      const island = new IslandLayer(this.uniforms);
+      const x = (slot % 3) * this.candidateSpacing;
+      const z = Math.floor(slot / 3) * this.candidateSpacing;
+      const candidate: CandidateStage = {...pending, island, objects: new Set(), budget: 0, discarding: false, displaySlot: slot,
+        x, z, targetX: x, targetZ: z, positioned: true, y: -8, age: 0, failMix: 0, enterFrom: -8, enterElapsed: 0, exitElapsed: 0};
+      this.candidates.set(pending.id, candidate);
+      island.group.position.set(x, candidate.y, z);
+      this.scene.add(island.group);
+      this.boundsDirty = true;
+      this.touch();
+    }
+  }
+
   private retireCandidate(candidate: CandidateStage): void {
-    if (this.retiredCandidates.has(candidate.id)) return;
     this.retiredCandidates.add(candidate.id);
+    if (this.bestId === candidate.id) this.bestId = '';
+    this.discardCandidate(candidate);
+  }
+
+  /** 已结束候选清空待播队列并冻结建筑，随后整台变红下坠；只改变展示生命周期。 */
+  private discardCandidate(candidate: CandidateStage): void {
+    if (candidate.discarding) return;
+    candidate.discarding = true;
     candidate.queue.clear();
     candidate.snapshot = undefined;
-    candidate.budget = 0;
-    if (candidate.falling < 0) candidate.falling = 0;
-    this.settleReadyAt = -1;
+    candidate.exitElapsed = 0;
+    this.movedCandidates.delete(candidate);
+    for (const obj of candidate.objects) {
+      this.animating.delete(obj);
+      this.glowing.delete(obj);
+      this.dirty.delete(obj);
+      obj.anim = null;
+      this.buildingEvents.delete(obj);
+    }
+    if (this.selected && this.memberships.get(this.selected) === candidate) this.select(null);
+    if (this.hovered && this.memberships.get(this.hovered) === candidate) this.setHovered(null);
+    this.boundsDirty = true;
     this.touch();
+  }
+
+  /** 优先归还旧槽位再装配新候选，防止快速完成的候选形成几万实体的释放积压。 */
+  private releaseDiscardedCandidates(work: FrameWorkBudget): void {
+    for (const candidate of this.candidates.values()) {
+      if (!candidate.discarding || candidate.exitElapsed < 0.8) continue;
+      for (const obj of candidate.objects) {
+        if (!work.take()) return;
+        if (obj.removing) this.destroy(obj);
+        else this.startExit(obj, 0, true);
+      }
+      this.scene.remove(candidate.island.group);
+      candidate.island.dispose();
+      this.movedCandidates.delete(candidate);
+      this.candidates.delete(candidate.id);
+      this.touch();
+    }
   }
 
   beginGeneration(taskId: string): void {
@@ -388,12 +496,18 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       candidate.island.dispose();
     }
     this.candidates.clear();
+    this.waitingCandidates.clear();
     this.retiredCandidates.clear();
+    this.bestId = '';
+    this.movedCandidates.clear();
+    this.localMatrices = new WeakMap();
     this.objectCandidates.clear();
     this.winnerId = '';
     this.settled = false;
-    this.settleReadyAt = -1;
     this.candidateSpacing = 32;
+    this.winnerFocusStarted = -1;
+    this.winnerFocusDone = false;
+    this.focusWinnerNow = false;
     this.candidateCursor = 0;
     this.island.group.visible = true;
     this.budget = 0;
@@ -614,8 +728,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   getProgress(): AlgoVizProgress {
     return {
       candidates: this.candidates.size,
-      falling: Array.from(this.candidates.values()).filter(candidate => candidate.falling >= 0).length,
-      pending: this.queue.length + Array.from(this.candidates.values()).reduce((total, candidate) => total + candidate.queue.length + (candidate.snapshot?.pending ?? 0), 0),
+      falling: Array.from(this.candidates.values()).filter(candidate => candidate.discarding).length,
+      pending: this.queue.length + Array.from(this.waitingCandidates.values()).reduce((total, candidate) => total + candidate.queue.length + (candidate.snapshot?.pending ?? 0) + 1, 0) + Array.from(this.candidates.values()).reduce((total, candidate) => total + candidate.queue.length + (candidate.snapshot?.pending ?? 0) + (candidate.discarding ? candidate.objects.size : 0), 0),
       animating: this.supported ? this.animating.size : 0,
       objects: this.objects.size,
       added: this.added,
@@ -635,6 +749,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       cancelAnimationFrame(this.rafId);
       this.unbindEvents();
       this.unsubscribeModels?.();
+      this.warmup.dispose();
       for (const pool of this.pools.values()) {
         pool.dispose();
         if (this.ownedPools.has(pool)) pool.disposeMaterials();
@@ -649,9 +764,13 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.island.dispose();
       for (const candidate of this.candidates.values()) {
         candidate.island.dispose();
-        }
+      }
       this.candidates.clear();
+      this.waitingCandidates.clear();
       this.retiredCandidates.clear();
+      this.bestId = '';
+      this.movedCandidates.clear();
+      this.localMatrices = new WeakMap();
       this.backdrop.dispose();
       this.unitBox.dispose();
       this.beltBox.dispose();
@@ -721,6 +840,12 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.beltBox = new THREE.BoxGeometry(1, 1, 1, 3, 1, 1).translate(0, 0.5, 0);
 
     this.models = new ModelLibrary(this.options.modelUrls ?? {}, renderer, this.options.transcoderUrls, this.options.maskUrls);
+    this.warmup = new PoolWarmup(renderer, this.rig.camera, this.scene, pool => {
+      if (this.disposed || this.pools.get(pool.key) !== pool) return;
+      pool.mesh.visible = true;
+      this.readyModels.add(pool.key);
+      this.touch();
+    });
     this.unsubscribeModels = this.models.onSettled((key) => this.onModelSettled(key));
     this.models.preload(PRELOAD.filter((key) => this.models.has(key)));
 
@@ -850,12 +975,12 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     } else if (this.queue.peek()?.frame.pace === 'follow') {
       // 跟随算法：积压超过可动画的上限时，按原顺序立即应用较早的操作（跳过过渡），只为最新的变化播放动画，
       // 使画面始终落后算法约 FOLLOW_LAG 秒以内
-      while (this.queue.length > FOLLOW_KEEP && this.queue.peek()?.frame.pace === 'follow' && processed < 128 && work.take()) {
+      while (!this.queue.peek()?.frame.candidateId && this.queue.length > FOLLOW_KEEP && this.queue.peek()?.frame.pace === 'follow' && processed < 128 && work.take()) {
         this.applyItem(this.queue.shift() as QueueItem, true);
         processed++;
       }
       rate = Math.max(FOLLOW_MIN_RATE * this.speed, this.queue.length / FOLLOW_LAG);
-      this.animScale = 1 / THREE.MathUtils.clamp(Math.sqrt(rate / BASE_RATE), 1.6, 5);
+      this.animScale = 1 / THREE.MathUtils.clamp(Math.sqrt(rate / BASE_RATE), 1.6, this.queue.peek()?.frame.candidateId ? 2.5 : 5);
     } else {
       // 回放结果：积压越多追赶越快，长队列在数秒内播完，短队列保持逐个可辨的节奏
       const lag = (pending > 3000 ? TARGET_LAG * 0.4 : pending > 800 ? TARGET_LAG * 0.65 : TARGET_LAG) / this.speed;
@@ -1058,6 +1183,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private destroy(obj: VizObject): void {
+    this.localMatrices.delete(obj);
     this.beltFlow.delete(obj);
     this.memberships.get(obj)?.objects.delete(obj);
     this.memberships.delete(obj);
@@ -1202,7 +1328,6 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     let geometry = this.unitBox;
     let material: THREE.Material | THREE.Material[] = this.buildingMaterial;
     let specs: InstanceAttributeSpec[] = [STATE_SPEC, FAIL_SPEC];
-    let owned = false;
     obj.placeholder = false;
     if (obj.kind === 'belt') {
       key = 'belt';
@@ -1211,14 +1336,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       specs = [STATE_SPEC, COLOR_SPEC, FAIL_SPEC, ...BELT_SPECS];
     } else if (obj.modelKey) {
       const entry = this.models.get(obj.modelKey);
-      if (entry.status === 'ready' && entry.geometry) {
+      if (entry.status === 'ready' && entry.geometry && this.warmup.isReady(this.ensureModelPool(entry))) {
         key = obj.modelKey;
         geometry = entry.geometry;
-        if (!this.pools.has(key)) {
-          // 每个模型一组材质：与几何体分组一一对应，采样游戏原生的底色与自发光贴图
-          material = entry.parts.map((part) => this.createBuildingMaterial(part.map, part.emissiveMap, part.color, part.emissive, part.kind, part.orm, part.native, part.mask, part.normalMap, part.unlit, part.light, part.kind === 'effect' && !part.map && !part.lightId, part.lightShape, part.secondaryLight, part.labTint));
-          owned = true;
-        }
         if (obj.kind !== 'sorter') {
           obj.width = entry.size.x;
           obj.depth = entry.size.z;
@@ -1237,7 +1357,6 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       pool = new InstancePool(key, geometry, material, specs, this.world, key === 'belt' ? 256 : 32);
       this.pools.set(key, pool);
       this.owners.set(key, []);
-      if (owned) this.ownedPools.add(pool);
     }
     this.poolUsage.touch(key);
     obj.pool = pool;
@@ -1249,6 +1368,21 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       if (!placeholders) this.placeholders.set(obj.modelKey, (placeholders = new Set()));
       placeholders.add(obj);
     }
+  }
+
+  /** 共享模型池先完成异步编译，避免第一次模型切换把着色器等待塞进动画绘制帧。 */
+  private ensureModelPool(entry: ModelEntry): InstancePool {
+    let pool = this.pools.get(entry.key);
+    if (!pool) {
+      const materials = entry.parts.map(part => this.createBuildingMaterial(part.map, part.emissiveMap, part.color, part.emissive, part.kind, part.orm, part.native, part.mask, part.normalMap, part.unlit, part.light, part.kind === 'effect' && !part.map && !part.lightId, part.lightShape, part.secondaryLight, part.labTint));
+      pool = new InstancePool(entry.key, entry.geometry!, materials, [STATE_SPEC, FAIL_SPEC], this.world, 32);
+      this.pools.set(entry.key, pool);
+      this.owners.set(entry.key, []);
+      this.ownedPools.add(pool);
+      this.poolUsage.touch(entry.key);
+      this.warmup.prepare(pool);
+    }
+    return pool;
   }
 
   private freeSlot(obj: VizObject): void {
@@ -1298,7 +1432,8 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 模型加载回调仅登记待迁移类型，避免冷加载时同步重建整场对象。 */
   private onModelSettled(key: string): void {
     if (this.disposed) return;
-    if (this.models.peek(key)?.status === 'ready') this.readyModels.add(key);
+    const entry = this.models.peek(key);
+    if (entry?.status === 'ready' && entry.geometry) this.ensureModelPool(entry);
     this.touch();
   }
 
@@ -1306,8 +1441,11 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private updateModelObjects(work: FrameWorkBudget): void {
     let processed = 0;
     for (const key of this.readyModels) {
+      const pool = this.pools.get(key);
+      if (!pool || !this.warmup.isReady(pool)) { this.readyModels.delete(key); continue; }
       const placeholders = this.placeholders.get(key);
       if (placeholders) for (const obj of placeholders) {
+        if (this.memberships.get(obj)?.discarding) continue;
         if (processed >= 128 || !work.take()) return;
         processed++;
         this.freeSlot(obj);
@@ -1416,10 +1554,20 @@ export class AlgorithmVizScene implements AlgorithmVizController {
 
   private writeObject(obj: VizObject): void {
     const pool = obj.pool;
-    if (!pool || obj.slot < 0) return;
+    if (!pool || obj.slot < 0 || this.memberships.get(obj)?.discarding) return;
     if (obj.kind === 'belt') this.composeBelt(obj, pool);
     else if (obj.kind === 'sorter') this.composeSorter(obj);
     else this.composeBuilding(obj);
+    let local = this.localMatrices.get(obj);
+    if (!local) this.localMatrices.set(obj, (local = new THREE.Matrix4()));
+    local.copy(this.m);
+    this.writeObjectPlacement(obj);
+  }
+
+  /** 将已计算的局部矩阵放到候选平台；仅更新实例姿态、状态、阴影及图标，传送带形状保持复用。 */
+  private writeObjectPlacement(obj: VizObject): void {
+    const pool = obj.pool;
+    if (!pool || obj.slot < 0) return;
     const candidate = this.memberships.get(obj);
     if (candidate) {
       this.m.elements[12] += candidate.x;
@@ -1558,7 +1706,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     const ranges = new Map<string, {minX: number; minZ: number; maxX: number; maxZ: number}>();
     for (const obj of this.objects.values()) {
       const id = this.objectCandidates.get(obj.id);
-      if (!id) continue;
+      if (!id || this.candidates.get(id)?.discarding) continue;
       const range = ranges.get(id) ?? {minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity};
       range.minX = Math.min(range.minX, obj.target.x - obj.width / 2, obj.target.x2 - obj.width / 2);
       range.maxX = Math.max(range.maxX, obj.target.x + obj.width / 2, obj.target.x2 + obj.width / 2);
@@ -1572,16 +1720,24 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     span = this.candidateSpacing;
     this.rig.screenAxes(this.ax, this.ay);
     let minR = Infinity, maxR = -Infinity, minU = Infinity, maxU = -Infinity;
-    // 候选按方阵排布（4 个排 2×2，8 个排 3×3）：列数取候选总数的平方根向上取整，序号稳定故平台位置不随进度变化
-    let total = 1;
-    for (const candidate of this.candidates.values()) total = Math.max(total, candidate.ordinal);
-    const columns = Math.max(1, Math.ceil(Math.sqrt(total)));
-    for (const candidate of this.candidates.values()) {
+    // 显示槽随在算候选复用；后台ordinal仅标识顺序，不让历史序号撑大平台间距。
+    const orderedCandidates = Array.from(this.candidates.values()).sort((left, right) => left.displaySlot - right.displaySlot);
+    if (!orderedCandidates.length) return;
+    const columns = 3;
+    for (const candidate of orderedCandidates) {
+      const index = candidate.displaySlot;
       const range = ranges.get(candidate.id);
-      candidate.island.setTarget(range ?? null);
+      // 平台留白采用接近方形的包络；建筑坐标与比例保持真实，不能拉伸模型来凑方形。
+      if (range) {
+        const cx = (range.minX + range.maxX) / 2, cz = (range.minZ + range.maxZ) / 2;
+        const width = range.maxX - range.minX, depth = range.maxZ - range.minZ;
+        const minimum = Math.max(width, depth) / 1.35;
+        const halfX = Math.max(width, minimum) / 2, halfZ = Math.max(depth, minimum) / 2;
+        candidate.island.setTarget({minX: cx - halfX, maxX: cx + halfX, minZ: cz - halfZ, maxZ: cz + halfZ});
+      } else if (!candidate.discarding) candidate.island.setTarget(null);
+      if (candidate.alignIsland) { candidate.island.snap(); candidate.alignIsland = false; }
       const bounds = candidate.island.getBounds();
-      const centered = this.candidates.size === 1 && candidate.id === this.winnerId;
-      const index = candidate.ordinal - 1;
+      const centered = orderedCandidates.length === 1 && candidate.id === this.winnerId;
       const targetX = centered ? 0 : (index % columns) * span;
       const targetZ = centered ? 0 : Math.floor(index / columns) * span;
       candidate.targetX = targetX - (bounds.x + bounds.z) / 2;
@@ -1612,88 +1768,61 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private dirtyCandidate(candidate: CandidateStage): void {
-    for (const obj of candidate.objects) this.dirty.add(obj);
+    this.movedCandidates.add(candidate);
   }
 
-  /** 候选必须完整播完过程、快照及动画后才允许统一退场。 */
-  private candidatesReady(): boolean {
-    for (const candidate of this.candidates.values()) {
-      if (candidate.queue.length || candidate.snapshot || this.candidateAnimating(candidate)) return false;
-      if (!this.skipping && candidate.age - (candidate.shownAt ?? 0) < CANDIDATE_MIN_SHOW) return false;
-    }
-    return true;
-  }
-
-  /** 候选轮询共用整帧预算，剩余队列与快照原序留到下帧；平台运动只更新所属对象。 */
+  /** 九槽位独立推进升起、建筑动画和红色退场；其他平台不因槽位复用重新排序。 */
   private updateCandidates(dt: number, work = new FrameWorkBudget(), playing = true): void {
     const originalQueue = this.queue;
     const originalBudget = this.budget;
-    let release = false;
-    if (this.settled && this.candidatesReady()) {
-      if (this.settleReadyAt < 0) this.settleReadyAt = this.time;
-      release = this.skipping || this.reducedMotion.matches || this.time - this.settleReadyAt >= SETTLE_HOLD;
-    } else this.settleReadyAt = -1;
     const stages = Array.from(this.candidates.values());
     const first = this.candidateCursor % Math.max(1, stages.length);
-    let nextCursor = (first + 1) % Math.max(1, stages.length);
-    let budgetReached = false;
     try {
       for (let offset = 0; offset < stages.length; offset++) {
         const candidate = stages[(first + offset) % stages.length];
-        if (!playing && !this.retiredCandidates.has(candidate.id)) continue;
         const moving = Math.abs(candidate.x - candidate.targetX) + Math.abs(candidate.z - candidate.targetZ) > 0.001;
         const blend = this.reducedMotion.matches || this.skipping ? 1 : 1 - Math.exp(-dt * 7);
         candidate.x = lerp(candidate.x, candidate.targetX, blend);
         candidate.z = lerp(candidate.z, candidate.targetZ, blend);
         if (moving) this.dirtyCandidate(candidate);
         candidate.age += dt * this.speed;
-        this.queue = candidate.queue;
-        this.budget = candidate.budget;
-        if (candidate.falling < 0) this.processQueue(dt, work);
-        candidate.budget = this.budget;
-        if (!candidate.queue.length && candidate.snapshot && (candidate.snapshot.started || !this.candidateAnimating(candidate))) this.applyCandidateSnapshot(candidate, this.skipping, work);
-        const failed = (candidate.status === 'rejected' || candidate.status === 'pruned') && (this.retiredCandidates.has(candidate.id) || !candidate.queue.length && !candidate.snapshot && !this.candidateAnimating(candidate));
-        const failGoal = failed ? 1 : 0;
-        if (candidate.failMix !== failGoal) {
-          const step = this.reducedMotion.matches || this.skipping ? 1 : dt * 3;
-          candidate.failMix += Math.sign(failGoal - candidate.failMix) * Math.min(Math.abs(failGoal - candidate.failMix), step);
+        if (candidate.discarding) {
+          candidate.exitElapsed = this.skipping || this.reducedMotion.matches ? 0.8 : Math.min(0.8, candidate.exitElapsed + dt * this.speed);
+          candidate.failMix = Math.min(1, candidate.exitElapsed / 0.18);
+          const fall = Math.max(0, (candidate.exitElapsed - 0.18) / 0.62);
+          candidate.y = -120 * fall * fall;
+          candidate.island.setFail(candidate.failMix);
           this.dirtyCandidate(candidate);
+        } else if (playing) {
+          candidate.enterElapsed = this.skipping || this.reducedMotion.matches ? 0.5 : Math.min(0.5, candidate.enterElapsed + dt * this.speed);
+          const y = candidate.enterFrom * (1 - easeOutCubic(candidate.enterElapsed / 0.5));
+          if (y !== candidate.y) { candidate.y = y; this.dirtyCandidate(candidate); }
+          candidate.island.setFail(0);
         }
-        candidate.island.setFail(candidate.failMix);
-        if (release && candidate.falling < 0 && candidate.id !== this.winnerId) candidate.falling = 0;
-        if (candidate.falling >= 0) {
-          candidate.falling += dt * this.speed;
-          const y = this.reducedMotion.matches || this.skipping ? -10000 : -120 * Math.pow(candidate.falling / 0.8, 2);
-          if (candidate.y !== y) { candidate.y = y; this.dirtyCandidate(candidate); }
-          if (this.skipping || candidate.falling >= 0.8) {
-            let removed = 0;
-            for (const obj of candidate.objects) {
-              if (removed >= 128 || !work.take()) break;
-              if (obj.removing) this.destroy(obj);
-              else this.startExit(obj, 0, true);
-              removed++;
-            }
-            if (!candidate.objects.size) {
-              this.scene.remove(candidate.island.group);
-              candidate.island.dispose();
-              this.candidates.delete(candidate.id);
-              this.boundsDirty = true;
-              this.touch();
-              continue;
-            }
+        if (playing && !candidate.discarding) {
+          this.queue = candidate.queue;
+          this.budget = candidate.budget;
+          this.processQueue(dt, work);
+          candidate.budget = this.budget;
+          if (!candidate.queue.length && candidate.snapshot) this.applyCandidateSnapshot(candidate, this.skipping || this.reducedMotion.matches, work);
+        }
+        if (this.settled && stages.length === 1 && candidate.id === this.winnerId && !candidate.queue.length && !candidate.snapshot && !this.candidateAnimating(candidate)) {
+          if (this.winnerFocusStarted < 0) this.winnerFocusStarted = this.time;
+          if (!this.winnerFocusDone && this.time - this.winnerFocusStarted >= 0.5 && !this.pointer) {
+            candidate.x = candidate.targetX;
+            candidate.z = candidate.targetZ;
+            this.dirtyCandidate(candidate);
+            this.boundsDirty = true;
+            this.winnerFocusDone = this.focusWinnerNow = true;
           }
         }
         candidate.island.group.position.set(candidate.x, candidate.y, candidate.z);
         candidate.island.update(dt, this.time, this.reducedMotion.matches);
-        if (!budgetReached && work.exhausted) {
-          nextCursor = (first + offset + 1) % stages.length;
-          budgetReached = true;
-        }
       }
     } finally {
       this.queue = originalQueue;
       this.budget = originalBudget;
-      this.candidateCursor = nextCursor;
+      this.candidateCursor = (first + 1) % Math.max(1, stages.length);
     }
   }
 
@@ -1702,7 +1831,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     const snapshot = candidate.snapshot;
     if (!snapshot) return;
     snapshot.process(candidate.objects, item => this.applyItem(item, instant), work);
-    if (snapshot.done) candidate.snapshot = undefined;
+    if (snapshot.done) { candidate.snapshot = undefined; candidate.alignIsland = true; this.boundsDirty = true; }
     this.touch();
   }
 
@@ -1950,7 +2079,10 @@ export class AlgorithmVizScene implements AlgorithmVizController {
 
   private frame(dt: number, elapsed = dt): boolean {
     const reduced = this.reducedMotion.matches;
-    this.time += dt;
+    this.focusWinnerNow = false;
+    // 候选实时演算使用真实可见时长，低帧率不能把退场、落位和取景动画拉长数倍；隐藏时updateRunning已停止并重置时钟。
+    const sceneDt = this.candidates.size ? elapsed : dt;
+    this.time += sceneDt;
     this.uniforms.uTime.value = this.time;
     this.uniforms.uFlow.value = reduced ? 0 : 1.1;
 
@@ -1961,15 +2093,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     }
 
     const work = new FrameWorkBudget();
+    this.releaseDiscardedCandidates(work);
+    this.promoteWaitingCandidates();
     this.updateModelObjects(work);
-    const animDt = this.paused && !this.skipping ? 0 : dt;
+    const animDt = this.paused && !this.skipping ? 0 : sceneDt;
     if (!this.paused || this.skipping) {
       this.processQueue(elapsed, work);
-      this.updateCandidates(dt, work);
-    } else if (Array.from(this.candidates.values()).some(candidate => candidate.falling >= 0)) {
-      // 暂停只冻结有效候选的演示，不能阻止后端已淘汰候选释放资源。
-      this.updateCandidates(dt, work, false);
-    }
+      this.updateCandidates(sceneDt, work);
+    } else this.updateCandidates(sceneDt, work, false);
     if (this.animating.size) {
       for (const obj of this.animating) {
         if (this.skipping) {
@@ -2007,6 +2138,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.beltFlow.update(this.objects, this.beltInputs, this.dirty);
     this.beltGeometry.beginFrame();
     for (const obj of this.dirty) if (obj.pool) this.writeObject(obj);
+    for (const candidate of this.movedCandidates) for (const obj of candidate.objects) {
+      if (this.dirty.has(obj) && !candidate.discarding) continue;
+      const local = this.localMatrices.get(obj);
+      if (!local) continue;
+      this.m.copy(local);
+      this.writeObjectPlacement(obj);
+    }
+    this.movedCandidates.clear();
     this.dirty.clear();
     if (this.cachePrunePending) this.pruneGenerationCache();
     for (const pool of this.pools.values()) pool.commit();
@@ -2016,7 +2155,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.rings.update(animDt);
 
     const instantPending = this.skipping && (this.queue.length > 0 || this.animating.size > 0 || this.readyModels.size > 0
-      || Array.from(this.candidates.values()).some(candidate => candidate.queue.length > 0 || candidate.snapshot || candidate.falling >= 0));
+      || Array.from(this.candidates.values()).some(candidate => candidate.queue.length > 0 || candidate.snapshot || candidate.discarding));
     // 慢设备的 GPU/驱动阻塞会落在下一次 RAF 间隔里；跳过期间给队列留出计算窗口，避免每次慢绘制后只处理一小批。
     // 下一帧没有绘制便不再推迟，窗口最长半秒；完成帧始终立即绘制，resize/主题强制刷新仍可把截止清零。
     if (instantPending && this.drewLastFrame && this.nextInstantDrawAt > 0) {
@@ -2026,7 +2165,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     const draw = !instantPending || performance.now() >= this.nextInstantDrawAt;
     if (draw && this.boundsDirty && (this.boundsAt < 0 || this.time - this.boundsAt > 0.12)) this.recomputeBounds();
     this.island.update(dt, this.time, reduced);
-    this.rig.update(dt);
+    this.rig.update(sceneDt, this.focusWinnerNow);
 
     if (draw && this.hoverPending && !this.pointer) {
       this.hoverPending = false;

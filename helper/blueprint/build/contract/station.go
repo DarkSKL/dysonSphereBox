@@ -4,11 +4,7 @@ package contract
 // 使用：公共准备、各模式组合和装配阶段按值交接已验证的计划数据。
 // 边界：不依赖 build 私有 Builder，不持有建筑指针、不执行装配或发布事件。
 
-import (
-	"context"
-
-	"DysonSphereBox/helper/quant"
-)
+import "DysonSphereBox/helper/quant"
 
 // StationConfig 职责：声明一个物流塔组合的实体能力；使用：模式目录提供给布局和装配阶段；边界：不根据 Mode 隐式选择其他字段。
 type StationConfig struct {
@@ -74,10 +70,10 @@ type StationLayoutPlan struct {
 	ProductionCount int
 }
 
-// StationAdapter 职责：组合单一模式与密度的物流塔阶段；使用：具体组合目录定义并交给统一入口；边界：不依赖旧 build 包，也不携带可变任务状态。
-type StationAdapter struct {
+// StationPolicy 职责：交接物流塔纯规划策略和设备事实；使用：工具参数归一化后传给布局核心；边界：不持有函数回调、工作流或候选状态。
+type StationPolicy struct {
 	// Config 职责：提供该组合的装配能力；使用：布局和实体创建；边界：按值复制。
 	Config StationConfig
-	// Layout 职责：执行本组合的布局阶段；使用：统一阶段编排；边界：只消费显式输入，不回调私有 Builder。
-	Layout func(context.Context, StationLayoutInput) (StationLayoutPlan, error)
+	// Strategy 职责：选择全场或塔组的纯规划策略；使用：同一共享核心解释 field/grouped；边界：未知值不得隐式回退。
+	Strategy string
 }

@@ -1,0 +1,14 @@
+schemaVersion: 1
+id: result
+flow:
+  - id: entry
+    call: compose
+subflows:
+  compose:
+    flow:
+      - id: calculate-statistics
+        tool: stats.calculate@1
+      - id: describe-transport-upgrade
+        tool: result.transport-upgrade@1
+      - id: compose-final-result
+        tool: result.compose@1

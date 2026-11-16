@@ -9,7 +9,7 @@ export interface FactoryGenerationProgress {
   readonly current: number
   readonly total: number
   readonly protocolVersion?: number
-  readonly kind?: 'phase' | 'building-batch' | 'preview-delta' | 'preview-snapshot' | 'preview-complete' | 'search-start' | 'search-failed' | 'candidate-plan' | 'candidate-start' | 'candidate-finish'
+  readonly kind?: 'phase' | 'building-batch' | 'preview-delta' | 'preview-snapshot' | 'preview-complete' | 'search-start' | 'search-failed' | 'candidate-plan' | 'candidate-start' | 'candidate-finish' | 'candidate-best' | 'candidate-best-cleared'
   readonly candidateSequence?: number
   readonly snapshotRevision?: number
   readonly chunkIndex?: number

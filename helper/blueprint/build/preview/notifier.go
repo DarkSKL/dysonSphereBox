@@ -129,6 +129,62 @@ func (n *Notifier) Patch(frame Frame, objects []Object) bool {
 	return true
 }
 
+// SyncSuffix 职责：同步已知只修改尾部的局部装配事务；使用：机器行提交，start是上次顺序中保持不变的前缀长度。
+// 边界：坐标系变化、越界或局部对象碰到前缀身份时返回false且不发事件；删除、同身份修改及追加全部保留。
+func (n *Notifier) SyncSuffix(frame Frame, start int, objects []Object) bool {
+	if n == nil {
+		return true
+	}
+	if start < 0 || start > len(n.order) || n.frame.CoordinateSystem != frame.CoordinateSystem || n.frame.PrimaryAreaIndex != frame.PrimaryAreaIndex || !slices.Equal(n.frame.Areas, frame.Areas) {
+		return false
+	}
+	previous := make(map[string]bool, len(n.order)-start)
+	for _, id := range n.order[start:] {
+		previous[id] = true
+	}
+	next := make(map[string]bool, len(objects))
+	order := make([]string, 0, len(objects))
+	for _, object := range objects {
+		if object.ID == "" {
+			continue
+		}
+		if next[object.ID] {
+			return false
+		}
+		if _, exists := n.current[object.ID]; exists && !previous[object.ID] {
+			return false
+		}
+		if !next[object.ID] {
+			order = append(order, object.ID)
+			next[object.ID] = true
+		}
+	}
+	batch := make([]Operation, 0, BatchSize)
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		copyFrame := frame
+		copyFrame.Areas = append([]Area(nil), frame.Areas...)
+		n.emit(copyFrame, batch)
+		n.batches++
+		batch = make([]Operation, 0, BatchSize)
+	}
+	for _, id := range n.order[start:] {
+		if !next[id] {
+			delete(n.current, id)
+			batch = append(batch, Operation{Type: Remove, ObjectID: id})
+			if len(batch) == BatchSize {
+				flush()
+			}
+		}
+	}
+	flush()
+	n.Patch(frame, objects)
+	n.order = append(n.order[:start], order...)
+	return true
+}
+
 // BatchCount 职责：返回实际输出批次数；使用：任务级完成标记；边界：空通知器返回零。
 func (n *Notifier) BatchCount() int {
 	if n == nil {

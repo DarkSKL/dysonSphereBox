@@ -4,7 +4,7 @@ package build
 // 使用：factory 服务和工作区导出；边界：密度是否合法不代表请求中的全部设备可生成。
 
 import (
-	algorithm "DysonSphereBox/helper/blueprint/build/algorithm"
+	algorithm "DysonSphereBox/helper/blueprint/build/core"
 	"DysonSphereBox/helper/blueprint/build/contract"
 )
 

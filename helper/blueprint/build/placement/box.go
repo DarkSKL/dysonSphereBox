@@ -128,6 +128,12 @@ func (box Box) SegmentDistanceSquared(first, second Vector) float64 {
 
 // Overlaps 职责：用十五个分离轴检查两个有效定向盒；使用：宽相位命中后；边界：相切不算正体积交叠，碰撞引擎的接触容差须另行核对。
 func (box Box) Overlaps(other Box) bool {
+	return BoxesOverlap(&box, &other)
+}
+
+// BoxesOverlap 职责：以同一十五轴规则判断两个有效定向盒；使用：密集候选按只读指针避免重复传值，普通调用经Overlaps进入。
+// 边界：输入必须非nil且有效；先测六个面法线再测九个叉积轴，逐轴运算与接触阈值保持一致，不修改盒。
+func BoxesOverlap(box, other *Box) bool {
 	delta := other.Center.Sub(box.Center)
 	separated := func(axis Vector) bool {
 		if axis.Dot(axis) < 1e-20 {
@@ -143,6 +149,8 @@ func (box Box) Overlaps(other Box) bool {
 		if separated(box.Axes[i]) || separated(other.Axes[i]) {
 			return false
 		}
+	}
+	for i := 0; i < 3; i++ {
 		for j := 0; j < 3; j++ {
 			if separated(box.Axes[i].Cross(other.Axes[j])) {
 				return false
@@ -150,4 +158,41 @@ func (box Box) Overlaps(other Box) bool {
 		}
 	}
 	return true
+}
+
+// OverlapMargin 职责：计算相交定向盒在Minkowski差中距分离面的最小距离；使用：保守运动剪枝。
+// 边界：分离或相切返回零；只对有效盒调用，调用方仍须扣除数值余量，不能把正值当作最终放置许可。
+func (box Box) OverlapMargin(other Box) float64 {
+	delta := other.Center.Sub(box.Center)
+	minimum := math.Inf(1)
+	measure := func(axis Vector) bool {
+		lengthSquared := axis.Dot(axis)
+		if lengthSquared < 1e-20 {
+			return true
+		}
+		radius := 0.
+		for i := 0; i < 3; i++ {
+			radius += math.Abs(axis.Dot(box.Axes[i]))*box.HalfSize[i] + math.Abs(axis.Dot(other.Axes[i]))*other.HalfSize[i]
+		}
+		gap := radius - math.Abs(delta.Dot(axis))
+		if gap <= 0 {
+			return false
+		}
+		minimum = math.Min(minimum, gap/math.Sqrt(lengthSquared))
+		return true
+	}
+	for i := 0; i < 3; i++ {
+		if !measure(box.Axes[i]) || !measure(other.Axes[i]) {
+			return 0
+		}
+		for j := 0; j < 3; j++ {
+			if !measure(box.Axes[i].Cross(other.Axes[j])) {
+				return 0
+			}
+		}
+	}
+	if math.IsInf(minimum, 0) || math.IsNaN(minimum) {
+		return 0
+	}
+	return minimum
 }

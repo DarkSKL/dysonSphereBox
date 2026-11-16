@@ -7027,3 +7027,347 @@ export namespace updates {
 
 }
 
+export namespace workflowjournal {
+	
+	export class NodeDescription {
+	    source: string;
+	    schemaID?: string;
+	    control?: Record<string, any>;
+	    path: string;
+	    parentPath?: string;
+	    id: string;
+	    type: string;
+	    relation: string;
+	    tool?: string;
+	    call?: string;
+	    children?: string[];
+	    parameters?: Record<string, any>;
+	    parameterSchema?: Record<string, any>;
+	    parameterSources?: Record<string, string>;
+	    parametersTruncated?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NodeDescription(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.schemaID = source["schemaID"];
+	        this.control = source["control"];
+	        this.path = source["path"];
+	        this.parentPath = source["parentPath"];
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.relation = source["relation"];
+	        this.tool = source["tool"];
+	        this.call = source["call"];
+	        this.children = source["children"];
+	        this.parameters = source["parameters"];
+	        this.parameterSchema = source["parameterSchema"];
+	        this.parameterSources = source["parameterSources"];
+	        this.parametersTruncated = source["parametersTruncated"];
+	    }
+	}
+	export class ToolDescription {
+	    schemaTruncated?: boolean;
+	    id: string;
+	    implementation?: string;
+	    traceFields?: string[];
+	    parameterSchema?: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new ToolDescription(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schemaTruncated = source["schemaTruncated"];
+	        this.id = source["id"];
+	        this.implementation = source["implementation"];
+	        this.traceFields = source["traceFields"];
+	        this.parameterSchema = source["parameterSchema"];
+	    }
+	}
+	export class PlanDescription {
+	    tools?: ToolDescription[];
+	    id: string;
+	    fingerprint: string;
+	    nodes: NodeDescription[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanDescription(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tools = this.convertValues(source["tools"], ToolDescription);
+	        this.id = source["id"];
+	        this.fingerprint = source["fingerprint"];
+	        this.nodes = this.convertValues(source["nodes"], NodeDescription);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Description {
+	    code: string;
+	    message: string;
+	    graph?: PlanDescription;
+	
+	    static createFrom(source: any = {}) {
+	        return new Description(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.message = source["message"];
+	        this.graph = this.convertValues(source["graph"], PlanDescription);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ExecutionEvent {
+	    sequence: number;
+	    timestamp: string;
+	    fingerprint: string;
+	    instanceID: string;
+	    path: string;
+	    definitionPath: string;
+	    parentPath?: string;
+	    type: string;
+	    status: string;
+	    tool?: string;
+	    candidate: number;
+	    region?: string;
+	    revisionBefore: number;
+	    revisionAfter: number;
+	    effectiveParameters?: Record<string, any>;
+	    parameterSources?: Record<string, string>;
+	    durationMs: number;
+	    selection?: string;
+	    failure?: string;
+	    failureCode?: string;
+	    parametersTruncated?: boolean;
+	    eventsLost?: number;
+	    diagnostics?: string[];
+	    diagnosticsTruncated?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExecutionEvent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sequence = source["sequence"];
+	        this.timestamp = source["timestamp"];
+	        this.fingerprint = source["fingerprint"];
+	        this.instanceID = source["instanceID"];
+	        this.path = source["path"];
+	        this.definitionPath = source["definitionPath"];
+	        this.parentPath = source["parentPath"];
+	        this.type = source["type"];
+	        this.status = source["status"];
+	        this.tool = source["tool"];
+	        this.candidate = source["candidate"];
+	        this.region = source["region"];
+	        this.revisionBefore = source["revisionBefore"];
+	        this.revisionAfter = source["revisionAfter"];
+	        this.effectiveParameters = source["effectiveParameters"];
+	        this.parameterSources = source["parameterSources"];
+	        this.durationMs = source["durationMs"];
+	        this.selection = source["selection"];
+	        this.failure = source["failure"];
+	        this.failureCode = source["failureCode"];
+	        this.parametersTruncated = source["parametersTruncated"];
+	        this.eventsLost = source["eventsLost"];
+	        this.diagnostics = source["diagnostics"];
+	        this.diagnosticsTruncated = source["diagnosticsTruncated"];
+	    }
+	}
+	export class Event {
+	    taskId: string;
+	    sequence: number;
+	    event: ExecutionEvent;
+	
+	    static createFrom(source: any = {}) {
+	        return new Event(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.taskId = source["taskId"];
+	        this.sequence = source["sequence"];
+	        this.event = this.convertValues(source["event"], ExecutionEvent);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class Page {
+	    code: string;
+	    message: string;
+	    taskId: string;
+	    events: Event[];
+	    next: number;
+	    firstSequence: number;
+	    lastSequence: number;
+	    gap: boolean;
+	    complete: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Page(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.message = source["message"];
+	        this.taskId = source["taskId"];
+	        this.events = this.convertValues(source["events"], Event);
+	        this.next = source["next"];
+	        this.firstSequence = source["firstSequence"];
+	        this.lastSequence = source["lastSequence"];
+	        this.gap = source["gap"];
+	        this.complete = source["complete"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class Snapshot {
+	    code: string;
+	    message: string;
+	    taskId: string;
+	    state: string;
+	    fingerprint: string;
+	    trackingAvailable: boolean;
+	    trackingErrorCode?: string;
+	    trackingErrorMessage?: string;
+	    startedAt: string;
+	    finishedAt: string;
+	    firstSequence: number;
+	    lastSequence: number;
+	    droppedEvents: number;
+	    lostEvents: number;
+	    engineEventsLost: number;
+	    eventCount: number;
+	    retainedBytes: number;
+	    errorCode?: string;
+	    errorMessage?: string;
+	    graph?: PlanDescription;
+	
+	    static createFrom(source: any = {}) {
+	        return new Snapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.message = source["message"];
+	        this.taskId = source["taskId"];
+	        this.state = source["state"];
+	        this.fingerprint = source["fingerprint"];
+	        this.trackingAvailable = source["trackingAvailable"];
+	        this.trackingErrorCode = source["trackingErrorCode"];
+	        this.trackingErrorMessage = source["trackingErrorMessage"];
+	        this.startedAt = source["startedAt"];
+	        this.finishedAt = source["finishedAt"];
+	        this.firstSequence = source["firstSequence"];
+	        this.lastSequence = source["lastSequence"];
+	        this.droppedEvents = source["droppedEvents"];
+	        this.lostEvents = source["lostEvents"];
+	        this.engineEventsLost = source["engineEventsLost"];
+	        this.eventCount = source["eventCount"];
+	        this.retainedBytes = source["retainedBytes"];
+	        this.errorCode = source["errorCode"];
+	        this.errorMessage = source["errorMessage"];
+	        this.graph = this.convertValues(source["graph"], PlanDescription);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+

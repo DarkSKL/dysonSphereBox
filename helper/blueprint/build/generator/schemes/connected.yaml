@@ -1,0 +1,58 @@
+schemaVersion: 1
+id: connected
+# 共享直连工作链：大模式配置通过固定属性提供器传入，无独立默认参数权威。
+toolDefaults:
+  connected.enumerate@1:
+    sharedRows: true
+    denseSpans: {$state: mode.row-spans}
+    streetGroups: {$state: mode.street-groups}
+    streetRotations: {$state: mode.street-rotations}
+    denseOrders: {$state: mode.dense-orders}
+    bentSpans: {$state: mode.bent-spans}
+flow:
+  - id: entry
+    call: search
+subflows:
+  search:
+    flow:
+      - id: nearby-specs
+        tool: connected.enumerate@1
+        with: {inputGroups: [nearby]}
+      - id: nearby-or-concentrated
+        candidates:
+          comparator: layout
+          parallel: 10
+          settleMs: 5000
+          items: {$state: connected.candidates}
+          inputs:
+            index: {type: integer, required: true}
+          flow:
+            - id: solve
+              tool: connected.assemble@1
+              with: {index: {$input: index}}
+            - id: finalize-geometry
+              call: geometry/finalize
+            - id: validate
+              call: rules/validate
+          fallback:
+            - id: concentrated-specs
+              tool: connected.enumerate@1
+              with: {inputGroups: [concentrated]}
+            - id: concentrated-attempts
+              candidates:
+                comparator: layout
+                parallel: 10
+                settleMs: 5000
+                items: {$state: connected.candidates}
+                inputs:
+                  index: {type: integer, required: true}
+                flow:
+                  - id: solve
+                    tool: connected.assemble@1
+                    with: {index: {$input: index}}
+                  - id: finalize-geometry
+                    call: geometry/finalize
+                  - id: validate
+                    call: rules/validate
+      - id: select-final
+        tool: factory.select@1

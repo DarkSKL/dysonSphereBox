@@ -1,6 +1,6 @@
 package build
 
-import algorithm "DysonSphereBox/helper/blueprint/build/algorithm"
+import algorithm "DysonSphereBox/helper/blueprint/build/core"
 
 // RuleProfile 职责：公开规则配置；使用：生成诊断；边界：由引擎解析。
 type RuleProfile = algorithm.RuleProfile

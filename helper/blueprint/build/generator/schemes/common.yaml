@@ -1,0 +1,237 @@
+schemaVersion: 1
+id: common
+# 公共默认只在此定义；覆盖顺序为注册默认→公共→大模式→子模式→地理→枚举节点with。
+parameters:
+  polarWindowRows: [24, 32, 40, 48, 56, 64]
+  rowSpans: [12, 18, 24, 32]
+  streetGroups: [0, 2, -1]
+  streetRotations: [0, 1, 2, 3]
+  denseOrders: [0, 1, 2, 3]
+  bentSpans: [12, 18]
+toolDefaults:
+  surface.enumerate@1:
+    polarWindowRows: {$state: mode.polar-window-rows}
+flow:
+  - id: entry
+    call: surface
+subflows:
+  selected-regions:
+    flow:
+      - id: describe-real-regions
+        tool: geometry.describe-regions@1
+      - id: each-real-region
+        regions:
+          items: {$state: factory.region-ids}
+          flow:
+            - id: actual-latitude-class
+              switch:
+                value: {$state: factory.region-class}
+                cases:
+                  planar:
+                    - id: check-planar
+                      tool: geometry.check-region@1
+                      with: {boundarySampleLimit: 64}
+                  equatorial:
+                    - id: check-equatorial
+                      tool: geometry.check-region@1
+                      with: {boundarySampleLimit: 64}
+                  temperate:
+                    - id: check-temperate
+                      tool: geometry.check-region@1
+                      with: {boundarySampleLimit: 128}
+                  polar:
+                    - id: check-polar
+                      tool: geometry.check-region@1
+                      with: {boundarySampleLimit: 256}
+                  multi-band:
+                    - id: check-cross-band
+                      tool: geometry.check-region@1
+                      with: {boundarySampleLimit: 0}
+                otherwise:
+                  - id: unknown-region-class
+                    fail: unverified-region-class
+      - id: validate-complete-factory
+        tool: factory.validate-regions@1
+  surface:
+    flow:
+      - id: common-defaults
+        tool: mode.defaults@1
+        with:
+          polarWindowRows: {$param: polarWindowRows}
+          rowSpans: {$param: rowSpans}
+          streetGroups: {$param: streetGroups}
+          streetRotations: {$param: streetRotations}
+          denseOrders: {$param: denseOrders}
+          bentSpans: {$param: bentSpans}
+      - id: major-mode
+        switch:
+          value: {$state: mode.density}
+          cases:
+            standard:
+              - id: standard-entry
+                call: standard/entry
+            dense:
+              - id: dense-entry
+                call: dense/entry
+          otherwise:
+            - id: unsupported-density
+              fail: unsupported-density
+  selected-surface:
+    flow:
+      - id: surface-workchain
+        switch:
+          value: {$state: surface.strategy}
+          cases:
+            strict:
+              - id: strict-chain
+                call: common/strict
+            adaptive:
+              - id: adaptive-chain
+                call: common/adaptive
+            native:
+              - id: native-chain
+                call: common/native
+            adjacent:
+              - id: adjacent-chain
+                call: common/adjacent
+          otherwise:
+            - id: unsupported-surface-strategy
+              fail: unsupported-surface-strategy
+  strict:
+    flow:
+      - id: strict-spec
+        tool: surface.enumerate@1
+        with: {strategy: strict, expandAdjacent: false, preciseFootprint: false}
+      - id: strict-attempt
+        call: surface-attempts
+  adaptive:
+    flow:
+      - id: strict-spec
+        tool: surface.enumerate@1
+        with: {strategy: strict, expandAdjacent: false, preciseFootprint: false}
+      - id: strict-or-native
+        candidates:
+          fallbackOn: [GEN_E_SHAPE, GEN_E_COLLISION, GEN_E_SURFACE_ROUTING, GEN_E_DENSITY_LAYOUT, GEN_E_SURFACE_CAPACITY, GEN_E_DENSITY_STREET_SEAM]
+          selection: first
+          parallel: 1
+          items: {$state: surface.candidates}
+          inputs:
+            index: {type: integer, required: true}
+          flow:
+            - id: apply
+              tool: surface.prepare@1
+              with: {index: {$input: index}}
+            - id: layout
+              call: layout
+          fallback:
+            - id: native-fallback
+              call: native
+  native:
+    flow:
+      - id: native-specs
+        tool: surface.enumerate@1
+        with: {strategy: native, expandAdjacent: false, preciseFootprint: false, includeBandFallback: true}
+      - id: native-or-precise
+        candidates:
+          fallbackOn: [GEN_E_SHAPE, GEN_E_COLLISION, GEN_E_SURFACE_ROUTING, GEN_E_DENSITY_LAYOUT, GEN_E_SURFACE_CAPACITY, GEN_E_DENSITY_STREET_SEAM]
+          selection: first
+          parallel: 1
+          items: {$state: surface.candidates}
+          inputs:
+            index: {type: integer, required: true}
+          flow:
+            - id: apply
+              tool: surface.prepare@1
+              with: {index: {$input: index}}
+            - id: layout
+              call: layout
+          fallback:
+            - id: precise-specs
+              tool: surface.enumerate@1
+              with: {strategy: native, expandAdjacent: false, preciseFootprint: true, includeBandFallback: true}
+            - id: precise-attempts
+              call: surface-attempts
+  adjacent:
+    flow:
+      - id: compare-permitted-surfaces
+        candidates:
+          comparator: surface
+          parallel: 1
+          items: [{alternative: adjacent}, {alternative: strict}]
+          inputs:
+            alternative: {type: string, required: true}
+          flow:
+            - id: alternative
+              switch:
+                value: {$input: alternative}
+                cases:
+                  adjacent:
+                    - id: expanded
+                      call: expanded
+                  strict:
+                    - id: strict-comparison
+                      candidates:
+                        selection: first
+                        parallel: 1
+                        timeoutMs: 20000
+                        timeoutFailure: GEN_E_SURFACE_CAPACITY
+                        items: [{}]
+                        flow:
+                          - id: strict-or-native
+                            call: adaptive
+                otherwise:
+                  - id: unknown-alternative
+                    fail: unknown-surface-alternative
+  expanded:
+    flow:
+      - id: adjacent-specs
+        tool: surface.enumerate@1
+        with: {strategy: native, expandAdjacent: true, preciseFootprint: false, includeBandFallback: false}
+      - id: adjacent-attempts
+        candidates:
+          selection: first
+          parallel: 1
+          # 完整大厂先使用任务剩余预算，保留45秒给严格选区比较、汇合与编码；总任务截止仍不可延长。
+          reserveMs: 45000
+          timeoutFailure: GEN_E_SURFACE_CAPACITY
+          items: {$state: surface.candidates}
+          inputs:
+            index: {type: integer, required: true}
+          flow:
+            - id: apply
+              tool: surface.prepare@1
+              with: {index: {$input: index}}
+            - id: layout
+              call: layout
+  surface-attempts:
+    flow:
+      - id: candidates
+        candidates:
+          selection: first
+          parallel: 1
+          items: {$state: surface.candidates}
+          inputs:
+            index: {type: integer, required: true}
+          flow:
+            - id: apply
+              tool: surface.prepare@1
+              with: {index: {$input: index}}
+            - id: layout
+              call: layout
+  layout:
+    flow:
+      - id: major-mode-layout
+        switch:
+          value: {$state: mode.density}
+          cases:
+            standard:
+              - id: standard-layout
+                call: standard/layout
+            dense:
+              - id: dense-layout
+                call: dense/layout
+          otherwise:
+            - id: unsupported-density
+              fail: unsupported-density
+      - id: validate-shape
+        tool: factory.check-shape@1

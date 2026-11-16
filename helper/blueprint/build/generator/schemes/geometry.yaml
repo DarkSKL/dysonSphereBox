@@ -1,0 +1,30 @@
+schemaVersion: 1
+id: geometry
+flow:
+  - id: entry
+    call: finalize
+subflows:
+  finalize:
+    flow:
+      - id: position
+        tool: geometry.position@1
+      - id: repair-power
+        tool: power.repair@1
+      - id: prune-power
+        tool: power.prune@1
+      - id: relocate
+        tool: geometry.relocate@1
+      - id: align-monitors
+        tool: monitors.align@1
+      - id: bind-cargo
+        tool: cargo.bind@1
+      - id: measure-range
+        tool: geometry.measure-range@1
+      - id: bind-transport-records
+        tool: transport.bind-records@1
+      - id: commit-priorities
+        tool: transport.commit-priorities@1
+      - id: annotate-production-rates
+        tool: production.annotate-rates@1
+      - id: freeze
+        tool: geometry.freeze@1
