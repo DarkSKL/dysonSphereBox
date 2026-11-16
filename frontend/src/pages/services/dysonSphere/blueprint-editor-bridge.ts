@@ -15,12 +15,13 @@ import type {
 
 type BlueprintEditorModule = typeof import('../../../packages/dsp-blueprint-editor/dsp-blueprint-editor.esm.js')
 // =============== 模型资产映射 ===============
-// 说明：库产物里的 models/ 不随宿主构建复制（basis/、img/ 由 vite 插件复制到同目录），
-//       因此用 ?url 让 Vite 接管 GLB 地址（开发原版、打包压缩档 + 内容哈希），再交给库的映射钩子。
+// 说明：库产物里的 models/ 不随宿主构建复制，直接复用应用的 src/data/models 单份模型，
+//       用 ?url 让 Vite 接管 GLB 地址（开发原版、打包按所选档位压缩 + 内容哈希），再交给库的映射钩子。
 // 边界：键必须是库内部使用的相对路径（models/xxx.glb）；未命中的路径仍回退库的默认拼接。
+//       不得在库目录里另存一份模型副本：那会绕过 model-compression 插件，把原版模型整份打进发布包。
 const bundledModelUrls: Record<string, string> = {}
 for (const [filePath, url] of Object.entries(
-  import.meta.glob<string>('../../../packages/dsp-blueprint-editor/models/*.glb', {query: '?url', import: 'default', eager: true}),
+  import.meta.glob<string>('../../../data/models/*.glb', {query: '?url', import: 'default', eager: true}),
 )) {
   bundledModelUrls[`models/${filePath.split('/').pop()}`] = url
 }

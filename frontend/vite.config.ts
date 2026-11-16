@@ -61,8 +61,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      // 开发环境下，将 models/、img/、basis/ 映射到 dsp-blueprint-editor 目录下
-      '/models': path.resolve(__dirname, 'src/packages/dsp-blueprint-editor/models')
+      // 模型统一取应用的 src/data/models（预览库不再保留副本，避免绕过打包压缩）；
+      // img/、basis/ 仍由 copyBlueprintEditorAssets 复制到 dist/assets。
+      '/models': path.resolve(__dirname, 'src/data/models')
     }
   }
 })
