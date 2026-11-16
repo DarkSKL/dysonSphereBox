@@ -104,6 +104,7 @@ export const useBlueprintViewer = (options: UseBlueprintViewerOptions, emit: Use
     commitPreview: blueprint => bridge.commitPreview(blueprint),
     beginPreviewReplay: () => bridge.beginPreviewReplay(),
     finishPreviewReplay: () => bridge.finishPreviewReplay(),
+    finishPreviewClear: () => bridge.finishPreviewClear(),
     discardPreview: () => bridge.discardPreview(),
     isReady: () => bridge.isReady(),
     getPreviewing: () => bridge.getPreviewing(),

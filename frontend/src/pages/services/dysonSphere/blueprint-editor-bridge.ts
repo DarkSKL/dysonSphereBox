@@ -92,6 +92,7 @@ export interface BlueprintViewerBridgeApi {
   commitPreview(blueprint: string): unknown
   beginPreviewReplay(): void
   finishPreviewReplay(): void
+  finishPreviewClear(): void
   discardPreview(): void
   isReady(): boolean
   getPreviewing(): boolean
@@ -99,9 +100,22 @@ export interface BlueprintViewerBridgeApi {
 }
 
 // =============== 空白蓝图 ===============
-// 说明：仅包含星球主体、没有任何建筑的合法蓝图；预览器首次加载与增量预览前清场都用它。
-// 边界：加载失败时正式场景可能仍是旧蓝图，调用方必须终止后续预览动作。
+// 说明：仅包含星球主体、没有任何建筑的合法蓝图；预览器首次加载（还没有任何 code 时）用它先渲染星球主体。
+// 边界：增量预览不再用它清场（那会把星球一起重建）；只在分批清场失败时作为兜底重建空场景。
 export const BLANK_BLUEPRINT = 'BLUEPRINT:1,10,0,0,0,0,0,0,639273500692970000,0.10.35.29104,%E6%96%B0%E8%93%9D%E5%9B%BE,,,,"H4sIAAAAAAAAA2NiYGDgAGJmBggQAGI2KJuR4T8DwwmoMBtUCAgA9wEkuTQAAAA="7FFF389CC152F6E763D8B8B72DF4D44A'
+
+// =============== 分批清场参数 ===============
+// 说明：deleteBuilding 每次调用都会触发一次整场景重建（库文档 4.10 明确"要删很多目标请合并成一次调用"），
+//       所以批次数按规模自适应：大场景合并成一次，只有中小场景才拆批，做出"逐批摘掉"的渐进感。
+// 边界：单批目标数 = 总栋数 / 批次数；批与批之间隔 CLEAR_TICK_MS，让出一帧给渲染与算法页动画。
+const CLEAR_TICK_MS = 200
+
+/**
+ * 分批清场的批次数。
+ * 说明：栋数越多单次重建越贵（库文档 4.10：3 万级每次重建是秒级开销），分批只会成倍放大总耗时，
+ *       因此 6000 栋以上直接一次删完；1200 栋以下才按 300 栋一批拆开，最多 4 批。
+ */
+const clearBatches = (total: number): number => total > 6000 ? 1 : total > 1200 ? 2 : Math.min(4, Math.max(1, Math.ceil(total / 300)))
 
 // =============== 预览器模块加载 ===============
 // 说明：按需导入本地 ESM 产物；库以 import.meta.url 定位同目录的 models/、img/，开发期无需额外配置。
@@ -194,6 +208,12 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
   private replayingDeltas = false
   private replayPending = false
   private pendingCommitBlueprint: string | null = null
+
+  // =============== 分批清场计划 ===============
+  // 说明：ids 是开始清场时快照的整批建筑 ID；cursor 是已删数量；batch 是单批上限；timer 是下一批的定时器。
+  // 边界：ids 是快照，但 deleteBuilding(mode=1) 按建筑 ID 定位、不依赖数组下标，所以后续删除造成的下标重排不影响；
+  //       任何会整份替换场景的路径（提交、丢弃、卸载、全量重载）都必须先 stopClear，否则会按旧 ID 删到新场景上。
+  private clearPlan: {ids: number[]; cursor: number; batch: number; timer: number} | null = null
 
   // =============== 全站实例协调 ===============
   // 说明：claimBlueprintPreview 用函数身份判断"是否同一个预览实例"，每次都传新闭包会被误判为另一个实例、
@@ -315,13 +335,10 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
     this.pendingCommitBlueprint = null
     // 保存旧蓝图快照（编码 + 建筑数），供 discardPreview 恢复
     this.previewSnapshot = {code: this.host.inputs.blueprint().code, buildingCount: this.buildingCount}
-    // 清空正式场景：库的 beginPreview 保留旧场景，这里用空白蓝图清场，避免与预览层叠加
-    // 关键：清空失败时正式场景还是旧蓝图，不能继续 beginPreview
-    if (!this.loadBlankBlueprint()) {
-      this.previewSnapshot = null
-      return
-    }
-    this.setBuildingCount(0)
+    // 清空正式场景：库的 beginPreview 保留旧场景，这里把建筑按 ID 分批摘掉。
+    // 不再整份加载空白蓝图——那会把星球和相机一起重建，且把内部数据整份替换成空蓝图；
+    // 剩余目标在"响应到达、准备切页"时由 finishPreviewClear 合并成一次调用删完。
+    this.startClear()
     this.isolate(() => this.viewer?.beginPreview())
   }
 
@@ -369,7 +386,22 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
     this.skipNextCodeReload = false
   }
 
+  /**
+   * 立刻删完剩余的清场目标：转发层在"响应已到、准备切到蓝图预览并开始重放"时调用。
+   * 说明：渐进清场把重建开销摊在生成期间，这里把剩下的建筑合并成**一次** deleteBuilding 调用删完，
+   *       保证切页那一帧正式场景已经空了，重放不会与上一轮的旧建筑叠在一起。
+   * 边界：没有进行中的清场时是空操作；删除失败会退回空白蓝图清场，返回后正式场景一定是空的。
+   */
+  finishPreviewClear(): void {
+    const plan = this.clearPlan
+    if (!plan) return
+    const rest = plan.ids.slice(plan.cursor)
+    if (rest.length > 0 && !this.removeBuildings(rest)) return
+    this.completeClear()
+  }
+
   discardPreview(): void {
+    this.stopClear() // 先停清场：下面要按快照整份重载，继续按旧 ID 删会把恢复回来的建筑删掉
     this.isolate(() => this.viewer?.discardPreview())
     // 丢弃待提交的完整蓝图、动画标记与闸门，避免悬挂状态吞掉下一次 code 变化
     this.replayingDeltas = false
@@ -456,6 +488,82 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
     }
   }
 
+  // =============== 分批清场 ===============
+
+  /** 按建筑 ID（`BlueprintBuilding.index`）列出当前正式场景的全部建筑；数据未就绪时返回空数组 */
+  private buildingIds(): number[] {
+    const buildings = this.viewer?.getBlueprintData()?.buildings ?? []
+    const ids: number[] = []
+    for (const building of buildings) ids.push(building.index)
+    return ids
+  }
+
+  /** 开始分批清场：首批立即执行，其余按 CLEAR_TICK_MS 摊到算法页播放期间；无建筑则直接归零 */
+  private startClear(): void {
+    this.stopClear()
+    if (!this.viewer) return
+    const ids = this.buildingIds()
+    if (ids.length === 0) {
+      this.setBuildingCount(0)
+      return
+    }
+    const batch = Math.ceil(ids.length / clearBatches(ids.length))
+    this.clearPlan = {ids, cursor: 0, batch, timer: 0}
+    this.pumpClear()
+  }
+
+  /** 推进一批；删完后收尾并把建筑数归 0 */
+  private pumpClear(): void {
+    const plan = this.clearPlan
+    if (!plan) return
+    plan.timer = 0
+    if (!this.viewer) {
+      this.stopClear()
+      return
+    }
+    const chunk = plan.ids.slice(plan.cursor, plan.cursor + plan.batch)
+    if (chunk.length > 0 && !this.removeBuildings(chunk)) return
+    if (!this.clearPlan) return // 自愈重试已经把剩余建筑一次删完并停掉了计划
+    plan.cursor += chunk.length
+    if (plan.cursor >= plan.ids.length) {
+      this.completeClear()
+      return
+    }
+    plan.timer = window.setTimeout(() => this.pumpClear(), CLEAR_TICK_MS)
+  }
+
+  /** 清场完成：丢弃计划并把建筑数归 0（正式场景此时只剩星球） */
+  private completeClear(): void {
+    this.clearPlan = null
+    this.setBuildingCount(0)
+  }
+
+  /** 停掉未完成的清场计划；整份替换场景的路径必须先调用，避免按旧 ID 删到新场景上 */
+  private stopClear(): void {
+    if (this.clearPlan && this.clearPlan.timer) window.clearTimeout(this.clearPlan.timer)
+    this.clearPlan = null
+  }
+
+  /**
+   * 删除一批建筑 ID；返回是否成功。
+   * 说明：deleteBuilding 是整批失败语义（任一 ID 不存在则零变更），数据被其它路径改过时先按当前数据重算再试一次；
+   *       仍然失败就退回空白蓝图清场，保证进入重放前正式场景一定是空的。
+   */
+  private removeBuildings(ids: number[]): boolean {
+    const outcome = this.isolate(() => this.viewer?.deleteBuilding(1, ids))
+    if (outcome?.ok) return true
+    this.stopClear()
+    const fresh = this.buildingIds()
+    if (fresh.length > 0 && this.isolate(() => this.viewer?.deleteBuilding(1, fresh))?.ok === true) {
+      this.setBuildingCount(0)
+      return true
+    }
+    console.warn('[blueprint-preview] 分批清场失败，退回空白蓝图清场', outcome)
+    this.loadBlankBlueprint()
+    this.setBuildingCount(0)
+    return false
+  }
+
   /** 说明：把正式场景切回空白蓝图；返回是否成功，失败已上报 PREVIEW_E_CLEAR。 */
   private loadBlankBlueprint(): boolean {
     if (!this.viewer) return false
@@ -469,6 +577,7 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
 
   /** 完整蓝图原子替换：成功后正式场景即新蓝图，跳过 code 变化触发的全量重载 */
   private commitBlueprint(blueprint: string): BlueprintLoadOutcome | undefined {
+    this.stopClear() // 新场景整份替换，未完成的分批清场没有意义，且会按旧 ID 删到新场景上
     const outcome = this.isolate(() => this.viewer?.commitPreview(blueprint))
     const ok = outcome && typeof outcome === 'object' && 'ok' in outcome && outcome.ok === true
     if (!ok) {
@@ -501,6 +610,7 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
   /** 释放预览器实例、尺寸观察与全部悬挂状态 */
   private teardown(): void {
     this.loadVersion++
+    this.stopClear()
     if (this.pendingLoadFrame) window.cancelAnimationFrame(this.pendingLoadFrame)
     this.pendingLoadFrame = 0
     if (this.pendingResizeFrame) window.cancelAnimationFrame(this.pendingResizeFrame)
@@ -555,6 +665,7 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
 
   /** 蓝图加载器入口：无编码时先加载空白蓝图渲染星球主体，真实编码到达后由 load() 重新加载 */
   private async loadCurrentBlueprint(): Promise<void> {
+    this.stopClear() // 整份重载会替换场景与数据，未完成的分批清场必须作废
     const container = this.host.inputs.container()
     if (!this.active || !container) return
     if (!this.hasRenderableSize()) return

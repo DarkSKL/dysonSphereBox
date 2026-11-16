@@ -19,6 +19,8 @@ export interface BlueprintPreviewTarget {
   isReady(): boolean
   /** 本轮首条差量入池：预告要重放，让预览层先挂起到达的完整蓝图，避免整份蓝图在切换标签前就落进场景。 */
   beginPreviewReplay?(): void
+  /** 立刻删完分批清场剩余的建筑：切换回蓝图预览 / 开始重放之前调用，保证动画落在空场景上。 */
+  finishPreviewClear?(): void
   /** 量差动画收尾（播放完毕或被中断）；预览层在此刻才加载动画期间缓存的完整蓝图。 */
   finishPreviewReplay?(): void
   getPreviewStats?(): unknown
@@ -171,6 +173,8 @@ export const useBlueprintPreviewFeed = (w: QuantWorkspace, target: () => Bluepri
   /** 核心：将选中的候选数据全量下发给 Viewer */
 /** 核心：将选中的候选数据全量下发给 Viewer（每个差量延迟 100ms） */
   const flushToViewer = async (candidateId: string): Promise<void> => {
+    // 兜底：不论本轮有没有经过算法页，重放开始前正式场景都必须是空的（清场可能是分批进行中的）
+    viewer()?.finishPreviewClear?.()
     const panel = viewer()
     const events = cachePool.get(candidateId)
     
@@ -252,6 +256,8 @@ export const useBlueprintPreviewFeed = (w: QuantWorkspace, target: () => Bluepri
     if (previewTab.value === 'algorithm') {
       await waitAlgorithmPlayback()
       if (currentGen !== replayGeneration) return
+      // 响应已到、准备切页：先把分批清场剩余的建筑一次删完，再切回蓝图预览，动画才落在空场景上
+      viewer()?.finishPreviewClear?.()
       if (previewTab.value === 'algorithm' && !userSwitched.value) showPreviewTab()
     }
     if (currentGen !== replayGeneration) return

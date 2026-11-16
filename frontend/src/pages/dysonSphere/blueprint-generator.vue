@@ -26,6 +26,7 @@ interface ViewerPanelExpose {
   commitPreview(blueprint: string): unknown
   beginPreviewReplay(): void
   finishPreviewReplay(): void
+  finishPreviewClear(): void
   discardPreview(): void
   isReady(): boolean
   getPreviewing(): boolean
