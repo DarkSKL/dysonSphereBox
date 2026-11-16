@@ -90,6 +90,7 @@ export interface BlueprintViewerBridgeApi {
   beginPreview(): void
   applyPreviewDelta(event: unknown): boolean
   commitPreview(blueprint: string): unknown
+  beginPreviewReplay(): void
   finishPreviewReplay(): void
   discardPreview(): void
   isReady(): boolean
@@ -185,10 +186,13 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
   private skipNextCodeReload = false
 
   // =============== 量差动画提交闸门 ===============
-  // 说明：量差动画播放期间到达的 commitPreview（完整蓝图）先缓存，等预览转发层在动画收尾时调用 finishPreviewReplay 再原子提交；
-  //       动画期间到达的 code 变化同理跳过，避免整份蓝图提前覆盖动画画面。
-  // 边界：没有播放过差量时 commitPreview 立即提交；beginPreview / discardPreview / 释放实例都会清空缓存。
+  // 说明：从本轮开始重放差量起，到转发层在动画收尾时调用 finishPreviewReplay 为止，到达的 commitPreview（完整蓝图）先缓存；
+  //       这段时间内的 code 变化同理跳过，避免整份蓝图提前覆盖动画画面。
+  // 边界：闸门必须在动画真正开始之前就合上（beginPreviewReplay），否则 generate() 的完整蓝图会在转发层等待算法舞台的空档里
+  //       直接落到场景上，重放时的 add 全部变成"重复新增"被库拒绝，动画就放不出来了；没有重放过差量时 commitPreview 立即提交，
+  //       beginPreview / discardPreview / 释放实例都会清空缓存与闸门。
   private replayingDeltas = false
+  private replayPending = false
   private pendingCommitBlueprint: string | null = null
 
   // =============== 全站实例协调 ===============
@@ -242,8 +246,8 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
       return
     }
     // commitPreview 成功后正式场景已替换为新蓝图，跳过此次全量重载，避免闪白与加载遮罩；
-    // 量差动画播放期间同理：完整蓝图已缓存，等 finishPreviewReplay 在动画收尾时替换场景。
-    if (this.skipNextCodeReload || this.replayingDeltas) {
+    // 量差待重放 / 正在重放期间同理：完整蓝图已缓存，等 finishPreviewReplay 在动画收尾时替换场景。
+    if (this.skipNextCodeReload || this.replayingDeltas || this.replayPending) {
       this.skipNextCodeReload = false
       return
     }
@@ -300,12 +304,14 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
 
   // =============== 增量预览 API ===============
   // 说明：对接后端 preview-delta 事件流；所有调用走主题隔离，避免第三方库写入 html[data-theme]。
-  // 边界：调用顺序由上层协调层负责（beginPreview → 提交生成 → applyPreviewDelta → commitPreview/discardPreview）。
+  // 边界：调用顺序由上层协调层负责（beginPreview → 提交生成 → applyPreviewDelta → commitPreview/discardPreview）；
+  //       转发层另有 beginPreviewReplay 提前合闸、finishPreviewReplay 收尾放行，把完整蓝图压到动画播完之后。
   //       beginPreview 前保存并清空旧正式场景；commitPreview 后丢弃快照；discardPreview 恢复旧场景。
   beginPreview(): void {
     if (!this.viewer) return
-    // 新一轮量差动画：清空上一轮缓存的待提交蓝图与动画标记
+    // 新一轮量差动画：清空上一轮缓存的待提交蓝图、动画标记与闸门
     this.replayingDeltas = false
+    this.replayPending = false
     this.pendingCommitBlueprint = null
     // 保存旧蓝图快照（编码 + 建筑数），供 discardPreview 恢复
     this.previewSnapshot = {code: this.host.inputs.blueprint().code, buildingCount: this.buildingCount}
@@ -331,9 +337,20 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
     return applied
   }
 
+  /**
+   * 合上提交闸门：本轮已有差量进入缓存、确定会重放时由转发层调用。
+   * 说明：转发层要等算法舞台播完才切回蓝图预览并开始重放，这段空档里 generate() 的完整蓝图随时会到达；
+   *       闸门必须在那一刻之前合上，否则整份蓝图先落进场景，重放就变成了对全量场景的重复新增。
+   * 边界：只在 viewer 就绪时生效；finishPreviewReplay / discardPreview / beginPreview / 释放实例都会打开。
+   */
+  beginPreviewReplay(): void {
+    if (!this.viewer) return
+    this.replayPending = true
+  }
+
   commitPreview(blueprint: string): unknown {
-    // 量差动画仍在播放：只缓存完整蓝图，等 finishPreviewReplay 在动画播完后提交，避免整份蓝图提前覆盖动画
-    if (this.replayingDeltas) {
+    // 差量已就绪待重放、或动画正在播放：只缓存完整蓝图，等 finishPreviewReplay 在动画播完后提交，避免整份蓝图提前覆盖动画
+    if (this.replayingDeltas || this.replayPending) {
       this.pendingCommitBlueprint = blueprint
       this.skipNextCodeReload = true
       return {ok: true}
@@ -344,6 +361,7 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
   /** 量差动画收尾：预览转发层在重放结束（含被打断）时调用，此刻才加载动画期间缓存的完整蓝图 */
   finishPreviewReplay(): void {
     this.replayingDeltas = false
+    this.replayPending = false
     const blueprint = this.pendingCommitBlueprint
     this.pendingCommitBlueprint = null
     if (blueprint !== null) this.commitBlueprint(blueprint)
@@ -353,8 +371,9 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
 
   discardPreview(): void {
     this.isolate(() => this.viewer?.discardPreview())
-    // 丢弃待提交的完整蓝图与动画标记，避免悬挂状态吞掉下一次 code 变化
+    // 丢弃待提交的完整蓝图、动画标记与闸门，避免悬挂状态吞掉下一次 code 变化
     this.replayingDeltas = false
+    this.replayPending = false
     this.pendingCommitBlueprint = null
     // 恢复旧蓝图快照：重新加载旧编码（无编码时回退空白蓝图）、还原建筑数与选中态
     const snapshot = this.previewSnapshot
@@ -496,6 +515,7 @@ export class BlueprintEditorBridge implements BlueprintViewerBridgeApi {
     this.previewSnapshot = null
     this.skipNextCodeReload = false
     this.replayingDeltas = false
+    this.replayPending = false
     this.pendingCommitBlueprint = null
     this.setLoading(false)
   }

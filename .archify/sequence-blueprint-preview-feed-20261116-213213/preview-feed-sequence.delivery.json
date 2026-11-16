@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "1eee3a67-69bf-4168-913b-e441f53f33d3",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "D:\\aksa\\aska\\github\\dyson-sphere-box\\.archify\\sequence-blueprint-preview-feed-20261116-213213\\candidate.json",
+  "output": "D:\\aksa\\aska\\github\\dyson-sphere-box\\.archify\\sequence-blueprint-preview-feed-20261116-213213\\preview-feed-sequence.html",
+  "specification": {
+    "sha256": "bec720c2f71e191df055f63d5582bc11a185b50d766b24a4114d37abb7015583",
+    "bytes": 10585
+  },
+  "artifact": {
+    "sha256": "45fe6459aaeeb736313350477d4bc50ce1d9a8a1dba3f5bb3288e17913555cf6",
+    "bytes": 858904
+  }
+}

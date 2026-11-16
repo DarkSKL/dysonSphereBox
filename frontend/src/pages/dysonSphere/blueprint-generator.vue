@@ -24,6 +24,8 @@ interface ViewerPanelExpose {
   beginPreview(): void
   applyPreviewDelta(event: unknown): boolean
   commitPreview(blueprint: string): unknown
+  beginPreviewReplay(): void
+  finishPreviewReplay(): void
   discardPreview(): void
   isReady(): boolean
   getPreviewing(): boolean

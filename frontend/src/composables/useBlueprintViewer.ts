@@ -102,6 +102,7 @@ export const useBlueprintViewer = (options: UseBlueprintViewerOptions, emit: Use
     beginPreview: () => bridge.beginPreview(),
     applyPreviewDelta: event => bridge.applyPreviewDelta(event),
     commitPreview: blueprint => bridge.commitPreview(blueprint),
+    beginPreviewReplay: () => bridge.beginPreviewReplay(),
     finishPreviewReplay: () => bridge.finishPreviewReplay(),
     discardPreview: () => bridge.discardPreview(),
     isReady: () => bridge.isReady(),

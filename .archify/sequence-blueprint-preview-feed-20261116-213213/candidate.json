@@ -1,0 +1,342 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "蓝图量差动画：初始化与生成时序",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/sequence-blueprint-preview-feed-20261116-213213/preview-feed-sequence.html",
+    "repository": {
+      "url": "https://gitee.com/Dark-Skl/dyson-sphere-box.git",
+      "provider": "gitee",
+      "link_mode": "web",
+      "revision": "59bea1b6922e36d805dc731669002cab39e609ac"
+    }
+  },
+  "participants": [
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "量化与蓝图页",
+      "sublabel": "useQuantWorkspace",
+      "sources": [
+        { "path": "frontend/src/composables/dysonSphere/useQuantWorkspace.ts", "line": 284, "end_line": 328, "label": "generate" },
+        { "path": "frontend/src/composables/dysonSphere/useQuantWorkspace.ts", "line": 578, "end_line": 581, "label": "onMounted" }
+      ]
+    },
+    {
+      "id": "viewer",
+      "type": "frontend",
+      "label": "蓝图 viewer",
+      "sublabel": "dsp-blueprint-editor",
+      "sources": [
+        { "path": "frontend/src/pages/services/dysonSphere/blueprint-editor-bridge.ts", "line": 305, "end_line": 352, "label": "预览四动作" }
+      ]
+    },
+    {
+      "id": "feed",
+      "type": "frontend",
+      "label": "预览转发层",
+      "sublabel": "useBlueprintPreviewFeed",
+      "sources": [
+        { "path": "frontend/src/composables/dysonSphere/useBlueprintPreviewFeed.ts", "line": 168, "end_line": 214, "label": "flushToViewer" },
+        { "path": "frontend/src/composables/dysonSphere/useBlueprintPreviewFeed.ts", "line": 256, "end_line": 317, "label": "onEvent" }
+      ]
+    },
+    {
+      "id": "bus",
+      "type": "messagebus",
+      "label": "生成事件分发",
+      "sublabel": "generationProgress",
+      "sources": [
+        { "path": "frontend/src/pages/services/dysonSphere/factory-progress.ts", "line": 10, "end_line": 14, "label": "监听集合" },
+        { "path": "frontend/src/pages/services/dysonSphere/factory-progress.ts", "line": 36, "end_line": 43, "label": "按任务分发" }
+      ]
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "Go 生成引擎",
+      "sublabel": "build.Generate",
+      "sources": [
+        { "path": "helper/blueprint/build/algorithm/generation_preview.go", "line": 48, "end_line": 62, "label": "withGenerationPreview" },
+        { "path": "helper/blueprint/build/algorithm/generation_preview.go", "line": 297, "end_line": 341, "label": "commitGenerationPreview" },
+        { "path": "helper/blueprint/build/algorithm/progress.go", "line": 101, "end_line": 120, "label": "publishProgress" }
+      ]
+    },
+    {
+      "id": "stage",
+      "type": "frontend",
+      "label": "算法舞台",
+      "sublabel": "useAlgorithmFeed",
+      "sources": [
+        { "path": "frontend/src/composables/dysonSphere/useAlgorithmFeed.ts", "line": 75, "end_line": 87, "label": "enqueue" },
+        { "path": "frontend/src/components/dysonSphere/factory/algorithm-stage.vue", "line": 218, "label": "进度回调" }
+      ]
+    },
+    {
+      "id": "journal",
+      "type": "database",
+      "label": "进度日志",
+      "sublabel": "progressjournal",
+      "sources": [
+        { "path": "helper/factory/progressjournal/store.go", "line": 63, "end_line": 94, "label": "Begin" },
+        { "path": "helper/factory/progressjournal/store.go", "line": 113, "end_line": 134, "label": "Append" }
+      ]
+    }
+  ],
+  "segments": [
+    { "from": 156, "to": 474, "label": "初始化 · 打开页面" },
+    { "from": 480, "to": 1350, "label": "生成 · 前后端双线并行" },
+    { "from": 1352, "to": 1610, "label": "重放 · 双线合流" }
+  ],
+  "messages": [
+    {
+      "id": "boot",
+      "from": "page",
+      "to": "viewer",
+      "y": 170,
+      "label": "activate()：预加载 ESM + 空白蓝图",
+      "variant": "default",
+      "note": "先渲染星球主体"
+    },
+    {
+      "id": "ready",
+      "from": "viewer",
+      "to": "page",
+      "y": 240,
+      "label": "ready { blank: true }",
+      "variant": "return",
+      "note": "流程图等 ready 才挂载"
+    },
+    {
+      "id": "setup",
+      "from": "page",
+      "to": "feed",
+      "y": 310,
+      "label": "setup：state + 空缓存池 + 订阅",
+      "variant": "default",
+      "note": "taskId 变化即 reset"
+    },
+    {
+      "id": "listen",
+      "from": "feed",
+      "to": "bus",
+      "y": 380,
+      "label": "进入按 taskId 过滤的监听集合",
+      "variant": "default"
+    },
+    {
+      "id": "dataset",
+      "from": "page",
+      "to": "engine",
+      "y": 414,
+      "label": "ListDatasets / DescribeDataset",
+      "variant": "default",
+      "note": "就绪后开始 400ms 防抖"
+    },
+    {
+      "id": "begin",
+      "from": "page",
+      "to": "viewer",
+      "y": 490,
+      "label": "beginPreview()：快照旧蓝图 + 空白清场",
+      "variant": "default",
+      "note": "必须先于请求发出"
+    },
+    {
+      "id": "generate",
+      "from": "page",
+      "to": "engine",
+      "y": 560,
+      "label": "Generate(emitPreviewDeltas, protocolVersion 4)",
+      "variant": "emphasis",
+      "note": "先回填 taskId 触发 reset()"
+    },
+    {
+      "id": "archive",
+      "from": "engine",
+      "to": "journal",
+      "y": 630,
+      "label": "Begin(taskId) + 逐条 Append（flate 压缩）",
+      "variant": "dashed",
+      "note": "发送前归档，可补发"
+    },
+    {
+      "id": "start",
+      "from": "engine",
+      "to": "bus",
+      "y": 700,
+      "label": "search-start / candidate-plan / candidate-start",
+      "variant": "default"
+    },
+    {
+      "id": "buffering",
+      "from": "bus",
+      "to": "feed",
+      "y": 734,
+      "label": "search-start → reset() + phase='buffering'",
+      "variant": "default",
+      "note": "之后只写缓存，不渲染"
+    },
+    {
+      "id": "platform",
+      "from": "bus",
+      "to": "stage",
+      "y": 804,
+      "label": "candidate-plan → 铺开全部候选平台",
+      "variant": "default"
+    },
+    {
+      "id": "delta",
+      "from": "engine",
+      "to": "bus",
+      "y": 838,
+      "label": "preview-delta × N：layout-grid-v1，每条 1–128 个操作",
+      "variant": "emphasis",
+      "note": "边界是检查点，非逐栋"
+    },
+    {
+      "id": "cache",
+      "from": "bus",
+      "to": "feed",
+      "y": 908,
+      "label": "全候选差量 → cachePool[cid].push()",
+      "variant": "default",
+      "note": "首条触发自动切标签"
+    },
+    {
+      "id": "cinematic",
+      "from": "bus",
+      "to": "stage",
+      "y": 978,
+      "label": "enqueue(pace: 'cinematic') + 记录进度快照",
+      "variant": "default",
+      "note": "该快照供后面判播完"
+    },
+    {
+      "id": "onprogress",
+      "from": "bus",
+      "to": "page",
+      "y": 1048,
+      "label": "onProgress：只取 phase 文案",
+      "variant": "default"
+    },
+    {
+      "id": "finish",
+      "from": "engine",
+      "to": "bus",
+      "y": 1082,
+      "label": "candidate-finish → preview-snapshot × N → preview-complete",
+      "variant": "emphasis",
+      "note": "快照用正式 Area 坐标"
+    },
+    {
+      "id": "winner",
+      "from": "bus",
+      "to": "feed",
+      "y": 1152,
+      "label": "preview-complete(winnerCandidateId)",
+      "variant": "default",
+      "note": "转入异步收尾"
+    },
+    {
+      "id": "snapshot",
+      "from": "bus",
+      "to": "stage",
+      "y": 1222,
+      "label": "snapshot 分块：校验块数、去重后原子提交",
+      "variant": "default"
+    },
+    {
+      "id": "waitstage",
+      "from": "feed",
+      "to": "stage",
+      "y": 1256,
+      "label": "等 activity.latest 收敛：队列、动画、下坠归零",
+      "variant": "dashed",
+      "note": "先忙后闲，20s 兜底"
+    },
+    {
+      "id": "response",
+      "from": "engine",
+      "to": "page",
+      "y": 1326,
+      "label": "GenerateResponse（蓝图串 / blueprintRef）",
+      "variant": "return"
+    },
+    {
+      "id": "commit",
+      "from": "page",
+      "to": "viewer",
+      "y": 1370,
+      "label": "commitPreview(完整蓝图)",
+      "variant": "default",
+      "note": "只缓存，不立即提交"
+    },
+    {
+      "id": "replay",
+      "from": "feed",
+      "to": "viewer",
+      "y": 1440,
+      "label": "applyPreviewDelta × N，每 100ms 一条",
+      "variant": "emphasis",
+      "note": "ID 加候选前缀"
+    },
+    {
+      "id": "finishreplay",
+      "from": "feed",
+      "to": "viewer",
+      "y": 1510,
+      "label": "finishPreviewReplay() → 提交缓存的完整蓝图",
+      "variant": "default",
+      "note": "被打断时也走这里"
+    },
+    {
+      "id": "done",
+      "from": "viewer",
+      "to": "page",
+      "y": 1580,
+      "label": "ready(建筑数) → previewState = 'ready'",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    { "participant": "viewer", "from": 168, "to": 250, "type": "frontend" },
+    { "participant": "page", "from": 480, "to": 1340, "type": "frontend" },
+    { "participant": "engine", "from": 560, "to": 1332, "type": "backend" },
+    { "participant": "journal", "from": 630, "to": 1328, "type": "database" },
+    { "participant": "feed", "from": 734, "to": 1586, "type": "frontend" },
+    { "participant": "stage", "from": 804, "to": 1320, "type": "frontend" },
+    { "participant": "viewer", "from": 1370, "to": 1582, "type": "frontend" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两条线的真实节奏",
+      "items": [
+        "所有事件都走 Wails 事件 factory:generationProgress",
+        "后端在 Generate 返回前就已发完整条流，时间轴中段就是它的终点",
+        "前端全量缓存，再把获选候选按 100ms 一条重放，视觉时长由前端决定"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "三道闸门",
+      "items": [
+        "beginPreview 必须先行：先清场，到达的差量才不会被旧场景吞掉",
+        "replayingDeltas 拦住 commitPreview，完整蓝图只能在动画播完后落下",
+        "skipNextCodeReload 拦住 code 变化触发的全量重载，避免闪白"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "失败与中断",
+      "items": [
+        "search-failed → reset()；stream-incomplete → discarded++ 后 reset()",
+        "生成失败 → discardPreview() 用快照恢复上一次成功画面",
+        "GEN_E_PROGRESS_PREVIEW → 先丢弃过程预览，再以 v3 无差量重试一次"
+      ]
+    }
+  ]
+}

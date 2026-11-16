@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "D:\\aksa\\aska\\github\\dyson-sphere-box\\.archify\\sequence-blueprint-preview-feed-20261116-213213\\candidate.json",
+    "sha256": "bec720c2f71e191df055f63d5582bc11a185b50d766b24a4114d37abb7015583",
+    "bytes": 10585
+  },
+  "artifact": {
+    "path": "D:\\aksa\\aska\\github\\dyson-sphere-box\\.archify\\sequence-blueprint-preview-feed-20261116-213213\\preview-feed-sequence.html",
+    "sha256": "45fe6459aaeeb736313350477d4bc50ce1d9a8a1dba3f5bb3288e17913555cf6",
+    "bytes": 858904
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "D:\\aksa\\aska\\github\\dyson-sphere-box\\.archify\\sequence-blueprint-preview-feed-20261116-213213\\preview-feed-sequence.finalize.json",
+    "summaryReceipt": "D:\\aksa\\aska\\github\\dyson-sphere-box\\.archify\\sequence-blueprint-preview-feed-20261116-213213\\preview-feed-sequence.finalize-summary.json",
+    "browserCheckReceipt": "D:\\aksa\\aska\\github\\dyson-sphere-box\\.archify\\sequence-blueprint-preview-feed-20261116-213213\\preview-feed-sequence.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-16T13:33:05.700Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 10900,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

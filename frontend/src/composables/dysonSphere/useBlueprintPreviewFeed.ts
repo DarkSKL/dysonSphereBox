@@ -17,6 +17,8 @@ export interface BlueprintPreviewTarget {
   applyPreviewDelta(event: FactoryGenerationProgress): boolean
   discardPreview(): void
   isReady(): boolean
+  /** 本轮首条差量入池：预告要重放，让预览层先挂起到达的完整蓝图，避免整份蓝图在切换标签前就落进场景。 */
+  beginPreviewReplay?(): void
   /** 量差动画收尾（播放完毕或被中断）；预览层在此刻才加载动画期间缓存的完整蓝图。 */
   finishPreviewReplay?(): void
   getPreviewStats?(): unknown
@@ -125,6 +127,8 @@ export const useBlueprintPreviewFeed = (w: QuantWorkspace, target: () => Bluepri
 
   // 新增：用于打断异步重放的令牌。每次 reset 或重新开始重放时自增。
   let replayGeneration = 0
+  // 本轮是否已合上预览层的提交闸门；每轮只合一次，reset 时复位。
+  let replayArmed = false
   // 每轮生成只自动切一次算法可视化；用户手动切过标签后，本轮不再由数据层改写。
   let autoSwitched = false
   // 算法舞台的最新进度由渲染包回调写入共享记录，这里只读取，不参与渲染
@@ -150,6 +154,7 @@ export const useBlueprintPreviewFeed = (w: QuantWorkspace, target: () => Bluepri
 
   const reset = (): void => {
     replayGeneration++ // 打断当前正在执行的异步循环
+    replayArmed = false // 下一轮重新合闸
     autoSwitched = false
     resetTabIntent() // 新一轮生成重新允许数据层自动切换标签
     // 动画被打断时也让预览层收尾（提交已缓存的完整蓝图），避免悬挂的待提交状态吞掉后续 code 变化
@@ -272,6 +277,14 @@ export const useBlueprintPreviewFeed = (w: QuantWorkspace, target: () => Bluepri
     // 2. 持续写入缓存
     if (event.kind === 'preview-delta' && event.operations?.length && phase === 'buffering') {
       const cid = event.candidateId ?? 'unknown'
+
+      // 本轮已有差量、确定要重放：立刻合上预览层的提交闸门。
+      // 重放要等算法舞台播完、切回蓝图预览后才真正开始，这段空档里 generate() 的完整蓝图随时会到；
+      // 闸门晚合上就会让整份蓝图先落进场景，重放的 add 全变成重复新增，动画等于没播。
+      if (!replayArmed) {
+        replayArmed = true
+        viewer()?.beginPreviewReplay?.()
+      }
 
       // 收到候选数据：命令切到算法可视化，方便跟随生成过程；用户手动切过标签则不再夺回。
       if (!autoSwitched && !userSwitched.value) {
