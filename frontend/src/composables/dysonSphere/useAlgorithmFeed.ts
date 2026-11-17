@@ -6,6 +6,7 @@ import {observeFactoryGenerationEvents} from '../../pages/services/dysonSphere/f
 import type {FactoryPreviewArea, FactoryPreviewOperation} from '../../types/factory-progress'
 import {isFactoryGenerationProgressEvent} from '../../utils/factory-preview-protocol'
 import {createFrameCoalescer} from '../../utils/frame-coalescer'
+import {SnapshotContents, sameSnapshotAreas} from '../../utils/algorithm-snapshot'
 import {ALGORITHM_REPLAY_CHUNK as CHUNK, prepareAlgorithmReplay, yieldAlgorithmReplay, type AlgorithmMirrorEntry} from '../../utils/algorithm-replay'
 import type {QuantWorkspace} from './useQuantWorkspace'
 
@@ -69,7 +70,9 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
   let liveV4 = false
   let streamNotice = ''
   const candidateSequences = new Map<string, number>()
-  const snapshots = new Map<string, {revision: number; count: number; chunks: Map<number, readonly FactoryPreviewOperation[]>; areas?: readonly AlgoVizArea[]}>()
+  const snapshots = new Map<string, SnapshotContents>()
+  // 只有已提交的正式快照能复用；任何后续差量或清场都会撤销此资格。
+  let bestSnapshot: {candidateId: string; areas?: readonly AlgoVizArea[]} | null = null
   const snapshotRevisions = new Map<string, number>()
   let phaseStage = ''
   let phaseTask = ''
@@ -96,11 +99,13 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
     const transition = animate && mirror.size <= CHUNK
     mirror.clear()
     candidateObjects.clear()
+    bestSnapshot = null
     liveBest = ''
     getViz()?.reset({animate: transition})
   }
   // 已结束候选的镜像不保留全体历史；当前最佳及正式快照可独立恢复完整场景。
   const forgetCandidate = (id: string): void => {
+    if (bestSnapshot?.candidateId === id) bestSnapshot = null
     for (const object of candidateObjects.get(id) ?? []) mirror.delete(object)
     candidateObjects.delete(id)
   }
@@ -203,12 +208,17 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
         const revision = event.snapshotRevision ?? 0
         if (revision <= (snapshotRevisions.get(event.candidateId) ?? 0)) { failStream('候选快照版本没有递增，等待正式结果回放'); return }
         const count = event.chunkCount ?? 0
-        const snapshot = snapshots.get(event.candidateId) ?? {revision, count, chunks: new Map<number, readonly FactoryPreviewOperation[]>(), areas: liveAreas(event.areas)}
+        const areas = liveAreas(event.areas)
+        const snapshot = snapshots.get(event.candidateId) ?? new SnapshotContents(revision, count, areas,
+          bestSnapshot?.candidateId === event.candidateId && sameSnapshotAreas(bestSnapshot.areas, areas))
         const index = event.chunkIndex ?? 0
-        if (snapshot.revision !== revision || snapshot.count !== count || snapshot.chunks.has(index)) { failStream('候选最终快照分块冲突，等待正式结果回放'); return }
-        snapshot.chunks.set(index, event.operations)
+        const operations = event.operations.map(op => liveOperation(`${event.taskId}:${event.candidateId}`, op))
+        if (snapshot.revision !== revision || snapshot.count !== count || !snapshot.add(index, operations, mirror)) { failStream('候选最终快照分块或对象身份冲突，等待正式结果回放'); return }
         snapshots.set(event.candidateId, snapshot)
       } else if (event.kind === 'preview-delta' && event.candidateId && event.operations) {
+        if (bestSnapshot?.candidateId === event.candidateId) bestSnapshot = null
+        const receiving = snapshots.get(event.candidateId)
+        if (receiving) receiving.unchanged = false
         const coordinates: AlgoVizCoordinates = event.coordinateSystem === 'blueprint-area-local-v1' ? 'area' : 'layout'
         const operations = event.operations.map(op => liveOperation(`${event.taskId}:${event.candidateId}`, op))
         const changes = new Map<string, boolean>()
@@ -226,22 +236,22 @@ export const useAlgorithmFeed = (w: QuantWorkspace, getViz: () => AlgorithmVizCo
           failStream('候选最终快照不完整，等待正式结果回放')
           return
         }
-        const records: FactoryPreviewOperation[] = []
-        for (let index = 0; index < snapshot.count; index++) records.push(...(snapshot.chunks.get(index) ?? []))
-        if (records.length !== event.buildingCount || new Set(records.map(operation => operation.objectId)).size !== records.length) {
+        if (snapshot.size !== event.buildingCount) {
           failStream('候选最终快照建筑数量不一致，等待正式结果回放')
           return
         }
-        const operations = records.map(operation => liveOperation(`${event.taskId}:${candidateId}`, operation))
-        if (event.kind === 'preview-complete') {
-          mirror.clear()
-          candidateObjects.clear()
-        } else {
-          if (liveBest && liveBest !== candidateId) forgetCandidate(liveBest)
-          forgetCandidate(candidateId)
-        }
+        const unchanged = snapshot.unchanged && bestSnapshot?.candidateId === candidateId
+          && candidateObjects.get(candidateId)?.size === snapshot.size
         viz.beginCandidate(candidateId, event.candidateOrdinal ?? 1)
-        commit(operations, {candidateId, coordinates: 'area', areas: snapshot.areas, pace: 'follow', snapshot: true})
+        if (unchanged) {
+          // 最佳与最终确认可以指向同一内容；保留已在播放的快照游标和动画，仍执行全部终态检查。
+          if (event.kind === 'preview-complete') for (const id of candidateObjects.keys()) if (id !== candidateId) forgetCandidate(id)
+        } else {
+          if (event.kind === 'preview-complete') { mirror.clear(); candidateObjects.clear() }
+          else { if (liveBest && liveBest !== candidateId) forgetCandidate(liveBest); forgetCandidate(candidateId) }
+          commit(snapshot.operations(), {candidateId, coordinates: 'area', areas: snapshot.areas, pace: 'follow', snapshot: true})
+        }
+        bestSnapshot = {candidateId, areas: snapshot.areas}
         snapshotRevisions.set(candidateId, snapshot.revision)
         snapshots.delete(candidateId)
         liveBest = candidateId

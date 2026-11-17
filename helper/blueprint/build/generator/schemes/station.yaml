@@ -14,6 +14,8 @@ subflows:
         call: attempts
   attempts:
     flow:
+      - id: station-window
+        tool: station.window@1
       - id: station-attempts
         candidates:
           comparator: layout

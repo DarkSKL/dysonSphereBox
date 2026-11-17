@@ -314,6 +314,12 @@ func (s *StepContext) commit(ctx context.Context, checkSize func(int64) error) e
 		}
 		serial++
 		deps := copyDeps(s.reads)
+		// 同键变换仍依赖旧值的来源；不能因去掉自身依赖而把派生值变成无来源常量。
+		if _, read := s.reads[id]; read {
+			for dependency, version := range i.slots[id].deps {
+				deps[dependency] = version
+			}
+		}
 		delete(deps, id)
 		next[id] = slot{value: x, version: serial, deps: deps}
 		if !id.def.options.Diagnostic {

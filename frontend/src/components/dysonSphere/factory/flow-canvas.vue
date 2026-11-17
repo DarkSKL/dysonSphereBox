@@ -146,8 +146,11 @@ const modeOptions = [{label: '机器直连带', value: 1, icon: '传送带'}, {l
 const datasetOptions = computed(() => props.w.datasets.map(item => ({label: item.name, value: item.key, icon: ''})))
 const paletteItems = computed(() => {
   const query = paletteQuery.value.trim().toLowerCase()
-  const list = props.w.itemOptions.filter(item => props.w.recipeOptions(item.value).length > 0)
-  return (query ? list.filter(item => item.label.toLowerCase().includes(query) || String(item.value).includes(query)) : list).slice(0, 120)
+  // 原型类别 1 为原矿，即使存在硅石转换等配方也不作为目标；虚拟供给不算合成配方。
+  const products = new Set((props.w.detail?.recipes ?? []).filter(recipe => recipe.type !== -1).flatMap(recipe => recipe.results))
+  const list = props.w.itemOptions.filter(item => props.w.itemMap.get(item.value)?.type !== 1 && products.has(item.value))
+  // 完整展示当前数据集的可合成物品，避免数量截断隐藏后段设施与矩阵。
+  return query ? list.filter(item => item.label.toLowerCase().includes(query) || String(item.value).includes(query)) : list
 })
 const targetIds = computed(() => new Set(props.w.targets.map(target => target.itemId)))
 </script>

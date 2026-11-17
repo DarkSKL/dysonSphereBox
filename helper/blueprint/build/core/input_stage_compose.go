@@ -74,7 +74,16 @@ func completePreparedInputIdentity(ctx context.Context, input *PreparedInput) er
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	canonical, err := json.Marshal(input.request)
+	// zero规格保持原Request字节hash；派生surface必须包含JSON之外的许可及完整几何规格。
+	var identity any = input.request
+	privateSurface := input.request.SurfaceLayout != nil && (input.request.SurfaceLayout.offsetWindow || input.request.SurfaceLayout.adjacentDepth != 0 || input.request.SurfaceLayout.nativeBand != nil || input.request.SurfaceLayout.polarRoot)
+	if privateSurface || input.geometry != (SurfaceCandidateSpec{}) {
+		identity = struct {
+			Request  any
+			Geometry SurfaceCandidateSpec
+		}{inputRequestIdentity(input.request), input.geometry}
+	}
+	canonical, err := json.Marshal(identity)
 	if err != nil {
 		return inputStageCause(ctx, err)
 	}

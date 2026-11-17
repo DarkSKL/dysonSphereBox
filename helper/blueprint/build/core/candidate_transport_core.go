@@ -15,13 +15,24 @@ type TransportCandidateSpec struct {
 	InserterLevel int `json:"inserterLevel"`
 }
 
+// TransportSearchOptions 职责：从工作流配置读取实际路线负荷排序条件；使用：运输规格枚举；边界：只影响顺序，不改变容量、实体预算或候选集合。
+type TransportSearchOptions struct {
+	// PreferFewerRoutesAbove 职责：指定最低档规划达到多少条路线后优先少接线；使用：直连及普通黑盒塔大厂；边界：零表示关闭，不能作为物理容量下界。
+	PreferFewerRoutesAbove int `json:"preferFewerRoutesAbove"`
+	// WorkloadRowSpan 职责：指定可复现的分行探针跨度；使用：共享实际行规划；边界：不是最终布局的强制跨度。
+	WorkloadRowSpan float64 `json:"workloadRowSpan"`
+}
+
 // EnumerateTransportCandidates 职责：按最少升档步数稳定列举至多十二种等级；使用：引擎first候选组；边界：是否尝试下一档由引擎的容量失败白名单决定。
-func EnumerateTransportCandidates(ctx context.Context, input *PreparedInput) ([]TransportCandidateSpec, error) {
+func EnumerateTransportCandidates(ctx context.Context, input *PreparedInput, options TransportSearchOptions) ([]TransportCandidateSpec, error) {
 	if input == nil {
 		return nil, fmt.Errorf("运输规格缺少规范输入")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if options.PreferFewerRoutesAbove < 0 || options.PreferFewerRoutesAbove > 100000 || options.PreferFewerRoutesAbove > 0 && (!finitePositive(options.WorkloadRowSpan) || options.WorkloadRowSpan > 10000) {
+		return nil, fmt.Errorf("invalid transport workload ordering options")
 	}
 	base := input.request.Setting
 	result := []TransportCandidateSpec{}
@@ -30,11 +41,41 @@ func EnumerateTransportCandidates(ctx context.Context, input *PreparedInput) ([]
 			result = append(result, TransportCandidateSpec{belt, inserter})
 		}
 	}
+	loads := map[TransportCandidateSpec]int{}
+	compact := false
+	sharedRowGraph := input.request.Mode == 1 || input.request.Density == densityStandard && (input.request.Mode == 3 || input.request.Mode == 4)
+	if sharedRowGraph && options.PreferFewerRoutesAbove > 0 {
+		baseline := TransportCandidateSpec{base.BeltLv, base.InserterLv}
+		if count, err := transportCandidateRouteCount(ctx, input, baseline, options.WorkloadRowSpan); err == nil && count >= options.PreferFewerRoutesAbove {
+			compact, loads[baseline] = true, count
+			for _, candidate := range result {
+				if candidate == baseline {
+					continue
+				}
+				if count, err := transportCandidateRouteCount(ctx, input, candidate, options.WorkloadRowSpan); err == nil {
+					loads[candidate] = count
+				}
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 	sort.SliceStable(result, func(i, j int) bool {
 		left, right := result[i], result[j]
+		if compact {
+			lc, lk := loads[left]
+			rc, rk := loads[right]
+			if lk != rk {
+				return lk
+			}
+			if lk && lc != rc {
+				return lc < rc
+			}
+		}
 		// 超大厂的独立lane会主导实体数和全图布线；先试最高带档，保留全部原等级作为后续候选。
 		// 这是有限搜索的工作量排序，不声称低档物理不可行，也不改变原请求、制造设备或目标产量。
-		if largeFactoryWorkload(ctx) && left.BeltLevel != right.BeltLevel {
+		if !compact && largeFactoryWorkload(ctx) && left.BeltLevel != right.BeltLevel {
 			return left.BeltLevel > right.BeltLevel
 		}
 		if left.BeltLevel+left.InserterLevel != right.BeltLevel+right.InserterLevel {

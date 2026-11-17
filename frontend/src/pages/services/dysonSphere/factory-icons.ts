@@ -9,6 +9,12 @@ import {encyclopediaManifest, encyclopediaSpriteReady, loadLocalIconPack} from '
 // 边界：量化与图鉴来自不同上游，按名称或明确的原版图鉴 ID 匹配；未收录名称返回 null，由调用方使用通用图标。
 type IconEntry = {id: string; name?: {zh?: string}; icon?: {x: number; y: number}}
 const iconIndex = shallowRef<Map<string, {x: number; y: number}> | null>(null)
+// 本地追加到图鉴精灵的格子：来源与坐标记录在 public/encyclopedia-icons/NOTICE.txt，按稳定键索引供量化界面引用。
+// 边界：重新导入图鉴素材会覆盖图集，需按 NOTICE 补回对应格子，否则该键只显示空白格。
+const appendedIcons: Record<string, {x: number; y: number}> = {
+  // 禁用增产剂：增产剂 Mk.I 叠加禁用标记，表示不喷涂。
+  'proliferator-disabled': {x: 896, y: 1408},
+}
 const buildIndex = (): Map<string, {x: number; y: number}> => {
   const map = new Map<string, {x: number; y: number}>()
   for (const list of [itemData, buildingData, resourceData] as unknown as IconEntry[][]) {
@@ -18,6 +24,7 @@ const buildIndex = (): Map<string, {x: number; y: number}> => {
       if (entry.name?.zh && !map.has(entry.name.zh.replace(/\s/g, ' '))) map.set(entry.name.zh.replace(/\s/g, ' '), entry.icon)
     }
   }
+  for (const [key, icon] of Object.entries(appendedIcons)) map.set(key, icon)
   return map
 }
 

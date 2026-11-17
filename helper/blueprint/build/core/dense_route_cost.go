@@ -54,12 +54,16 @@ func (env *transportEnvironment) findDenseTransportPrefixPath(ctx context.Contex
 			suffixes, indices = append(suffixes, suffix), append(indices, -1)
 		}
 	}
-	// 整链几何可能排除某个接驳；保留原四次有限重试，不把失败候选当作可提交结果。
+	// 先完整保留原四次搜索及成功结果；只有全部失败，才对实际被拒的后缀执行有限私有绕行。
+	rejected := []denseRouteRejectedSuffix{}
 	for attempts := 0; attempts < 4 && len(goals) > 0; attempts++ {
 		path, selected, steps, peak, calls := env.findDenseNativeDestinationPath(ctx, start, goals, source, target)
 		expanded, maximum, searches = expanded+steps, max(maximum, peak), searches+calls
-		if ctx.Err() != nil || len(path) == 0 {
+		if ctx.Err() != nil {
 			return
+		}
+		if len(path) == 0 {
+			break
 		}
 		candidate := append(append([]vector{}, prefix.points[:len(prefix.points)-1]...), path...)
 		endpoint := target
@@ -76,9 +80,26 @@ func (env *transportEnvironment) findDenseTransportPrefixPath(ctx context.Contex
 			}
 			return
 		}
+		if indices[selected] < 0 && len(suffixes[selected]) > 2 {
+			rejected = append(rejected, denseRouteRejectedSuffix{goal: goals[selected], points: suffixes[selected]})
+		}
 		goals = append(goals[:selected], goals[selected+1:]...)
 		suffixes = append(suffixes[:selected], suffixes[selected+1:]...)
 		indices = append(indices[:selected], indices[selected+1:]...)
+	}
+	for _, suffix := range rejected {
+		if ctx.Err() != nil {
+			return
+		}
+		candidate, steps, peak, calls := env.findDenseRouteSuffixDetour(ctx, route, prefix, suffix)
+		expanded, maximum, searches = expanded+steps, max(maximum, peak), searches+calls
+		if ctx.Err() != nil {
+			return
+		}
+		if len(candidate) > 0 {
+			full, cost, length = candidate, env.transportPathCost(candidate), len(candidate)
+			return
+		}
 	}
 	return
 }

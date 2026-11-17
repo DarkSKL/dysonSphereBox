@@ -426,7 +426,7 @@ func (b *builder) routeTransportRoutes(ctx context.Context, inputPositions []vec
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
 		}
 		if len(points) == 0 {
-			reason := "已穷尽当前候选空间仍无可行路线"
+			reason := "本轮有界寻路未找到完整可行路线"
 			if maxSearchExpanded >= transportSearchLimit {
 				reason = "在固定展开预算内未找到可行路线（预算耗尽不代表几何无解）"
 			}

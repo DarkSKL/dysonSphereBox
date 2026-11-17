@@ -2,6 +2,12 @@ schemaVersion: 1
 id: common
 # 公共默认只在此定义；覆盖顺序为注册默认→公共→大模式→子模式→地理→枚举节点with。
 parameters:
+  adjacentDepths: [1, 2, 3]
+  allowOffsetWindows: true
+  largestOffsetFirst: true
+  localRectangleAspects: [1.8, 2.4, 3, 4.5, 1.5, 1.2, 0]
+  compareTurnedRows: true
+  primaryLayoutsPerSurface: 1
   polarWindowRows: [24, 32, 40, 48, 56, 64]
   rowSpans: [12, 18, 24, 32]
   streetGroups: [0, 2, -1]
@@ -111,7 +117,7 @@ subflows:
         with: {strategy: strict, expandAdjacent: false, preciseFootprint: false}
       - id: strict-or-native
         candidates:
-          fallbackOn: [GEN_E_SHAPE, GEN_E_COLLISION, GEN_E_SURFACE_ROUTING, GEN_E_DENSITY_LAYOUT, GEN_E_SURFACE_CAPACITY, GEN_E_DENSITY_STREET_SEAM]
+          fallbackOn: [GEN_E_CONNECTED_PREPARATION, GEN_E_SHAPE, GEN_E_COLLISION, GEN_E_SURFACE_ROUTING, GEN_E_DENSITY_LAYOUT, GEN_E_SURFACE_CAPACITY, GEN_E_DENSITY_STREET_SEAM]
           selection: first
           parallel: 1
           items: {$state: surface.candidates}
@@ -133,7 +139,7 @@ subflows:
         with: {strategy: native, expandAdjacent: false, preciseFootprint: false, includeBandFallback: true}
       - id: native-or-precise
         candidates:
-          fallbackOn: [GEN_E_SHAPE, GEN_E_COLLISION, GEN_E_SURFACE_ROUTING, GEN_E_DENSITY_LAYOUT, GEN_E_SURFACE_CAPACITY, GEN_E_DENSITY_STREET_SEAM]
+          fallbackOn: [GEN_E_CONNECTED_PREPARATION, GEN_E_SHAPE, GEN_E_COLLISION, GEN_E_SURFACE_ROUTING, GEN_E_DENSITY_LAYOUT, GEN_E_SURFACE_CAPACITY, GEN_E_DENSITY_STREET_SEAM]
           selection: first
           parallel: 1
           items: {$state: surface.candidates}
@@ -153,11 +159,12 @@ subflows:
               call: surface-attempts
   adjacent:
     flow:
-      - id: compare-permitted-surfaces
+      - id: prefer-single-band
         candidates:
-          comparator: surface
+          selection: first
           parallel: 1
-          items: [{alternative: adjacent}, {alternative: strict}]
+          # 先在原选区内寻找完整合格工厂；只有有界尝试未成功才进入实际许可的相邻纬带。
+          items: [{alternative: strict}, {alternative: adjacent}]
           inputs:
             alternative: {type: string, required: true}
           flow:
@@ -169,7 +176,7 @@ subflows:
                     - id: expanded
                       call: expanded
                   strict:
-                    - id: strict-comparison
+                    - id: single-band-attempt
                       candidates:
                         selection: first
                         parallel: 1
@@ -186,13 +193,46 @@ subflows:
     flow:
       - id: adjacent-specs
         tool: surface.enumerate@1
-        with: {strategy: native, expandAdjacent: true, preciseFootprint: false, includeBandFallback: false}
+        with:
+          strategy: native
+          expandAdjacent: true
+          preciseFootprint: false
+          includeBandFallback: false
+          adjacentDepths: {$param: adjacentDepths}
+          allowOffsetWindows: {$param: allowOffsetWindows}
+          largestOffsetFirst: {$param: largestOffsetFirst}
+          localRectangleAspects: {$param: localRectangleAspects}
+          compareTurnedRows: {$param: compareTurnedRows}
+      - id: plan-search-passes
+        tool: search.plan-passes@1
+        with: {primary: {$param: primaryLayoutsPerSurface}}
+      - id: surface-search-order
+        call: expanded-fair
+  expanded-fair:
+    flow:
+      - id: primary-then-remaining
+        candidates:
+          selection: first
+          parallel: 1
+          # 先给每个表面一个主布局机会；第二轮从1开始，不重跑第一轮。
+          items: {$state: search.surface-passes}
+          inputs:
+            start: {type: integer, required: true}
+            limit: {type: integer, required: true}
+          flow:
+            - id: configure-layout-window
+              tool: search.window@1
+              with: {start: {$input: start}, limit: {$input: limit}}
+            - id: visit-each-surface
+              call: expanded-attempts
+  expanded-attempts:
+    flow:
       - id: adjacent-attempts
         candidates:
           selection: first
           parallel: 1
-          # 完整大厂先使用任务剩余预算，保留45秒给严格选区比较、汇合与编码；总任务截止仍不可延长。
-          reserveMs: 45000
+          # 单带已先行尝试；跨带使用任务剩余预算，保留20秒用于汇合与编码，总任务截止不延长。
+          reserveMs: 20000
           timeoutFailure: GEN_E_SURFACE_CAPACITY
           items: {$state: surface.candidates}
           inputs:

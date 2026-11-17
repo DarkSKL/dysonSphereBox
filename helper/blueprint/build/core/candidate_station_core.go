@@ -269,7 +269,7 @@ func assembleStationCandidate(ctx context.Context, input *PreparedInput, spec St
 	b.beginPreview()
 	if spec.Kind == "blackbox" {
 		if spec.RowPacking {
-			ctx = b.configureStandardRows(ctx)
+			ctx = b.configureStandardStationRows(ctx)
 			b.generationCtx = ctx
 		}
 		if spec.Density == densityStandard {

@@ -16,6 +16,12 @@ func NormalizeInputRequest(ctx context.Context, request Request) (*NormalizedInp
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if request.acceptedAspect == 0 {
+		request.acceptedAspect = DefaultLayoutAcceptedAspect
+	}
+	if !validLayoutAspectLimit(request.acceptedAspect) {
+		return nil, inputStageError("无效形状验收上限")
+	}
 	setting, err := normalizeSetting(request.Setting)
 	if err != nil {
 		return nil, err

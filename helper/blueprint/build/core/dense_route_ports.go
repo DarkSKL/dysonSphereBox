@@ -35,6 +35,8 @@ type denseRoutePortIndex struct {
 	footprintReady              bool
 	// polarFrame 职责：令所有距离及静态盒使用同一原生球面；使用：跨子环接线；边界：nil仍用既有平面预检。
 	polarFrame *densePolarFrame
+	// worldCache 职责：复用固定球面框架下的纯格点投影；使用：串行候选寻路；边界：有界且不缓存动态占位或规则结论。
+	worldCache *denseRouteWorldCache
 	boxes      []packingShape
 	// strictBelts 职责：普通布局寻路时禁止与已提交的独立带段相交；使用：共享塔/配送全场候选；边界：超密度保留原带段规则，最终仍统一验收。
 	strictBelts bool
@@ -137,7 +139,7 @@ func denseRouteWorld(p vector) placement.Vector {
 // world 职责：在索引固定坐标系内计算带节点中心；使用：全部边和净距检查；边界：不能混用平面盒和球面点。
 func (index *denseRoutePortIndex) world(p vector) placement.Vector {
 	if index.polarFrame != nil {
-		return index.polarFrame.world(p, .2)
+		return index.cachedWorld(p)
 	}
 	return denseRouteWorld(p)
 }

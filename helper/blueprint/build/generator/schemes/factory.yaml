@@ -1,10 +1,15 @@
 schemaVersion: 1
 id: factory
 flow:
+  - id: full-search-window
+    tool: search.window@1
+    with: {start: 0, limit: 0}
   - id: normalize
     call: input/prepare-production
   - id: transport-options
     tool: transport.enumerate@1
+    # 只影响大接线图的有限搜索顺序；所有原档位、制造链及后续独立容量规则保留。
+    with: {preferFewerRoutesAbove: 512, workloadRowSpan: 32}
   - id: transport-attempts
     candidates:
       selection: first

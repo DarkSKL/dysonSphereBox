@@ -100,6 +100,8 @@ float gridLine(float coord, float width) {
 
 /** 建筑实例：游戏原生底色 / 自发光贴图 + 状态（可见度、闪光、全息、选中） */
 export const BUILDING_VERTEX = /* glsl */ `
+attribute float aStage;
+uniform vec4 uStages[10];
 attribute vec4 aState;
 attribute float aFail;
 varying vec3 vWorld;
@@ -107,15 +109,17 @@ varying vec2 vUv;
 varying vec4 vState;
 varying float vFail;
 void main() {
+  vec4 stage = uStages[int(clamp(aStage, 0.0, 9.0) + 0.5)];
   vec4 world = vec4(position, 1.0);
   #ifdef USE_INSTANCING
     world = instanceMatrix * world;
   #endif
+  world.xyz += stage.xyz;
   world = modelMatrix * world;
   vWorld = world.xyz;
   vUv = uv;
   vState = aState;
-  vFail = aFail;
+  vFail = max(aFail, stage.w);
   gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
@@ -290,6 +294,8 @@ void main() {
 
 /** 传送带：共享端点截面连接带面，箭头沿整条路径连续流动。 */
 export const BELT_VERTEX = /* glsl */ `
+attribute float aStage;
+uniform vec4 uStages[10];
 attribute vec4 aState;
 attribute float aColor;
 attribute vec2 aFlow;
@@ -307,6 +313,7 @@ varying float vFlow;
 varying float vFail;
 varying float vSteep;
 void main() {
+  vec4 stage = uStages[int(clamp(aStage, 0.0, 9.0) + 0.5)];
   vec4 world = vec4(position, 1.0);
   float along = position.x + 0.5;
   #ifdef USE_INSTANCING
@@ -328,13 +335,14 @@ void main() {
   #else
     vSteep = 0.0;
   #endif
+  world.xyz += stage.xyz;
   world = modelMatrix * world;
   vWorld = world.xyz;
   vLocal = position;
   vTier = uTiers[int(clamp(aColor, 0.0, 2.0) + 0.5)];
   vState = aState;
   vFlow = aFlow.x + along * aFlow.y;
-  vFail = aFail;
+  vFail = max(aFail, stage.w);
   gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
@@ -435,16 +443,20 @@ void main() {
 
 /** 柔和的圆角方形投影，贴在地面上 */
 export const SHADOW_VERTEX = /* glsl */ `
+attribute float aStage;
+uniform vec4 uStages[10];
 attribute float aShadow;
 varying vec2 vUv;
 varying float vStrength;
 void main() {
+  vec4 stage = uStages[int(clamp(aStage, 0.0, 9.0) + 0.5)];
   vUv = uv;
-  vStrength = aShadow;
+  vStrength = stage.y < -1.0 ? 0.0 : aShadow;
   vec4 world = vec4(position, 1.0);
   #ifdef USE_INSTANCING
     world = instanceMatrix * world;
   #endif
+  world.xz += stage.xz;
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * world;
 }
 `;
@@ -470,6 +482,8 @@ void main() {
  * 不写深度也不测深度：图标始终浮在建筑上方，由 aIcon.x 控制整体透明度（含退场淡出）。
  */
 export const ICON_VERTEX = /* glsl */ `
+attribute float aStage;
+uniform vec4 uStages[10];
 attribute vec4 aRect;
 attribute vec2 aIcon;
 uniform float uWorldPerPixel;
@@ -483,6 +497,7 @@ varying vec2 vIcon;
 varying float vWorldY;
 varying float vFade;
 void main() {
+  vec4 stage = uStages[int(clamp(aStage, 0.0, 9.0) + 0.5)];
   vec3 anchor = vec3(0.0);
   float size = 1.0;
   #ifdef USE_INSTANCING
@@ -495,11 +510,11 @@ void main() {
   float pixel = max(uWorldPerPixel, 1e-5);
   vFade = smoothstep(uIconFade.x, uIconFade.y, size / pixel);
   size = clamp(size, uIconPx.x * pixel, uIconPx.y * pixel);
-  vec3 base = (modelMatrix * vec4(anchor, 1.0)).xyz;
+  vec3 base = (modelMatrix * vec4(anchor + stage.xyz, 1.0)).xyz;
   vec3 world = base + right * (position.x * size) + up * ((position.y + 0.5) * size);
   vLocal = position.xy;
   vRect = aRect;
-  vIcon = aIcon;
+  vIcon = vec2(aIcon.x, max(aIcon.y, stage.w));
   vWorldY = world.y;
   gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
 }

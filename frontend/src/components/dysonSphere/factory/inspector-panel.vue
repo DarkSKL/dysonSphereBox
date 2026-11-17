@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ArrowRightLeft, Factory, PackageOpen, Settings2, Trash2, X} from '@lucide/vue'
-import {computed, ref} from 'vue'
+import {computed} from 'vue'
 import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
 import type {FlowNodeData} from '../../../pages/services/dysonSphere/factory-graph'
 import IconSelect from './icon-select.vue'
@@ -12,17 +12,30 @@ import {generationDebugOptions} from '../../../composables/dysonSphere/useGenera
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
 const emit = defineEmits<{(event: 'clear'): void}>()
 
-// 设备类型方块组：每组单选；传送带与分拣器写入布局等级，生产设施写入对应类型全部配方的设备选择。
+// 设备类型方块组：每组单选；传送带与分拣器写入布局等级，生产设施写入对应类型全部配方的设备选择，增产剂写入全部支持加速配方的喷涂点数。
 const beltTiles = [{label: '传送带', value: 1, icon: '传送带'}, {label: '高速传送带', value: 2, icon: '高速传送带'}, {label: '极速传送带', value: 3, icon: '急速传送带'}]
 const inserterTiles = [{label: '分拣器', value: 1, icon: '分拣器'}, {label: '高速分拣器', value: 2, icon: '高速分拣器'}, {label: '极速分拣器', value: 3, icon: '极速分拣器'}, {label: '集装分拣器', value: 4, icon: '集装分拣器'}]
+// 增产剂方块：value 为增产点数，0 为不喷涂（图集追加的禁用图标），1/2/4 对应 Mk.I/II/III；三档暂时统一采用加速。
+const sprayTiles = [{label: '不喷涂', value: 0, icon: 'proliferator-disabled'}, {label: '增产剂 Mk.I（加速）', value: 1, icon: '增产剂 Mk.I'}, {label: '增产剂 Mk.II（加速）', value: 2, icon: '增产剂 Mk.II'}, {label: '增产剂 Mk.III（加速）', value: 4, icon: '增产剂 Mk.III'}]
 const equipmentGroups = computed(() => [
   {key: 'belt', label: '传送带', tiles: beltTiles, selected: props.w.layout.beltLv as number | null, pick: (value: number) => { props.w.layout.beltLv = value }},
   {key: 'inserter', label: '分拣器', tiles: inserterTiles, selected: props.w.layout.inserterLv as number | null, pick: (value: number) => { props.w.layout.inserterLv = value }},
   {key: 'smelter', label: '熔炉', tiles: props.w.machineChoices(1), selected: props.w.selectedMachine(1), pick: (value: number) => props.w.selectMachine(1, value)},
   {key: 'assembler', label: '工作台', tiles: props.w.machineChoices(4), selected: props.w.selectedMachine(4), pick: (value: number) => props.w.selectMachine(4, value)},
   {key: 'lab', label: '矩阵研究站', tiles: props.w.machineChoices(15), selected: props.w.selectedMachine(15), pick: (value: number) => props.w.selectMachine(15, value)},
-  {key: 'chemical', label: '化工厂', tiles: props.w.machineChoices(2), selected: props.w.selectedMachine(2), pick: (value: number) => props.w.selectMachine(2, value)}
+  {key: 'chemical', label: '化工厂', tiles: props.w.machineChoices(2), selected: props.w.selectedMachine(2), pick: (value: number) => props.w.selectMachine(2, value)},
+  {key: 'spray', label: '增产剂', tiles: sprayTiles, selected: props.w.selectedSprayPoints, pick: (value: number) => props.w.selectSprayPoints(value), disabled: props.w.loadingDataset || !props.w.detail}
 ].filter(group => group.tiles.length > 0))
+// 生成选项开关：供电设施、流速监测器与中转缓存同排三个图标按钮，点击切换启用，启用时边框高亮、关闭时保持灰暗边框；图标取蓝图实际放置的设施，只影响蓝图生成，不参与量化。
+type FacilityFlag = 'needPower' | 'enableFlowMonitor' | 'enableIntermediateBuffer'
+type FacilityToggle = {key: FacilityFlag; label: string; icon: string; hint?: string}
+const facilityToggles: FacilityToggle[] = [
+  {key: 'needPower', label: '供电设施', icon: '电力感应塔'},
+  {key: 'enableFlowMonitor', label: '流速监测器', icon: '流速监测器'},
+  {key: 'enableIntermediateBuffer', label: '中转缓存', icon: '小型储物仓', hint: '在产物主带旁增加缓存箱/储液罐：箱子从同一主带取料、补回，主带保持直通；储液罐采用优先直行的溢流旁路。超密度布局会预留箱罐顶部扩建空间。缓存速度不限制主带运力，有限库存只缓解短时积压，持续过剩仍需外运。'},
+]
+// 悬停提示带当前状态；中转缓存附带原勾选项下的缓存说明。
+const facilityTitle = (facility: FacilityToggle): string => `${facility.label}：${props.w.layout[facility.key] ? '已开启' : '已关闭'}${facility.hint ? `。${facility.hint}` : ''}`
 const merges = [{label: '纵向单列', value: 1, icon: ''}, {label: '按宽度换列', value: 2, icon: ''}]
 const densityOptions: {label: string; value: 'standard' | 'dense'; code: string}[] = [{label: '普通', value: 'standard', code: 'STD'}, {label: '超密度', value: 'dense', code: 'DENSE'}]
 // 超密度经纬位置由球体选择器呈现；纬带几何来自后端选项，未提供选项时值为空以显示占位提示。
@@ -43,16 +56,6 @@ const override = computed(() => props.w.overrideFor(recipe.value))
 const production = computed(() => props.node?.production)
 const capacity = computed(() => props.node?.capacity)
 const byproducts = computed(() => (props.w.plan?.byproducts ?? []).filter(balance => !props.node || balance.itemId === props.node.itemId || props.node.production?.outputs.some(output => output.itemId === balance.itemId)))
-const sprayPreset = ref(2)
-const sprayPoints = ref(4)
-const sprayPresets = [{label: '额外产出优先', value: 2}, {label: '统一加速', value: 1}, {label: '不喷涂', value: 0}]
-// 批量喷涂只选择各配方支持的模式，之后仍可逐配方调整；同一次点击由工作区防抖合并重算。
-const applySprayScheme = (): void => {
-  for (const recipe of props.w.detail?.recipes ?? []) {
-    const productionMode = sprayPreset.value === 2 && (recipe.proliferator & 2) ? 2 : sprayPreset.value > 0 && (recipe.proliferator & 1) ? 1 : 0
-    props.w.updateOverride(recipe, {productionMode, increasePoints: productionMode > 0 ? sprayPoints.value : 0})
-  }
-}
 const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入', production: '产线', target: '目标产物', leftover: '剩余副产物'}
 const importedRows = computed(() => {
   const rows = new Map<number, {recipeId: number; count: number; first: number; outputs: string}>()
@@ -166,10 +169,9 @@ const importedRows = computed(() => {
           <button type="button" class="target-add" :disabled="w.targets.length >= 100" @click="w.addTarget">＋ 添加目标</button>
         </div>
 
-        <h3>计算</h3>
-        <div class="field-row">
-          <label class="field">采矿倍率<n-input-number v-model:value="w.miningSpeed" size="small" :min="0.01" :step="0.1" /></label>
-          <label v-if="!w.automaticSurface" class="field">小数位<n-input-number v-model:value="w.fixedNum" size="small" :min="0" :max="8" :precision="0" /></label>
+        <h3 v-if="!w.automaticSurface">计算</h3>
+        <div v-if="!w.automaticSurface" class="field-row">
+          <label class="field">小数位<n-input-number v-model:value="w.fixedNum" size="small" :min="0" :max="8" :precision="0" /></label>
         </div>
         <div v-if="!w.automaticSurface" class="field-row">
           <label class="field">占地权重<n-input-number v-model:value="w.spaceCost" size="small" :min="0" /></label>
@@ -182,13 +184,6 @@ const importedRows = computed(() => {
           </div>
         </template>
 
-        <h3>批量喷涂方案</h3>
-        <div class="field-row">
-          <label class="field">模式<IconSelect v-model:value="sprayPreset" size="small" :options="sprayPresets" /></label>
-          <label class="field">点数<IconSelect v-model:value="sprayPoints" size="small" :disabled="sprayPreset === 0" :options="w.pointOptions.filter(option => option.value > 0)" /></label>
-        </div>
-        <p class="capacity-hint">额外产出不可用时采用加速；不支持喷涂的配方保持不喷涂。应用后仍可逐配方调整，同配方的联产物共享设置。</p>
-        <n-button size="small" block secondary :disabled="w.loadingDataset" @click="applySprayScheme">应用到全部配方</n-button>
         <ByproductBalance :balances="byproducts" :format="w.number" :stale="w.quantStale" />
 
         <h3><Factory :size="13" />蓝图布局</h3>
@@ -202,13 +197,23 @@ const importedRows = computed(() => {
           </div>
         </div>
         <!-- ~ 设备类型 -->
-        <!-- * 说明：传送带、分拣器、熔炉、工作台、矩阵研究站和化工厂各占一行，沿用图标单选。 -->
-        <!-- * 交互：切换等级后更新布局参数或同类配方设备，触发已有的自动量化与蓝图生成。 -->
-        <!-- * 依赖：equipmentGroups 从工作区数据集读取可选生产设施；边界：不展示数据集中没有的设备组。 -->
+        <!-- * 说明：传送带、分拣器、熔炉、工作台、矩阵研究站、化工厂和增产剂各占一行，沿用图标单选；增产剂为不喷涂及 Mk.I/II/III 三档，三档暂时统一采用加速。 -->
+        <!-- * 交互：切换后更新布局等级、同类配方设备或全部支持加速配方的喷涂，触发已有的自动量化与蓝图生成；选中产线后仍可逐配方调整喷涂。 -->
+        <!-- * 依赖：equipmentGroups 从工作区数据集读取可选生产设施与统一喷涂档位；不喷涂图标为图集追加格。 -->
+        <!-- * 边界：不展示数据集中没有的设备组；各配方喷涂不一致时增产剂不高亮任何档位，数据集未就绪时禁用。 -->
         <div v-for="group in equipmentGroups" :key="group.key" class="field equip-field">{{ group.label }}
           <div class="tile-group" role="radiogroup" :aria-label="group.label">
-            <button v-for="tile in group.tiles" :key="tile.value" type="button" role="radio" class="tile" :class="{'is-active': group.selected === tile.value}" :aria-checked="group.selected === tile.value" :title="tile.label" :aria-label="tile.label" @click="group.pick(tile.value)"><ItemIcon :name="tile.icon" :size="22" /></button>
+            <button v-for="tile in group.tiles" :key="tile.value" type="button" role="radio" class="tile" :class="{'is-active': group.selected === tile.value}" :aria-checked="group.selected === tile.value" :disabled="group.disabled" :title="tile.label" :aria-label="tile.label" @click="group.pick(tile.value)"><ItemIcon :name="tile.icon" :size="22" /></button>
           </div>
+        </div>
+        <!-- ~ 生成选项 -->
+        <!-- * 说明：供电设施、流速监测器与中转缓存由勾选框改为同一排三个图标按钮，各自独立开关。 -->
+        <!-- * 交互：点击切换启用并触发已有的蓝图重新生成；启用时边框高亮，关闭时边框灰暗；悬停查看当前状态，中转缓存附带缓存说明。 -->
+        <!-- * 依赖：facilityToggles 读写 w.layout 的 needPower、enableFlowMonitor、enableIntermediateBuffer。 -->
+        <!-- * 边界：只改变蓝图中的附加建筑，不参与量化；其后的球面策略、研究站层数与调试模式同属生成参数。 -->
+        <h3>生成选项</h3>
+        <div class="tile-group toggle-group" role="group" aria-label="生成选项">
+          <button v-for="facility in facilityToggles" :key="facility.key" type="button" class="tile" :class="{'is-active': w.layout[facility.key]}" :aria-pressed="w.layout[facility.key]" :title="facilityTitle(facility)" :aria-label="facility.label" @click="w.layout[facility.key] = !w.layout[facility.key]"><ItemIcon :name="facility.icon" :size="22" /></button>
         </div>
         <template v-if="w.density === 'dense'">
           <!-- 经纬位置来自后端能力目录；旧后端不提供伪造选项。 -->
@@ -223,8 +228,6 @@ const importedRows = computed(() => {
             <label class="field">球面策略<IconSelect v-model:value="surfaceMode" size="small" :options="surfaceModes" /></label>
           </div>
           <n-checkbox v-if="w.automaticSurface" v-model:checked="w.surfaceLayout.expandAdjacent" size="small">容量不足时将后续产线扩展到邻圈</n-checkbox>
-          <p v-if="w.automaticSurface" class="surface-hint">适用于原版星球，按纬圈容量安排完整产线。</p>
-          <p v-else class="surface-hint">按平面网格排列产线，不进行纬圈适配。</p>
         </template>
         <div class="field-row">
           <label v-if="w.density !== 'dense' && !w.automaticSurface" class="field">单列机器<n-input-number v-model:value="w.layout.maxMachineInALine" size="small" :min="1" :max="200" /></label>
@@ -236,12 +239,6 @@ const importedRows = computed(() => {
         <div v-if="w.density !== 'dense' && !w.automaticSurface" class="field-row">
           <label class="field">街区宽度<n-input-number v-model:value="w.layout.blockWidthLimit" size="small" :min="10" :max="500" /></label>
           <label class="field">排列<IconSelect v-model:value="w.layout.mergeType" size="small" :options="merges" /></label>
-        </div>
-        <div class="flags">
-          <n-checkbox v-model:checked="w.layout.needPower" size="small">生成供电设施</n-checkbox>
-          <n-checkbox v-model:checked="w.layout.enableFlowMonitor" size="small">生成流速监测器</n-checkbox>
-          <n-checkbox v-model:checked="w.layout.enableIntermediateBuffer" size="small">生成中转缓存箱/储液罐</n-checkbox>
-          <p v-if="w.layout.enableIntermediateBuffer" class="capacity-hint">在产物主带旁增加缓存：箱子从同一主带取料、补回，主带保持直通；储液罐采用优先直行的溢流旁路。超密度布局会预留箱罐顶部扩建空间。缓存速度不限制主带运力，有限库存只缓解短时积压，持续过剩仍需外运。</p>
         </div>
       </div>
     </template>
@@ -262,7 +259,6 @@ h3 { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(-
 .capacity-hint { margin: 0; color: var(--ds-text-secondary); font-size: 10px; line-height: 1.6; }
 .region-error { margin: 0; color: var(--ds-warning); font-size: 11px; line-height: 1.6; }
 .capacity-details :deep(.n-collapse-item__header-main) { font-size: 11px; }
-.flags { display: grid; gap: 4px; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ds-text-secondary); font-size: 11px; }
 .switch-row small { margin-left: 6px; color: var(--ds-text-muted); font-size: 10px; }
 // 密度滑块：轨道只用底色与中缝刻线区分，滑块沿用括角卡片（与图标选择栏同尺寸），底部光条在暗色主题下带品牌辉光。
@@ -274,7 +270,10 @@ h3 { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(-
 .equip-field { flex: none; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
 .tile-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
 .tile { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--ds-border-subtle); border-radius: 2px; padding: 0; background: var(--ds-hover-bg); cursor: pointer; transition: border-color 150ms, background 150ms; }
-.tile:hover { border-color: var(--ds-text-muted); }
+.tile:hover:not(:disabled) { border-color: var(--ds-text-muted); }
+.tile:disabled { cursor: not-allowed; opacity: .4; }
+// 生成选项开关没有左侧名称，按钮紧随标题左对齐。
+.toggle-group { justify-content: flex-start; }
 .tile.is-active { border-color: var(--ds-brand); background: var(--ds-active-bg); box-shadow: var(--ds-active-glow); }
 .density-option { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 0 6px; background: transparent; color: var(--ds-text-muted); font-size: 12px; line-height: 1; cursor: pointer; transition: color 150ms; }
 .density-option:hover { color: var(--ds-text-secondary); }

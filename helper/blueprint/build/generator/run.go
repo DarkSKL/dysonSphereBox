@@ -127,7 +127,7 @@ func GenerateDetailed(parent context.Context, req core.Request) (result core.Res
 		ObserveExecution: WorkflowExecutionObserver(ctx),
 		Parallel:         observer.CandidateSlots(parallel),
 		Score:            func(*workflow.FrozenSnapshot) ([]float64, error) { return []float64{0}, nil },
-		Comparators:      map[string]workflow.Comparator{"layout": r.layoutComparison, "station-refinement": r.refinementComparison, "surface": r.surfaceComparison},
+		Comparators:      map[string]workflow.Comparator{"layout": r.layoutComparison, "station-refinement": r.refinementComparison},
 		Observe: func(event workflow.CandidateEvent) error {
 			var verified *core.VerifiedSnapshot
 			if event.Snapshot != nil {

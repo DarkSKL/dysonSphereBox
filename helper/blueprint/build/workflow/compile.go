@@ -578,6 +578,12 @@ func (c *compiler) node(n Node, doc *Document, inputs map[string]Parameter, s co
 // applyContract 职责：模拟内容及依赖失效；使用：静态路径验证；边界：不把仅声明但未实际写入视为运行成功。
 func applyContract(s compileState, spec ToolSpec) compileState {
 	s = s.copy()
+	previous := map[*artifactDef]map[*artifactDef]bool{}
+	for _, artifact := range spec.Provides {
+		if contains(spec.Reads, artifact) {
+			previous[artifact.artifact()] = s.deps[artifact.artifact()]
+		}
+	}
 	changed := map[*artifactDef]bool{}
 	for _, a := range append(append([]Artifact{}, spec.Writes...), spec.Invalidates...) {
 		changed[a.artifact()] = true
@@ -617,6 +623,11 @@ func applyContract(s compileState, spec ToolSpec) compileState {
 		d := a.artifact()
 		s.available[d] = true
 		s.deps[d] = map[*artifactDef]bool{}
+		for dependency := range previous[d] {
+			if dependency != d {
+				s.deps[d][dependency] = true
+			}
+		}
 		for _, req := range spec.Requires {
 			if req.artifact() != d {
 				s.deps[d][req.artifact()] = true

@@ -4,6 +4,8 @@
 https://github.com/factoriolab/factoriolab/tree/d3a6e0eeb98a415a85ed544ee66ff7b8cde1810f/public/data/dsp
 分类图标来源：戴森球计划 BWIKI
 https://wiki.biligame.com/dsp/首页
+本地图集追加：禁用增产剂 Mk.I，左上角坐标 (896, 1408)，尺寸 64×64；对应独立图片为 /quant-icons/proliferator-mk1-disabled.png。
+重新执行图鉴素材导入会覆盖图集，需重新追加此图标。
 原始图片地址与 SHA-256：项目 scripts/encyclopedia/source-lock.json
 FactorioLab 仓库许可证文本：同目录 LICENSE-FactorioLab.txt
 

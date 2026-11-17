@@ -3,7 +3,10 @@ package generator
 // 文件职责：注册逐项输入准备工具，声明真实读写与证据依赖。
 // 使用：主registry追加inputToolSpecs；边界：工具不调用引擎或旧整段Prepare，输入规则不授予工厂实体的最终验证权限。
 
-import "DysonSphereBox/helper/blueprint/build/workflow"
+import (
+	core "DysonSphereBox/helper/blueprint/build/core"
+	"DysonSphereBox/helper/blueprint/build/workflow"
+)
 
 // inputToolSpecs 职责：绑定独立inputTools方法和固定阶段键；使用：生产registry初始化；边界：同一验证/预算方法用不同不可变receiver区分初次与运输候选，不能动态切换权限。
 func inputToolSpecs(a artifacts, implementation string) []workflow.ToolSpec {
@@ -31,6 +34,7 @@ func inputToolSpecs(a artifacts, implementation string) []workflow.ToolSpec {
 		spec("input.compose-transport@1", "ComposeTransport", retry, []workflow.Artifact{a.base.Ref(), stages.retryPlan.Ref(), stages.retryCapacity.Ref(), stages.retryWorkload.Ref()}, one(a.transport.Ref())),
 	}
 	// 初次阶段在最后一个真实消费者完成后消费私有产物；版本墓碑保留依赖，禁止后续读取已释放值。
+	result[0].Defaults = defaults(core.LayoutShapePolicy{MaxAspect: core.DefaultLayoutAcceptedAspect})
 	result[0].Consumes = one(a.request.Ref())
 	result[3].Consumes = append([]workflow.Artifact(nil), result[3].Requires...)
 	result[6].Consumes = one(stages.production.Ref())

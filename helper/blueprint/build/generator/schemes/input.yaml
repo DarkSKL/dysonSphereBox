@@ -1,10 +1,14 @@
 schemaVersion: 1
 id: input
+# 单任务形状策略仅在归一入口读取，后续候选统一继承。
+parameters:
+  maxAspect: 2.5
 subflows:
   prepare-production:
     flow:
       - id: normalize-request
         tool: input.normalize@1
+        with: {maxAspect: {$param: maxAspect}}
       - id: load-dataset-facts
         tool: input.load-data@1
       - id: validate-plan-source

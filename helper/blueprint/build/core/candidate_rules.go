@@ -32,13 +32,18 @@ func finalRuleFingerprint(ctx context.Context, req Request, encoding *surfaceEnc
 		state = &surfaceState{encoding.rootCoordinates, encoding.planar, encoding.packed, encoding.areas, encoding.latitudeOffsets, encoding.longitudeScales, encoding.plan}
 	}
 	// 最终规则只读取已编码记录和上面的坐标信息；byBuilding、重定位源记录及寻锚候选仅用于此前的装配/编码。
+	// 私有区域许可也是规则输入；缺省请求仍编码原Request以保持旧key兼容。
+	var requestIdentity any = req
+	if l := req.SurfaceLayout; l != nil && (l.offsetWindow || l.adjacentDepth != 0 || l.nativeBand != nil || l.polarRoot) {
+		requestIdentity = inputRequestIdentity(req)
+	}
 	hash := sha256.New()
 	err := json.NewEncoder(hash).Encode(struct {
-		Request         Request
+		Request         any
 		Surface         *surfaceState
 		Records         []blueprint.Building
 		DenseCollisions bool
-	}{req, state, records, usesDenseBeltCollisions(ctx)})
+	}{requestIdentity, state, records, usesDenseBeltCollisions(ctx)})
 	var key [32]byte
 	copy(key[:], hash.Sum(nil))
 	return key, err

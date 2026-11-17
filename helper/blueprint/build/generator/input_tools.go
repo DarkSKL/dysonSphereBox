@@ -22,10 +22,14 @@ type inputTools struct {
 }
 
 // NormalizeRequest 职责：调用唯一请求/设置/模式归一核心；使用：输入子流第一步；边界：NaN和非法Mode由此正式节点报告，克隆器不提前拦截。
-func (t *inputTools) NormalizeRequest(ctx context.Context, s *workflow.StepContext, _ emptyArgs) error {
+func (t *inputTools) NormalizeRequest(ctx context.Context, s *workflow.StepContext, args core.LayoutShapePolicy) error {
 	request, err := workflow.Read(s, t.keys.request)
 	if err != nil {
 		return err
+	}
+	request, err = core.ConfigureLayoutShape(request, args)
+	if err != nil {
+		return fmt.Errorf("形状策略配置无效: %w", err)
 	}
 	value, err := core.NormalizeInputRequest(ctx, request)
 	if err != nil {

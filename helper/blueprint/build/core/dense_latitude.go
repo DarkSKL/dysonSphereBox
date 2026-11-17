@@ -214,7 +214,7 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "所选建造区域没有经过球面布局校验"}
 	}
 	selection, _ := densityLatitudeSelectionFor(layout.LatitudeZone)
-	regions := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent)
+	regions := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent, layout.adjacentDepth)
 	allowedLow, allowedHigh := band.low, band.high
 	if layout.ExpandAdjacent {
 		allowedLow, allowedHigh = regions[0].low, regions[len(regions)-1].high
@@ -224,7 +224,7 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 		if layout.polarRoot {
 			validSegments = false
 			selection, _ := densityLatitudeSelectionFor(layout.LatitudeZone)
-			for _, native := range denseLatitudeAllowedBands(selection, layout.ExpandAdjacent) {
+			for _, native := range denseLatitudeAllowedBands(selection, layout.ExpandAdjacent, layout.adjacentDepth) {
 				if area.MinLatitudeGrid >= native.low && area.MaxLatitudeGrid <= native.high && area.LongitudeSegments == native.segments {
 					validSegments = true
 					break
@@ -235,7 +235,7 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 			return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("完整蓝图超出%s，请降低产量或选择更宽的建造位置", label)}
 		}
 	}
-	if selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone); ok && (selection.tier == 5 || layout.polarRoot) {
+	if selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone); ok && (selection.tier == 5 || layout.polarRoot || layout.offsetWindow) {
 		regions := densityLatitudeTierBands(selection.tier, selection.hemisphere, layout.GridSegment)
 		south, north := regions[0].low, regions[len(regions)-1].high
 		first, last := plan.AnchorLatitudeGrid, plan.AnchorLatitudeGrid+plan.LayoutHeight-1
@@ -245,6 +245,7 @@ func validateDensityLatitudePlan(layout *SurfaceLayout, plan *SurfacePlan) error
 		} else if selection.position == "north" {
 			valid = last <= north && north-last <= 4
 		}
+		valid = denseOffsetWindowPlanValid(layout, selection, first, last, valid)
 		if !valid {
 			return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: "球面候选偏离所选中心或边缘，拒绝以其它位置代替"}
 		}

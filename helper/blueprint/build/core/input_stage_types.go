@@ -63,9 +63,13 @@ func inputStageCause(ctx context.Context, err error) error {
 // inputRequestIdentity 职责：补齐请求JSON以外的私有选区内容；使用：阶段指纹；边界：不计算几何、不改变内部选区。
 func inputRequestIdentity(request Request) any {
 	var band [3]int
+	depth := 0
 	set, root := false, false
+	offset := false
 	if request.SurfaceLayout != nil {
 		root = request.SurfaceLayout.polarRoot
+		depth = request.SurfaceLayout.adjacentDepth
+		offset = request.SurfaceLayout.offsetWindow
 		if request.SurfaceLayout.nativeBand != nil {
 			set = true
 			b := request.SurfaceLayout.nativeBand
@@ -76,7 +80,10 @@ func inputRequestIdentity(request Request) any {
 		Request            Request
 		NativeBand         [3]int
 		BandSet, PolarRoot bool
-	}{request, band, set, root}
+		AdjacentDepth      int     `json:"adjacentDepth,omitempty"`
+		OffsetWindow       bool    `json:"offsetWindow,omitempty"`
+		AcceptedAspect     float64 `json:"acceptedAspect"`
+	}{request, band, set, root, depth, offset, request.acceptedAspect}
 }
 
 // NormalizedInputRequest 职责：保存独立且已规范的请求/设置/能力选择；使用：数据事实和来源核对；边界：尚未信任生产计划。

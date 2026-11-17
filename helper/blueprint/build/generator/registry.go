@@ -109,7 +109,7 @@ func newRegistry(a artifacts) (*workflow.Registry, error) {
 	}
 	one := func(v workflow.Artifact) []workflow.Artifact { return []workflow.Artifact{v} }
 	specs := []workflow.ToolSpec{
-		spec("transport.enumerate@1", "PlanTransport", one(a.base.Ref()), one(a.transportSpecs.Ref()), emptyArgs{}, workflow.Transform),
+		spec("transport.enumerate@1", "PlanTransport", one(a.base.Ref()), one(a.transportSpecs.Ref()), core.TransportSearchOptions{}, workflow.Transform),
 		spec("surface.enumerate@1", "PlanSurface", one(a.transport.Ref()), one(a.surfaceSpecs.Ref()), core.DefaultSurfaceSearchOptions(), workflow.Transform),
 		spec("surface.prepare@1", "ApplySurface", []workflow.Artifact{a.transport.Ref(), a.surfaceSpecs.Ref()}, one(a.input.Ref()), indexArgs{}, workflow.Transform),
 		spec("connected.enumerate@1", "PlanConnected", one(a.input.Ref()), one(a.connected.Ref()), core.DefaultConnectedSearchOptions(), workflow.Transform),
@@ -124,6 +124,7 @@ func newRegistry(a artifacts) (*workflow.Registry, error) {
 		spec("station.assemble-spec@1", "AssembleStationSpec", one(a.input.Ref()), []workflow.Artifact{a.choice.Ref(), a.geometryStages.assembly.Ref()}, refinementSpecArgs{}, workflow.Transform),
 		spec("factory.select@1", "SelectValidated", []workflow.Artifact{a.verified.Ref(), a.choice.Ref()}, one(a.selected.Ref()), emptyArgs{}, workflow.Validate),
 		spec("factory.check-shape@1", "CheckShape", one(a.selected.Ref()), nil, emptyArgs{}, workflow.Validate),
+		spec("factory.check-candidate-shape@1", "CheckCandidateShape", one(a.verified.Ref()), nil, emptyArgs{}, workflow.Validate),
 		spec("geometry.describe-regions@1", "DescribeRegions", one(a.selected.Ref()), one(a.regions.Ref()), emptyArgs{}, workflow.Diagnostic),
 		spec("geometry.check-region@1", "CheckRegion", one(a.selected.Ref()), one(a.regionReport.Ref()), core.RegionCheckOptions{}, workflow.Diagnostic),
 		spec("factory.validate-regions@1", "ValidateRegions", one(a.selected.Ref()), one(a.approved.Ref()), emptyArgs{}, workflow.Validate),
@@ -134,6 +135,7 @@ func newRegistry(a artifacts) (*workflow.Registry, error) {
 	specs = append(specs, ruleToolSpecs(a, implementation)...)
 	specs = append(specs, resultToolSpecs(a, implementation)...)
 	specs = append(specs, modeToolSpecs(a, implementation)...)
+	specs = append(specs, candidateWindowSpecs(a, implementation)...)
 	validators := map[string]func(any) error{
 		"connected.enumerate@1":   workflow.ArgumentValidator(core.ValidateConnectedSearchOptions),
 		"distributor.enumerate@1": workflow.ArgumentValidator(core.ValidateDistributorSearchOptions),
@@ -158,6 +160,7 @@ func newRegistry(a artifacts) (*workflow.Registry, error) {
 		}
 	}
 	providers := []workflow.StateProvider{
+		candidatePassProvider(a.searchPasses),
 		distributorGroupProvider(a.distributor),
 		refinementProvider(a),
 		indexProvider("transport.candidates", a.transportSpecs), indexProvider("surface.candidates", a.surfaceSpecs), indexProvider("connected.candidates", a.connected), indexProvider("station.candidates", a.station), indexProvider("distributor.candidates", a.distributor), indexProvider("bus.candidates", a.bus),

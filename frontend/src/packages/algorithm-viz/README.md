@@ -163,7 +163,6 @@ src/
   defaults.ts       单位换算、速度范围、画质档位
   styles.ts         覆盖层样式与注入
   scene.ts          场景实现（队列节奏、对象动画、实例写入、交互、渲染循环）
-  mock.ts           演示数据 createDemoBatches
   internal/         调色板、等距相机、操作队列、对象姿态、覆盖层、数学工具、图标槽位簿记
   render/           着色器、模型库（KTX2 贴图）、实例池、方块平台、天空背景、投影与涟漪、世界图标
 ```

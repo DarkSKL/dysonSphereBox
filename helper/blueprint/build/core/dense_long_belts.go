@@ -1,6 +1,6 @@
 package build
 
-// 文件职责：把密铺全局路线的自由直线段重采样为最长1.5格的真实带链。
+// 文件职责：把密铺全局路线的自由直线段重采样为以1.5个名义赤道格长为米制目标的真实带链。
 // 使用：寻路完成、创建实体前；边界：保留端部三跳与转角，失败保留原路，不改变带等级或吞吐能力。
 
 import (
@@ -11,11 +11,14 @@ import (
 // denseLongBeltGridSpan 职责：给出自由直带的目标节点间距；使用：几何重采样；边界：仍受米制距离、球面终检和实际节点占位限制。
 const denseLongBeltGridSpan = 1.5
 
+// denseLongBeltTargetMeters 职责：将名义赤道格一次换算为物理采样目标；使用：所有纬度自由直带；边界：不代表当前原生坐标格数，仍受denseRouteMaximumSpan硬约束。
+const denseLongBeltTargetMeters = denseLongBeltGridSpan * planarGridLength
+
 // denseLongBeltLongitudeFactor 职责：按实际选区给出经向物理格宽的保守上界；使用：长带重采样前；边界：旧自动请求覆盖全星球，不以赤道格宽假设高纬或高架安全。
 func denseLongBeltLongitudeFactor(ctx context.Context) float64 {
 	if ctx != nil {
 		if root, _ := ctx.Value(densityPolarRootKey{}).(bool); root {
-			return 4
+			return math.Inf(1)
 		}
 	}
 	low, high := -250, 250
@@ -24,16 +27,30 @@ func denseLongBeltLongitudeFactor(ctx context.Context) float64 {
 		if zone, _ := ctx.Value(densityLatitudeKey{}).(string); zone != "" {
 			if band, _, err := densityContextBand(ctx, zone, defaultSurfaceGridSegment); err == nil {
 				low, high = band.low, band.high
-				if selection, ok := densityLatitudeSelectionFor(zone); ok && selection.tier >= 4 {
-					pole := math.Max(math.Abs(float64(low)), math.Abs(float64(high)))
-					nativeScale = float64(band.segments) / 200 / math.Cos(pole*math.Pi/500)
+				if selection, ok := densityLatitudeSelectionFor(zone); ok {
+					if expand, _ := ctx.Value(denseAdjacentLatitudeKey{}).(bool); expand {
+						bands := denseLatitudeAllowedBands(selection, true, denseAdjacentContextDepth(ctx))
+						if len(bands) > 0 {
+							low = min(low, bands[0].low)
+							high = max(high, bands[len(bands)-1].high)
+						}
+					}
+					if selection.tier >= 4 {
+						// 无真实frame时不能假定某一子带段数；用所有可能缩放的上界，极点未知则停止重采样。
+						pole := max(math.Abs(float64(low)), math.Abs(float64(high))) + 1
+						if pole >= 250 {
+							return math.Inf(1)
+						}
+						nativeScale = 1 / math.Cos(pole*math.Pi/500)
+					}
 				}
 			}
 		}
 	}
 	factor := 0.
-	for latitude := low; latitude <= high; latitude++ {
-		factor = math.Max(factor, math.Cos(float64(latitude)*2*math.Pi/1000)*200/float64(longitudeSegmentCount(latitude, 200)))
+	for latitude := max(-250, low-1); latitude <= min(250, high+1); latitude++ {
+		near := max(0, math.Abs(float64(latitude))-1)
+		factor = math.Max(factor, math.Cos(near*2*math.Pi/1000)*200/float64(longitudeSegmentCount(latitude, 200)))
 	}
 	return factor * nativeScale
 }
@@ -64,6 +81,7 @@ func (env *transportEnvironment) compactDenseLongRoute(points []vector, source, 
 	}
 	endLimit := len(full) - 4
 	result := append([]vector(nil), full[:4]...)
+	changes := []denseLongBeltChange{}
 	for start := 3; start < endLimit; {
 		end := start + 1
 		axis, direction := denseLongBeltAxis(full[start], full[end])
@@ -78,21 +96,16 @@ func (env *transportEnvironment) compactDenseLongRoute(points []vector, source, 
 		}
 		first, last := full[start], full[end]
 		distance := math.Abs(last.x-first.x) + math.Abs(last.y-first.y)
-		// 使用弧长上界保护高架和纬带格宽；选区变窄时不能把平面合法误当作球面长度合法。
-		metersPerGrid := (200.4 + math.Max(first.z, last.z)*1.3333333) * 2 * math.Pi / 1000
-		if axis == 0 {
-			factor := longitudeFactor
-			if frame := env.densePorts.polarFrame; frame != nil {
-				// 原生极区路线已定位：沿本条纬线计算真实弧长，避免统一最坏格距使长带失效。
-				latitude := (float64(frame.start) + first.y) * float64(frame.latitudeStep)
-				factor = math.Abs(math.Cos(latitude)) * float64(frame.longitudeStep) / (2 * math.Pi / 1000)
-			}
-			metersPerGrid *= factor
+		// 使用真实坐标度量换算米制目标；原生float32投影留1毫米计算余量，最终仍逐段执行原米制硬检查。
+		metersPerGrid, margin := env.denseLongBeltMetersPerGrid(first, last, axis, longitudeFactor)
+		if !finitePositive(metersPerGrid) {
+			return points, 0
 		}
-		span := math.Min(denseLongBeltGridSpan, denseRouteMaximumSpan/metersPerGrid)
+		span := (math.Min(denseLongBeltTargetMeters, denseRouteMaximumSpan) - margin) / metersPerGrid
 		count := max(1, int(math.Ceil(distance/span-1e-9)))
 		if axis >= 0 && count < end-start {
-			// 等分末段避免留下过短尾节；长度整除时直接得到1.5格节点间距。
+			changeStart := len(result)
+			// 等分末段避免留下过短尾节；实际格数由当前纬线和高度的米制格宽决定。
 			for n := 1; n <= count; n++ {
 				fraction := float64(n) / float64(count)
 				point := vector{first.x + (last.x-first.x)*fraction, first.y + (last.y-first.y)*fraction, first.z}
@@ -101,6 +114,7 @@ func (env *transportEnvironment) compactDenseLongRoute(points []vector, source, 
 				}
 				result = append(result, point)
 			}
+			changes = append(changes, denseLongBeltChange{start, end, append([]vector(nil), result[changeStart:]...)})
 		} else {
 			result = append(result, full[start+1:end+1]...)
 		}
@@ -110,13 +124,103 @@ func (env *transportEnvironment) compactDenseLongRoute(points []vector, source, 
 	if len(result) >= len(full) {
 		return points, 0
 	}
-	for _, point := range result[1 : len(result)-1] {
-		if env.reservedByOther(point, source, target) {
-			return points, 0
-		}
-	}
-	if !env.densePathClear(result, source, target) {
-		return points, 0
+	if !env.denseLongBeltCandidateClear(result, source, target) {
+		return env.denseLongBeltPartial(full, changes, source, target)
 	}
 	return result[1:], len(full) - len(result)
+}
+
+// denseLongBeltMetersPerGrid 职责：给出当前直段实际坐标的弧长度量和计算余量。
+// 使用：重采样前；边界：真实frame优先且不混用子Area步长，未知非原生缩放由保守factor约束，最终world检查不省略。
+func (env *transportEnvironment) denseLongBeltMetersPerGrid(first, last vector, axis int, longitudeFactor float64) (float64, float64) {
+	radius := 200.4 + max(first.z, last.z)*1.3333333
+	if frame := env.densePorts.polarFrame; frame != nil {
+		if axis == 0 {
+			latitude := float64(float32(frame.start)*frame.latitudeStep + float32(first.y)*frame.latitudeStep)
+			return radius * math.Abs(math.Cos(latitude)) * float64(frame.longitudeStep), .001
+		}
+		return radius * float64(frame.latitudeStep), .001
+	}
+	meters := radius * 2 * math.Pi / 1000
+	if axis == 0 {
+		meters *= longitudeFactor
+	}
+	return meters, 0
+}
+
+// denseLongBeltChange 职责：保存可独立撤回的自由直段采样；使用：有界混合候选；边界：原端点索引和坐标不变，不包含端三跳或拐点迁移。
+type denseLongBeltChange struct {
+	start, end int
+	points     []vector
+}
+
+// denseLongBeltCandidateClear 职责：对混合路线执行相同完整预留和物理检查；使用：每个拟接受候选；边界：不以局部成功替代整链净空及自距复核。
+func (env *transportEnvironment) denseLongBeltCandidateClear(points []vector, source, target *placed) bool {
+	for _, point := range points[1 : len(points)-1] {
+		if env.reservedByOther(point, source, target) {
+			return false
+		}
+	}
+	return env.densePathClear(points, source, target)
+}
+
+// denseLongBeltPartial 职责：全量重采样失败后，在最多八次完整检查内保留部分可用直段。
+// 使用：一个直段失败不应抹掉其它直段的合法收益；边界：每次接受的是完整混合路线，失败区间恢复原段，不改变间距、实体上限或A*预算。
+func (env *transportEnvironment) denseLongBeltPartial(full []vector, changes []denseLongBeltChange, source, target *placed) ([]vector, int) {
+	if len(changes) < 2 {
+		return full[1:], 0
+	}
+	enabled := make([]bool, len(changes))
+	middle := len(changes) / 2
+	stack := [][2]int{{middle, len(changes)}, {0, middle}}
+	var best []vector
+	for probes := 0; probes < 8 && len(stack) > 0; probes++ {
+		interval := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		for i := interval[0]; i < interval[1]; i++ {
+			enabled[i] = true
+		}
+		// 全量候选已由调用方证明失败。仍占用原预算位置并走相同拆分，省去重复构造和整链检查，不扩大搜索机会。
+		knownFailure := true
+		for _, active := range enabled {
+			knownFailure = knownFailure && active
+		}
+		if knownFailure {
+			for i := interval[0]; i < interval[1]; i++ {
+				enabled[i] = false
+			}
+			if interval[1]-interval[0] > 1 {
+				mid := (interval[0] + interval[1]) / 2
+				stack = append(stack, [2]int{mid, interval[1]}, [2]int{interval[0], mid})
+			}
+			continue
+		}
+		candidate := []vector{}
+		cursor := 0
+		for i, change := range changes {
+			candidate = append(candidate, full[cursor:change.start+1]...)
+			if enabled[i] {
+				candidate = append(candidate, change.points...)
+			} else {
+				candidate = append(candidate, full[change.start+1:change.end+1]...)
+			}
+			cursor = change.end + 1
+		}
+		candidate = append(candidate, full[cursor:]...)
+		if env.denseLongBeltCandidateClear(candidate, source, target) {
+			best = candidate
+			continue
+		}
+		for i := interval[0]; i < interval[1]; i++ {
+			enabled[i] = false
+		}
+		if interval[1]-interval[0] > 1 {
+			mid := (interval[0] + interval[1]) / 2
+			stack = append(stack, [2]int{mid, interval[1]}, [2]int{interval[0], mid})
+		}
+	}
+	if len(best) == 0 {
+		return full[1:], 0
+	}
+	return best[1:], len(full) - len(best)
 }

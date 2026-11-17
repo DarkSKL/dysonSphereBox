@@ -47,8 +47,11 @@ func cloneInputRequest(request Request) (Request, error) {
 	if err := json.Unmarshal(raw, &clone); err != nil {
 		return Request{}, err
 	}
+	clone.acceptedAspect = request.acceptedAspect
 	if request.SurfaceLayout != nil {
 		clone.SurfaceLayout.polarRoot = request.SurfaceLayout.polarRoot
+		clone.SurfaceLayout.adjacentDepth = request.SurfaceLayout.adjacentDepth
+		clone.SurfaceLayout.offsetWindow = request.SurfaceLayout.offsetWindow
 		if request.SurfaceLayout.nativeBand != nil {
 			band := *request.SurfaceLayout.nativeBand
 			clone.SurfaceLayout.nativeBand = &band

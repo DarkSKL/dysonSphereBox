@@ -7,7 +7,15 @@ import "context"
 
 // geometryContext 职责：明确保存当前候选的几何策略；使用：每个独立变换；边界：只包含具体值，不作为任意共享属性map。
 type geometryContext struct {
-	Rules                                                                                                    finalizationRuleContext
+	// OffsetWindow 职责：冻结当前偏移窗标记；使用：几何步骤恢复；边界：false保持旧语义。
+	OffsetWindow bool `json:"offsetWindow,omitempty"`
+	// AdjacentDepth 职责：冻结当前内部邻带深度；使用：布局/最终验证恢复；边界：0保持旧depth1。
+	AdjacentDepth int
+	// TurnLongRows 职责：冻结长行方向策略；使用：几何恢复；边界：不改变物理规则。
+	TurnLongRows bool
+	Rules        finalizationRuleContext
+	// LocalRectangleAspect 职责：冻结候选布局目标；使用：几何步骤恢复；边界：不是碰撞或形状阈值。
+	LocalRectangleAspect                                                                                     float64
 	Latitude                                                                                                 string
 	NativeBand                                                                                               surfacePackedBand
 	HasNativeBand                                                                                            bool
@@ -38,6 +46,10 @@ func captureGeometryContext(ctx context.Context) (geometryContext, error) {
 		MaterialNetworks: flag(denseMaterialNetworksKey{}), SharedStationInputs: flag(denseStationSharedInputsKey{}), SharedStationOutputs: flag(denseStationSharedOutputsKey{}), IndependentStations: flag(independentStationPlacementKey{}), StationInputAssignment: flag(stationInputAssignmentKey{}),
 		ChemicalFour: flag(chemicalFourKey{}), RefineryCollinear: flag(refineryCollinearKey{}), FlyPruneDisabled: flag(denseFlyFacilityPruneDisabledKey{}),
 	}
+	values.AdjacentDepth = denseAdjacentContextDepth(ctx)
+	values.OffsetWindow = denseOffsetContext(ctx)
+	values.TurnLongRows, _ = ctx.Value(denseLocalRectangleTurnKey{}).(bool)
+	values.LocalRectangleAspect, _ = ctx.Value(denseLocalRectangleAspectKey{}).(float64)
 	values.Latitude, _ = ctx.Value(densityLatitudeKey{}).(string)
 	values.NativeBand, values.HasNativeBand = ctx.Value(densityNativeBandKey{}).(surfacePackedBand)
 	values.Workload, _ = ctx.Value(generationWorkloadKey{}).(int)
@@ -56,7 +68,7 @@ type absentGeometryValue struct{}
 func (values geometryContext) apply(ctx context.Context) context.Context {
 	ctx = values.Rules.validationContext(ctx)
 	for _, entry := range []struct{ key, value any }{
-		{densityLatitudeKey{}, values.Latitude}, {densityPolarRootKey{}, values.PolarRoot}, {densityPolarMirrorKey{}, values.PolarMirror}, {densityPrototypeFootprintKey{}, values.PrototypeFootprint}, {denseAdjacentLatitudeKey{}, values.Adjacent},
+		{denseOffsetWindowKey{}, values.OffsetWindow}, {denseAdjacentDepthKey{}, values.AdjacentDepth}, {denseLocalRectangleTurnKey{}, values.TurnLongRows}, {denseLocalRectangleAspectKey{}, values.LocalRectangleAspect}, {densityLatitudeKey{}, values.Latitude}, {densityPolarRootKey{}, values.PolarRoot}, {densityPolarMirrorKey{}, values.PolarMirror}, {densityPrototypeFootprintKey{}, values.PrototypeFootprint}, {denseAdjacentLatitudeKey{}, values.Adjacent},
 		{generationWorkloadKey{}, values.Workload}, {denseNativeWorkloadKey{}, values.NativeWorkload}, {denseUnitPowerReserveKey{}, values.UnitPowerReserve}, {denseUnitPowerRequestedKey{}, values.UnitPowerRequested}, {denseBalancedFrameKey{}, values.BalancedFrame}, {denseGroundTracksKey{}, values.GroundTracks},
 		{denseBentRowsKey{}, values.BentRows}, {denseShortPairedOutputsKey{}, values.ShortPairedOutputs}, {denseProducerSplittersKey{}, values.ProducerSplitters}, {denseSpatialCompactKey{}, values.SpatialCompact}, {denseMaterialNetworksKey{}, values.MaterialNetworks},
 		{denseStationSharedInputsKey{}, values.SharedStationInputs}, {denseStationSharedOutputsKey{}, values.SharedStationOutputs}, {independentStationPlacementKey{}, values.IndependentStations}, {stationInputAssignmentKey{}, values.StationInputAssignment},

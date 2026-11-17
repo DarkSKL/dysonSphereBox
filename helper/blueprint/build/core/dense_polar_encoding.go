@@ -16,7 +16,7 @@ func (b *builder) preparePolarRootEncoding(ctx context.Context, layout *SurfaceL
 	if !ok {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "原生球面编码需要有效的五档选区"}
 	}
-	bands := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent)
+	bands := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent, layout.adjacentDepth)
 
 	if b.polarFrame == nil {
 		return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "目标球面路由没有固定的原生单元坐标"}

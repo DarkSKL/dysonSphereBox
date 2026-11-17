@@ -10,6 +10,8 @@ subflows:
       - id: bus-specs
         tool: bus.enumerate@1
         with: {tighten: {$state: mode.bus-tighten}}
+      - id: bus-window
+        tool: bus.window@1
       - id: bus-attempts
         candidates:
           comparator: layout

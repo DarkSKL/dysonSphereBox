@@ -102,7 +102,7 @@ func updateLayoutShapeMetrics(summary *LogisticsSummary, areas []blueprint.Area)
 	summary.Metrics.ShapeObjective = layoutShapeObjective(summary.Metrics)
 }
 
-// layoutShapeObjective 职责：将普通布局形状评分交给共同策略；使用：完整候选评分和摘要；边界：软代价不代替1.8验收分档，最终比较须调用BetterLayoutCandidate，缺失度量不能成为最优。
+// layoutShapeObjective 职责：将普通布局形状评分交给共同策略；使用：完整候选评分和摘要；边界：软代价不代替验收分档，最终比较须调用BetterLayoutCandidate，缺失度量不能成为最优。
 func layoutShapeObjective(metrics LayoutMetrics) float64 {
 	return layoutShapeCost(metrics.EnvelopeArea, metrics.EnvelopeAspectRatio)
 }
@@ -165,6 +165,11 @@ func updatePhysicalLayoutShapeMetrics(ctx context.Context, encoding *surfaceEnco
 		}
 		for _, box := range boxes {
 			points = appendPhysicalShapeBox(points, box.Geometry)
+		}
+	}
+	if !encoding.planar {
+		if err := physicalLongitudeEnvelope(points); err != nil {
+			return err
 		}
 	}
 	projected, err := physicalShapeProjection(points, encoding.planar)
@@ -247,7 +252,7 @@ func physicalShapeProjection(points []placement.Vector, planar bool) ([]physical
 	center := low.Add(high).Scale(.5)
 	length := math.Sqrt(center.Dot(center))
 	if !planar && length < 1e-6 {
-		return nil, fmt.Errorf("物理形状无法建立单一局部球面包络")
+		return nil, &blueprint.Error{Code: "GEN_E_SHAPE", Message: "物理形状无法建立单一局部球面包络"}
 	}
 	if !planar {
 		center = center.Scale(1 / length)
@@ -267,7 +272,7 @@ func physicalShapeProjection(points []placement.Vector, planar bool) ([]physical
 		}
 		cosine := math.Max(-1, math.Min(1, center.Dot(point)))
 		if cosine <= 0 {
-			return nil, fmt.Errorf("物理形状跨越局部半球，不能伪造近方形包络")
+			return nil, &blueprint.Error{Code: "GEN_E_SHAPE", Message: "物理形状跨越局部半球，不能伪造近方形包络"}
 		}
 		angle := math.Acos(cosine)
 		scale := 200.2

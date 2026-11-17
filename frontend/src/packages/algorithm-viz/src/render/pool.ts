@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { UploadRanges } from './upload-ranges';
 
 /**
  * 实例池：一个几何体 + 一个材质对应一个 InstancedMesh，按槽位分配给场景对象。
@@ -26,7 +27,12 @@ export class InstancePool {
   private readonly arrays = new Map<string, Float32Array>();
   private matrixLow = Infinity;
   private matrixHigh = -1;
-  private readonly dirtyAttributes = new Map<string, {low: number; high: number}>();
+  /** 矩阵按128实例分块；属性按256个标量分块，不把分散动画中间的静止实例全上传。 */
+  private readonly matrixUploads = new UploadRanges(128 * 16);
+  private readonly attributeUploads = new Map<string, UploadRanges>();
+  private readonly dirtyAttributes = new Map<string, UploadRanges>();
+  /** 只在拾取时保存平移列，避免平台动画持有逐对象Matrix4副本。 */
+  private pickTranslations = new Float32Array(0);
 
   constructor(
     readonly key: string,
@@ -39,7 +45,10 @@ export class InstancePool {
   ) {
     this.capacity = Math.max(8, initialCapacity);
     this.minimumCapacity = this.capacity;
-    for (const spec of specs) this.arrays.set(spec.name, new Float32Array(this.capacity * spec.itemSize));
+    for (const spec of specs) {
+      this.arrays.set(spec.name, new Float32Array(this.capacity * spec.itemSize));
+      this.attributeUploads.set(spec.name, new UploadRanges(256));
+    }
     this.mesh = this.createMesh();
     parent.add(this.mesh);
   }
@@ -55,6 +64,8 @@ export class InstancePool {
     this.mesh.count = 0;
     this.matrixLow = Infinity;
     this.matrixHigh = -1;
+    this.matrixUploads.clear();
+    for (const range of this.dirtyAttributes.values()) range.clear();
     this.dirtyAttributes.clear();
   }
 
@@ -116,11 +127,40 @@ export class InstancePool {
     this.markAttribute(name, offset, size);
   }
 
+  /** 着色器平台平移对CPU射线不可见；拾取期间临时投影平移列，复用Three原生网格求交，结束后逐位恢复且不上传GPU。 */
+  raycast(raycaster: THREE.Raycaster, stages: readonly THREE.Vector4[], hits: THREE.Intersection[]): void {
+    if (!this.used || !this.mesh.visible || !this.mesh.layers.test(raycaster.layers)) return;
+    const assignments = this.arrays.get('aStage');
+    if (!assignments) { this.mesh.raycast(raycaster, hits); return; }
+    if (this.pickTranslations.length < this.used * 3) this.pickTranslations = new Float32Array(this.capacity * 3);
+    const matrix = this.mesh.instanceMatrix.array;
+    const bounds = this.mesh.boundingSphere;
+    for (let slot = 0; slot < this.used; slot++) {
+      const offset = slot * 16 + 12, saved = slot * 3;
+      const stage = stages[Math.max(0, Math.min(stages.length - 1, Math.trunc(assignments[slot])))];
+      this.pickTranslations[saved] = matrix[offset];
+      this.pickTranslations[saved + 1] = matrix[offset + 1];
+      this.pickTranslations[saved + 2] = matrix[offset + 2];
+      matrix[offset] += stage.x; matrix[offset + 1] += stage.y; matrix[offset + 2] += stage.z;
+    }
+    // 平台每帧移动，原局部包围球不能用于世界坐标排除；每个实体仍由Three原生包围体和三角形求交。
+    this.mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+    try { this.mesh.raycast(raycaster, hits); }
+    finally {
+      for (let slot = 0; slot < this.used; slot++) {
+        const offset = slot * 16 + 12, saved = slot * 3;
+        matrix[offset] = this.pickTranslations[saved];
+        matrix[offset + 1] = this.pickTranslations[saved + 1];
+        matrix[offset + 2] = this.pickTranslations[saved + 2];
+      }
+      this.mesh.boundingSphere = bounds;
+    }
+  }
+
   /** 把本帧的修改提交到 GPU；包围球失效后由拾取或剔除按需重算 */
   commit(): void {
     if (this.matrixHigh >= 0) {
-      this.mesh.instanceMatrix.addUpdateRange(this.matrixLow * 16, (this.matrixHigh - this.matrixLow + 1) * 16);
-      this.mesh.instanceMatrix.needsUpdate = true;
+      if (this.matrixUploads.flush(this.mesh.instanceMatrix, this.used * 16)) this.mesh.instanceMatrix.needsUpdate = true;
       this.mesh.boundingSphere = null;
       this.mesh.boundingBox = null;
       this.matrixLow = Infinity;
@@ -129,9 +169,8 @@ export class InstancePool {
     for (const [name, range] of this.dirtyAttributes) {
       const attribute = this.mesh.geometry.getAttribute(name) as THREE.InstancedBufferAttribute | undefined;
       if (attribute) {
-        attribute.addUpdateRange(range.low, range.high - range.low);
-        attribute.needsUpdate = true;
-      }
+        if (range.flush(attribute, this.used * attribute.itemSize)) attribute.needsUpdate = true;
+      } else range.clear();
     }
     this.dirtyAttributes.clear();
   }
@@ -140,12 +179,16 @@ export class InstancePool {
   private markMatrix(slot: number): void {
     this.matrixLow = Math.min(this.matrixLow, slot);
     this.matrixHigh = Math.max(this.matrixHigh, slot);
+    this.matrixUploads.mark(slot * 16, 16);
   }
 
   private markAttribute(name: string, offset: number, size: number): void {
-    const range = this.dirtyAttributes.get(name);
-    if (range) { range.low = Math.min(range.low, offset); range.high = Math.max(range.high, offset + size); }
-    else this.dirtyAttributes.set(name, {low: offset, high: offset + size});
+    const active = this.dirtyAttributes.get(name);
+    if (active) { active.mark(offset, size); return; }
+    const range = this.attributeUploads.get(name);
+    if (!range) return;
+    range.mark(offset, size);
+    this.dirtyAttributes.set(name, range);
   }
 
   dispose(): void {
@@ -191,6 +234,7 @@ export class InstancePool {
   private resize(capacity: number): void {
     const oldMesh = this.mesh;
     this.capacity = capacity;
+    this.pickTranslations = new Float32Array(0);
     for (const spec of this.specs) {
       const next = new Float32Array(capacity * spec.itemSize);
       next.set((this.arrays.get(spec.name) as Float32Array).subarray(0, next.length));
@@ -200,12 +244,19 @@ export class InstancePool {
     this.mesh.instanceMatrix.array.set(oldMesh.instanceMatrix.array.subarray(0, this.mesh.instanceMatrix.array.length));
     this.matrixLow = Infinity;
     this.matrixHigh = -1;
+    this.matrixUploads.clear();
+    for (const range of this.dirtyAttributes.values()) range.clear();
     this.dirtyAttributes.clear();
     this.parent.remove(oldMesh);
     oldMesh.geometry.dispose();
     oldMesh.dispose();
     this.parent.add(this.mesh);
-    if (this.used) { this.markMatrix(0); this.markMatrix(this.used - 1); }
+    // 新GPU缓冲继承了整个活动前缀，必须全量标记，不能只用首尾两个稀疏块代表中间数据。
+    if (this.used) {
+      this.matrixLow = 0;
+      this.matrixHigh = this.used - 1;
+      this.matrixUploads.mark(0, this.used * 16);
+    }
     for (const spec of this.specs) this.markAttribute(spec.name, 0, this.used * spec.itemSize);
   }
 }

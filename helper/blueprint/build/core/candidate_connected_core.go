@@ -85,6 +85,8 @@ func (spec ConnectedCandidateSpec) InputGroup() ConnectedInputGroup {
 
 // ConnectedSearchOptions 职责：提供可由配置完整传入的候选生成参数；使用：先取默认工厂再显式覆盖；边界：零值不等同默认，核心不偷偷补值。
 type ConnectedSearchOptions struct {
+	// SurfaceHeightSeeds 职责：为原生矩形大厂追加实际窗口高度的基础种子；使用：显式配置；边界：默认关闭，保留旧候选，不展开拓扑组合。
+	SurfaceHeightSeeds bool `json:"surfaceHeightSeeds" yaml:"surfaceHeightSeeds"`
 	// SharedRows 职责：将已配置跨度交给共同短行装箱；使用：普通模式的有限形状候选；边界：不展开密铺专属拓扑或修改设备。
 	SharedRows bool `json:"sharedRows"`
 	// HeightLimits 职责：明确高度列表；使用：枚举阶段；边界：空时仅在允许测量时计算。
@@ -131,6 +133,8 @@ type ConnectedSearchOptions struct {
 	TranslateCompact bool `json:"translateCompact" yaml:"translateCompact"`
 	// MaterialNetworkThreshold 职责：原生直连物料网络机器阈值；使用：枚举阶段；边界：只影响策略资格。
 	MaterialNetworkThreshold int `json:"materialNetworkThreshold" yaml:"materialNetworkThreshold" min:"0" unit:"machine"`
+	// FlowAwareRowThreshold 职责：控制多单元大厂的物料图排序优先；使用：基础候选的真实最少分行数达到阈值才启用；边界：零关闭，只调整优先级，不删除策略或改变物理约束。
+	FlowAwareRowThreshold int `json:"flowAwareRowThreshold" yaml:"flowAwareRowThreshold" min:"0" unit:"row"`
 }
 
 // DefaultConnectedSearchOptions 职责：集中定义与原有完整搜索一致的全部策略默认；使用：工具参数默认工厂；边界：每次返回独立切片，不执行任何求解。
@@ -143,6 +147,7 @@ func DefaultConnectedSearchOptions() ConnectedSearchOptions {
 		Street: true, StreetGroups: []int{0, 2, -1}, StreetRotations: []int{0, 1, 2, 3},
 		CapacityFill: true, CapacityStreetPreference: []int{2, 0}, ProducerSplits: true, SplitterModels: []int16{38, 39, 40}, SplitterCapacityLimit: 8,
 		BentRows: true, BentSpans: []float64{12, 18}, BentCapacityModes: []bool{false, true}, PairedOutputs: true, TranslateCompact: true, MaterialNetworkThreshold: 90,
+		FlowAwareRowThreshold: 128,
 	}
 }
 
@@ -187,7 +192,7 @@ func ValidateConnectedSearchOptions(options ConnectedSearchOptions) error {
 			return fmt.Errorf("未知分流器模型 %d", model)
 		}
 	}
-	if options.SplitterCapacityLimit < 0 || options.MaterialNetworkThreshold < 0 {
+	if options.SplitterCapacityLimit < 0 || options.MaterialNetworkThreshold < 0 || options.FlowAwareRowThreshold < 0 {
 		return fmt.Errorf("直连策略预算及资格阈值不能为负")
 	}
 	for _, group := range options.InputGroups {
@@ -262,8 +267,11 @@ func EnumerateConnectedCandidates(ctx context.Context, input *PreparedInput, opt
 		}
 	}
 	planned := planConnectedCandidates(input.request, limits, options, paired)
+	if options.SurfaceHeightSeeds {
+		planned = connectedSurfaceHeightSeeds(ctx, input, planned)
+	}
 	planned = deduplicateConnectedCandidates(ctx, input.request, planned, keys, capacityKeys)
-	planned, err = deduplicateConnectedRows(ctx, input, planned)
+	planned, err = deduplicateConnectedRows(ctx, input, planned, options.FlowAwareRowThreshold)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +356,11 @@ func assembleConnectedCandidate(ctx context.Context, input *PreparedInput, spec 
 	}
 	candidate.generationCtx = ctx
 	candidate.beginPreview()
-	if err := candidate.assembleConnectedVariant(ctx, input.request, input.dataset, spec.Limit, spec.Compact); err != nil {
+	if err := candidate.prepareConnectedRows(ctx, input.request, input.dataset, spec.Limit, spec.Compact); err != nil {
+		candidate.rollbackPreview()
+		return candidate, &ConnectedPreparationError{Cause: err}
+	}
+	if err := candidate.completePreparedConnected(ctx, input.request); err != nil {
 		candidate.rollbackPreview()
 		return candidate, err
 	}

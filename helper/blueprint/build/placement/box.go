@@ -140,9 +140,10 @@ func BoxesOverlap(box, other *Box) bool {
 			return false
 		}
 		radius := 0.
-		for i := 0; i < 3; i++ {
-			radius += math.Abs(axis.Dot(box.Axes[i]))*box.HalfSize[i] + math.Abs(axis.Dot(other.Axes[i]))*other.HalfSize[i]
-		}
+		// 固定三项展开，保留每项两盒配对和累加次序；不能重排为两盒各自求和再相加。
+		radius += math.Abs(axis.Dot(box.Axes[0]))*box.HalfSize[0] + math.Abs(axis.Dot(other.Axes[0]))*other.HalfSize[0]
+		radius += math.Abs(axis.Dot(box.Axes[1]))*box.HalfSize[1] + math.Abs(axis.Dot(other.Axes[1]))*other.HalfSize[1]
+		radius += math.Abs(axis.Dot(box.Axes[2]))*box.HalfSize[2] + math.Abs(axis.Dot(other.Axes[2]))*other.HalfSize[2]
 		return math.Abs(delta.Dot(axis)) >= radius
 	}
 	for i := 0; i < 3; i++ {

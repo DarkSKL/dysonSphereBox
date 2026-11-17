@@ -5,10 +5,8 @@ package generator
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"DysonSphereBox/helper/blueprint"
 	core "DysonSphereBox/helper/blueprint/build/core"
 	"DysonSphereBox/helper/blueprint/build/workflow"
 )
@@ -37,22 +35,22 @@ func domainFailure(ctx context.Context, step *workflow.StepContext, err error) e
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	var failure *blueprint.Error
-	if errors.As(err, &failure) {
-		if recordErr := step.Diagnostic("failure-code:" + failure.Code); recordErr != nil {
+	code, preparation, known := classifyDomainFailure(err, false)
+	if known {
+		if recordErr := step.Diagnostic("failure-code:" + code); recordErr != nil {
 			return recordErr
 		}
-		for _, code := range solutionFailures {
-			if failure.Code == code {
-				return &workflow.Failure{Code: failure.Code, Message: err.Error(), Cause: err}
-			}
+		if preparation {
+			code = "GEN_E_CONNECTED_PREPARATION"
 		}
+		return &workflow.Failure{Code: code, Message: err.Error(), Cause: err}
 	}
 	return err
 }
 
 // solutionFailures 职责：集中声明真实求解失败范围；使用：全部工具白名单；边界：不包括输入、未知物理事实、反射异常或取消。
 var solutionFailures = []string{
+	"GEN_E_CONNECTED_PREPARATION",
 	"GEN_E_SHAPE",
 	"GEN_E_LAYOUT", "GEN_E_COLLISION", "GEN_E_SURFACE_ROUTING", "GEN_E_SURFACE_CAPACITY", "GEN_E_DENSITY_LAYOUT", "GEN_E_DENSITY_STREET_SEAM",
 	"GEN_E_INSERTER_CAPACITY", "GEN_E_BELT_CAPACITY", "GEN_E_PORT_CAPACITY", "GEN_E_OVERFLOW", "GEN_E_FLOW", "GEN_E_STATION_PORT", "GEN_E_DENSITY_CARGO",
@@ -62,12 +60,12 @@ var solutionFailures = []string{
 }
 
 // PlanTransport 职责：产生有限档位规格；使用：外层升档候选前；边界：不执行规格。
-func (t *toolset) PlanTransport(ctx context.Context, s *workflow.StepContext, _ emptyArgs) error {
+func (t *toolset) PlanTransport(ctx context.Context, s *workflow.StepContext, args core.TransportSearchOptions) error {
 	input, err := workflow.Read(s, t.keys.base)
 	if err != nil {
 		return err
 	}
-	specs, err := core.EnumerateTransportCandidates(ctx, input)
+	specs, err := core.EnumerateTransportCandidates(ctx, input, args)
 	if err != nil {
 		return domainFailure(ctx, s, err)
 	}
@@ -99,6 +97,9 @@ func (t *toolset) ApplySurface(ctx context.Context, s *workflow.StepContext, arg
 	}
 	if args.Index < 0 || args.Index >= len(specs) {
 		return fmt.Errorf("surface candidate index out of range")
+	}
+	if err = recordSpecification(s, "surface", specs[args.Index]); err != nil {
+		return err
 	}
 	prepared, err := core.PrepareSurfaceCandidate(ctx, input, specs[args.Index])
 	if err != nil {
