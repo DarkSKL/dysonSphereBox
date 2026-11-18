@@ -12,7 +12,7 @@ import (
 	"DysonSphereBox/helper/blueprint"
 )
 
-// surfaceBlockWidthCandidates 职责：从真实完整块推导至多四种球面宽度；使用：塔组与配送组合块；边界：比例由模式决定，原容量与满纬圈退路始终保留。
+// surfaceBlockWidthCandidates 职责：从真实完整块推导至多四种球面宽度；使用：塔组与配送组合块；边界：中间比例由工作流配置，原容量与满纬圈退路始终保留。
 func surfaceBlockWidthCandidates(layout *SurfaceLayout, sizes []surfaceBlockSize, gap int, fraction float64) []int {
 	area, widest := 0, 0
 	for _, size := range sizes {
@@ -140,6 +140,7 @@ func (b *builder) validatePackedSurfaceLayout(ctx context.Context, layout *Surfa
 		return LayoutMetrics{}, err
 	}
 	summary := LogisticsSummary{}
+	summary.Metrics.preferredAspect = b.policy.shape.PreferredAspect
 	for _, area := range encoding.areas {
 		summary.Metrics.EnvelopeArea += float64(area.Width) * float64(area.Height)
 	}

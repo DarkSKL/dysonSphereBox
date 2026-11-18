@@ -70,7 +70,7 @@ func (encoding *surfaceEncoding) validateSurfaceStationSpacing(ctx context.Conte
 }
 
 // validateStationPorts 职责：复核连接到塔的真实带端口、方向及筛选槽；使用：最终编号后；边界：未用端口不冒充供货，网络运输仍需外界机队与电力。
-func validateStationPorts(ctx context.Context, records []blueprint.Building) error {
+func validateStationPorts(ctx context.Context, records []blueprint.Building, warperStock int) error {
 	byIndex := make(map[int32]int, len(records))
 	for i, record := range records {
 		byIndex[record.Index] = i
@@ -100,6 +100,11 @@ func validateStationPorts(ctx context.Context, records []blueprint.Building) err
 				return &blueprint.Error{Code: "GEN_E_STATION_PORT", Message: fmt.Sprintf("物流塔 %d 物品槽 %d 的物品、角色或零科技容量不合法", record.Index, slot)}
 			}
 			seen[item] = true
+		}
+		if warperStock > 0 && record.ItemID == 2104 {
+			if err := validateStationWarperSlot(record, kinds, warperStock); err != nil {
+				return err
+			}
 		}
 	}
 	used := map[[2]int32]bool{}

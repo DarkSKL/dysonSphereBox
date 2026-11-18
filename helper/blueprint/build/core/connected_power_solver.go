@@ -345,14 +345,15 @@ func (solver *connectedPowerSolver) apply(number, direction int) {
 	}
 }
 
-// search 职责：先解决最稀缺未覆盖域并在必要时有限回溯；使用：全局塔组构造；边界：最多8192个搜索节点、每层32个优先分支，失败交回独立布局候选而不放松规则。
+// search 职责：先解决最稀缺未覆盖域并在必要时有限回溯；使用：全局塔组构造；边界：搜索节点与每层优先分支受任务配置约束，失败交回独立布局候选而不放松规则。
 func (solver *connectedPowerSolver) search() (bool, error) {
 	if err := solver.index.builder.checkGeneration("直连约束前向搜索"); err != nil {
 		return false, err
 	}
 	solver.nodes++
-	if solver.nodes > 8192 {
-		return false, &blueprint.Error{Code: "GEN_E_POWER_COVERAGE", Message: "全局供电约束搜索达到8192个有限节点预算，保留原规则并回退其它布局候选"}
+	budget := solver.index.builder.policy.search
+	if solver.nodes > budget.PowerSearchNodes {
+		return false, &blueprint.Error{Code: "GEN_E_POWER_COVERAGE", Message: fmt.Sprintf("全局供电搜索达到 %d 个节点的预算，尝试其它布局候选", budget.PowerSearchNodes)}
 	}
 	target := -1
 	for number := range solver.domains {
@@ -388,8 +389,8 @@ func (solver *connectedPowerSolver) search() (bool, error) {
 		}
 	}
 	sort.SliceStable(options, func(i, j int) bool { return options[i].score > options[j].score })
-	if len(options) > 32 {
-		options = options[:32]
+	if len(options) > budget.PowerSearchBranches {
+		options = options[:budget.PowerSearchBranches]
 	}
 	for _, option := range options {
 		solver.apply(option.number, 1)

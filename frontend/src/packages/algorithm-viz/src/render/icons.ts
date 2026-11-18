@@ -36,11 +36,14 @@ export class IconLayer {
   /** onReady 在精灵图加载完成后调用一次，场景据此为已有对象补建图标 */
   constructor(parent: THREE.Object3D, uniforms: Record<string, THREE.IUniform>, sheet: AlgoVizIconSheet | undefined, onReady: () => void) {
     this.sheet = sheet;
+    // 与建筑、阴影共用同一 uniform 引用；旧调用方没有平台表时使用零偏移默认值。
+    const stages = uniforms.uStages ??= { value: Array.from({ length: 10 }, () => new THREE.Vector4(0, 0, 0, 0)) };
     this.material = new THREE.ShaderMaterial({
       vertexShader: ICON_VERTEX,
       fragmentShader: ICON_FRAGMENT,
       uniforms: {
         ...uniforms,
+        uStages: stages,
         uIconMap: { value: null },
         uWorldPerPixel: { value: 1 },
         uIconPx: { value: new THREE.Vector2(MIN_PIXELS, MAX_PIXELS) },
@@ -50,7 +53,11 @@ export class IconLayer {
       depthTest: false,
       depthWrite: false,
     });
-    this.pool = new InstancePool('icon', this.geometry, this.material, [{ name: 'aRect', itemSize: 4 }, { name: 'aIcon', itemSize: 2 }], parent, 64, 30);
+    this.pool = new InstancePool('icon', this.geometry, this.material, [
+      { name: 'aRect', itemSize: 4 },
+      { name: 'aIcon', itemSize: 2 },
+      { name: 'aStage', itemSize: 1, fill: [0] },
+    ], parent, 64, 30);
     this.slots = new IconSlots<VizObject>(this.pool);
     if (sheet) this.load(sheet, onReady);
   }
@@ -85,14 +92,15 @@ export class IconLayer {
     this.slots.release(obj);
   }
 
-  /** 写入图标：锚点（尾尖）世界坐标、基准边长、整体透明度与失败染红强度 */
-  set(slot: number, icon: AlgoVizIcon, x: number, y: number, z: number, size: number, alpha: number, fail: number): void {
+  /** 写入局部锚点与自身染红强度；stage 默认 0 兼容旧调用，平台位移及失败红度合并由 shader 负责。 */
+  set(slot: number, icon: AlgoVizIcon, x: number, y: number, z: number, size: number, alpha: number, fail: number, stage = 0): void {
     if (!this.sheet) return;
     this.matrix.makeScale(size, size, size).setPosition(x, y, z);
     this.pool.setMatrix(slot, this.matrix);
     const [u, v, du, dv] = iconRect(this.sheet, icon, CELL_INSET, this.rect);
     this.pool.set('aRect', slot, u, v, du, dv);
     this.pool.set('aIcon', slot, alpha, fail);
+    this.pool.set('aStage', slot, stage);
   }
 
   /** 每帧同步取景比例，用于把图标边长夹在屏幕像素范围内 */

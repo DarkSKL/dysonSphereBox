@@ -1,9 +1,64 @@
 schemaVersion: 1
 id: connected
+parameters:
+  # 多单元工厂按物料流排序的启动阈值，以基础方案实际所需的最少生产行数计。非负整数，0 关闭。
+  flowAwareRowThreshold: 128
+  # true 为符合条件的原生矩形大厂追加按真实窗口高度排布的基础候选，提高找到适配列高的机会。
+  surfaceHeightSeeds: true
 # 共享直连工作链：大模式配置通过固定属性提供器传入，无独立默认参数权威。
 toolDefaults:
   connected.enumerate@1:
+    flowAwareRowThreshold: {$param: flowAwareRowThreshold}
+    surfaceHeightSeeds: {$param: surfaceHeightSeeds}
+    # true 允许枚举共享行布局。下方 $state 字段读取公共、模式与地理覆盖合并后的跨度、分组、朝向和排序。
     sharedRows: true
+    # 普通共享短行的排序候选，每项 0～3，最多四项。空列表关闭这类扩展。
+    # 0、2 优先大单元，1、3 沿用输入顺序，2、3 还计入估算线长。
+    sharedRowOrders: [0, 3]
+    # 显式列高（工作格，有限正数）。空列表配合下项 true 时，从真实产线测量列高。
+    heightLimits: []
+    measureHeightLimits: true
+    # 普通直连的基础布局。倍率及取整粒度均须为有限正数。
+    layout:
+      # 依次枚举基础矩形、紧凑轮廓，删去一项可缩小搜索范围。
+      compactModes: [false, true]
+      # 自动纬带紧凑候选中，限制末项列高相对首项的倍率。
+      wideLimitFactor: 2
+      # 尝试水平回填，首项列高乘以下一倍率并向上取整。
+      horizontal: true
+      horizontalFactor: 1.6
+      # 尝试统一补电的水平候选，需要 horizontal 同时开启。
+      globalPower: true
+      # 统一补电的列高为首项乘此倍率，按 powerQuantum 向下取整，再取至少 minimumPowerLimit。
+      powerFactor: 1.3333333333333333
+      powerQuantum: 10  # 工作格
+      minimumPowerLimit: 10  # 工作格
+    # 密铺基础候选连续多少次共用同一行跨度，再轮换到下一项（正整数）。
+    denseSpanRepeat: 2
+    # 哪些排序再做位置微调，每项 0～3。空列表保留基础候选。
+    refineOrders: [2, 3]
+    # 为适合共享街道的产线枚举街道候选。
+    street: true
+    # 在均衡装箱之外尝试优先填满容量的候选。关闭时也须关闭 producerSplits。
+    capacityFill: true
+    # 每个朝向优先选用的街道分组，取首个可用组。0 自适应，2 每街最多两组，-1 尝试全部组。
+    capacityStreetPreference: [2, 0]
+    # 从容量优先候选扩展产物分流树。折行候选的分流由 bentRows 独立控制。
+    producerSplits: true
+    # 分流树及折行候选使用的真实分流器模型编号，可从 38、39、40 中选取。
+    splitterModels: [38, 39, 40]
+    # 最多从多少个容量候选派生分流树，0 表示关闭该扩展。
+    splitterCapacityLimit: 8
+    # 尝试密铺折行。折行跨度来自下方 bentSpans 的模式覆盖。
+    bentRows: true
+    # 按列表顺序比较折行的均衡方案（false）和容量优先方案（true）。
+    bentCapacityModes: [false, true]
+    # 为有资格的街道候选额外比较双侧过滤输出。
+    pairedOutputs: true
+    # 为适用的基础紧凑布局追加单元平移压缩候选。
+    translateCompact: true
+    # 原生直连启用物料网络的机器数门槛（非负整数）。0 表示所有符合资格的原生布局均可尝试。
+    materialNetworkThreshold: 90
     denseSpans: {$state: mode.row-spans}
     streetGroups: {$state: mode.street-groups}
     streetRotations: {$state: mode.street-rotations}
@@ -17,11 +72,18 @@ subflows:
     flow:
       - id: nearby-specs
         tool: connected.enumerate@1
+        # nearby 先尝试就近供料。下方 fallback 中的 concentrated 使用集中入口，触发条件由 fallbackOn 决定。
         with: {inputGroups: [nearby]}
+      - id: nearby-window
+        tool: connected.window@1
       - id: nearby-or-concentrated
         candidates:
+          # 入口策略只影响排布后的布线。全部候选尚未完成共同排布时，换入口不能修复它，直接让上层尝试其它表面。
+          fallbackOn: [GEN_E_SHAPE, GEN_E_LAYOUT, GEN_E_COLLISION, GEN_E_SURFACE_ROUTING, GEN_E_SURFACE_CAPACITY, GEN_E_DENSITY_LAYOUT, GEN_E_DENSITY_STREET_SEAM, GEN_E_INSERTER_CAPACITY, GEN_E_BELT_CAPACITY, GEN_E_PORT_CAPACITY, GEN_E_OVERFLOW, GEN_E_FLOW, GEN_E_STATION_PORT, GEN_E_DENSITY_CARGO, GEN_E_SPRAY_ORDER, GEN_E_POWER_NETWORK, GEN_E_POWER_COVERAGE, GEN_E_MONITOR, GEN_E_MACHINE_INTEGRITY, GEN_I_DENSITY_DOMINATED, GEN_I_DENSITY_EQUIVALENT, GEN_E_SURFACE, GEN_E_CONNECTIVITY, GEN_E_ROUTE, GEN_E_STORAGE_CLEARANCE, GEN_E_FLOW_MONITOR, GEN_E_DENSITY_FACILITIES, GEN_E_DENSITY_MERGE, GEN_E_DENSITY_PORT, GEN_E_DENSITY_STREET_CARGO, GEN_E_DENSITY_STREET_PARITY, GEN_E_DENSITY_STREET_PHASE, GEN_E_DENSITY_STREET_SCOPE]
+          # layout 在完整候选间比较形状、设施和线路等指标。parallel 是本组并发上限，实际并发还受任务限制。
           comparator: layout
           parallel: 10
+          # 第一个通过验证的结果出现后，继续择优的宽限时间（毫秒）。0 表示沿用上层截止时间。
           settleMs: 5000
           items: {$state: connected.candidates}
           inputs:
@@ -34,14 +96,20 @@ subflows:
               call: geometry/finalize
             - id: validate
               call: rules/validate
+            - id: validate-shape
+              tool: factory.check-candidate-shape@1
           fallback:
             - id: concentrated-specs
               tool: connected.enumerate@1
               with: {inputGroups: [concentrated]}
+            - id: concentrated-window
+              tool: connected.window@1
             - id: concentrated-attempts
               candidates:
+                # layout 在完整候选间比较形状、设施和线路等指标。parallel 是本组并发上限，实际并发还受任务限制。
                 comparator: layout
                 parallel: 10
+                # 第一个通过验证的结果出现后，继续择优的宽限时间（毫秒）。0 表示沿用上层截止时间。
                 settleMs: 5000
                 items: {$state: connected.candidates}
                 inputs:
@@ -54,5 +122,7 @@ subflows:
                     call: geometry/finalize
                   - id: validate
                     call: rules/validate
+                  - id: validate-shape
+                    tool: factory.check-candidate-shape@1
       - id: select-final
         tool: factory.select@1

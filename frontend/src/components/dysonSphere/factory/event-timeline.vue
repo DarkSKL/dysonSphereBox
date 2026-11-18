@@ -1,28 +1,42 @@
 <script setup lang="ts">
-import {Activity, Copy, PanelRightClose, PanelRightOpen, Pause, Play, Trash2} from '@lucide/vue'
+import {Activity, Copy, Download, PanelRightClose, PanelRightOpen, Pause, Play, Trash2} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
 import {computed, ref} from 'vue'
 import {ClipboardSetText} from '../../../../wailsjs/runtime/runtime'
 import {generationDebugOptions, useGenerationTimeline, type GenerationTimelineEntry} from '../../../composables/dysonSphere/useGenerationTimeline'
+import type {BlueprintPreviewFeed, BlueprintPreviewFeedState} from '../../../composables/dysonSphere/useBlueprintPreviewFeed'
+import {downloadJson} from '../../../utils/download-json'
 
 const message = useMessage()
 const {entries, previewEntries, paused, selected, dropped, deltaCount, completeCount, clear} = useGenerationTimeline()
 const collapsed = ref(false)
 const previewOnly = ref(false)
 const testActive = ref(false)
-const props = defineProps<{canGenerate: boolean; generating: boolean}>()
+const props = defineProps<{canGenerate: boolean; generating: boolean; feed: BlueprintPreviewFeed}>()
 const emit = defineEmits<{generate: []}>()
+// 调试：转发层阶段的中文标签；未跟踪候选时显示"—"。
+const phaseLabels: Record<BlueprintPreviewFeedState['phase'], string> = {
+  'idle': '等待首个差量', 'wait-result': '等待正式结果',
+  buffering: '收集候选差量',
+  replaying: '回放获选方案'
+}
+const phaseText = computed(() => phaseLabels[props.feed.state.phase] ?? props.feed.state.phase)
 
 // =============== 差量采集入口 ===============
 // 说明：为当前方案发起一次明确启用 preview-delta 的生成，避免仅打开开关却没有新请求。
 // 边界：没有可用量化方案或正在生成时禁用；暂停的记录先恢复，确保测试事件可见。
 const generateWithDeltas = (): void => {
+  // 禁用差量采集开关，避免重复请求
   if (!props.canGenerate || props.generating) return
+  // 启用差量采集开关
   generationDebugOptions.emitPreviewDeltas = true
+  // 恢复暂停记录，确保测试事件可见
   paused.value = false
   previewOnly.value = true
   testActive.value = true
+  // 清空时间线，确保新请求可见
   clear()
+  // 触发生成事件，确保新请求可见
   emit('generate')
 }
 
@@ -60,6 +74,16 @@ const copyDetail = async (): Promise<void> => {
     message.success('事件内容已复制')
   } catch { message.error('复制失败') }
 }
+// =============== 样例保存 ===============
+// 说明：把当前选中事件的原始载荷保存为 JSON 文件，供预览渲染对接或协议回归使用。
+// 边界：只保存已选中的单条事件，不额外拼接、不修改载荷结构。
+const saveDetail = (): void => {
+  if (!selected.value) return
+  try {
+    downloadJson(selected.value.payload, `${selected.value.kind || 'event'}-${selected.value.sequence ?? 'na'}-${selected.value.receivedAt}.json`)
+    message.success('事件内容已保存')
+  } catch { message.error('保存失败') }
+}
 </script>
 
 <template>
@@ -81,13 +105,31 @@ const copyDetail = async (): Promise<void> => {
     <!-- 采集开关：控制下一次生成是否请求 preview-delta；默认关闭，避免大蓝图事件量与预览快照缺失导致的生成失败 -->
     <label v-if="!collapsed" class="timeline-option">
       <n-switch v-model:value="generationDebugOptions.emitPreviewDeltas" size="small" />
-      <span class="option-text"><span>采集预览差量</span><small>下次生成生效 · 事件量大，可能使生成失败</small></span>
+      <span class="option-text"><span>采集预览差量</span><small>下次生成生效 · 请求 v4，立体预览回放获选方案；无法提供完整快照时自动降级</small></span>
     </label>
     <div v-if="!collapsed" class="timeline-test">
       <n-button size="small" secondary block :loading="generating" :disabled="!canGenerate || generating" @click="generateWithDeltas">重新生成并采集差量</n-button>
       <n-button size="tiny" quaternary block :type="previewOnly ? 'primary' : 'default'" @click="previewOnly = !previewOnly">{{ previewOnly ? '只看预览事件 · 显示全部事件' : '只看预览事件' }}</n-button>
+      <small>点击事件可查看或保存该条 JSON</small>
       <small v-if="!canGenerate">请先完成量化计算</small>
       <small v-else-if="testActive && !deltaCount && entries.length && !generating">本次未收到 preview-delta，可切换查看全部事件定位阶段</small>
+    </div>
+
+    <!-- 转发层观测：阶段、应用计数，以及预览库的摄入计数（未知对象删除/替换是 ID 重写的直接判据） -->
+    <div v-if="!collapsed" class="timeline-feed">
+      <div class="feed-head"><span>预览转发</span><n-button size="tiny" quaternary @click="feed.refreshStats()">刷新计数</n-button></div>
+      <dl class="feed-grid type-mono">
+        <dt>阶段</dt><dd>{{ phaseText }}</dd>
+        <dt>应用/放弃</dt><dd>{{ feed.state.applied }} / {{ feed.state.discarded }}</dd>
+        <template v-if="feed.state.stats">
+          <dt>摄入</dt><dd>事件 {{ feed.state.stats.events ?? 0 }} · 操作 {{ feed.state.stats.operations ?? 0 }} · 存活 {{ feed.state.stats.alive ?? 0 }}</dd>
+          <dt>异常</dt><dd>丢弃 {{ feed.state.stats.droppedEvents ?? 0 }} · 未知删 {{ feed.state.stats.unknownRemoves ?? 0 }} · 未知换 {{ feed.state.stats.unknownReplaces ?? 0 }} · 节流 {{ feed.state.stats.filteredByThrash ?? 0 }}</dd>
+          <dt>耗时</dt><dd>最近 {{ (feed.state.stats.lastIngestMs ?? 0).toFixed(2) }}ms · 峰值 {{ (feed.state.stats.maxIngestMs ?? 0).toFixed(2) }}ms</dd>
+        </template>
+        <template v-else>
+          <dt>渲染</dt><dd>尚未开始增量预览</dd>
+        </template>
+      </dl>
     </div>
 
     <!-- 折叠态：只保留计数，点击展开 -->
@@ -120,7 +162,7 @@ const copyDetail = async (): Promise<void> => {
           <dt>协议校验</dt><dd :class="selected.valid ? 'is-ok' : 'is-bad'">{{ selected.valid ? '通过' : '未通过（生成流程会忽略该事件）' }}</dd>
           <dt>消息</dt><dd>{{ selected.message || '—' }}</dd>
         </dl>
-        <div class="detail-bar"><span>原始载荷</span><n-button size="tiny" quaternary @click="copyDetail"><template #icon><Copy :size="13" /></template>复制 JSON</n-button></div>
+        <div class="detail-bar"><span>原始载荷</span><div class="detail-actions"><n-button size="tiny" quaternary @click="copyDetail"><template #icon><Copy :size="13" /></template>复制 JSON</n-button><n-button size="tiny" quaternary @click="saveDetail"><template #icon><Download :size="13" /></template>保存 JSON</n-button></div></div>
         <pre class="detail-json type-mono">{{ detailJson }}</pre>
       </div>
     </n-modal>
@@ -140,6 +182,12 @@ const copyDetail = async (): Promise<void> => {
 .option-text small { color: var(--ds-text-muted); font-size: 10px; }
 .timeline-test { display: flex; flex-shrink: 0; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--ds-border-subtle); padding: 7px 10px; }
 .timeline-test small { color: var(--ds-text-muted); font-size: 10px; }
+// 转发层观测：紧凑两列网格，只在调试侧栏出现，不参与业务布局。
+.timeline-feed { display: flex; flex-shrink: 0; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--ds-border-subtle); padding: 7px 10px; }
+.feed-head { display: flex; align-items: center; justify-content: space-between; color: var(--ds-text-secondary); font-size: 11px; font-weight: 600; }
+.feed-grid { display: grid; grid-template-columns: 66px 1fr; gap: 2px 8px; margin: 0; font-size: 10px; line-height: 1.5; }
+.feed-grid dt { color: var(--ds-text-muted); }
+.feed-grid dd { margin: 0; overflow-wrap: anywhere; color: var(--ds-text-primary); }
 .rail { display: flex; flex-direction: column; align-items: center; gap: 4px; border: 0; padding: 10px 0; background: transparent; color: var(--ds-text-secondary); font-size: 11px; cursor: pointer; }
 .rail:hover { color: var(--ds-text-primary); }
 .timeline-body { position: relative; display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 4px; overflow-y: auto; padding: 8px 10px 16px; }
@@ -169,6 +217,7 @@ const copyDetail = async (): Promise<void> => {
 .detail-meta .is-ok { color: var(--ds-success); }
 .detail-meta .is-bad { color: var(--ds-warning); }
 .detail-bar { display: flex; align-items: center; justify-content: space-between; color: var(--ds-text-muted); font-size: 12px; }
+.detail-actions { display: flex; gap: 4px; }
 .detail-json { max-height: 56vh; overflow: auto; margin: 6px 0 0; border: 1px solid var(--ds-border-subtle); border-radius: 2px; padding: 10px 12px; background: var(--ds-hover-bg); font-size: 11px; line-height: 1.55; white-space: pre; }
 @media (prefers-reduced-motion: reduce) { .event-card { transition: none; } }
 </style>

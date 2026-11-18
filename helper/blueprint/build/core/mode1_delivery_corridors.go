@@ -11,8 +11,8 @@ import (
 	"DysonSphereBox/helper/blueprint"
 )
 
-// prepareDenseOutputCorridors 职责：先为所有输出建立可独立校验的地面、升层和主路短带。
-// 使用：原料错列升层已冻结时；边界：单层边界沿用原路由，多层错开半格越过原料8/10层后接入主路，不改变公共寻路预算。
+// prepareDenseOutputCorridors 将多层边界的地面交付短带延伸到允许转向和升降的交接列。
+// 后续路线由公共寻路器按实际占位选择高度，交付口和监测宿主保持原位。
 func (b *builder) prepareDenseOutputCorridors(ctx context.Context, groups []*mode1DeliveryGroup) error {
 	if b.denseBoundary == nil || !b.denseBoundary.staggerInputs {
 		return nil
@@ -25,34 +25,18 @@ func (b *builder) prepareDenseOutputCorridors(ctx context.Context, groups []*mod
 	for _, p := range b.all {
 		index.addBeltSpan(p)
 	}
-	// 在三层平直接口之后立即升层，避免继续向东进入某些生产行外伸的静态模型盒。
-	riserX := math.Floor(b.denseBoundary.levelLimitX) + 1
+	handoff := math.Floor(b.denseBoundary.levelLimitX) + 1
 	for _, g := range groups {
 		endpoint := g.head
 		if g.entry != nil {
 			endpoint = g.entry
 		}
-		points := []vector{}
-		for x := endpoint.a.x + 1; x <= riserX+1e-6; x++ {
-			points = append(points, vector{x, endpoint.a.y, 0})
-		}
-		// 输出与上层原料可以共享整数纬向槽；先在模型盒外错开半格，避免升层穿过其8/10层固定逃逸段。
-		riserY := math.Max(b.denseBoundary.minimumY, endpoint.a.y-.5)
-		points = append(points, vector{riserX, endpoint.a.y, 1})
-		if riserY != endpoint.a.y {
-			points = append(points, vector{riserX, riserY, 1})
-		}
-		for z := 2.; z <= 4*denseBoundaryLevels; z++ {
-			points = append(points, vector{riserX, riserY, z})
-		}
-		for x := riserX + 1; x <= math.Ceil(b.denseBoundary.maximumX); x++ {
-			points = append(points, vector{x, riserY, 4 * denseBoundaryLevels})
-		}
 		previous := endpoint
-		for _, point := range points {
+		for x := endpoint.a.x + 1; x <= handoff; x++ {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+			point := vector{x, endpoint.a.y, endpoint.a.z}
 			nodeClear, spanClear := index.nodeClear(point, nil), index.spanClear(previous.a, point)
 			if !nodeClear || !spanClear {
 				return &blueprint.Error{Code: "GEN_E_ROUTE", Message: fmt.Sprintf("独立交付物品%d固定接入短带 %v→%v 缺少真实净空（节点%t、带段%t）", g.item, previous.a, point, nodeClear, spanClear)}
@@ -61,8 +45,8 @@ func (b *builder) prepareDenseOutputCorridors(ctx context.Context, groups []*mod
 			connect(next, previous)
 			index.addNode(next)
 			previous = next
+			g.approachSteps++
 		}
-		g.approachSteps = len(points)
 		for _, r := range g.members {
 			r.end = previous
 		}

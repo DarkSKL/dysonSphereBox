@@ -82,8 +82,12 @@ export class BeltFlow {
 
   /** 仅向相位实际变化的上游传播；静止帧不遍历全场，闭环用整数个箭头周期消除闭合缝。 */
   update(objects: Objects, inputs: Inputs, dirty: Set<VizObject>): void {
+    // 同一批更新中，已解出的下游不会再改变；汇流支路只解算自己的前缀。
+    // 缓存仅存活于本次调用，下一批移动、断链或闭环仍重新求解，不能直接复用历史相位。
+    const settled = new Set<VizObject>();
     while (this.pending.size) {
       const first = this.pending.values().next().value as VizObject;
+      if (settled.has(first)) { this.pending.delete(first); continue; }
       if (objects.get(first.id) !== first || first.removing) {
         this.delete(first);
         continue;
@@ -93,6 +97,7 @@ export class BeltFlow {
       let node = first;
       let anchor: Flow;
       for (;;) {
+        if (settled.has(node)) { anchor = this.get(node); break; }
         const cycle = visited.get(node);
         if (cycle !== undefined) {
           const loop = path.slice(cycle);
@@ -119,6 +124,7 @@ export class BeltFlow {
         anchor = { phase, frequency: FREQUENCY };
         path.pop();
         this.assign(node, anchor, inputs, visited, dirty);
+        settled.add(node);
         break;
       }
       for (let i = path.length - 1; i >= 0; i--) {
@@ -126,6 +132,7 @@ export class BeltFlow {
         const next = output(item, objects)!;
         anchor = { phase: wrap(anchor.phase - distance(item, next) * anchor.frequency), frequency: anchor.frequency };
         this.assign(item, anchor, inputs, visited, dirty);
+        settled.add(item);
       }
     }
   }

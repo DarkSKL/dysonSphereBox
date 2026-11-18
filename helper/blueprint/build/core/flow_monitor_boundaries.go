@@ -253,7 +253,7 @@ func (b *builder) validateBoundaryFlowMonitorLayout(ctx context.Context) error {
 		// 极区已经在原生球面落位，不能再按切平面把格坐标当作等距坐标检查整厂。
 		zone, _ := ctx.Value(densityLatitudeKey{}).(string)
 		expand, _ := ctx.Value(denseAdjacentLatitudeKey{}).(bool)
-		layout := &SurfaceLayout{Mode: "explicitTropic", GridSegment: 200, LatitudeZone: zone, ExpandAdjacent: expand, polarRoot: true}
+		layout := &SurfaceLayout{Mode: "explicitTropic", GridSegment: 200, LatitudeZone: zone, ExpandAdjacent: expand, polarRoot: true, adjacentDepth: denseAdjacentContextDepth(ctx), offsetWindow: denseOffsetContext(ctx)}
 		encoding, err := b.preparePolarRootEncoding(ctx, layout)
 		if err != nil {
 			return err

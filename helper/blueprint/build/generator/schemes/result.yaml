@@ -1,3 +1,4 @@
+# 胜出蓝图通过区域验证并完成编码后，factory.yaml 调用此子流生成对外结果。
 schemaVersion: 1
 id: result
 flow:
@@ -6,9 +7,12 @@ flow:
 subflows:
   compose:
     flow:
+      # 统计已编码胜者的实际建筑和空间数据。
       - id: calculate-statistics
         tool: stats.calculate@1
+      # 比较初始运输设置与获选档位，生成传送带、分拣器的升档说明。
       - id: describe-transport-upgrade
         tool: result.transport-upgrade@1
+      # 把编码结果、统计和档位说明合并返回。此步依赖前两项产物。
       - id: compose-final-result
         tool: result.compose@1

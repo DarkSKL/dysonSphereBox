@@ -9,6 +9,7 @@ import { clonePalette, lerpPalette, resolvePalette, type Palette } from './inter
 import { areaOffsets, OperationQueue, type Offset, type QueueFrame, type QueueItem } from './internal/queue';
 import { FrameWorkBudget } from './internal/work-budget';
 import { CandidateSnapshot } from './internal/snapshot';
+import { CandidateBounds } from './internal/candidate-bounds';
 import { GenerationCache } from './internal/generation-cache';
 import { BeltFlow, BeltGeometry, BELT_THICKNESS, BELT_WIDTH } from './internal/belts';
 import { BackdropLayer } from './render/backdrop';
@@ -57,7 +58,7 @@ const DRAG_THRESHOLD = 4;
 const ICON_BELT_SIZE = 1.5;
 const ICON_BUILDING_MIN = 1.9;
 const ICON_BUILDING_MAX = 3.4;
-const CANVAS_LABEL = '平面预览器（内测版）：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
+const CANVAS_LABEL = '平面预览（内测版）：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
 const DEFAULT_EMPTY = '产线计算完成后，算法会在这里逐步搭建蓝图';
 const NO_OFFSETS: ReadonlyMap<number, Offset> = new Map();
 
@@ -70,6 +71,8 @@ const BELT_SPECS: InstanceAttributeSpec[] = [
 ];
 /** 失败候选标红的逐实例强度 */
 const FAIL_SPEC: InstanceAttributeSpec = { name: 'aFail', itemSize: 1 };
+/** 0为无候选场景，1..9对应固定舞台槽，平台位移与失败颜色只更新uniform。 */
+const STAGE_SPEC: InstanceAttributeSpec = { name: 'aStage', itemSize: 1 };
 
 const clampSpeed = (value: number): number => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, SPEED_MIN, SPEED_MAX) : 1);
 
@@ -97,6 +100,7 @@ interface CandidateStage extends PendingCandidate {
   alignIsland?: boolean;
   /** 包含尚在退场的对象；按实体身份登记，同 ID 换型不会混淆新旧对象。 */
   readonly objects: Set<VizObject>;
+  readonly bounds: CandidateBounds;
   readonly island: IslandLayer;
   budget: number;
   x: number;
@@ -185,8 +189,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private readonly glowing = new Set<VizObject>();
   private readonly dirty = new Set<VizObject>();
   /** 局部构形与平台平移分开失效；平台运动不重算带段截面和邻接几何。 */
-  private localMatrices = new WeakMap<VizObject, THREE.Matrix4>();
-  private readonly movedCandidates = new Set<CandidateStage>();
+  private readonly stageTransforms = Array.from({length: 10}, () => new THREE.Vector4(0, 0, 0, 0));
   /** 下游对象 ID → 指向它的传送带 */
   private readonly beltInputs = new Map<string, Set<VizObject>>();
   private readonly beltFlow = new BeltFlow();
@@ -419,7 +422,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       const island = new IslandLayer(this.uniforms);
       const x = (slot % 3) * this.candidateSpacing;
       const z = Math.floor(slot / 3) * this.candidateSpacing;
-      const candidate: CandidateStage = {...pending, island, objects: new Set(), budget: 0, discarding: false, displaySlot: slot,
+      const candidate: CandidateStage = {...pending, island, objects: new Set(), bounds: new CandidateBounds(), budget: 0, discarding: false, displaySlot: slot,
         x, z, targetX: x, targetZ: z, positioned: true, y: -8, age: 0, failMix: 0, enterFrom: -8, enterElapsed: 0, exitElapsed: 0};
       this.candidates.set(pending.id, candidate);
       island.group.position.set(x, candidate.y, z);
@@ -442,7 +445,6 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     candidate.queue.clear();
     candidate.snapshot = undefined;
     candidate.exitElapsed = 0;
-    this.movedCandidates.delete(candidate);
     for (const obj of candidate.objects) {
       this.animating.delete(obj);
       this.glowing.delete(obj);
@@ -467,7 +469,6 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       }
       this.scene.remove(candidate.island.group);
       candidate.island.dispose();
-      this.movedCandidates.delete(candidate);
       this.candidates.delete(candidate.id);
       this.touch();
     }
@@ -499,8 +500,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.waitingCandidates.clear();
     this.retiredCandidates.clear();
     this.bestId = '';
-    this.movedCandidates.clear();
-    this.localMatrices = new WeakMap();
+    for (const stage of this.stageTransforms) stage.set(0, 0, 0, 0);
     this.objectCandidates.clear();
     this.winnerId = '';
     this.settled = false;
@@ -769,8 +769,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       this.waitingCandidates.clear();
       this.retiredCandidates.clear();
       this.bestId = '';
-      this.movedCandidates.clear();
-      this.localMatrices = new WeakMap();
+      for (const stage of this.stageTransforms) stage.set(0, 0, 0, 0);
       this.backdrop.dispose();
       this.unitBox.dispose();
       this.beltBox.dispose();
@@ -861,6 +860,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private createUniforms(): Record<string, THREE.IUniform> {
     const p = this.palette;
     return {
+      uStages: { value: this.stageTransforms },
       uShadow: { value: p.shadow },
       uLight: { value: p.light },
       uHaze: { value: p.haze },
@@ -940,7 +940,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private showFallback(): void {
     const div = document.createElement('div');
     div.className = 'algoviz-fallback';
-    div.textContent = '当前环境不支持 WebGL，无法显示平面预览器';
+    div.textContent = '当前环境不支持 WebGL，无法显示平面预览';
     this.container.append(div);
     this.fallback = div;
   }
@@ -1071,6 +1071,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     const candidate = frame.candidateId ? this.candidates.get(frame.candidateId) : undefined;
     if (candidate) {
       candidate.objects.add(obj);
+      candidate.bounds.update(obj);
       this.memberships.set(obj, candidate);
       this.objectCandidates.set(id, candidate.id);
     }
@@ -1105,6 +1106,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     copyPose(obj.from, obj.pose);
     obj.from.y += obj.lift;
     worldPose(obj.target, building, frame);
+    this.memberships.get(obj)?.bounds.update(obj);
     obj.ghostFrom = obj.ghost;
     obj.ghostTo = building.temporary ? 1 : 0;
     this.linkBelt(obj);
@@ -1158,6 +1160,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (obj.removing) return;
     this.buildingEvents.delete(obj);
     obj.removing = true;
+    this.memberships.get(obj)?.bounds.delete(obj);
     this.untrackPlaceholder(obj);
     if (this.objects.get(obj.id) === obj) this.objects.delete(obj.id);
     this.unlinkBelt(obj);
@@ -1183,7 +1186,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private destroy(obj: VizObject): void {
-    this.localMatrices.delete(obj);
+    this.memberships.get(obj)?.bounds.delete(obj);
     this.beltFlow.delete(obj);
     this.memberships.get(obj)?.objects.delete(obj);
     this.memberships.delete(obj);
@@ -1327,13 +1330,13 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     let key = 'placeholder';
     let geometry = this.unitBox;
     let material: THREE.Material | THREE.Material[] = this.buildingMaterial;
-    let specs: InstanceAttributeSpec[] = [STATE_SPEC, FAIL_SPEC];
+    let specs: InstanceAttributeSpec[] = [STATE_SPEC, FAIL_SPEC, STAGE_SPEC];
     obj.placeholder = false;
     if (obj.kind === 'belt') {
       key = 'belt';
       geometry = this.beltBox;
       material = this.beltMaterial;
-      specs = [STATE_SPEC, COLOR_SPEC, FAIL_SPEC, ...BELT_SPECS];
+      specs = [STATE_SPEC, COLOR_SPEC, FAIL_SPEC, STAGE_SPEC, ...BELT_SPECS];
     } else if (obj.modelKey) {
       const entry = this.models.get(obj.modelKey);
       if (entry.status === 'ready' && entry.geometry && this.warmup.isReady(this.ensureModelPool(entry))) {
@@ -1375,7 +1378,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     let pool = this.pools.get(entry.key);
     if (!pool) {
       const materials = entry.parts.map(part => this.createBuildingMaterial(part.map, part.emissiveMap, part.color, part.emissive, part.kind, part.orm, part.native, part.mask, part.normalMap, part.unlit, part.light, part.kind === 'effect' && !part.map && !part.lightId, part.lightShape, part.secondaryLight, part.labTint));
-      pool = new InstancePool(entry.key, entry.geometry!, materials, [STATE_SPEC, FAIL_SPEC], this.world, 32);
+      pool = new InstancePool(entry.key, entry.geometry!, materials, [STATE_SPEC, FAIL_SPEC, STAGE_SPEC], this.world, 32);
       this.pools.set(entry.key, pool);
       this.owners.set(entry.key, []);
       this.ownedPools.add(pool);
@@ -1450,6 +1453,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
         processed++;
         this.freeSlot(obj);
         this.allocSlot(obj);
+        this.memberships.get(obj)?.bounds.update(obj);
         if (obj.placeholder) break;
         obj.flash = Math.max(obj.flash, 0.5);
         this.glowing.add(obj);
@@ -1545,7 +1549,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
       top = (entry?.geometry ? entry.center.y + entry.size.y / 2 : obj.height) * obj.scale + 0.25;
       size = THREE.MathUtils.clamp(Math.min(obj.width, obj.depth) * 0.7, ICON_BUILDING_MIN, ICON_BUILDING_MAX);
     }
-    this.icons.set(obj.iconSlot, icon, p.x + (candidate?.x ?? 0), p.y + obj.lift + top + (candidate?.y ?? 0), p.z + (candidate?.z ?? 0), size, obj.alpha * (1 - obj.ghost * 0.4), candidate?.failMix ?? 0);
+    this.icons.set(obj.iconSlot, icon, p.x, p.y + obj.lift + top, p.z, size, obj.alpha * (1 - obj.ghost * 0.4), 0, candidate ? candidate.displaySlot + 1 : 0);
   }
 
   // -------------------------------------------------------------------------
@@ -1558,30 +1562,24 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     if (obj.kind === 'belt') this.composeBelt(obj, pool);
     else if (obj.kind === 'sorter') this.composeSorter(obj);
     else this.composeBuilding(obj);
-    let local = this.localMatrices.get(obj);
-    if (!local) this.localMatrices.set(obj, (local = new THREE.Matrix4()));
-    local.copy(this.m);
     this.writeObjectPlacement(obj);
   }
 
-  /** 将已计算的局部矩阵放到候选平台；仅更新实例姿态、状态、阴影及图标，传送带形状保持复用。 */
+  /** 将已计算的局部矩阵放到候选平台；局部姿态仅在建筑变化时更新，平台位移和失败色由共享uniform提供。 */
   private writeObjectPlacement(obj: VizObject): void {
     const pool = obj.pool;
     if (!pool || obj.slot < 0) return;
     const candidate = this.memberships.get(obj);
-    if (candidate) {
-      this.m.elements[12] += candidate.x;
-      this.m.elements[13] += candidate.y;
-      this.m.elements[14] += candidate.z;
-    }
+
     pool.setMatrix(obj.slot, this.m);
     pool.set('aState', obj.slot, obj.alpha, obj.flash, obj.ghost, obj.highlight);
-    pool.set('aFail', obj.slot, candidate?.failMix ?? 0);
+    pool.set('aFail', obj.slot, 0);
+    pool.set('aStage', obj.slot, candidate ? candidate.displaySlot + 1 : 0);
     if (obj.shadowSlot >= 0) {
       const lift = Math.max(0, obj.lift);
       const size = 1.12 * obj.scale;
       const strength = obj.alpha * clamp01(1 - lift / 9) * (1 - obj.ghost * 0.55);
-      this.shadows.set(obj.shadowSlot, obj.pose.x + (candidate?.x ?? 0), obj.pose.z + (candidate?.z ?? 0), obj.pose.yaw, obj.width * size, obj.depth * size, candidate && candidate.y < -1 ? 0 : strength);
+      this.shadows.set(obj.shadowSlot, obj.pose.x, obj.pose.z, obj.pose.yaw, obj.width * size, obj.depth * size, strength, candidate ? candidate.displaySlot + 1 : 0);
     }
     this.writeIcon(obj, candidate);
   }
@@ -1703,19 +1701,11 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   }
 
   private recomputeCandidateBounds(): void {
-    const ranges = new Map<string, {minX: number; minZ: number; maxX: number; maxZ: number}>();
-    for (const obj of this.objects.values()) {
-      const id = this.objectCandidates.get(obj.id);
-      if (!id || this.candidates.get(id)?.discarding) continue;
-      const range = ranges.get(id) ?? {minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity};
-      range.minX = Math.min(range.minX, obj.target.x - obj.width / 2, obj.target.x2 - obj.width / 2);
-      range.maxX = Math.max(range.maxX, obj.target.x + obj.width / 2, obj.target.x2 + obj.width / 2);
-      range.minZ = Math.min(range.minZ, obj.target.z - obj.depth / 2, obj.target.z2 - obj.depth / 2);
-      range.maxZ = Math.max(range.maxZ, obj.target.z + obj.depth / 2, obj.target.z2 + obj.depth / 2);
-      ranges.set(id, range);
-    }
     let span = 32;
-    for (const range of ranges.values()) span = Math.max(span, range.maxX - range.minX + 24, range.maxZ - range.minZ + 24);
+    for (const candidate of this.candidates.values()) {
+      const range = candidate.discarding ? undefined : candidate.bounds.get();
+      if (range) span = Math.max(span, range.maxX - range.minX + 24, range.maxZ - range.minZ + 24);
+    }
     this.candidateSpacing = Math.max(this.candidateSpacing, span);
     span = this.candidateSpacing;
     this.rig.screenAxes(this.ax, this.ay);
@@ -1726,7 +1716,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     const columns = 3;
     for (const candidate of orderedCandidates) {
       const index = candidate.displaySlot;
-      const range = ranges.get(candidate.id);
+      const range = candidate.discarding ? undefined : candidate.bounds.get();
       // 平台留白采用接近方形的包络；建筑坐标与比例保持真实，不能拉伸模型来凑方形。
       if (range) {
         const cx = (range.minX + range.maxX) / 2, cz = (range.minZ + range.maxZ) / 2;
@@ -1763,12 +1753,14 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   /** 只扫描本候选实体，包含同 ID 换型后尚在退场的旧对象。 */
   private candidateAnimating(candidate: CandidateStage): boolean {
     if (!this.animating.size) return false;
-    for (const obj of candidate.objects) if (this.animating.has(obj)) return true;
+    if (this.animating.size < candidate.objects.size) {
+      for (const obj of this.animating) if (this.memberships.get(obj) === candidate) return true;
+    } else for (const obj of candidate.objects) if (this.animating.has(obj)) return true;
     return false;
   }
 
   private dirtyCandidate(candidate: CandidateStage): void {
-    this.movedCandidates.add(candidate);
+    this.stageTransforms[candidate.displaySlot + 1].set(candidate.x, candidate.y, candidate.z, candidate.failMix);
   }
 
   /** 九槽位独立推进升起、建筑动画和红色退场；其他平台不因槽位复用重新排序。 */
@@ -1860,9 +1852,9 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private pick(x: number, y: number): VizObject | null {
     this.ndc.set((x / this.width) * 2 - 1, -(y / this.height) * 2 + 1);
     this.raycaster.setFromCamera(this.ndc, this.rig.camera);
-    const meshes: THREE.Object3D[] = [];
-    for (const pool of this.pools.values()) if (pool.size) meshes.push(pool.mesh);
-    const hits = this.raycaster.intersectObjects(meshes, false);
+    const hits: THREE.Intersection[] = [];
+    for (const pool of this.pools.values()) pool.raycast(this.raycaster, this.stageTransforms, hits);
+    hits.sort((a, b) => a.distance - b.distance);
     for (const hit of hits) {
       const key = hit.object.userData.poolKey as string | undefined;
       const owner = key !== undefined && hit.instanceId !== undefined ? this.owners.get(key)?.[hit.instanceId] : undefined;
@@ -2138,14 +2130,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
     this.beltFlow.update(this.objects, this.beltInputs, this.dirty);
     this.beltGeometry.beginFrame();
     for (const obj of this.dirty) if (obj.pool) this.writeObject(obj);
-    for (const candidate of this.movedCandidates) for (const obj of candidate.objects) {
-      if (this.dirty.has(obj) && !candidate.discarding) continue;
-      const local = this.localMatrices.get(obj);
-      if (!local) continue;
-      this.m.copy(local);
-      this.writeObjectPlacement(obj);
-    }
-    this.movedCandidates.clear();
+    for (const candidate of this.candidates.values()) this.dirtyCandidate(candidate);
     this.dirty.clear();
     if (this.cachePrunePending) this.pruneGenerationCache();
     for (const pool of this.pools.values()) pool.commit();

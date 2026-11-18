@@ -141,6 +141,8 @@ type flyTransportEndpoint struct {
 
 // builder 职责：收集单次装配；使用：六种模式；边界：不做文件写入。
 type builder struct {
+	// warperStock 是当前塔候选的船用库存上限，零表示关闭。
+	warperStock int
 	// productionBuffers 职责：保存本候选全部产物缓存及进出链；使用：统一终检；边界：不跨候选复用，不作为物流消耗。
 	productionBuffers []*productionBuffer
 	// byproductInputs 职责：登记联产物料优先于补料的真实合流；使用：装配和终检；边界：不替代机器内部催化剂回流。

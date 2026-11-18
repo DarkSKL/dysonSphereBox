@@ -23,6 +23,8 @@ type Setting struct {
 	NeedPower *bool `json:"needPower,omitempty"`
 	// EnableFlowMonitor 职责：保存是否在独立物料带上创建流速监测器；使用：蓝图生成选项；边界：仅覆盖本次生成，不修改游戏内监测阈值。
 	EnableFlowMonitor bool `json:"enableFlowMonitor"`
+	// RequestStationWarpers 由生成选项启用。仅星际塔的远程供需库存参与补给。
+	RequestStationWarpers bool `json:"requestStationWarpers,omitempty"`
 	// EnableIntermediateBuffer 职责：为每行净产物生成中转缓存；使用：可选蓝图功能；边界：固体用箱体、流体用储液罐，有限库存不能抵消持续过剩。
 	EnableIntermediateBuffer bool `json:"enableIntermediateBuffer"`
 	// BeltSpeed 职责：保存参考运力上限每分钟；使用：布局约束；边界：不修改全局设置。
@@ -67,6 +69,12 @@ type Setting struct {
 
 // Request 职责：承载生成边界数据；使用：服务与预览联动；边界：不承诺游戏实际验收。
 type Request struct {
+	// warperStock 由获选的塔候选冻结，用于最终蓝图参数校验。
+	warperStock int
+	// shape 职责：保存工作流冻结的形状策略；使用：后续候选；边界：不接受前端覆盖。
+	shape *LayoutShapePolicy
+	// search 是工作流冻结的搜索预算，不从用户请求 JSON 解码。
+	search *LayoutSearchPolicy
 	// CandidateConcurrency 职责：指定单任务候选并发上限；使用：诊断与资源调优；边界：零为自动，只允许一到十，不改变全局 GOMAXPROCS。
 	CandidateConcurrency   int `json:"candidateConcurrency,omitempty"`
 	PreviewProtocolVersion int `json:"previewProtocolVersion,omitempty"`
@@ -97,6 +105,10 @@ type Request struct {
 // 使用：量化蓝图工作台传入 Generate；缺省模式由旧调用保留平面行为。
 // 边界：允许扩展时可生成多个原生 Area，但不截断单个设施或隐式断开连接；纬圈仍只是粘贴锚点建议，不替代游戏 Physics 碰撞检查。
 type SurfaceLayout struct {
+	// offsetWindow 职责：标识经Prepare授权的非对称窗口；使用：最终参考点校验；边界：不接收用户JSON，不扩大原bands。
+	offsetWindow bool
+	// adjacentDepth 职责：保存内部候选的邻带深度；使用：所有最终许可校验；边界：不接收JSON，0/1保持旧深度1，只有原ExpandAdjacent授权才消费。
+	adjacentDepth int
 	// nativeBand 职责：保存极区本次候选的原生子环；使用：生成内部调度；边界：不接受JSON输入、不替代整个第5档定义。
 	nativeBand *surfacePackedBand
 	// polarRoot 职责：用目标主区域坐标表达原生球面实体；使用：极区及大厂内部候选；边界：区域元数据仍覆盖全部实体和真实纬带。
@@ -145,7 +157,7 @@ type SurfacePlan struct {
 	AnchorLatitudeGrid int `json:"anchorLatitudeGrid"`
 	// PrimaryAreaIndex 职责：记录主粘贴区域；使用：父链和坐标核对；边界：多纬带时不一定为 0。
 	PrimaryAreaIndex int `json:"primaryAreaIndex"`
-	// Bands 职责：保存各原生 Area 的建议纬向范围与建筑数；使用：展示占地及容量；边界：空过渡纬带仍可能有 Area。
+	// Bands 职责：保存各原生 Area 的建议纬向范围与编码归属数；使用：展示区域元数据；边界：根坐标记录可跨多个实际纬带，BuildingCount不等于该纬圈的物理占用数，空过渡Area仍须保留。
 	Bands []SurfaceBandPlan `json:"bands"`
 	// Mode 职责：保存实际使用的选择模式；使用：显示自动或手动选择状态；边界：planar 时为空。
 	Mode string `json:"mode"`

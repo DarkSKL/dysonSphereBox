@@ -1,3 +1,4 @@
+# 每个候选在几何冻结后执行此验证链。每项 tool 签发一份规则结果，complete 汇合全部同版本结果。形状阈值在 input.yaml 设置。
 schemaVersion: 1
 id: rules
 flow:
@@ -6,6 +7,7 @@ flow:
 subflows:
   validate:
     flow:
+      # 先核对实体引用、纬度、粘贴槽位及带段距离，以最终坐标为准。
       - id: references
         tool: rules.references@1
       - id: latitude
@@ -14,6 +16,7 @@ subflows:
         tool: rules.pasted-slots@1
       - id: belt-distance
         tool: rules.belt-distance@1
+      # 检查静态碰撞、储液罐接口，以及电力设备和物流塔的间距。
       - id: static-colliders
         tool: rules.static-colliders@1
       - id: tank-ports
@@ -22,6 +25,7 @@ subflows:
         tool: rules.power-spacing@1
       - id: station-spacing
         tool: rules.station-spacing@1
+      # 检查带段交叉、传送带与建筑的占位冲突，以及分拣器几何和分流器净空。
       - id: belt-crossings
         tool: rules.belt-crossings@1
       - id: belt-building-occupancy
@@ -30,12 +34,14 @@ subflows:
         tool: rules.inserter-geometry@1
       - id: splitter-clearance
         tool: rules.splitter-clearance@1
+      # 检查塔端口、仓储顶部空间及供电网络。
       - id: station-ports
         tool: rules.station-ports@1
       - id: storage-roof
         tool: rules.storage-roof@1
       - id: power-network
         tool: rules.power-network@1
+      # 检查运输拓扑、副产物优先级、缓存、机器接线及喷涂通道。
       - id: transport-topology
         tool: rules.transport-topology@1
       - id: byproduct-priority
@@ -46,6 +52,7 @@ subflows:
         tool: rules.machines@1
       - id: spray-channels
         tool: rules.spray-channels@1
+      # 核对配送、生产端分流和物料网络，再验证各路线、回收与自喷。
       - id: deliveries
         tool: rules.deliveries@1
       - id: producer-splits
@@ -58,6 +65,7 @@ subflows:
         tool: rules.recycles@1
       - id: self-spray
         tool: rules.self-spray@1
+      # 核对余料、共享运力、物料守恒、输入输出边界和监测器。
       - id: leftovers
         tool: rules.leftovers@1
       - id: shared-capacity
@@ -68,9 +76,11 @@ subflows:
         tool: rules.boundaries@1
       - id: monitors
         tool: rules.monitors@1
+      # 用最终实体计算占地、长宽比和线路指标，随后形成密度报告。择优与最佳预览消费这些度量。
       - id: layout-metrics
         tool: rules.layout-metrics@1
       - id: density-report
         tool: rules.density-report@1
+      # 汇合本候选的必需证明。删除必需节点会导致流程缺少依赖或证据。
       - id: complete
         tool: rules.complete@1

@@ -14,7 +14,7 @@ type denseNativeWorkloadKey struct{}
 // denseNativeLargeRequest 职责：识别需要提前固定球面坐标的请求；使用：入口、目标范围和均衡候选共用；边界：未启用缓存估计时保持原机器数量条件。
 func denseNativeLargeRequest(ctx context.Context, req Request) bool {
 	workload, _ := ctx.Value(denseNativeWorkloadKey{}).(int)
-	return req.Plan.MachineCount >= denseNativeLargeMachineThreshold || workload >= denseNativeLargeMachineThreshold
+	return req.Plan.MachineCount >= req.search.LargeLayoutThreshold || workload >= req.search.LargeLayoutThreshold
 }
 
 // denseNativeWorkload 职责：按满负荷容量组估算缓存模块数；使用：避免中型制造厂加缓存后仍先跑巨大平面候选；边界：只影响算法分流，最终模块数和几何仍由完整装配决定。
@@ -23,7 +23,7 @@ func denseNativeWorkload(ctx context.Context, req Request, dataset *quant.Datase
 		return 0, err
 	}
 	workload := req.Plan.MachineCount
-	if req.Density != densityDense || !req.Setting.EnableIntermediateBuffer || workload >= denseNativeLargeMachineThreshold {
+	if req.Density != densityDense || !req.Setting.EnableIntermediateBuffer || workload >= req.search.LargeLayoutThreshold {
 		return workload, nil
 	}
 	for _, production := range req.Plan.Productions {
@@ -42,7 +42,7 @@ func denseNativeWorkload(ctx context.Context, req Request, dataset *quant.Datase
 		if err != nil {
 			return 0, err
 		}
-		counts, err = denseSpatialRowCounts(production, recipe, req.Setting, counts, 32, false)
+		counts, err = denseSpatialRowCounts(production, recipe, req.Setting, counts, req.search.BufferEstimateSpan, false)
 		if err != nil {
 			return 0, err
 		}

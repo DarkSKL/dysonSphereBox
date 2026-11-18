@@ -51,7 +51,7 @@ func connectedExecutionRows(ctx context.Context, input *PreparedInput, span floa
 }
 
 // deduplicateConnectedRows 职责：合并只有跨度、容量或街道分组身份不同的真实等价规格；使用：直连枚举；边界：其余策略完整保留，折行仅在必要条件确定不成立时排除。
-func deduplicateConnectedRows(ctx context.Context, input *PreparedInput, specs []ConnectedCandidateSpec) ([]ConnectedCandidateSpec, error) {
+func deduplicateConnectedRows(ctx context.Context, input *PreparedInput, specs []ConnectedCandidateSpec, flowAwareRowThreshold int) ([]ConnectedCandidateSpec, error) {
 	type rowPlanKey struct {
 		span     float64
 		capacity bool
@@ -111,7 +111,7 @@ func deduplicateConnectedRows(ctx context.Context, input *PreparedInput, specs [
 		eligible = append(eligible, spec)
 	}
 	unique := candidates.StableUnique(eligible, func(spec ConnectedCandidateSpec) candidateKey { return identities[spec] })
-	if input.request.Plan.MachineCount >= 256 && (input.request.Density == densityDense || input.geometry.Strategy == "native-window") {
+	if input.request.Plan.MachineCount >= input.request.search.LargeLayoutThreshold && (input.request.Density == densityDense || input.geometry.Strategy == "native-window") {
 		// 有限预算下先求较小的真实行图，避免短跨度把大厂拆成成千个独立装箱/接线路径后才尝试长行。
 		count := func(spec ConnectedCandidateSpec) int {
 			if plan, ok := plans[rowPlanKey{spec.DenseSpan, spec.CapacityFill && input.request.Mode == 1}]; ok {
@@ -122,6 +122,16 @@ func deduplicateConnectedRows(ctx context.Context, input *PreparedInput, specs [
 		complex := func(spec ConnectedCandidateSpec) bool {
 			return spec.Street || spec.BentRows || spec.Refine || spec.TranslateCompact || spec.ProducerSplits
 		}
+		// 只衡量当前优先的基础候选；尚未进入的街道/折行可能合并大量行，不能借它们的
+		// 探针下界把基础分行已经很大的工厂误判为小工作量。
+		unknown := int(^uint(0) >> 1)
+		minimumRows := unknown
+		for _, spec := range unique {
+			if !complex(spec) {
+				minimumRows = min(minimumRows, count(spec))
+			}
+		}
+		preferFlowAware := input.request.Density == densityDense && minimumRows != unknown && flowAwareRowThreshold > 0 && minimumRows >= flowAwareRowThreshold
 		sort.SliceStable(unique, func(i, j int) bool {
 			// 普通大厂优先真实短行阵；它已按完整段净空形成矩形，旧连续长排仍保留为后备。
 			if input.request.Density == densityStandard && unique[i].SpatialRows != unique[j].SpatialRows {
@@ -133,8 +143,12 @@ func deduplicateConnectedRows(ctx context.Context, input *PreparedInput, specs [
 			if count(unique[i]) != count(unique[j]) {
 				return count(unique[i]) < count(unique[j])
 			}
-			// 大厂的远距离连线可比机器本体多一个数量级；同等拆行先试真实流边参与评分的布局。
-			return input.request.Density == densityDense && unique[i].DenseOrder >= 2 && unique[j].DenseOrder < 2
+			// 仅在真实分行后仍有大量单元时优先物料图布局；其它同工作量场景保留配置顺序，
+			// 避免仅按机器数推迟仍可用的基础布局。阈值只作用于排序，不缩减候选集合。
+			if preferFlowAware {
+				return unique[i].DenseOrder >= 2 && unique[j].DenseOrder < 2
+			}
+			return false
 		})
 	}
 	recordCandidatePlans(ctx, "connected-machine-rows", len(specs), len(unique), 0)

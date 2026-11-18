@@ -1,3 +1,4 @@
+# 候选装配完成后调用 finalize，把机器和线路定稿成同一份几何快照。这里编排已注册的工具，数值调优入口在 input.yaml 和各模式文件。
 schemaVersion: 1
 id: geometry
 flow:
@@ -6,18 +7,21 @@ flow:
 subflows:
   finalize:
     flow:
+      # 先把候选定位到目标坐标，再按实际覆盖补电和移除冗余供电设施。
       - id: position
         tool: geometry.position@1
       - id: repair-power
         tool: power.repair@1
       - id: prune-power
         tool: power.prune@1
+      # 重定位后再对齐监测器和绑定货物，使这些附件引用最终位置。
       - id: relocate
         tool: geometry.relocate@1
       - id: align-monitors
         tool: monitors.align@1
       - id: bind-cargo
         tool: cargo.bind@1
+      # 测量几何范围，再绑定运输记录、提交优先级并标注生产速率。
       - id: measure-range
         tool: geometry.measure-range@1
       - id: bind-transport-records
@@ -26,5 +30,6 @@ subflows:
         tool: transport.commit-priorities@1
       - id: annotate-production-rates
         tool: production.annotate-rates@1
+      # 冻结上述输出，供 rules.yaml 对同一版本逐项验证。调整顺序时需满足各节点的输入依赖。
       - id: freeze
         tool: geometry.freeze@1

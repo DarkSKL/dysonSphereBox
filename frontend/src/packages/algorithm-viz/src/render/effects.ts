@@ -19,14 +19,19 @@ export class ShadowLayer {
   private readonly matrix = new THREE.Matrix4();
 
   constructor(parent: THREE.Object3D, uniforms: Record<string, THREE.IUniform>) {
+    // 共享平台表由场景维护；独立使用本层的旧调用方默认十个平台均无偏移。
+    const stages = uniforms.uStages ??= { value: Array.from({ length: 10 }, () => new THREE.Vector4(0, 0, 0, 0)) };
     this.material = new THREE.ShaderMaterial({
       vertexShader: SHADOW_VERTEX,
       fragmentShader: SHADOW_FRAGMENT,
-      uniforms: { uShadowColor: uniforms.uShadow, uParams: uniforms.uParams },
+      uniforms: { uShadowColor: uniforms.uShadow, uParams: uniforms.uParams, uStages: stages },
       transparent: true,
       depthWrite: false,
     });
-    this.pool = new InstancePool('shadow', this.geometry, this.material, [{ name: 'aShadow', itemSize: 1 }], parent, 128, -5);
+    this.pool = new InstancePool('shadow', this.geometry, this.material, [
+      { name: 'aShadow', itemSize: 1 },
+      { name: 'aStage', itemSize: 1, fill: [0] },
+    ], parent, 128, -5);
   }
 
   alloc(): number {
@@ -49,14 +54,15 @@ export class ShadowLayer {
     this.pool.beginGeneration();
   }
 
-  /** 写入投影：中心 (x, z)、旋转 yaw、尺寸 (w, d)、强度 */
-  set(slot: number, x: number, z: number, yaw: number, w: number, d: number, strength: number): void {
+  /** 写入局部投影；stage 默认 0 兼容旧世界坐标调用，平台平移与下坠隐藏交给 shader。 */
+  set(slot: number, x: number, z: number, yaw: number, w: number, d: number, strength: number, stage = 0): void {
     const c = Math.cos(yaw);
     const s = Math.sin(yaw);
     // 绕 Y 旋转后按 w/d 缩放，地面高度略高于平台以避免深度冲突
     this.matrix.set(c * w, 0, s * d, x, 0, 1, 0, 0.03, -s * w, 0, c * d, z, 0, 0, 0, 1);
     this.pool.setMatrix(slot, this.matrix);
     this.pool.set('aShadow', slot, strength);
+    this.pool.set('aStage', slot, stage);
   }
 
   commit(): void {

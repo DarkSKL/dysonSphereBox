@@ -37,6 +37,8 @@ type artifacts struct {
 	transport      workflow.ArtifactKey[*core.PreparedInput]
 	input          workflow.ArtifactKey[*core.PreparedInput]
 	transportSpecs workflow.ArtifactKey[[]core.TransportCandidateSpec]
+	searchWindow   workflow.ArtifactKey[candidateWindowArgs]
+	searchPasses   workflow.ArtifactKey[[]candidateWindowArgs]
 	surfaceSpecs   workflow.ArtifactKey[[]core.SurfaceCandidateSpec]
 	connected      workflow.ArtifactKey[[]core.ConnectedCandidateSpec]
 	station        workflow.ArtifactKey[[]core.StationCandidateSpec]
@@ -134,6 +136,12 @@ func newArtifacts() (artifacts, error) {
 		return a, err
 	}
 	if a.surfaceSpecs, err = addArtifact(&a.all, "search.surface", cloneValue[[]core.SurfaceCandidateSpec], valueBytes[[]core.SurfaceCandidateSpec], false); err != nil {
+		return a, err
+	}
+	if a.searchWindow, err = addArtifact(&a.all, "search.window", cloneValue[candidateWindowArgs], valueBytes[candidateWindowArgs], false); err != nil {
+		return a, err
+	}
+	if a.searchPasses, err = addArtifact(&a.all, "search.passes", cloneValue[[]candidateWindowArgs], valueBytes[[]candidateWindowArgs], false); err != nil {
 		return a, err
 	}
 	if a.connected, err = addArtifact(&a.all, "search.connected", cloneValue[[]core.ConnectedCandidateSpec], valueBytes[[]core.ConnectedCandidateSpec], false); err != nil {

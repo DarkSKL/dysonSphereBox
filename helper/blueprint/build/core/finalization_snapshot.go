@@ -159,8 +159,12 @@ func (snapshot VerifiedSnapshot) EstimatedBytes() int64 {
 func finalGeometryFingerprint(document blueprint.Document, request Request, rules finalizationRuleContext) ([32]byte, error) {
 	var nativeBand [3]int
 	var nativeBandSet, polarRoot bool
+	offset := false
+	depth := 0
 	if layout := request.SurfaceLayout; layout != nil {
 		polarRoot = layout.polarRoot
+		depth = layout.adjacentDepth
+		offset = layout.offsetWindow
 		if layout.nativeBand != nil {
 			nativeBandSet = true
 			nativeBand = [3]int{layout.nativeBand.low, layout.nativeBand.high, layout.nativeBand.segments}
@@ -174,7 +178,9 @@ func finalGeometryFingerprint(document blueprint.Document, request Request, rule
 		NativeBandSet bool
 		PolarRoot     bool
 		Rules         finalizationRuleContext
-	}{document, request, finalizationVersion, nativeBand, nativeBandSet, polarRoot, rules})
+		AdjacentDepth int  `json:"adjacentDepth,omitempty"`
+		OffsetWindow  bool `json:"offsetWindow,omitempty"`
+	}{document, request, finalizationVersion, nativeBand, nativeBandSet, polarRoot, rules, depth, offset})
 	if err != nil {
 		return [32]byte{}, &blueprint.Error{Code: "GEN_E_FINAL_SNAPSHOT", Message: "定稿内容无法建立稳定指纹：" + err.Error()}
 	}

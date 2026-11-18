@@ -23,7 +23,7 @@ func (encoding *surfaceEncoding) validateDenseStaticLatitude(ctx context.Context
 	if !ok {
 		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "真实建造盒检查需要有效的五档选区"}
 	}
-	bands := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent)
+	bands := denseLatitudeAllowedBands(selection, layout.ExpandAdjacent, layout.adjacentDepth)
 	if len(bands) == 0 {
 		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "所选档位没有可检查的原生纬带"}
 	}

@@ -18,7 +18,7 @@ import (
 type surfaceEncoding struct {
 	// positionSnapshot 职责：仅在同步只读规则区间复用世界端点；使用：减少重复映射；边界：记录或锚点变化前必须结束该区间。
 	positionSnapshot *surfacePositionSnapshot
-	// rootCoordinates 职责：使用游戏原生跨区捕获的主区域实体坐标；使用：极区多Area；边界：完整实体包络仍由plan覆盖，不能隐瞒越出第5档的建筑。
+	// rootCoordinates 职责：使用游戏原生跨区捕获的主区域实体坐标；使用：极区及整厂原生多Area；边界：编码归属不等于实际纬圈占用，完整实体仍须在plan许可包络内逐项验证。
 	rootCoordinates bool
 	// planar 职责：选择等赤道格长的切平面规则；使用：旧平面请求的数值预检；边界：不冒充球面映射或实际粘贴验证。
 	planar bool

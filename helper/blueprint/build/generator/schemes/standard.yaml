@@ -2,8 +2,13 @@ schemaVersion: 1
 id: standard
 # 大模式参数入口；四子模式只定义覆盖，原子实现及候选、几何和校验工作链均在共享库中唯一维护。
 parameters:
+  # 普通物流塔参与枚举的布局族。all 同时考虑可用族，blackbox 仅试黑盒，field 仅试塔场。当前普通模式只生成黑盒候选，单选 field 会得到空列表。
   stationFamily: all
+  # 普通配送和物流塔的短行跨度（工作格）。最多 4 个不同的有限正数，单项不超过 10000。
   standardRowSpans: [8, 12]
+  # 普通配送全场候选，每行是一套组合。scale 是模块高度倍率（正数），order 是 0～3 的单元排序策略。
+  # 在轮廓装箱中，0、2 优先大单元，1、3 保留输入顺序，2、3 额外计入线长。latitudeFactor 越小，纬向预算越紧，0 表示略过这项额外限高。
+  # materialOrder 启用物料邻接排序。consumerFirst 仅在其为 true 时可用，优先放置消费端。
   distributorStrategies:
     - {"scale": 1, "order": 2}
     - {"scale": 1.2, "order": 3}
@@ -13,6 +18,7 @@ parameters:
     - {"scale": 1, "order": 3, "latitudeFactor": 0.85, "materialOrder": true}
     - {"scale": 1.2, "order": 3, "latitudeFactor": 0.7, "materialOrder": true, "consumerFirst": true}
     - {"scale": 1.2, "order": 3, "materialOrder": true}
+  # 用于普通短行装箱的独立策略表。每项的 scale、order 含义同上，与 standardRowSpans 配合使用。
   distributorRowStrategies:
     - {"scale": 1.2, "order": 0}
     - {"scale": 1.2, "order": 2}
@@ -32,18 +38,20 @@ subflows:
           cases:
             connected:
               - id: connected-parameters
+                # 折行跨度继承 common.yaml 的 bentSpans。仅需本模式例外时，在此用 with 覆盖。
                 tool: mode.submode@1
-                with: {bentSpans: [12, 18]}
             station:
               - id: station-parameters
                 tool: mode.submode@1
-                with: {stationFamily: all}
+                # 塔子模式与下方枚举使用文件顶部的同一布局族。
+                with: {stationFamily: {$param: stationFamily}}
             distributor:
               - id: distributor-parameters
                 tool: mode.submode@1
             bus:
               - id: bus-parameters
                 tool: mode.submode@1
+                # 内部总线模式允许在平面基线之外追加收紧布局。
                 with: {busTighten: true}
           otherwise:
             - id: unsupported-submode
@@ -60,6 +68,7 @@ subflows:
                     south:
                       - id: south-ring
                         tool: mode.geography@1
+                        # 南半球收缩纬圈的街道朝向尝试顺序。数字 0～3 各相差 90°。
                         with: {streetRotations: [2, 3, 0, 1]}
                   otherwise:
                     - id: north-ring-default
@@ -69,6 +78,7 @@ subflows:
               tool: mode.geography@1
       - id: surface-workchain
         call: common/selected-surface
+  # 按物流族选择工作链。standardRowPacking 启用普通行阵装箱，standardRowSpans 提供对应的候选跨度。
   layout:
     flow:
       - id: family
@@ -90,7 +100,7 @@ subflows:
                 call: distributor/search
             station:
               - id: station-specs
-                tool: station.enumerate@1
+                call: station/enumerate
                 with:
                   family: {$param: stationFamily}
                   standardRowSpans: {$param: standardRowSpans}

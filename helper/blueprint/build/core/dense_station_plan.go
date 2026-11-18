@@ -247,7 +247,7 @@ func (b *builder) trimDenseStationTails(rows []*denseStationRow, routes []denseS
 }
 
 // planDenseStationTowers 职责：优先把整个机器行端口放入兼容的跨产线库存，再按物品角色拆塔；使用：真实塔容量预算；边界：自产供剂出入口同一库存，副产物预留独立带口。
-func planDenseStationTowers(ctx context.Context, rows []*denseStationRow, routes []denseStationRoute, slots int) ([]denseStationTower, error) {
+func planDenseStationTowers(ctx context.Context, rows []*denseStationRow, routes []denseStationRoute, inventory stationInventory) ([]denseStationTower, error) {
 	check := func() error {
 		if ctx.Err() != nil {
 			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "密铺共享塔库存规划已取消或超时"}
@@ -287,7 +287,7 @@ func planDenseStationTowers(ctx context.Context, rows []*denseStationRow, routes
 				items = append(items, item)
 			}
 		}
-		return len(items) - len(tower.items), len(items) <= slots && len(tower.routes)+tower.leftovers+need(indices) <= 12
+		return len(items) - len(tower.items), inventory.fits(items) && len(tower.routes)+tower.leftovers+need(indices) <= 12
 	}
 	assign := func(indices []int) error {
 		chosen, score := -1, math.MaxInt
@@ -381,7 +381,7 @@ func planDenseStationTowers(ctx context.Context, rows []*denseStationRow, routes
 		}
 	}
 	for _, tower := range towers {
-		if len(tower.items) > slots || len(tower.routes)+tower.leftovers > 12 {
+		if !inventory.fits(tower.items) || len(tower.routes)+tower.leftovers > 12 {
 			return nil, fmt.Errorf("密铺塔内部预算不一致")
 		}
 	}

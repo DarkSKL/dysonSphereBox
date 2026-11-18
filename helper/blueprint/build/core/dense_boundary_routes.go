@@ -16,6 +16,16 @@ func (index *denseRoutePortIndex) boundarySegment(first, second vector) bool {
 	return index.boundary != nil && min(first.x, second.x) <= index.boundary.maximumX
 }
 
+// routeHeightLimit 在低层试算时约束从入口出发的带在交接区的高度，进厂后允许跨越建筑。
+// 端口确实用到第三层时保留原槽高；回退到全高度搜索时恢复完整可达空间。
+func (env *transportEnvironment) routeHeightLimit(point vector, source, target *placed) float64 {
+	if env.maximum.z < transportMaxHeight && env.densePorts != nil && env.densePorts.boundary != nil &&
+		source.a.x <= env.densePorts.boundary.maximumX && point.x <= math.Ceil(env.densePorts.boundary.maximumX) {
+		return min(env.maximum.z, max(2, source.a.z, target.a.z))
+	}
+	return env.maximum.z
+}
+
 // boundarySpanAllowed 职责：限制边界内的外伸与水平带层；使用：portal、A* 和最终边界复核；边界：平直接口只用 0/2/4 三层，盒外过渡区可升降接入厂内高度，始终执行带段净空。
 func (index *denseRoutePortIndex) boundarySpanAllowed(first, second vector) bool {
 	if !index.boundarySegment(first, second) {
@@ -44,34 +54,21 @@ func (b *builder) appendDenseInputStem(route *transportRoute) {
 		return
 	}
 	previous := route.start
-	for x := previous.a.x + 1; x <= b.denseBoundary.handoffX+1e-6; x++ {
+	handoff := b.denseBoundary.handoffX
+	if b.denseBoundary.staggerInputs {
+		// 多层入口错开交接列，让寻路器从各自槽高选择平走、升高或下降。
+		handoff += float64(denseBoundaryLevels) - math.Round(previous.a.z/2)
+	}
+	for x := previous.a.x + 1; x <= handoff+1e-6; x++ {
 		next := b.make(2000+b.setting.BeltLv, x, previous.a.y, previous.a.z)
 		connect(previous, next)
 		route.path = append(route.path, next)
 		previous = next
 	}
-	if b.denseBoundary.staggerInputs {
-		// 低层在更靠厂内的列升起，高层在更靠外的列升起；先接入低层时，其高架不会封死后续上层入口。
-		level := int(math.Round(previous.a.z / 2))
-		riserX := b.denseBoundary.handoffX + float64(denseBoundaryLevels-level)
-		for x := previous.a.x + 1; x <= riserX+1e-6; x++ {
-			next := b.make(2000+b.setting.BeltLv, x, previous.a.y, previous.a.z)
-			connect(previous, next)
-			route.path = append(route.path, next)
-			previous = next
-		}
-		riserHeight := float64(2*denseBoundaryLevels + 2*level)
-		for z := previous.a.z + 1; z <= riserHeight+1e-6; z++ {
-			next := b.make(2000+b.setting.BeltLv, previous.a.x, previous.a.y, z)
-			connect(previous, next)
-			route.path = append(route.path, next)
-			previous = next
-		}
-	}
 	route.routingEntry = previous
 }
 
-// reserveDenseBoundaryEscapes 职责：为未接线入口保护朝厂内的两格出口，避免先行路线横穿后封死整排入口。
+// reserveDenseBoundaryEscapes 保护未接线入口在交接区内的头两格。厂内空间仍由所有物料按真实占位竞争。
 // 使用：固定短带已创建、全局寻路开始前；边界：仅保留入口实际高度的有限格位，不预留整列或额外升层，仍执行真实净空检查。
 func (env *transportEnvironment) reserveDenseBoundaryEscapes(routes []*transportRoute) {
 	env.reserveStationInputEscapes(routes)
@@ -85,6 +82,9 @@ func (env *transportEnvironment) reserveDenseBoundaryEscapes(routes []*transport
 		source := route.transportSource()
 		for step := 1.; step <= 2; step++ {
 			point := beltCell(vector{source.a.x + step, source.a.y, source.a.z})
+			if point.x > env.densePorts.boundary.maximumX {
+				break
+			}
 			env.reserveTransportSpan(vector{source.a.x + step - 1, source.a.y, source.a.z}, point, source)
 			if env.reserved[point] == nil {
 				env.reserved[point] = make(map[*placed]bool)
@@ -94,17 +94,27 @@ func (env *transportEnvironment) reserveDenseBoundaryEscapes(routes []*transport
 	}
 }
 
-// orderDenseBoundaryRoutes 职责：先保护厂内受限端口，再从低层到高层接入原料；使用：边界位置冻结后；边界：内部路线及同层外供各自保序，不改变规范份额或真实端点。
+// orderDenseBoundaryRoutes 保留机器间受限接点的优先权，叠放入口再从低到高接原料，最后接地面交付口。
 func (b *builder) orderDenseBoundaryRoutes(routes []*transportRoute) {
 	if b.denseBoundary == nil {
 		return
 	}
-	sort.SliceStable(routes, func(i, j int) bool {
-		a, c := routes[i].routingEntry, routes[j].routingEntry
-		if a == nil || c == nil {
-			return a == nil && c != nil
+	priority := func(route *transportRoute) int {
+		if route.routingEntry != nil {
+			return 1
 		}
-		return a.a.z < c.a.z
+		if b.denseBoundary.staggerInputs && route.to == nil {
+			return 2
+		}
+		return 0
+	}
+	sort.SliceStable(routes, func(i, j int) bool {
+		left, right := priority(routes[i]), priority(routes[j])
+		if left != right {
+			return left < right
+		}
+		a, c := routes[i].routingEntry, routes[j].routingEntry
+		return a != nil && c != nil && a.a.z < c.a.z
 	})
 }
 

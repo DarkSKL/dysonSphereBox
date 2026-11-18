@@ -107,15 +107,19 @@ type SearchCandidateDiagnostic struct {
 
 // LayoutMetrics 职责：记录候选预算内可复现的空间和路线指标；使用：紧凑度回归；边界：有界启发式不等于数学全局最优。
 type LayoutMetrics struct {
+	// acceptedAspect 职责：携带同任务冻结的验收上限；使用：共同判定；边界：按值复制，不序列化为用户输入。
+	acceptedAspect float64
+	// preferredAspect 随最终度量传递给排序、剪枝和预览。
+	preferredAspect float64
 	// BeltCount 职责：统计最终真实传送带数量；使用：压缩方案成本对照；边界：不按逻辑lane重复计数。
 	BeltCount int `json:"beltCount"`
 	// TotalBeltLengthMeters 职责：统计最终全部带间连接的米制弦长；使用：避免以大量无效绕线换取填充率；边界：含局部/外部/共享带，每个实体连接仅一次，不是运行货物路径采样长度。
 	TotalBeltLengthMeters float64 `json:"totalBeltLengthMeters"`
 	// EnvelopeArea 职责：记录所有 Area 包络面积总和；使用：空间比较；边界：不是建筑占用并集。
 	EnvelopeArea float64 `json:"envelopeArea"`
-	// EnvelopeAspectRatio 职责：记录布局长宽比；使用：偏矩形比较；边界：原生主区整厂采用共同坐标包络，其余采用各Area面积加权，至少为一。
+	// EnvelopeAspectRatio 职责：记录完整实体物理包络长宽比；使用：所有模式共同近方形比较；边界：正式值由共同球面展开覆盖临时Area估计，至少为一，非极区环绕长条在度量前拒绝。
 	EnvelopeAspectRatio float64 `json:"envelopeAspectRatio"`
-	// ShapeObjective 职责：记录包络面积乘过长惩罚；使用：可行候选排序；边界：普通布局以2:1、超密度以1.4:1为软阈值，不能替代硬规则校验。
+	// ShapeObjective 职责：记录包络面积乘过长惩罚；使用：可行候选排序；边界：按任务冻结的 preferredAspect 计算，不能替代硬规则校验。
 	ShapeObjective float64 `json:"shapeObjective"`
 	// FootprintArea 职责：记录离散格建筑与路线并集；使用：空白率；边界：格网近似而非美术网格。
 	FootprintArea float64 `json:"footprintArea"`

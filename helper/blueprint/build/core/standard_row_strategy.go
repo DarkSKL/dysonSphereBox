@@ -86,7 +86,7 @@ func (b *builder) standardSpatialRowUnits(ctx context.Context, units []denseSpat
 			w = max(w, block.x+sizes[i].width)
 			h = max(h, block.y+sizes[i].height)
 		}
-		score := layoutShapeCost(float64(w*h), math.Max(float64(w)/float64(h), float64(h)/float64(w)))
+		score := layoutShapeCost(b.policy.shape.PreferredAspect, float64(w*h), math.Max(float64(w)/float64(h), float64(h)/float64(w)))
 		if score < bestScore {
 			best, bestScore = attempt, score
 		}

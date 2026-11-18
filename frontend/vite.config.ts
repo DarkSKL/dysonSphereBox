@@ -19,6 +19,16 @@ export default defineConfig({
     },
   },
   plugins: [
+    {
+      name: 'blueprint-dev-models',
+      configureServer(server) {
+        // 立体预览按文件名读取 GLB；开发期直接复用平面预览的原始模型。
+        server.middlewares.use((req, _res, next) => {
+          if (req.url?.startsWith('/blueprint/models/')) req.url = req.url.replace('/blueprint/models/', '/src/data/models/')
+          next()
+        })
+      },
+    },
     modelCompressionPlugin(),
     VueRouter({
       routesFolder: 'src/pages',

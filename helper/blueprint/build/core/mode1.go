@@ -22,7 +22,13 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 	if err := b.prepareConnectedRows(ctx, req, dataset, heightLimit, compact); err != nil {
 		return err
 	}
-	if err := b.assignStationInputPorts(ctx); err != nil {
+	return b.completePreparedConnected(ctx, req)
+}
+
+// completePreparedConnected 职责：在已完成排布的真实端口图上接线并补齐附件；使用：直连及复用该装配能力的模式。
+// 边界：不重新装箱；集中或就近入口的差异只在这一阶段生效，之后仍须完整几何与物理规则。
+func (b *builder) completePreparedConnected(ctx context.Context, req Request) error {
+	if err := b.prepareStationTransportEntries(ctx); err != nil {
 		return err
 	}
 	if err := b.routeTransport(ctx); err != nil {

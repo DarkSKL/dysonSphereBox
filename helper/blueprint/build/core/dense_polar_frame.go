@@ -8,11 +8,15 @@ import (
 	buildgeometry "DysonSphereBox/helper/blueprint/build/geometry"
 	"DysonSphereBox/helper/blueprint/build/placement"
 	"context"
+	"fmt"
 	"math"
 )
 
 // densePolarFrame 职责：记录目标纬度和主区经向格长；使用：球面路由及正式编码；边界：仅原版半径200、零经度起点。
 type densePolarFrame struct {
+	// referenceCenter/offsetWindow 职责：保存原选区绝对参考中心和实际偏移；使用：非对称纬向扫描；边界：不改变投影格距或原referenceRange。
+	referenceCenter             float64
+	offsetWindow                bool
 	start, height, segments     int
 	latitudeStep, longitudeStep float32
 	// flipHemisphere 职责：在路由结束后以球面半周旋转映射回目标极区；使用：设施对称候选；边界：只写出前应用一次。
@@ -102,16 +106,9 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 	zone, _ := ctx.Value(densityLatitudeKey{}).(string)
 	selection, _ := densityLatitudeSelectionFor(zone)
 	flipHemisphere, _ := ctx.Value(densityPolarMirrorKey{}).(bool)
-	if flipHemisphere {
-		selection.hemisphere = -selection.hemisphere
-		if selection.position == "north" {
-			selection.position = "south"
-		} else if selection.position == "south" {
-			selection.position = "north"
-		}
-	}
+	selection = densePolarMirrorSelection(selection, flipHemisphere)
 	expand, _ := ctx.Value(denseAdjacentLatitudeKey{}).(bool)
-	bands := denseLatitudeAllowedBands(selection, expand)
+	bands := denseLatitudeAllowedBands(selection, expand, denseAdjacentContextDepth(ctx))
 	budget, _, err := densityContextBand(ctx, zone, 200)
 	if err != nil {
 		return err
@@ -149,51 +146,27 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 		}
 	}
 	height := budget.high - budget.low + 1
+	if turn, _ := ctx.Value(denseLocalRectangleTurnKey{}).(bool); turn {
+		denseLocalRectangleRotateRows(units, height)
+	}
 	low, high := bounds(b.all)
 	// 按实体包络加接线余量定位，不能因借用较大搜索预算而偏离所选中心或边缘。
 	if !compact {
 		height = min(height, int(math.Ceil(high.y-low.y))+5)
 	}
-	referenceLow, referenceHigh := bands[0].low, bands[len(bands)-1].high
-	if expand {
-		referenceLow, referenceHigh = denseLatitudeReferenceRange(selection)
-	}
-	start := (referenceLow + referenceHigh - height + 1) / 2
-	if selection.position == "south" {
-		start = referenceLow
-		if expand {
-			start += 2
-		}
-		if selection.tier == 5 && selection.hemisphere < 0 {
-			// 极点最内侧只剩少量格子；预留四行实体半径，避免把局部单元中心压在极点上。
-			start += 4
-		}
-	}
-	if selection.position == "north" {
-		start = referenceHigh - height + 1
-		if expand {
-			start -= 2
-		}
-	}
-	latitudeRadians, err := buildgeometry.LatitudeStep32(buildgeometry.Vanilla200)
+	frame, err := newDensePolarLayoutFrame(selection, bands, height, expand, flipHemisphere, compact, denseOffsetContext(ctx))
 	if err != nil {
 		return err
 	}
-	step := float32(latitudeRadians)
-	segments := 0
-	for y := start; y < start+height; y++ {
-		segments = max(segments, longitudeSegmentCount(y, 200))
-	}
-	// 寻路采用覆盖区最细的经向格网；若直接沿南极带头的粗网格，靠赤道一侧一步便可能超过合法带长。
-	// 写出前统一换算回主Area原生格距，保持同一球面位置。
-	frame := &densePolarFrame{start: start, height: height, segments: segments, latitudeStep: step, longitudeStep: float32(2*float32(math.Pi)) / float32(segments*5), flipHemisphere: flipHemisphere, compactLongitude: compact}
+	start := frame.start
 	transform := frame.geometryFrame()
 	if _, err := transform.ProjectNative32(buildgeometry.GridPoint{Frame: transform.Grid}); err != nil {
 		return err
 	}
 	if selection.tier < 5 || expand {
 		frame.position = selection.position
-		frame.longitudeBudget = denseTargetLongitudeBudget(frame, units)
+		aspect, _ := ctx.Value(denseLocalRectangleAspectKey{}).(float64)
+		frame.longitudeBudget = denseTargetLongitudeBudget(frame, units, aspect)
 	}
 	// 均衡候选将逐单元重新装箱；临时平面整体高度不代表最终纬向容量。
 	if !compact && high.y-low.y+1 > float64(height) {
@@ -243,5 +216,75 @@ func (b *builder) placePolarUnitFrames(ctx context.Context, units []denseSpatial
 	if err := b.resamplePolarLocalBelts(ctx, units); err != nil {
 		return err
 	}
+	if aspect, _ := ctx.Value(denseLocalRectangleAspectKey{}).(float64); aspect > 0 {
+		if err := denseLocalRectanglePreflight(frame, units); err != nil {
+			return err
+		}
+	}
 	return b.repairPolarUnitOccupancy(ctx, units)
+}
+
+// densePolarMirrorSelection 职责：统一镜像候选的原选区方向；使用：枚举去重和实际frame；边界：不扩大许可，不改变实体。
+func densePolarMirrorSelection(selection densityLatitudeSelection, mirror bool) densityLatitudeSelection {
+	if mirror {
+		selection.hemisphere = -selection.hemisphere
+		if selection.position == "north" {
+			selection.position = "south"
+		} else if selection.position == "south" {
+			selection.position = "north"
+		}
+	}
+	return selection
+}
+
+// newDensePolarLayoutFrame 职责：共用确定性窗口原点与真实原生步长计算。
+// 使用：枚举实际边界去重及正式装箱；边界：不建立物理占位，不接受实体或放宽经纬许可。
+func newDensePolarLayoutFrame(selection densityLatitudeSelection, bands []surfacePackedBand, height int, expand, flipHemisphere, compact bool, offsetWindows ...bool) (*densePolarFrame, error) {
+	referenceLow, referenceHigh := bands[0].low, bands[len(bands)-1].high
+	if expand {
+		referenceLow, referenceHigh = denseLatitudeReferenceRange(selection)
+	}
+	start := (referenceLow + referenceHigh - height + 1) / 2
+	if selection.position == "south" {
+		start = referenceLow
+		if expand {
+			start += 2
+		}
+		if selection.tier == 5 && selection.hemisphere < 0 {
+			// 极点最内侧只剩少量格子；预留四行实体半径，避免把局部单元中心压在极点上。
+			start += 4
+		}
+	}
+	if selection.position == "north" {
+		start = referenceHigh - height + 1
+		if expand {
+			start -= 2
+		}
+	}
+	offset := len(offsetWindows) > 0 && offsetWindows[0]
+	if offset {
+		if !expand || flipHemisphere {
+			return nil, fmt.Errorf("偏移窗口不能用于无扩带或镜像")
+		}
+		oldStart := start
+		var err error
+		start, err = denseOffsetFrameStart(selection, bands, height, start)
+		if err != nil {
+			return nil, err
+		}
+		offset = start != oldStart
+	}
+	latitudeRadians, err := buildgeometry.LatitudeStep32(buildgeometry.Vanilla200)
+	if err != nil {
+		return nil, err
+	}
+	step := float32(latitudeRadians)
+	segments := 0
+	for y := start; y < start+height; y++ {
+		segments = max(segments, longitudeSegmentCount(y, 200))
+	}
+	// 寻路采用覆盖区最细的经向格网；若直接沿南极带头的粗网格，靠赤道一侧一步便可能超过合法带长。
+	// 写出前统一换算回主Area原生格距，保持同一球面位置。
+	frame := &densePolarFrame{start: start, height: height, segments: segments, latitudeStep: step, longitudeStep: float32(2*float32(math.Pi)) / float32(segments*5), flipHemisphere: flipHemisphere, compactLongitude: compact, referenceCenter: float64((referenceLow + referenceHigh) / 2), offsetWindow: offset}
+	return frame, nil
 }

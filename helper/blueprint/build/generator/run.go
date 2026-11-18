@@ -14,11 +14,14 @@ import (
 	"DysonSphereBox/helper/blueprint/build/workflow"
 )
 
-// runtime 职责：只读保存工具及冻结执行计划；使用：任务共享；边界：不保存任务实例或参数值。
+// runtime 职责：只读保存工具及冻结执行计划；使用：任务共享；边界：不保存进行中的任务状态。
 type runtime struct {
-	keys     artifacts
-	plan     *workflow.Plan
-	registry *workflow.Registry
+	// execution 与编译计划来自同一次文件装载。
+	execution executionPolicy
+	search    core.LayoutSearchPolicy
+	keys      artifacts
+	plan      *workflow.Plan
+	registry  *workflow.Registry
 }
 
 // layoutComparison 职责：应用各领域真实的双方比较规则；使用：引擎稳定归约；边界：只消费已验证快照，同分保留原序。
@@ -105,7 +108,7 @@ func GenerateDetailed(parent context.Context, req core.Request) (result core.Res
 			return result, nil, err
 		}
 	}
-	workBudget := generationWorkBudget(req.Plan.MachineCount)
+	workBudget := r.execution.workBudget(req.Plan.MachineCount)
 	ctx, cancel := context.WithTimeout(parent, workBudget)
 	defer cancel()
 	ctx, observer := core.BeginObservation(ctx, req)
@@ -114,20 +117,17 @@ func GenerateDetailed(parent context.Context, req core.Request) (result core.Res
 	if err != nil {
 		return result, nil, err
 	}
-	if err = workflow.Seed(instance, r.keys.request, "", req); err != nil {
+	if err = workflow.Seed(instance, r.keys.request, "", req.WithLayoutSearch(r.search)); err != nil {
 		return result, nil, publicError(ctx, err)
 	}
 	// 自动模式为大型计划保留内存余量；显式并发选择仍由请求决定，不改变全局GOMAXPROCS。
-	parallel := req.CandidateConcurrency
-	if parallel == 0 && req.Plan.MachineCount >= 256 {
-		parallel = 1
-	}
+	parallel := r.execution.parallel(req.CandidateConcurrency, req.Plan.MachineCount)
 	trace, err = workflow.Run(ctx, r.plan, instance, workflow.RunOptions{
 		Timeout:          workBudget,
 		ObserveExecution: WorkflowExecutionObserver(ctx),
 		Parallel:         observer.CandidateSlots(parallel),
 		Score:            func(*workflow.FrozenSnapshot) ([]float64, error) { return []float64{0}, nil },
-		Comparators:      map[string]workflow.Comparator{"layout": r.layoutComparison, "station-refinement": r.refinementComparison, "surface": r.surfaceComparison},
+		Comparators:      map[string]workflow.Comparator{"layout": r.layoutComparison, "station-refinement": r.refinementComparison},
 		Observe: func(event workflow.CandidateEvent) error {
 			var verified *core.VerifiedSnapshot
 			if event.Snapshot != nil {

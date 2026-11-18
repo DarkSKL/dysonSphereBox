@@ -79,7 +79,7 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 		recordPerformanceSearch(ctx, steps, false)
 	}()
 	inside := func(v vector) bool {
-		return v.x >= env.minimum.x && v.x <= env.maximum.x && v.y >= env.minimum.y && v.y <= env.maximum.y && v.z >= 0 && v.z <= transportMaxHeight && !env.reservedByOther(v, source, target)
+		return v.x >= env.minimum.x && v.x <= env.maximum.x && v.y >= env.minimum.y && v.y <= env.maximum.y && v.z >= 0 && v.z <= env.routeHeightLimit(v, source, target) && !env.reservedByOther(v, source, target)
 	}
 	if ctx.Err() != nil || !inside(start) {
 		return nil, -1, 0

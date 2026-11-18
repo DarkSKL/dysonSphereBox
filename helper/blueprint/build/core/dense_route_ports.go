@@ -35,6 +35,8 @@ type denseRoutePortIndex struct {
 	footprintReady              bool
 	// polarFrame 职责：令所有距离及静态盒使用同一原生球面；使用：跨子环接线；边界：nil仍用既有平面预检。
 	polarFrame *densePolarFrame
+	// worldCache 职责：复用固定球面框架下的纯格点投影；使用：串行候选寻路；边界：有界且不缓存动态占位或规则结论。
+	worldCache *denseRouteWorldCache
 	boxes      []packingShape
 	// strictBelts 职责：普通布局寻路时禁止与已提交的独立带段相交；使用：共享塔/配送全场候选；边界：超密度保留原带段规则，最终仍统一验收。
 	strictBelts bool
@@ -137,7 +139,7 @@ func denseRouteWorld(p vector) placement.Vector {
 // world 职责：在索引固定坐标系内计算带节点中心；使用：全部边和净距检查；边界：不能混用平面盒和球面点。
 func (index *denseRoutePortIndex) world(p vector) placement.Vector {
 	if index.polarFrame != nil {
-		return index.polarFrame.world(p, .2)
+		return index.cachedWorld(p)
 	}
 	return denseRouteWorld(p)
 }
@@ -394,7 +396,7 @@ func denseRouteLength(points []vector) float64 {
 // densePortals 职责：先尝试直接短接，再按高度建立连续抬升的有限候选；使用：密铺端口，可按完整整数高度层延迟展开源端；边界：最多保留每高度两个不同出口，省略高度上限时覆盖全部层，所有新增节点逐个验净距。
 func (env *transportEnvironment) densePortals(endpoint, source, target *placed, preferred vector, sourceSide, fixedGroundStem bool, heightLimits ...float64) []denseRoutePortal {
 	index := env.densePorts
-	maximumHeight := float64(transportMaxHeight)
+	maximumHeight := env.maximum.z
 	if len(heightLimits) > 0 {
 		maximumHeight = math.Min(maximumHeight, heightLimits[0])
 	}
@@ -410,7 +412,7 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 		outward = vector{x: 1}
 	}
 	inside := func(p vector) bool {
-		return p.x >= env.minimum.x && p.x <= env.maximum.x && p.y >= env.minimum.y && p.y <= env.maximum.y && p.z >= 0 && p.z <= maximumHeight
+		return p.x >= env.minimum.x && p.x <= env.maximum.x && p.y >= env.minimum.y && p.y <= env.maximum.y && p.z >= 0 && p.z <= maximumHeight && p.z <= env.routeHeightLimit(p, source, target)
 	}
 	clearNew := func(path []vector, p vector) bool {
 		permissions := densePortalLinkPermissions(linked, len(path)-1, len(path))
@@ -591,7 +593,7 @@ func (env *transportEnvironment) findDenseTransportPathPrimary(ctx context.Conte
 	}
 	tried := map[vector]bool{}
 	initialHeight := math.Min(transportMaxHeight, math.Max(0, math.Ceil(source.a.z)))
-	for height := initialHeight; height <= transportMaxHeight; height++ {
+	for height := initialHeight; height <= env.maximum.z; height++ {
 		var best []vector
 		bestIndex, bestLength, bestCost := -1, math.MaxInt, math.Inf(1)
 		for _, prefix := range env.densePortals(source, source, target, preferred, true, false, height) {

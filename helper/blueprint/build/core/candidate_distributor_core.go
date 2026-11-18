@@ -453,7 +453,7 @@ func DistributorCandidateMetrics(validation FinalValidation) (LayoutMetrics, err
 	return validation.data.logistics.Metrics, nil
 }
 
-// BetterDistributorCandidate 职责：将所有配送拓扑的最终比较交给共同形状规则；使用：引擎归约完整终检结果；边界：规格不改变1.8验收线或排序次序，设施数必须来自真实定稿，不保存获胜者。
+// BetterDistributorCandidate 职责：将所有配送拓扑的最终比较交给共同形状规则；使用：引擎归约完整终检结果；边界：规格不改变验收线或排序次序，设施数必须来自真实定稿，不保存获胜者。
 func BetterDistributorCandidate(spec DistributorCandidateSpec, facilities int, metrics LayoutMetrics, other DistributorCandidateSpec, otherFacilities int, otherMetrics LayoutMetrics) bool {
 	return BetterLayoutCandidate(metrics, facilities, otherMetrics, otherFacilities)
 }

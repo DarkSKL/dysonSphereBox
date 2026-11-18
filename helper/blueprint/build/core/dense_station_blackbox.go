@@ -69,7 +69,7 @@ func (b *builder) buildDenseStationBoundaries(ctx context.Context, config contra
 	if err != nil {
 		return nil, err
 	}
-	plan, err := planDenseStationBoundaries(ctx, boundaryRoutes, config.ItemSlots, b.logistics.BeltCapacityPerMinute)
+	plan, err := planDenseStationBoundaries(ctx, boundaryRoutes, stationInventory{config.ItemSlots, b.warperStock}, b.logistics.BeltCapacityPerMinute)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func finalizeDenseStationBlackbox(ctx context.Context, b *builder, records []blu
 	if err := b.validateDenseStationSprayNetwork(ctx); err != nil {
 		return err
 	}
-	if err := validateStationPorts(ctx, records); err != nil {
+	if err := validateStationPorts(ctx, records, b.warperStock); err != nil {
 		return err
 	}
 	indices := map[*placed]int{}

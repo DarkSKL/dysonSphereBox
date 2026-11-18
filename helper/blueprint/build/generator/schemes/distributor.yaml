@@ -5,12 +5,16 @@ flow:
   - id: entry
     call: search
 subflows:
+  # 调整配送布局组合请编辑 standard.yaml 或 dense.yaml 中的 distributor 策略表。本文件控制这些组的试算和择优。
   search:
     flow:
       - id: distributor-attempts
         candidates:
+          # 在通过验证的配送候选间比较布局，包含真实配送设施数、形状和线路代价。
           comparator: layout
+          # 本组候选的并发上限（1～10 可显式指定），实际计算槽还受 factory.yaml 与请求并发设置限制。
           parallel: 10
+          # 枚举器提供有依赖关系的主组和备用组。符合失败条件才进入对应备用组。index 是组中候选的下标。
           groups: {$state: distributor.groups}
           inputs:
             index: {type: integer, required: true}

@@ -12,6 +12,10 @@ import (
 
 // assemblyPolicy 职责：保存单次装配所需的纯值能力；使用：输入快照和局部装配器按值复制；边界：不含生成、收尾或重试函数指针。
 type assemblyPolicy struct {
+	// shape 是所有局部装配探针继承的任务只读策略。
+	shape *LayoutShapePolicy
+	// search 随几何探针继承，供局部摆位与供电搜索读取。
+	search *LayoutSearchPolicy
 	// mode/density 职责：标识可信拓扑与物理密度；使用：共享设备算法；边界：不决定工作流或候选调度。
 	mode    int
 	density string
@@ -86,11 +90,11 @@ type logisticsFinalization struct {
 }
 
 // newAssemblyPolicy 职责：把可信设备模式映射为纯能力值；使用：输入准备一次调用；边界：不保存全局注册表，未知模式或密度明确失败。
-func newAssemblyPolicy(mode int, density string) (*assemblyPolicy, error) {
+func newAssemblyPolicy(mode int, density string, shape *LayoutShapePolicy, search *LayoutSearchPolicy) (*assemblyPolicy, error) {
 	if density != densityStandard && density != densityDense {
 		return nil, &blueprint.Error{Code: "GEN_E_DENSITY", Message: "没有可用的布局密度策略"}
 	}
-	policy := &assemblyPolicy{mode: mode, density: density}
+	policy := &assemblyPolicy{mode: mode, density: density, shape: shape, search: search}
 	switch mode {
 	case 1:
 		policy.supportsMachineRecycle, policy.connectedSurfaceAnchor = true, true

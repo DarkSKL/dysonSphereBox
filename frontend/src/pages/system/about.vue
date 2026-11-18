@@ -41,7 +41,7 @@ const credits: readonly AboutCredit[] = [
   {role: '模组框架', names: 'BepInEx 项目', url: 'https://github.com/BepInEx/BepInEx'},
   {role: '模组作者', names: 'AssemblerUI、BottleneckUI、DSPCalculator、FactoryLocator、CAAP_N'},
   {role: '蓝图生成器', names: 'B站 UP：神不在的黄昏'},
-  {role: '蓝图预览器', names: '灰灰'},
+  {role: '蓝图预览器', names: '志同道合'},
 ]
 
 const message = useMessage()
@@ -83,7 +83,7 @@ const copyContact = async (contact: AboutContact): Promise<void> => {
       </div>
       <div class="about-row">
         <dt>开发者</dt>
-        <dd>DarkSKL</dd>
+        <dd>DarkSKL、白雨雨</dd>
       </div>
       <div class="about-row">
         <dt>项目主页与反馈</dt>

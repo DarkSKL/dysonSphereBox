@@ -16,17 +16,28 @@ func NormalizeInputRequest(ctx context.Context, request Request) (*NormalizedInp
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if request.search == nil {
+		defaults := DefaultLayoutSearchPolicy()
+		request.search = &defaults
+	} else if err := request.search.Validate(); err != nil {
+		return nil, err
+	}
+	if request.shape == nil {
+		defaults := DefaultLayoutShapePolicy()
+		request.shape = &defaults
+	}
 	setting, err := normalizeSetting(request.Setting)
 	if err != nil {
 		return nil, err
 	}
+	setting.RequestStationWarpers = setting.RequestStationWarpers && request.Mode == 4
 	request.Setting = setting
 	snapshot, err := cloneInputRequest(request)
 	if err != nil {
 		return nil, inputStageCause(ctx, err)
 	}
 	snapshot.Density = normalizeDensity(snapshot.Density)
-	policy, err := newAssemblyPolicy(snapshot.Mode, snapshot.Density)
+	policy, err := newAssemblyPolicy(snapshot.Mode, snapshot.Density, snapshot.shape, snapshot.search)
 	if err != nil {
 		return nil, inputStageCause(ctx, err)
 	}

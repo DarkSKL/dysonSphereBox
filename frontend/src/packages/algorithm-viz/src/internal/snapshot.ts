@@ -16,17 +16,18 @@ export class CandidateSnapshot {
   get started(): boolean { return this.phase !== 'index' || this.cursor > 0; }
   get pending(): number { return this.done ? 0 : Math.max(1, this.operations.length - (this.phase === 'apply' ? this.cursor : 0)); }
 
-  /** 索引与对象扫描也计入预算；移除迭代期间允许 apply 删除当前集合元素。 */
+  /** 索引和扫描可使用全场剩余额度，可见撤销/装配仍受单候选配额限制；不让纯元数据扫描拖延建筑动画。 */
   process(objects: ReadonlySet<VizObject>, apply: (item: QueueItem) => void, work: FrameWorkBudget, quota = 128): void {
-    for (let count = 0; count < quota && !this.done && work.take(); count++) {
+    for (let scanned = 0, applied = 0; scanned < quota * 8 && applied < quota && !this.done && work.take(); scanned++) {
       if (this.phase === 'index') {
         if (this.cursor < this.operations.length) this.present.add(this.operations[this.cursor++].id);
         else { this.phase = 'remove'; this.cursor = 0; this.iterator = objects.values(); }
       } else if (this.phase === 'remove') {
         const next = this.iterator!.next();
         if (next.done) { this.phase = 'apply'; this.iterator = undefined; }
-        else if (!next.value.removing && !this.present.has(next.value.id)) apply({op: {type: 'remove', id: next.value.id}, frame: this.frame, first: false});
+        else if (!next.value.removing && !this.present.has(next.value.id)) { applied++; apply({op: {type: 'remove', id: next.value.id}, frame: this.frame, first: false}); }
       } else if (this.cursor < this.operations.length) {
+        applied++;
         apply({op: this.operations[this.cursor++], frame: this.frame, first: false});
       } else { this.phase = 'done'; this.present.clear(); }
     }

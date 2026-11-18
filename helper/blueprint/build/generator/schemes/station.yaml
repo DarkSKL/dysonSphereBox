@@ -1,5 +1,8 @@
 schemaVersion: 1
 id: station
+parameters:
+  # 每座有远程供需业务的星际塔请求的船用翘曲器库存个数。生成选项开启后生效。
+  warperStock: 500
 # 纯共享工作库：入口参数与工作链选择归standard/dense，此处只复用唯一候选、几何及规则步骤。
 flow:
   - id: entry
@@ -8,16 +11,34 @@ subflows:
   search:
     flow:
       - id: station-specs
-        tool: station.enumerate@1
+        call: enumerate
         with: {family: {$state: mode.station-family}}
       - id: attempts
         call: attempts
+  enumerate:
+    inputs:
+      family: {type: string, required: true}
+      standardRowSpans: {type: array, default: []}
+      standardRowPacking: {type: boolean, default: false}
+    flow:
+      - id: station-specs
+        tool: station.enumerate@1
+        with:
+          family: {$input: family}
+          standardRowSpans: {$input: standardRowSpans}
+          standardRowPacking: {$input: standardRowPacking}
+          warperStock: {$param: warperStock}
   attempts:
     flow:
+      - id: station-window
+        tool: station.window@1
       - id: station-attempts
         candidates:
+          # 按完整塔布局比较，包含验收分档、真实塔数、形状和线路代价。
           comparator: layout
+          # 主搜索的并发上限（计算槽）。实际值还受任务并发和预览协议限制。
           parallel: 10
+          # 首个验证成功的结果出现后继续寻找更好布局的时间（毫秒）。0 表示沿用上层截止。
           settleMs: 5000
           items: {$state: station.candidates}
           inputs:
@@ -32,15 +53,20 @@ subflows:
               call: rules/validate
       - id: prepare-refinement
         tool: station.prepare-refinement@1
+        # 允许从已选布局生成邻近端口精修规格。关闭后仍可使用已通过验证的基线。
         with: {enabled: true}
       - id: optional-nearby-ports
         candidates:
+          # 用塔精修比较器判断新规格是否更优。includeCurrent 保留当前基线，精修未改善时仍有结果。
           comparator: station-refinement
           includeCurrent: true
+          # 在父截止前给后续汇合和编码预留的毫秒数。剩余时间越少，可用于精修的时间越短。
           reserveMs: 20000
           parallel: 1
+          # 串行精修组的局部时限（毫秒），还受上方预留时间限制。timeoutFailure 给局部超时指定可识别的失败码。
           timeoutMs: 15000
           timeoutFailure: optimization-deadline
+          # 每项是完整 specification 对象，由准备步骤产生。主搜索的 index 下标只用于上方的 station.assemble。
           items: {$state: station.refinement-candidates}
           inputs:
             specification: {type: object, required: true}

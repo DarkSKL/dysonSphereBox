@@ -186,8 +186,8 @@ func (b *builder) placeDenseStationField(ctx context.Context, rows []*denseStati
 			}
 			xLimit, yLimit := int(math.Max(widthLimit, width)-width), int(math.Max(heightLimit, height)-height)
 			attempts := 0
-			for y := 0; y <= yLimit && attempts < 16384; y++ {
-				for x := 0; x <= xLimit && attempts < 16384; x++ {
+			for y := 0; y <= yLimit && attempts < b.policy.search.StationPackingAttempts; y++ {
+				for x := 0; x <= xLimit && attempts < b.policy.search.StationPackingAttempts; x++ {
 					attempts++
 					if ctx.Err() != nil {
 						rotatePlacedQuarter(unit.entities, 4-turns)
@@ -206,7 +206,7 @@ func (b *builder) placeDenseStationField(ctx context.Context, rows []*denseStati
 					for _, neighbor := range neighbors {
 						wire += math.Abs(neighbor[0].a.x+dx-neighbor[1].a.x) + math.Abs(neighbor[0].a.y+dy-neighbor[1].a.y)
 					}
-					score := area*math.Max(1, aspect/1.8) + wire*2
+					score := b.policy.shape.packingCost(area, aspect, wire)
 					if score > bestScore || score == bestScore && area >= bestArea || !packing.fits(ctx, contour, dx, dy) {
 						continue
 					}

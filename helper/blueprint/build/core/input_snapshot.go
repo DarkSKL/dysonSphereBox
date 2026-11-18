@@ -47,8 +47,12 @@ func cloneInputRequest(request Request) (Request, error) {
 	if err := json.Unmarshal(raw, &clone); err != nil {
 		return Request{}, err
 	}
+	clone.shape, clone.search = request.shape, request.search
+	clone.warperStock = request.warperStock
 	if request.SurfaceLayout != nil {
 		clone.SurfaceLayout.polarRoot = request.SurfaceLayout.polarRoot
+		clone.SurfaceLayout.adjacentDepth = request.SurfaceLayout.adjacentDepth
+		clone.SurfaceLayout.offsetWindow = request.SurfaceLayout.offsetWindow
 		if request.SurfaceLayout.nativeBand != nil {
 			band := *request.SurfaceLayout.nativeBand
 			clone.SurfaceLayout.nativeBand = &band
@@ -102,7 +106,7 @@ func (input *PreparedInput) RequiresNativeSurface() bool {
 		return false
 	}
 	selection, ok := densityLatitudeSelectionFor(layout.LatitudeZone)
-	return ok && (selection.tier >= 4 || input.nativeWorkload >= denseNativeLargeMachineThreshold)
+	return ok && (selection.tier >= 4 || input.nativeWorkload >= input.request.search.LargeLayoutThreshold)
 }
 
 // newAssembly 职责：根据只读领域输入创建当前步骤的短时装配状态；使用：单候选核心；边界：不注册工作区、不创建候选调度或重试。

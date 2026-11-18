@@ -1,14 +1,61 @@
 package generator
 
-// 文件职责：按可信生产规模限定完整生成预算；使用：创建任务根上下文；边界：所有子步骤服从父取消，总预算最高十分钟，不把增加预算计作性能收益。
-import "time"
+// 文件职责：从主工作流冻结任务预算，在创建上下文和调度候选之前应用。
 
-// generationWorkBudget 职责：为常规工厂保留四分钟，超大工厂按2048台一档增加完整几何与规则处理时间。
-// 使用：一次生成开始前；边界：无效数量不延时，最多追加四档；传送带数不反向改变已经开始的任务截止。
-func generationWorkBudget(machines int) time.Duration {
-	if machines <= 2048 {
-		return 4 * time.Minute
+import (
+	"fmt"
+	"time"
+
+	"DysonSphereBox/helper/blueprint/build/workflow"
+)
+
+// executionPolicy 控制单任务的截止时间与自动并发；手动并发及父上下文仍然优先。
+type executionPolicy struct {
+	// LargePlanMachines 是启用大规模任务并发值的首个机器数。
+	LargePlanMachines int `json:"largePlanMachines" min:"1"`
+	// LargePlanParallel 是自动模式达到阈值时使用的计算槽数。
+	LargePlanParallel int `json:"largePlanParallel" min:"1" max:"10"`
+	// BaseSeconds 是第一档任务的总时限。
+	BaseSeconds int `json:"baseSeconds" min:"1" max:"86400"`
+	// MachinesPerBand 是首档及每个后续档位的机器数。
+	MachinesPerBand int `json:"machinesPerBand" min:"1"`
+	// ExtraSecondsPerBand 是每越过一个档位增加的预算，零表示固定时限。
+	ExtraSecondsPerBand int `json:"extraSecondsPerBand" min:"0" max:"86400"`
+	// MaxSeconds 限制所有档位的任务总时限。
+	MaxSeconds int `json:"maxSeconds" min:"1" max:"86400"`
+}
+
+// loadExecutionPolicy 在方案编译时绑定显式字段，并为旧方案补齐历史默认值。
+func loadExecutionPolicy(main *workflow.Document) (executionPolicy, error) {
+	defaults := executionPolicy{
+		LargePlanMachines: 256, LargePlanParallel: 1,
+		BaseSeconds: 240, MachinesPerBand: 2048, ExtraSecondsPerBand: 90, MaxSeconds: 600,
 	}
-	bands := min(4, (machines-2049)/2048+1)
-	return 4*time.Minute + time.Duration(bands)*90*time.Second
+	policy, err := workflow.BindDocumentParameter(main, "execution", defaults)
+	if err == nil && policy.MaxSeconds < policy.BaseSeconds {
+		return policy, fmt.Errorf("factory.parameters.execution.maxSeconds 不能小于 baseSeconds")
+	}
+	return policy, err
+}
+
+// workBudget 先用剩余预算限定可相乘的档数，极大机器数也不会溢出。
+func (p executionPolicy) workBudget(machines int) time.Duration {
+	seconds := p.BaseSeconds
+	if machines > p.MachinesPerBand && p.ExtraSecondsPerBand > 0 {
+		bands := (machines - 1) / p.MachinesPerBand
+		if bands > (p.MaxSeconds-seconds)/p.ExtraSecondsPerBand {
+			seconds = p.MaxSeconds
+		} else {
+			seconds += bands * p.ExtraSecondsPerBand
+		}
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// parallel 仅在请求选择自动并发且达到大厂规模时覆盖引擎自动值。
+func (p executionPolicy) parallel(requested, machines int) int {
+	if requested == 0 && machines >= p.LargePlanMachines {
+		return p.LargePlanParallel
+	}
+	return requested
 }

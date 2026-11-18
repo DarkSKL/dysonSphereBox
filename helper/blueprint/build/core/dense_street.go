@@ -123,7 +123,7 @@ func (b *builder) selectDenseStreet(ctx context.Context, p quant.Production, r q
 			}
 		}
 		aspect := math.Max(width, height) / math.Min(width, height)
-		score := layoutShapeCost(width*height, aspect)
+		score := layoutShapeCost(b.policy.shape.PreferredAspect, width*height, aspect)
 		if best == nil || score < bestScore {
 			best, bestScore = candidate, score
 		}

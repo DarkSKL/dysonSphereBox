@@ -58,8 +58,13 @@ func planConnectedCandidates(req Request, limits []float64, options ConnectedSea
 	}
 	if req.Mode != 1 || req.Density != densityDense {
 		if req.Mode == 1 && options.SharedRows && len(limits) > 0 {
+			orders := options.SharedRowOrders
+			if orders == nil {
+				// 旧 Go 调用没有此字段；显式空数组则关闭共享行扩展。
+				orders = defaultSharedRowOrders()
+			}
 			for _, span := range options.DenseSpans {
-				for _, order := range []int{0, 3} {
+				for _, order := range orders {
 					appendCandidate(ConnectedCandidateSpec{Limit: limits[0], Compact: true, SpatialRows: true, DenseSpan: span, DenseOrder: order, GlobalPower: req.SurfaceLayout != nil && req.SurfaceLayout.Mode != "planar"})
 				}
 			}

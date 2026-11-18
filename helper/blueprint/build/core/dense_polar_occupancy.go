@@ -224,6 +224,11 @@ func (b *builder) packPolarUnitGeometry(ctx context.Context, units []denseSpatia
 				part.boxes = append(part.boxes, box)
 			}
 		}
+		if dynamic {
+			if err := validatePolarStationInternal(ctx, part.stations); err != nil {
+				return part, err
+			}
+		}
 		if dynamic && b.policy != nil && b.policy.density == densityStandard {
 			if err := b.validateNativeUnitBelts(ctx, unit); err != nil {
 				return part, err

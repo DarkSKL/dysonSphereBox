@@ -25,11 +25,11 @@ type denseStationBoundaryPlan struct {
 }
 
 // planDenseStationBoundaries 职责：在真实库存槽与十二口内搜索外部角色的最少塔数；使用：黑盒边界；边界：搜索有明确预算，未证明最优时保留实际可行分配并如实报告。
-func planDenseStationBoundaries(ctx context.Context, routes []*transportRoute, slots int, capacity float64) (*denseStationBoundaryPlan, error) {
+func planDenseStationBoundaries(ctx context.Context, routes []*transportRoute, inventory stationInventory, capacity float64) (*denseStationBoundaryPlan, error) {
 	if ctx.Err() != nil {
 		return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "黑盒最少塔规划已取消"}
 	}
-	if slots <= 0 || !finitePositive(capacity) {
+	if inventory.slots <= 0 || !finitePositive(capacity) {
 		return nil, &blueprint.Error{Code: "GEN_E_STATION_PORT", Message: "黑盒塔缺少有效库存槽或带容量"}
 	}
 	plan := &denseStationBoundaryPlan{}
@@ -65,7 +65,17 @@ func planDenseStationBoundaries(ctx context.Context, routes []*transportRoute, s
 	for _, rate := range roleRates {
 		plan.minimumPorts += max(1, int(math.Ceil((rate-1e-8)/capacity)))
 	}
-	plan.materialLowerBound = max((plan.roleCount+slots-1)/slots, (plan.minimumPorts+11)/12)
+	// 任一塔最多容纳 slots-1 种非翘曲器业务；原有翘曲器供需可以复用预留槽。
+	businessKinds := plan.roleCount
+	if inventory.warperStock > 0 {
+		for role := range rolePorts {
+			if role.id == spaceWarperID {
+				businessKinds--
+			}
+		}
+	}
+	slots := inventory.businessSlots(false)
+	plan.materialLowerBound = max((businessKinds+slots-1)/slots, (plan.minimumPorts+11)/12)
 	for role := range rolePorts {
 		if _, ok := rolePorts[stationItem{id: role.id, provide: !role.provide}]; ok {
 			plan.materialLowerBound = max(plan.materialLowerBound, 2)
@@ -91,7 +101,8 @@ func planDenseStationBoundaries(ctx context.Context, routes []*transportRoute, s
 		kinds map[stationItem]int
 	}
 	fits := func(box bin, role stationItem) bool {
-		return box.used < 12 && box.kinds[stationItem{id: role.id, provide: !role.provide}] == 0 && (box.kinds[role] > 0 || len(box.kinds) < slots)
+		hasWarpers := role.id == spaceWarperID || box.kinds[stationItem{id: spaceWarperID}] > 0 || box.kinds[stationItem{id: spaceWarperID, provide: true}] > 0
+		return box.used < 12 && box.kinds[stationItem{id: role.id, provide: !role.provide}] == 0 && (box.kinds[role] > 0 || len(box.kinds) < inventory.businessSlots(hasWarpers))
 	}
 	greedy, assignments := []bin{}, make([]int, len(roles))
 	for _, index := range order {

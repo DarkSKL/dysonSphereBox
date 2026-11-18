@@ -19,7 +19,13 @@ func inputBoundaryCapacity(req Request, setting Setting) error {
 	if !ok {
 		return nil
 	}
-	bands := denseLatitudeAllowedBands(selection, req.SurfaceLayout.ExpandAdjacent)
+	// surface枚举之前没有实际depth；必要下界采用已授权支持范围的最大深度，避免提前删去深层候选可行的低档。
+	// 这只放宽必要条件，不作为真实部署许可；每个实际候选及最终物理校验仍消费其固定depth。
+	depth := req.SurfaceLayout.adjacentDepth
+	if req.SurfaceLayout.ExpandAdjacent {
+		depth = 3
+	}
+	bands := denseLatitudeAllowedBands(selection, req.SurfaceLayout.ExpandAdjacent, depth)
 	if len(bands) == 0 {
 		return nil
 	}
