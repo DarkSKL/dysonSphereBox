@@ -101,6 +101,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SystemAppUpdateButton: typeof import('./components/system/app-update-button.vue')['default']
     SystemAppUpdateDialog: typeof import('./components/system/app-update-dialog.vue')['default']
+    SystemReleaseNotes: typeof import('./components/system/release-notes.vue')['default']
     SystemSettingsSection: typeof import('./components/system/settings/section.vue')['default']
     SystemSettingsServerSection: typeof import('./components/system/settings/server-section.vue')['default']
     SystemSettingsUpdateSection: typeof import('./components/system/settings/update-section.vue')['default']

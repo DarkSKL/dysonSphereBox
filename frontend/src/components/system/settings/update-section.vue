@@ -9,6 +9,7 @@ import {formatErrorMessage} from '../../../utils/format'
 import {describeUpdateError} from '../../../utils/update-error'
 import SettingsSection from './section.vue'
 import SettingsValueBox, {type SettingsValueTone} from './value-box.vue'
+import ReleaseNotes from '../release-notes.vue'
 import AppUpdateButton from '../app-update-button.vue'
 
 type UpdateStatus = 'idle' | 'checking' | 'latest' | 'available' | 'error' | 'updated'
@@ -166,7 +167,7 @@ const openReleasePage = (): void => {
     <!-- * 说明：展示目标 Release 的标题、发布时间、原文说明与发布页链接 -->
     <!-- * 交互：说明较长时在固定高度内滚动 -->
     <!-- * 依赖：依赖检查结果中的 releaseName、publishedAt、releaseNotes 与 releaseUrl -->
-    <!-- * 边界：说明按纯文本保留换行，不渲染 Markdown -->
+    <!-- * 边界：说明共用更新弹窗的 Markdown 渲染和外链处理，空正文显示提示 -->
     <template #after>
       <!-- ~ 检查失败说明 -->
       <!-- * 说明：值框给出可读原因，这里补全处理建议与后端原始错误，避免单行值框截断 -->
@@ -199,7 +200,7 @@ const openReleasePage = (): void => {
             发布页面
           </n-button>
         </header>
-        <p class="update-notes-body">{{ releaseNotes || '该版本没有附带发布说明。' }}</p>
+        <ReleaseNotes class="update-notes-body" :source="releaseNotes" empty-text="该版本没有附带发布说明。" />
       </section>
     </template>
   </SettingsSection>
@@ -295,7 +296,5 @@ const openReleasePage = (): void => {
   color: var(--ds-text-secondary);
   font-size: 12px;
   line-height: 1.7;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 </style>
