@@ -92,13 +92,3 @@ type ItemDetail struct {
 	// Planets 职责：列出有历史或货槽的星球；使用：详情展开；边界：不生成未出现的星球记录。
 	Planets []PlanetItem `json:"planets"`
 }
-
-// Analysis 职责：返回选档解析结果与附档线索；使用：分析入口；边界：附档存在不证明存档来源。
-type Analysis struct {
-	// SaveID 职责：沿用环境列表身份；使用：后续快照查询；边界：不是内容哈希。
-	SaveID string `json:"saveId"`
-	// HasServerCompanion 职责：提示同名联机附档存在；使用：来源提示；边界：不读取或解释附档内容。
-	HasServerCompanion bool `json:"hasServerCompanion"`
-	// Summary 职责：返回初次汇总；使用：选档后直接显示物品；边界：解析失败不返回部分结果。
-	Summary Summary `json:"summary"`
-}

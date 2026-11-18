@@ -93,13 +93,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/dysonSphere/save-analysis': RouteRecordInfo<
-      '/dysonSphere/save-analysis',
-      '/dysonSphere/save-analysis',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
     '/dysonSphere/settings': RouteRecordInfo<
       '/dysonSphere/settings',
       '/dysonSphere/settings',
@@ -205,12 +198,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/dysonSphere/multiplayer.vue': {
       routes:
         | '/dysonSphere/multiplayer'
-      views:
-        | never
-    }
-    'src/pages/dysonSphere/save-analysis.vue': {
-      routes:
-        | '/dysonSphere/save-analysis'
       views:
         | never
     }

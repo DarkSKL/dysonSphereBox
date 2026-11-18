@@ -1,7 +1,6 @@
 import type { Component } from 'vue'
 import {
   IconAdjustmentsHorizontal,
-  IconActivity,
   IconFileText,
   IconInfoCircle,
   IconMessages,
@@ -51,7 +50,6 @@ export const workspaceNavigationRegistry: readonly WorkspaceNavigationDefinition
       { key: 'headless', label: '开服', to: '/dysonSphere/headless', icon: gameNavigationIcons.headless },
       { key: 'mods', label: '模组', to: '/dysonSphere/mod', icon: gameNavigationIcons.mods },
       { key: 'resources', label: '资源', to: '/dysonSphere/environment', icon: gameNavigationIcons.resources },
-      { key: 'save-analysis', label: '存档分析', to: '/dysonSphere/save-analysis', icon: IconActivity },
       { key: 'factory', label: '量化与蓝图', to: '/dysonSphere/blueprint-generator', icon: gameNavigationIcons.factory },
       { key: 'encyclopedia', label: '图鉴', to: '/dysonSphere/encyclopedia', icon: gameNavigationIcons.encyclopedia },
       { key: 'settings', label: '游戏设置', to: '/dysonSphere/settings', icon: gameNavigationIcons.settings },
