@@ -1,6 +1,6 @@
 # 模型构建压缩与画质对比
 
-开发服务器读取 `src/data/models` 中的原始 GLB。`npm run build` 的 Vite 构建插件会自动为实际导入的模型准备压缩副本，再生成资源哈希；Wails 的既有前端构建命令会沿用此流程。
+开发服务器读取 `src/data/models` 中的原始 GLB。`npm run build` 的 Vite 构建插件会自动将模型压缩至 `dist/blueprint/models/`，平面和立体预览共用这些文件；Wails 的既有前端构建命令会沿用此流程。
 
 ## 压缩方式
 
@@ -26,7 +26,7 @@ npm run build
 
 - `models:prepare`：准备当前档位的全部模型，便于预热缓存。
 - `models:compare`：准备全部模型的 1024、512、256 三档，以及各自的体积报告；对比页展示原版、1024 和 512。
-- `build`：仅处理构建实际导入的 GLB，输出压缩资产与 `dist/model-compression-report.json`。
+- `build`：处理两种预览共用目录中的 GLB，输出压缩资产与 `dist/model-compression-report.json`。
 
 发布脚本 `deploy/build.bat` 提供三档菜单，回车选择中间的均衡档；也可直接运行 `deploy\build.bat v2.1.2 quality`、`balanced` 或 `compact`。模式通过 `MODEL_COMPRESSION_MODE` 传递，并优先于终端中残留的数值覆盖。
 
@@ -44,6 +44,6 @@ $env:MODEL_COMPRESSION_MODE = 'balanced'
 
 压缩副本及报告位于被 Git 忽略的 `frontend/.cache/models/<档位>/`。缓存按源文件 SHA-256、压缩策略版本和分辨率失效；输出哈希也会验证，损坏缓存自动重建。同一模型与档位复用固定缓存位置，不持续积累带哈希的旧文件。
 
-构建报告区分单文件压缩前后体积，保存源文件和产物哈希。完整目录报告包含全部 GLB；生产报告仅包含 Vite 实际导入的模型，两者总量不同。单个 GLB 仍是自包含资源，运行时无需解压归档或下载模型包。
+构建报告区分单文件压缩前后体积，保存源文件和产物哈希。生产报告包含立体预览按文件名读取的模型及平面预览导入的模型，每份文件只统计一次。单个 GLB 仍是自包含资源，运行时无需解压归档或下载模型包。
 
 类型检查和构建通过不等于画质验收；需要在对比页检查近景的法线、金属细节、玻璃和轮廓。保留完整原始模型，便于后续调整档位或重新生成发布副本。

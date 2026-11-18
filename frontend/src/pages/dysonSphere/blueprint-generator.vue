@@ -1,22 +1,88 @@
 <script setup lang="ts">
-import {computed, reactive, ref, watch} from 'vue'
+import {computed, defineAsyncComponent, reactive, ref, watch} from 'vue'
 import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw, Save, Sparkles} from '@lucide/vue'
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import AlgorithmHeatmap from '../../components/dysonSphere/factory/algorithm-heatmap.vue'
-import AlgorithmStage from '../../components/dysonSphere/factory/algorithm-stage.vue'
-import AnalysisStage from '../../components/dysonSphere/factory/analysis/analysis-stage.vue'
 import GenerationError from '../../components/dysonSphere/factory/generation-error.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
-import EventTimeline from '../../components/dysonSphere/factory/event-timeline.vue'
-import {useQuantWorkspace} from '../../composables/dysonSphere/useQuantWorkspace'
+import {useQuantWorkspace, type FactoryPreviewApi, type PreviewState} from '../../composables/dysonSphere/useQuantWorkspace'
+import {useBlueprintPreviewFeed} from '../../composables/dysonSphere/useBlueprintPreviewFeed'
 import {generationDebugOptions} from '../../composables/dysonSphere/useGenerationTimeline'
 import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
+
+const AlgorithmStage = defineAsyncComponent(() => import('../../components/dysonSphere/factory/algorithm-stage.vue'))
+const AnalysisStage = defineAsyncComponent(() => import('../../components/dysonSphere/factory/analysis/analysis-stage.vue'))
+const EventTimeline = defineAsyncComponent(() => import('../../components/dysonSphere/factory/event-timeline.vue'))
+
+// 说明：BlueprintViewerPanel defineExpose 暴露的完整方法签名；页面只需要 resetCamera 和预览四动作，其余为类型完整性。
+interface ViewerPanelExpose {
+  resetCamera(): void
+  selectBuildings(indices: number[]): void
+  focusBuilding(index: number | null): void
+  captureImage(): string | null
+  setRenderSettings(showRealModels: boolean, maxInstancesPerModel: number): void
+  beginPreview(): void
+  applyPreviewDelta(event: unknown): boolean
+  commitPreview(blueprint: string): unknown
+  discardPreview(): void
+  isReady(): boolean
+  finishPreviewReplay(): void
+  getPreviewing(): boolean
+  getPreviewStats(): unknown | null
+}
 
 definePage({meta: {layout: 'main', title: '量化与蓝图', keepAlive: true}})
 const w = reactive(useQuantWorkspace())
 const fileInput = ref<HTMLInputElement | null>(null)
-const viewer = ref<{resetCamera: () => void} | null>(null)
+const viewer = ref<ViewerPanelExpose | null>(null)
+// 空白星球首次就绪时，工作区仍等待真实生成结果。
+const onPreviewerReady = (value: {buildingCount: number; blank?: boolean}): void => {
+  if (!value.blank) w.onPreviewReady(value)
+}
+// =============== 预览标签页 ===============
+// 说明：下层卡片在「蓝图预览」「平面预览」「量化分析」间切换；切走时预览只隐藏不卸载，避免重建 WebGL 视图。
+// 平面预览与量化分析在首次切换时挂载，之后同样只隐藏：渲染循环随容器不可见自动暂停，分析页保留子标签与筛选状态。
+type PreviewTab = 'preview' | 'algorithm' | 'analysis'
+const previewTabs: {key: PreviewTab, label: string}[] = [{key: 'preview', label: '立体蓝图预览'}, {key: 'algorithm', label: '平面预览（内测版）'}, {key: 'analysis', label: '量化分析'}]
+const previewTab = ref<PreviewTab>('preview')
+const algorithmMounted = ref(false)
+const analysisMounted = ref(false)
+watch(previewTab, tab => {
+  if (tab === 'algorithm') algorithmMounted.value = true
+  if (tab === 'analysis') analysisMounted.value = true
+})
+
+const previewVisible = (): boolean => w.active && w.showPreview && previewTab.value === 'preview'
+
+// =============== 预览协调 ===============
+// 说明：把 Viewer 暴露的 beginPreview/applyPreviewDelta/commitPreview/discardPreview 注册给 workspace，
+// workspace 在生成时自动编排四步生命周期（begin → 提交生成 → 边收边 apply → commit / discard）。
+// 边界：viewer 未挂载时 workspace 自动走旧的静态预览链路，不阻塞生成。
+watch(viewer, (panel) => {
+  if (panel) {
+    const api: FactoryPreviewApi = {
+      beginPreview: () => panel.beginPreview(),
+      applyPreviewDelta: (event) => panel.applyPreviewDelta(event),
+      commitPreview: (blueprint) => panel.commitPreview(blueprint),
+      discardPreview: () => panel.discardPreview(),
+      isReady: () => previewVisible() && panel.isReady(),
+    }
+    w.registerPreviewApi(api)
+  } else {
+    w.registerPreviewApi(undefined)
+  }
+}, {immediate: true})
+// 转发层：按协议版本把生成事件拆为单场景差量；v4 只跟踪一个候选并重写对象 ID。生命周期仍由工作区负责。
+const previewFeed = useBlueprintPreviewFeed(w, () => viewer.value, previewVisible)
+const previewLabels: Record<PreviewState, string> = {idle: '等待生成', loading: '正在加载预览模型', ready: '实时预览', stale: '等待刷新', error: '预览不可用', empty: '没有建筑'}
+const previewStatus = computed(() => {
+  if (w.generating) return {state: 'loading', text: w.generationProgress || '正在准备生成'}
+  if (w.error?.source === 'generation') return {state: 'error', text: '蓝图生成失败'}
+  if (w.previewStale) return {state: 'stale', text: w.generationFailed ? '显示上次成功结果' : '等待刷新'}
+  if (w.code && !w.showPreview) return {state: 'idle', text: '预览已折叠'}
+  return {state: w.previewState, text: previewLabels[w.previewState]}
+})
 const onFile = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -30,19 +96,6 @@ const selectedNode = ref<string | null>(null)
 const selectedData = computed(() => {
   if (!selectedNode.value || !w.plan || w.replay) return null
   return buildFlowGraph(w.plan, w.itemName).nodes.find(node => node.id === selectedNode.value)?.data ?? null
-})
-
-// =============== 预览标签页 ===============
-// 说明：下层卡片在「蓝图预览」「平面预览」「量化分析」间切换；切走时预览只隐藏不卸载，避免重建 WebGL 视图。
-// 平面预览与量化分析在首次切换时挂载，之后同样只隐藏：渲染循环随容器不可见自动暂停，分析页保留子标签与筛选状态。
-type PreviewTab = 'preview' | 'algorithm' | 'analysis'
-const previewTabs: {key: PreviewTab, label: string}[] = [{key: 'preview', label: '蓝图预览'}, {key: 'algorithm', label: '平面预览（内测版）'}, {key: 'analysis', label: '量化分析'}]
-const previewTab = ref<PreviewTab>('preview')
-const algorithmMounted = ref(false)
-const analysisMounted = ref(false)
-watch(previewTab, tab => {
-  if (tab === 'algorithm') algorithmMounted.value = true
-  if (tab === 'analysis') analysisMounted.value = true
 })
 
 // =============== 上下分栏 ===============
@@ -120,8 +173,9 @@ const resizeByKey = (event: KeyboardEvent): void => {
       </header>
       <div class="preview-body">
         <div id="preview-panel-preview" class="preview-stage" :class="{'is-hidden': previewTab !== 'preview'}" role="tabpanel" aria-labelledby="preview-tab-preview" :aria-hidden="previewTab !== 'preview'">
-          <BlueprintViewerPanel v-if="w.active && w.code && w.showPreview" ref="viewer" :code="w.code" :revision="w.previewRevision" interactive :selected-index="w.previewStale ? null : w.selectedBuilding" @ready="w.onPreviewReady" @select="w.onBuildingSelect" @error="w.onPreviewError" />
-          <div v-else class="preview-empty">
+          <!-- * 加载顺序：预览器随页面激活即挂载并预加载 ESM（不再等 code），空态由下方覆盖层呈现 -->
+          <BlueprintViewerPanel v-if="w.active && w.showPreview" ref="viewer" :code="w.code" :revision="w.previewRevision" interactive :selected-buildings="w.previewStale ? [] : w.selectedBuildings" :focus-index="w.focusIndex" :focus-revision="w.focusRevision" @ready="onPreviewerReady" @select="w.onBuildingSelect" @error="w.onPreviewError" />
+          <div v-if="!w.code || !w.showPreview" class="preview-empty">
             <Sparkles :size="22" />
             <p v-if="w.code && !w.showPreview">{{ w.previewNotice || '预览已折叠' }}</p>
             <p v-else-if="w.generating">{{ w.generationProgress || '正在准备生成' }}…</p>
@@ -140,7 +194,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
     <!-- ~ 最右侧：生成事件时间流（调试） -->
     <!-- * 说明：纵跨网格与预览两层，实时列出蓝图生成事件卡片，点击查看原始消息 -->
     <!-- * 边界：只旁路观察事件，不影响生成、预览与任务过滤；仅在检查面板开启调试模式时挂载，关闭后记录随之清空 -->
-    <div v-if="generationDebugOptions.debugMode" class="bench-timeline"><EventTimeline :can-generate="Boolean(w.plan && !w.quantStale && !w.solving && !w.importing)" :generating="w.generating" @generate="w.generate" /></div>
+    <div v-if="generationDebugOptions.debugMode" class="bench-timeline"><EventTimeline :feed="previewFeed" :can-generate="Boolean(w.plan && !w.quantStale && !w.solving && !w.importing)" :generating="w.generating" @generate="w.generate" /></div>
 
     <n-modal v-model:show="w.importVisible" preset="card" title="导入蓝图并反算" class="import-modal" style="width: min(680px, 92vw)"><p class="muted">只读识别建筑和理论产出，保留原始蓝图供预览与导出。</p><n-input v-model:value="w.importText" type="textarea" :rows="9" placeholder="粘贴 BLUEPRINT: 开头的蓝图串" class="type-mono" /><div class="import-actions"><input ref="fileInput" type="file" accept=".txt,.dspbp" hidden @change="onFile" /><n-button @click="fileInput?.click()">选择文本文件</n-button><n-button type="primary" :loading="w.importing" :disabled="!w.importText.trim()" @click="w.loadCode(w.importText, '导入的蓝图')">严格解析并预览</n-button></div><n-alert v-if="w.error" type="error">{{ w.error.message }}</n-alert></n-modal>
   </section>
@@ -197,8 +251,11 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-algorithm, .preview-analysis { position: absolute; inset: 0; }
 .preview-body { position: relative; display: flex; min-height: 0; flex: 1; }
 .preview-stage { position: relative; min-width: 0; flex: 1; }
-.preview-empty { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); font-size: 13px; }
-.preview-empty p { margin: 0; }
+// 空态覆盖在已挂载的预览器之上：不遮挡空白蓝图渲染出的星球主体，仅给提示文字加底。
+.preview-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); font-size: 13px; pointer-events: none; }
+.preview-empty p { margin: 0; padding: 4px 10px; border-radius: 2px; background: color-mix(in srgb, var(--ds-bg-panel) 82%, transparent); }
+.preview-empty :deep(.n-button) { pointer-events: auto; }
+// 预览器预加载期间占用网格区域，避免流程图抢先挂载导致初始化顺序倒置。
 .preview-overlay { position: absolute; top: 10px; left: 50%; border: 1px solid var(--ds-border-default); border-radius: 2px; padding: 3px 10px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; transform: translateX(-50%); pointer-events: none; }
 .muted { color: var(--ds-text-muted); font-size: 12px; line-height: 1.6; }
 .import-actions { display: flex; justify-content: space-between; margin: 16px 0; }

@@ -1,4 +1,4 @@
-import {readFile} from 'node:fs/promises';
+import {readFile, readdir} from 'node:fs/promises';
 import {basename, resolve, sep} from 'node:path';
 import {createReport, prepareModel, resolveMaxSize} from './prepare.mjs';
 
@@ -27,11 +27,19 @@ export function modelCompressionPlugin() {
       if (!file.endsWith('.glb') || !new URLSearchParams(query).has('url')) return null;
       if (!pending.has(file)) pending.set(file, prepareModel(file, maxSize, root));
       const model = await pending.get(file);
-      const reference = this.emitFile({type: 'asset', name: basename(file), source: await readFile(model.output)});
+      const reference = this.emitFile({type: 'asset', fileName: 'blueprint/models/' + basename(file), source: await readFile(model.output)});
       return `export default import.meta.ROLLUP_FILE_URL_${reference};`;
     },
     async generateBundle() {
+      // 立体库还会按名称读取平面视图未导入的模型；两种入口最终指向同一份压缩文件。
       const models = await Promise.all(pending.values());
+      const emitted = new Set(models.map(model => model.name));
+      for (const name of await readdir(modelRoot)) {
+        if (!name.endsWith('.glb') || emitted.has(name)) continue;
+        const model = await prepareModel(resolve(modelRoot, name), maxSize, root);
+        this.emitFile({type: 'asset', fileName: 'blueprint/models/' + name, source: await readFile(model.output)});
+        models.push(model);
+      }
       const report = createReport(models, maxSize);
       this.emitFile({type: 'asset', fileName: 'model-compression-report.json', source: JSON.stringify(report, null, 2)});
       logger.info(`[models] ${models.length} 个发布模型：${(report.beforeBytes / 1048576).toFixed(2)} → ${(report.afterBytes / 1048576).toFixed(2)} MiB，减少 ${report.reductionPercent}%`);
