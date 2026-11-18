@@ -9,6 +9,8 @@ package environment
 // 使用：根服务注册器调用 RegisterServices 后绑定给 Wails。
 // 边界：只保存服务结构体，不执行目录解析或状态扫描。
 type ServiceGroup struct {
+	// SaveAnalysisService 职责：提供存档读取授权和查询；使用：存档解析入口；边界：注册时不扫描目录。
+	SaveAnalysisService
 	// EnvironmentManagerService 职责：暴露环境页只读扫描和目录入口；使用：RegisterServices 绑定给环境页；边界：注册时不访问文件系统。
 	EnvironmentManagerService
 	// R2ModmanService 职责：暴露 Profile 直接托管；使用：资源页一键同步及模组操作；边界：注册时不检索磁盘、不读数据库。
@@ -21,6 +23,7 @@ type ServiceGroup struct {
 // 边界：只注册服务结构体，具体业务流程仍由服务方法负责。
 func (serviceGroup *ServiceGroup) RegisterServices() []interface{} {
 	return []interface{}{
+		&serviceGroup.SaveAnalysisService,
 		&serviceGroup.EnvironmentManagerService,
 		&serviceGroup.R2ModmanService,
 	}

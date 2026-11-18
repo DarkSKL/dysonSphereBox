@@ -169,11 +169,21 @@ func (resolver Resolver) ResolveBlueprintRoot() RootResolution {
 }
 
 // ResolveSaveRoot 解析游戏真实存档目录。
-// 职责：优先使用用户配置，其次从文档目录探测 Save/save 候选目录。
+// 职责：优先使用用户配置，其次按游戏路径覆盖配置和系统文档目录定位存档。
 // 使用：概览、存档实时扫描和后续存档操作调用。
 // 边界：目录不存在时返回缺失状态；不会创建存档目录。
 func (resolver Resolver) ResolveSaveRoot() RootResolution {
-	if configured := resolver.configuredDir(ConfigKeySaveDirPath); configured != "" {
+	gameDir := ""
+	if core.GLOBAL.Configure != nil && core.GLOBAL.Configure.GameStartFilePath != nil {
+		value, _ := core.GLOBAL.Configure.GameStartFilePath.Get()
+		gameDir = dysonsphere.NormalizeDir(value)
+	}
+	return ResolveSaveDirectory(gameDir, resolver.configuredDir(ConfigKeySaveDirPath))
+}
+
+// ResolveSaveDirectory 职责：按显式目录、游戏覆盖文档目录、系统文档目录的顺序定位存档；使用：目录解析与路径测试；边界：不创建目录，自动探测不代表读取授权。
+func ResolveSaveDirectory(gameDir, configured string) RootResolution {
+	if configured = utils.CleanPath(configured); configured != "" {
 		return RootResolution{
 			Path:       configured,
 			Source:     "configured",
@@ -184,6 +194,18 @@ func (resolver Resolver) ResolveSaveRoot() RootResolution {
 	}
 
 	documentsDir := documentsRoot()
+	if gameDir != "" {
+		content, err := os.ReadFile(filepath.Join(gameDir, "Configs", "path.txt"))
+		if err == nil {
+			override := strings.TrimSpace(strings.TrimPrefix(string(content), "\ufeff"))
+			if override != "" {
+				if !filepath.IsAbs(override) {
+					override = filepath.Join(gameDir, override)
+				}
+				documentsDir = filepath.Clean(override)
+			}
+		}
+	}
 	if documentsDir == "" {
 		return RootResolution{Source: "missing", Confidence: "missing", Message: "未找到用户文档目录"}
 	}
@@ -227,40 +249,12 @@ func (resolver Resolver) configuredDir(key string) string {
 // documentsRoot 返回当前用户文档目录候选。
 // 职责：在 Windows 便携环境中定位 Documents/My Documents 目录。
 // 使用：蓝图和存档目录自动探测调用。
-// 边界：只使用环境变量候选，不调用系统对话框，不创建目录。
+// 边界：Windows 使用已知文件夹，查询失败返回空；不调用对话框、不创建目录。
 func documentsRoot() string {
-	candidates := []string{}
-	userProfile := os.Getenv("USERPROFILE")
-	if userProfile != "" {
-		candidates = append(candidates,
-			filepath.Join(userProfile, "Documents"),
-			filepath.Join(userProfile, "My Documents"),
-		)
+	directory, err := utils.DocumentsDirectory()
+	if err == nil && directory != "" {
+		return directory
 	}
-	homeDir, err := os.UserHomeDir()
-	if err == nil && homeDir != "" {
-		candidates = append(candidates,
-			filepath.Join(homeDir, "Documents"),
-			filepath.Join(homeDir, "My Documents"),
-		)
-	}
-
-	seen := map[string]struct{}{}
-	for _, candidate := range candidates {
-		candidate = utils.CleanPath(candidate)
-		if candidate == "" {
-			continue
-		}
-		key := strings.ToLower(candidate)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		if dirExists(candidate) {
-			return candidate
-		}
-	}
-
 	return ""
 }
 

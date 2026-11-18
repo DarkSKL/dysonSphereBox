@@ -304,7 +304,12 @@ func (service *EnvironmentManagerService) ListSaves(query string) ([]Environment
 	if saveRoot.Path == "" || !saveRoot.Exists {
 		return []EnvironmentSaveItem{}, nil
 	}
-	resources, err := environmentHelper.ScanSaves(saveRoot.Path)
+	return service.listSavesAtRoot(saveRoot.Path, query)
+}
+
+// listSavesAtRoot 职责：扫描调用方确定的存档目录；使用：环境列表与已授权解析会话共用；边界：不重新解析配置，避免扫描对象偏离已授权目录。
+func (service *EnvironmentManagerService) listSavesAtRoot(root, query string) ([]EnvironmentSaveItem, error) {
+	resources, err := environmentHelper.ScanSaves(root)
 	if err != nil {
 		return nil, err
 	}

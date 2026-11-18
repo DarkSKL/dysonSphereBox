@@ -46,6 +46,7 @@ declare module 'vue' {
     DysonSphereModPackCard: typeof import('./components/dysonSphere/mod/pack-card.vue')['default']
     DysonSphereModPackDialog: typeof import('./components/dysonSphere/mod/pack-dialog.vue')['default']
     DysonSphereNetworkTrendChart: typeof import('./components/dysonSphere/network-trend-chart.vue')['default']
+    DysonSphereProductionDiagnosis: typeof import('./components/dysonSphere/production-diagnosis.vue')['default']
     DysonSphereSettingsBepinexSection: typeof import('./components/dysonSphere/settings/bepinex-section.vue')['default']
     DysonSphereSettingsGamePathSection: typeof import('./components/dysonSphere/settings/game-path-section.vue')['default']
     LayoutAccountModal: typeof import('./components/layout/account-modal.vue')['default']

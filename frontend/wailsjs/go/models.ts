@@ -4067,6 +4067,27 @@ export namespace forward {
 
 }
 
+export namespace galaxy {
+	
+	export class Vector {
+	    x: number;
+	    y: number;
+	    z: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Vector(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	    }
+	}
+
+}
+
 export namespace logging {
 	
 	export class Entry {
@@ -6036,6 +6057,1811 @@ export namespace r2modman {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profile = this.convertValues(source["profile"], Profile);
 	        this.mods = this.convertValues(source["mods"], Mod);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace saveanalysis {
+	
+	export class Counts {
+	    produced: number;
+	    consumed: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Counts(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.produced = source["produced"];
+	        this.consumed = source["consumed"];
+	    }
+	}
+	export class ItemSummary {
+	    itemId: number;
+	    history?: Counts;
+	    historyPlanets: number;
+	    inventory: number;
+	    capacity: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.history = this.convertValues(source["history"], Counts);
+	        this.historyPlanets = source["historyPlanets"];
+	        this.inventory = source["inventory"];
+	        this.capacity = source["capacity"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Window {
+	    seconds: number;
+	    endTick: number;
+	    bucketTicks: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Window(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.seconds = source["seconds"];
+	        this.endTick = source["endTick"];
+	        this.bucketTicks = source["bucketTicks"];
+	    }
+	}
+	export class Summary {
+	    sha256: string;
+	    gameVersion: string;
+	    window: Window;
+	    items: ItemSummary[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Summary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sha256 = source["sha256"];
+	        this.gameVersion = source["gameVersion"];
+	        this.window = this.convertValues(source["window"], Window);
+	        this.items = this.convertValues(source["items"], ItemSummary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Analysis {
+	    saveId: string;
+	    hasServerCompanion: boolean;
+	    summary: Summary;
+	
+	    static createFrom(source: any = {}) {
+	        return new Analysis(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.saveId = source["saveId"];
+	        this.hasServerCompanion = source["hasServerCompanion"];
+	        this.summary = this.convertValues(source["summary"], Summary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DropObservation {
+	    source: number;
+	    sorter: number;
+	    target: number;
+	    stage: number;
+	    belt: number;
+	    itemId: number;
+	    count: number;
+	    refusal?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DropObservation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.sorter = source["sorter"];
+	        this.target = source["target"];
+	        this.stage = source["stage"];
+	        this.belt = source["belt"];
+	        this.itemId = source["itemId"];
+	        this.count = source["count"];
+	        this.refusal = source["refusal"];
+	    }
+	}
+	export class BlockedFeed {
+	    startBelt: number;
+	    sorters: number[];
+	    drops: DropObservation[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BlockedFeed(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.startBelt = source["startBelt"];
+	        this.sorters = source["sorters"];
+	        this.drops = this.convertValues(source["drops"], DropObservation);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BuildProgress {
+	    unit: string;
+	    built: number;
+	    required: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BuildProgress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.unit = source["unit"];
+	        this.built = source["built"];
+	        this.required = source["required"];
+	    }
+	}
+	export class ChainCheck {
+	    receiverEntities?: number[];
+	    drop?: DropObservation;
+	    priority: number;
+	    evidence: string;
+	    upstreamConstraint: boolean;
+	    node: number;
+	    status: string;
+	    itemId: number;
+	    directEntities: number[];
+	    rootEntities: number[];
+	    shared: boolean;
+	    unresolved: boolean;
+	    advice: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChainCheck(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.receiverEntities = source["receiverEntities"];
+	        this.drop = this.convertValues(source["drop"], DropObservation);
+	        this.priority = source["priority"];
+	        this.evidence = source["evidence"];
+	        this.upstreamConstraint = source["upstreamConstraint"];
+	        this.node = source["node"];
+	        this.status = source["status"];
+	        this.itemId = source["itemId"];
+	        this.directEntities = source["directEntities"];
+	        this.rootEntities = source["rootEntities"];
+	        this.shared = source["shared"];
+	        this.unresolved = source["unresolved"];
+	        this.advice = source["advice"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ChainConstraint {
+	    status: string;
+	    itemId: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChainConstraint(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.itemId = source["itemId"];
+	    }
+	}
+	export class ChainInput {
+	    blockedFeeds?: BlockedFeed[];
+	    itemId: number;
+	    checkEntity: number;
+	    sorters: number[];
+	    startBelts: number[];
+	    sources: number[];
+	    shared: boolean;
+	    unresolved: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChainInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.blockedFeeds = this.convertValues(source["blockedFeeds"], BlockedFeed);
+	        this.itemId = source["itemId"];
+	        this.checkEntity = source["checkEntity"];
+	        this.sorters = source["sorters"];
+	        this.startBelts = source["startBelts"];
+	        this.sources = source["sources"];
+	        this.shared = source["shared"];
+	        this.unresolved = source["unresolved"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class FreightTask {
+	    kind: string;
+	    phase: string;
+	    ownerPlanet: number;
+	    ownerStation: number;
+	    workIndex: number;
+	    sourcePlanet: number;
+	    sourceStation: number;
+	    sourceIndex: number;
+	    sourceSlotEvidence: string;
+	    cargo: number;
+	    reserved: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FreightTask(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.phase = source["phase"];
+	        this.ownerPlanet = source["ownerPlanet"];
+	        this.ownerStation = source["ownerStation"];
+	        this.workIndex = source["workIndex"];
+	        this.sourcePlanet = source["sourcePlanet"];
+	        this.sourceStation = source["sourceStation"];
+	        this.sourceIndex = source["sourceIndex"];
+	        this.sourceSlotEvidence = source["sourceSlotEvidence"];
+	        this.cargo = source["cargo"];
+	        this.reserved = source["reserved"];
+	    }
+	}
+	export class SupplySlot {
+	    planetId: number;
+	    stationId: number;
+	    entityId: number;
+	    globalId: number;
+	    index: number;
+	    itemId: number;
+	    inventory: number;
+	    capacity: number;
+	    localMode: number;
+	    remoteMode: number;
+	    localOrder: number;
+	    remoteOrder: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SupplySlot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planetId = source["planetId"];
+	        this.stationId = source["stationId"];
+	        this.entityId = source["entityId"];
+	        this.globalId = source["globalId"];
+	        this.index = source["index"];
+	        this.itemId = source["itemId"];
+	        this.inventory = source["inventory"];
+	        this.capacity = source["capacity"];
+	        this.localMode = source["localMode"];
+	        this.remoteMode = source["remoteMode"];
+	        this.localOrder = source["localOrder"];
+	        this.remoteOrder = source["remoteOrder"];
+	    }
+	}
+	export class StationFreight {
+	    slot: SupplySlot;
+	    modeCandidates: SupplySlot[];
+	    cargoInFlight: number;
+	    awaitingPickup: number;
+	    tasks: FreightTask[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StationFreight(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.slot = this.convertValues(source["slot"], SupplySlot);
+	        this.modeCandidates = this.convertValues(source["modeCandidates"], SupplySlot);
+	        this.cargoInFlight = source["cargoInFlight"];
+	        this.awaitingPickup = source["awaitingPickup"];
+	        this.tasks = this.convertValues(source["tasks"], FreightTask);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DevicePort {
+	    role: string;
+	    itemId: number;
+	    belt: number;
+	    entity: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DevicePort(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.itemId = source["itemId"];
+	        this.belt = source["belt"];
+	        this.entity = source["entity"];
+	    }
+	}
+	export class DeviceState {
+	    bufferItemId?: number;
+	    requiredPoints?: number[];
+	    kind: string;
+	    componentId: number;
+	    entityId: number;
+	    building: number;
+	    productId: number;
+	    recipeId?: number;
+	    techId?: number;
+	    nextLabId?: number;
+	    active?: boolean;
+	    sign: number;
+	    power: number;
+	    progress: number;
+	    cycle?: number;
+	    buffered: number;
+	    capacity?: number;
+	    fluidId?: number;
+	    fluidInput: number;
+	    fluidReturn: number;
+	    returnCapacity?: number;
+	    veins?: number[];
+	    resourceRemaining?: number;
+	    matrixPoints?: number[];
+	    inputs?: CircuitInput[];
+	    ports?: DevicePort[];
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeviceState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.bufferItemId = source["bufferItemId"];
+	        this.requiredPoints = source["requiredPoints"];
+	        this.kind = source["kind"];
+	        this.componentId = source["componentId"];
+	        this.entityId = source["entityId"];
+	        this.building = source["building"];
+	        this.productId = source["productId"];
+	        this.recipeId = source["recipeId"];
+	        this.techId = source["techId"];
+	        this.nextLabId = source["nextLabId"];
+	        this.active = source["active"];
+	        this.sign = source["sign"];
+	        this.power = source["power"];
+	        this.progress = source["progress"];
+	        this.cycle = source["cycle"];
+	        this.buffered = source["buffered"];
+	        this.capacity = source["capacity"];
+	        this.fluidId = source["fluidId"];
+	        this.fluidInput = source["fluidInput"];
+	        this.fluidReturn = source["fluidReturn"];
+	        this.returnCapacity = source["returnCapacity"];
+	        this.veins = source["veins"];
+	        this.resourceRemaining = source["resourceRemaining"];
+	        this.matrixPoints = source["matrixPoints"];
+	        this.inputs = this.convertValues(source["inputs"], CircuitInput);
+	        this.ports = this.convertValues(source["ports"], DevicePort);
+	        this.status = source["status"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CircuitConnection {
+	    sorterEntity: number;
+	    otherEntity: number;
+	    filter: number;
+	    direction: string;
+	    reversible: boolean;
+	    routes: number[];
+	    otherBuilding: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CircuitConnection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sorterEntity = source["sorterEntity"];
+	        this.otherEntity = source["otherEntity"];
+	        this.filter = source["filter"];
+	        this.direction = source["direction"];
+	        this.reversible = source["reversible"];
+	        this.routes = source["routes"];
+	        this.otherBuilding = source["otherBuilding"];
+	    }
+	}
+	export class CircuitInput {
+	    itemId: number;
+	    available: number;
+	    required?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CircuitInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.available = source["available"];
+	        this.required = source["required"];
+	    }
+	}
+	export class ProductionOutput {
+	    itemId: number;
+	    buffered: number;
+	    batch?: number;
+	    deliveryLimit?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductionOutput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.buffered = source["buffered"];
+	        this.batch = source["batch"];
+	        this.deliveryLimit = source["deliveryLimit"];
+	    }
+	}
+	export class CircuitMachine {
+	    building: number;
+	    recipeMatched: boolean;
+	    cycleProgressLimit?: number;
+	    outputs: ProductionOutput[];
+	    assemblerId: number;
+	    entityId: number;
+	    recipeId: number;
+	    replicating: boolean;
+	    progress: number;
+	    produced: number;
+	    sign: number;
+	    power: number;
+	    inputs: CircuitInput[];
+	    status: string;
+	    advice: string;
+	    connections: CircuitConnection[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CircuitMachine(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.building = source["building"];
+	        this.recipeMatched = source["recipeMatched"];
+	        this.cycleProgressLimit = source["cycleProgressLimit"];
+	        this.outputs = this.convertValues(source["outputs"], ProductionOutput);
+	        this.assemblerId = source["assemblerId"];
+	        this.entityId = source["entityId"];
+	        this.recipeId = source["recipeId"];
+	        this.replicating = source["replicating"];
+	        this.progress = source["progress"];
+	        this.produced = source["produced"];
+	        this.sign = source["sign"];
+	        this.power = source["power"];
+	        this.inputs = this.convertValues(source["inputs"], CircuitInput);
+	        this.status = source["status"];
+	        this.advice = source["advice"];
+	        this.connections = this.convertValues(source["connections"], CircuitConnection);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ChainNode {
+	    planetId: number;
+	    entityId: number;
+	    productId: number;
+	    machine?: CircuitMachine;
+	    device?: DeviceState;
+	    freight?: StationFreight;
+	    constraints: ChainConstraint[];
+	    inputs: ChainInput[];
+	    loadedSources: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ChainNode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planetId = source["planetId"];
+	        this.entityId = source["entityId"];
+	        this.productId = source["productId"];
+	        this.machine = this.convertValues(source["machine"], CircuitMachine);
+	        this.device = this.convertValues(source["device"], DeviceState);
+	        this.freight = this.convertValues(source["freight"], StationFreight);
+	        this.constraints = this.convertValues(source["constraints"], ChainConstraint);
+	        this.inputs = this.convertValues(source["inputs"], ChainInput);
+	        this.loadedSources = source["loadedSources"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class CircuitEndpoint {
+	    belt: number;
+	    sorterEntity: number;
+	    entityId: number;
+	    building: number;
+	    filter: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CircuitEndpoint(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.belt = source["belt"];
+	        this.sorterEntity = source["sorterEntity"];
+	        this.entityId = source["entityId"];
+	        this.building = source["building"];
+	        this.filter = source["filter"];
+	    }
+	}
+	export class CircuitFinding {
+	    routeEvidence: string;
+	    status: string;
+	    itemId: number;
+	    checkBelt: number;
+	    assemblers: number[];
+	    advice: string;
+	    relatedBlockedEntities: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CircuitFinding(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.routeEvidence = source["routeEvidence"];
+	        this.status = source["status"];
+	        this.itemId = source["itemId"];
+	        this.checkBelt = source["checkBelt"];
+	        this.assemblers = source["assemblers"];
+	        this.advice = source["advice"];
+	        this.relatedBlockedEntities = source["relatedBlockedEntities"];
+	    }
+	}
+	
+	
+	export class CircuitRoute {
+	    startBelt: number;
+	    itemId: number;
+	    direction: string;
+	    belts: number[];
+	    endpoints: CircuitEndpoint[];
+	    transfers: CircuitEndpoint[];
+	    shared: boolean;
+	    openEnds: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CircuitRoute(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.startBelt = source["startBelt"];
+	        this.itemId = source["itemId"];
+	        this.direction = source["direction"];
+	        this.belts = source["belts"];
+	        this.endpoints = this.convertValues(source["endpoints"], CircuitEndpoint);
+	        this.transfers = this.convertValues(source["transfers"], CircuitEndpoint);
+	        this.shared = source["shared"];
+	        this.openEnds = source["openEnds"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DeviceCheck {
+	    status: string;
+	    itemId: number;
+	    checkEntity: number;
+	    deviceEntities: number[];
+	    sorterEntities?: number[];
+	    routes?: number[];
+	    shared: boolean;
+	    evidence: string;
+	    advice: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeviceCheck(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.itemId = source["itemId"];
+	        this.checkEntity = source["checkEntity"];
+	        this.deviceEntities = source["deviceEntities"];
+	        this.sorterEntities = source["sorterEntities"];
+	        this.routes = source["routes"];
+	        this.shared = source["shared"];
+	        this.evidence = source["evidence"];
+	        this.advice = source["advice"];
+	    }
+	}
+	export class DeviceReport {
+	    queuedTechId: number;
+	    sha256: string;
+	    tick: number;
+	    planetId: number;
+	    devices: DeviceState[];
+	    checks: DeviceCheck[];
+	    routes: CircuitRoute[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DeviceReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.queuedTechId = source["queuedTechId"];
+	        this.sha256 = source["sha256"];
+	        this.tick = source["tick"];
+	        this.planetId = source["planetId"];
+	        this.devices = this.convertValues(source["devices"], DeviceState);
+	        this.checks = this.convertValues(source["checks"], DeviceCheck);
+	        this.routes = this.convertValues(source["routes"], CircuitRoute);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CircuitReport {
+	    deviceDiagnostics?: DeviceReport;
+	    itemId: number;
+	    coverage: string;
+	    sha256: string;
+	    tick: number;
+	    planetId: number;
+	    machines: CircuitMachine[];
+	    findings: CircuitFinding[];
+	    routes: CircuitRoute[];
+	    neighbors: CircuitMachine[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CircuitReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deviceDiagnostics = this.convertValues(source["deviceDiagnostics"], DeviceReport);
+	        this.itemId = source["itemId"];
+	        this.coverage = source["coverage"];
+	        this.sha256 = source["sha256"];
+	        this.tick = source["tick"];
+	        this.planetId = source["planetId"];
+	        this.machines = this.convertValues(source["machines"], CircuitMachine);
+	        this.findings = this.convertValues(source["findings"], CircuitFinding);
+	        this.routes = this.convertValues(source["routes"], CircuitRoute);
+	        this.neighbors = this.convertValues(source["neighbors"], CircuitMachine);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	export class InventoryEntry {
+	    planetId: number;
+	    kind: string;
+	    containerId: number;
+	    entityId: number;
+	    slotIndex: number;
+	    itemId: number;
+	    count: number;
+	    capacity?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new InventoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planetId = source["planetId"];
+	        this.kind = source["kind"];
+	        this.containerId = source["containerId"];
+	        this.entityId = source["entityId"];
+	        this.slotIndex = source["slotIndex"];
+	        this.itemId = source["itemId"];
+	        this.count = source["count"];
+	        this.capacity = source["capacity"];
+	    }
+	}
+	export class InventoryView {
+	    sha256: string;
+	    tick: number;
+	    totals: Record<string, number>;
+	    entries: InventoryEntry[];
+	    excluded: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new InventoryView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sha256 = source["sha256"];
+	        this.tick = source["tick"];
+	        this.totals = source["totals"];
+	        this.entries = this.convertValues(source["entries"], InventoryEntry);
+	        this.excluded = source["excluded"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Slot {
+	    stationId: number;
+	    globalId: number;
+	    entityId: number;
+	    index: number;
+	    inventory: number;
+	    capacity: number;
+	    localLogic: number;
+	    remoteLogic: number;
+	    stellar: boolean;
+	    collector: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Slot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stationId = source["stationId"];
+	        this.globalId = source["globalId"];
+	        this.entityId = source["entityId"];
+	        this.index = source["index"];
+	        this.inventory = source["inventory"];
+	        this.capacity = source["capacity"];
+	        this.localLogic = source["localLogic"];
+	        this.remoteLogic = source["remoteLogic"];
+	        this.stellar = source["stellar"];
+	        this.collector = source["collector"];
+	    }
+	}
+	export class PlanetItem {
+	    planetId: number;
+	    history?: Counts;
+	    slots: Slot[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanetItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planetId = source["planetId"];
+	        this.history = this.convertValues(source["history"], Counts);
+	        this.slots = this.convertValues(source["slots"], Slot);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ItemDetail {
+	    sha256: string;
+	    itemId: number;
+	    window: Window;
+	    planets: PlanetItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sha256 = source["sha256"];
+	        this.itemId = source["itemId"];
+	        this.window = this.convertValues(source["window"], Window);
+	        this.planets = this.convertValues(source["planets"], PlanetItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class OutputCheck {
+	    priority: number;
+	    entityId: number;
+	    itemId: number;
+	    status: string;
+	    receivers: number[];
+	    directEntities: number[];
+	    rootEntities: number[];
+	    shared: boolean;
+	    unresolved: boolean;
+	    evidence: string;
+	    advice: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OutputCheck(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.priority = source["priority"];
+	        this.entityId = source["entityId"];
+	        this.itemId = source["itemId"];
+	        this.status = source["status"];
+	        this.receivers = source["receivers"];
+	        this.directEntities = source["directEntities"];
+	        this.rootEntities = source["rootEntities"];
+	        this.shared = source["shared"];
+	        this.unresolved = source["unresolved"];
+	        this.evidence = source["evidence"];
+	        this.advice = source["advice"];
+	    }
+	}
+	export class OutputReceiver {
+	    supplyNode?: number;
+	    entityId: number;
+	    building: number;
+	    itemId: number;
+	    status: string;
+	    requested?: boolean;
+	    machine?: CircuitMachine;
+	    device?: DeviceState;
+	    slot?: SupplySlot;
+	    next: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new OutputReceiver(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.supplyNode = source["supplyNode"];
+	        this.entityId = source["entityId"];
+	        this.building = source["building"];
+	        this.itemId = source["itemId"];
+	        this.status = source["status"];
+	        this.requested = source["requested"];
+	        this.machine = this.convertValues(source["machine"], CircuitMachine);
+	        this.device = this.convertValues(source["device"], DeviceState);
+	        this.slot = this.convertValues(source["slot"], SupplySlot);
+	        this.next = source["next"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class OutputPort {
+	    checkEntity: number;
+	    sorter: number;
+	    target: number;
+	    route: number;
+	    drop?: DropObservation;
+	    receivers: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new OutputPort(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.checkEntity = source["checkEntity"];
+	        this.sorter = source["sorter"];
+	        this.target = source["target"];
+	        this.route = source["route"];
+	        this.drop = this.convertValues(source["drop"], DropObservation);
+	        this.receivers = source["receivers"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class OutputSource {
+	    entityId: number;
+	    itemId: number;
+	    buffered: number;
+	    roots: number[];
+	    ports: OutputPort[];
+	    shared: boolean;
+	    unresolved: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new OutputSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entityId = source["entityId"];
+	        this.itemId = source["itemId"];
+	        this.buffered = source["buffered"];
+	        this.roots = source["roots"];
+	        this.ports = this.convertValues(source["ports"], OutputPort);
+	        this.shared = source["shared"];
+	        this.unresolved = source["unresolved"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class OutputSupply {
+	    nodes: ChainNode[];
+	    checks: ChainCheck[];
+	
+	    static createFrom(source: any = {}) {
+	        return new OutputSupply(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nodes = this.convertValues(source["nodes"], ChainNode);
+	        this.checks = this.convertValues(source["checks"], ChainCheck);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class OutputDiagnosis {
+	    supply?: OutputSupply;
+	    sources: OutputSource[];
+	    routes: CircuitRoute[];
+	    receivers: OutputReceiver[];
+	    checks: OutputCheck[];
+	
+	    static createFrom(source: any = {}) {
+	        return new OutputDiagnosis(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.supply = this.convertValues(source["supply"], OutputSupply);
+	        this.sources = this.convertValues(source["sources"], OutputSource);
+	        this.routes = this.convertValues(source["routes"], CircuitRoute);
+	        this.receivers = this.convertValues(source["receivers"], OutputReceiver);
+	        this.checks = this.convertValues(source["checks"], OutputCheck);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+	
+	export class PlanetLink {
+	    planetId: number;
+	    starId: number;
+	    parentPlanetId: number;
+	    name: string;
+	    generatedName: string;
+	    overrideName: string;
+	    hasFactory: boolean;
+	    position: galaxy.Vector;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanetLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planetId = source["planetId"];
+	        this.starId = source["starId"];
+	        this.parentPlanetId = source["parentPlanetId"];
+	        this.name = source["name"];
+	        this.generatedName = source["generatedName"];
+	        this.overrideName = source["overrideName"];
+	        this.hasFactory = source["hasFactory"];
+	        this.position = this.convertValues(source["position"], galaxy.Vector);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ProductionDiagnosis {
+	    downstream?: OutputDiagnosis;
+	    firstCheckGroup?: string;
+	    sha256: string;
+	    tick: number;
+	    planetId: number;
+	    productId: number;
+	    status: string;
+	    roots: number[];
+	    nodes: ChainNode[];
+	    checks: ChainCheck[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductionDiagnosis(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.downstream = this.convertValues(source["downstream"], OutputDiagnosis);
+	        this.firstCheckGroup = source["firstCheckGroup"];
+	        this.sha256 = source["sha256"];
+	        this.tick = source["tick"];
+	        this.planetId = source["planetId"];
+	        this.productId = source["productId"];
+	        this.status = source["status"];
+	        this.roots = source["roots"];
+	        this.nodes = this.convertValues(source["nodes"], ChainNode);
+	        this.checks = this.convertValues(source["checks"], ChainCheck);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ProductionItem {
+	    itemId: number;
+	    machines: number;
+	    recordedProduction: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductionItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.machines = source["machines"];
+	        this.recordedProduction = source["recordedProduction"];
+	    }
+	}
+	
+	
+	export class SphereStructure {
+	    kind: string;
+	    id: number;
+	    protoId: number;
+	    nodeIds: number[];
+	    position: number[];
+	    vertices: number[][];
+	    color: number[];
+	    euler: boolean;
+	    radius: number;
+	    progress: BuildProgress;
+	
+	    static createFrom(source: any = {}) {
+	        return new SphereStructure(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.id = source["id"];
+	        this.protoId = source["protoId"];
+	        this.nodeIds = source["nodeIds"];
+	        this.position = source["position"];
+	        this.vertices = source["vertices"];
+	        this.color = source["color"];
+	        this.euler = source["euler"];
+	        this.radius = source["radius"];
+	        this.progress = this.convertValues(source["progress"], BuildProgress);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SphereLayer {
+	    id: number;
+	    radius: number;
+	    orbitRotation: number[];
+	    currentRotation: number[];
+	    structures: SphereStructure[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SphereLayer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.radius = source["radius"];
+	        this.orbitRotation = source["orbitRotation"];
+	        this.currentRotation = source["currentRotation"];
+	        this.structures = this.convertValues(source["structures"], SphereStructure);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class SphereView {
+	    tick: number;
+	    positionUnit: string;
+	    positionOrigin: string;
+	    sha256: string;
+	    starId: number;
+	    exists: boolean;
+	    layers: SphereLayer[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SphereView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tick = source["tick"];
+	        this.positionUnit = source["positionUnit"];
+	        this.positionOrigin = source["positionOrigin"];
+	        this.sha256 = source["sha256"];
+	        this.starId = source["starId"];
+	        this.exists = source["exists"];
+	        this.layers = this.convertValues(source["layers"], SphereLayer);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class StarLink {
+	    starId: number;
+	    name: string;
+	    generatedName: string;
+	    overrideName: string;
+	    position: galaxy.Vector;
+	
+	    static createFrom(source: any = {}) {
+	        return new StarLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.name = source["name"];
+	        this.generatedName = source["generatedName"];
+	        this.overrideName = source["overrideName"];
+	        this.position = this.convertValues(source["position"], galaxy.Vector);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class SupplyBranch {
+	    consumers: number[];
+	    checkEntity: number;
+	    sorters: number[];
+	    routes: number[];
+	    direct: number[];
+	    producerEntities: number[];
+	    sourceSlots: SupplySlot[];
+	    unresolved: boolean;
+	    shared: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SupplyBranch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.consumers = source["consumers"];
+	        this.checkEntity = source["checkEntity"];
+	        this.sorters = source["sorters"];
+	        this.routes = source["routes"];
+	        this.direct = source["direct"];
+	        this.producerEntities = source["producerEntities"];
+	        this.sourceSlots = this.convertValues(source["sourceSlots"], SupplySlot);
+	        this.unresolved = source["unresolved"];
+	        this.shared = source["shared"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SupplyCheck {
+	    slot: SupplySlot;
+	    consumers: number[];
+	    shared: boolean;
+	    advice: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SupplyCheck(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.slot = this.convertValues(source["slot"], SupplySlot);
+	        this.consumers = source["consumers"];
+	        this.shared = source["shared"];
+	        this.advice = source["advice"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SupplyReport {
+	    sha256: string;
+	    tick: number;
+	    planetId: number;
+	    productId?: number;
+	    itemId: number;
+	    checks: SupplyCheck[];
+	    branches: SupplyBranch[];
+	    routes: CircuitRoute[];
+	    producers: CircuitMachine[];
+	    devices: DeviceState[];
+	    freight?: StationFreight;
+	
+	    static createFrom(source: any = {}) {
+	        return new SupplyReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sha256 = source["sha256"];
+	        this.tick = source["tick"];
+	        this.planetId = source["planetId"];
+	        this.productId = source["productId"];
+	        this.itemId = source["itemId"];
+	        this.checks = this.convertValues(source["checks"], SupplyCheck);
+	        this.branches = this.convertValues(source["branches"], SupplyBranch);
+	        this.routes = this.convertValues(source["routes"], CircuitRoute);
+	        this.producers = this.convertValues(source["producers"], CircuitMachine);
+	        this.devices = this.convertValues(source["devices"], DeviceState);
+	        this.freight = this.convertValues(source["freight"], StationFreight);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SupplyScope {
+	    entities?: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SupplyScope(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entities = source["entities"];
+	    }
+	}
+	
+	
+	export class WorldView {
+	    sha256: string;
+	    tick: number;
+	    seed: number;
+	    algorithm: number;
+	    starCount: number;
+	    nameLCID: number;
+	    completePlanets: boolean;
+	    positionUnit: string;
+	    positionOrigin: string;
+	    gameMetersPerAU: number;
+	    gameMetersPerLightYear: number;
+	    ticksPerSecond: number;
+	    positionSource: string;
+	    nameSource: string;
+	    stars: StarLink[];
+	    planets: PlanetLink[];
+	    missing: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new WorldView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sha256 = source["sha256"];
+	        this.tick = source["tick"];
+	        this.seed = source["seed"];
+	        this.algorithm = source["algorithm"];
+	        this.starCount = source["starCount"];
+	        this.nameLCID = source["nameLCID"];
+	        this.completePlanets = source["completePlanets"];
+	        this.positionUnit = source["positionUnit"];
+	        this.positionOrigin = source["positionOrigin"];
+	        this.gameMetersPerAU = source["gameMetersPerAU"];
+	        this.gameMetersPerLightYear = source["gameMetersPerLightYear"];
+	        this.ticksPerSecond = source["ticksPerSecond"];
+	        this.positionSource = source["positionSource"];
+	        this.nameSource = source["nameSource"];
+	        this.stars = this.convertValues(source["stars"], StarLink);
+	        this.planets = this.convertValues(source["planets"], PlanetLink);
+	        this.missing = source["missing"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
