@@ -319,7 +319,7 @@ const ariaLabel = computed(() => `产线负载雷达图：平均 ${formatPercent
 .radar-list small { color: var(--ds-text-muted); }
 .radar-empty { position: absolute; inset: 0; display: grid; margin: 0; place-items: center; color: var(--ds-text-muted); font-size: 12px; pointer-events: none; }
 
-// 浮层：与物料边界页同一套圆角卡片样式。
+// 浮层：与物料统计页同一套圆角卡片样式。
 .radar-tip { position: absolute; z-index: 5; min-width: 230px; max-width: 320px; border: 1px solid var(--ds-border-default); border-radius: 8px; padding: 10px 12px; background: var(--ds-bg-panel-elevated); color: var(--ds-text-secondary); font-size: 12px; box-shadow: 0 12px 30px rgb(0 0 0 / 0.3); pointer-events: none; }
 .radar-tip header { display: flex; min-width: 0; align-items: center; gap: 7px; margin-bottom: 4px; }
 .radar-tip header strong { overflow: hidden; color: var(--ds-text-primary); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }

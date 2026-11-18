@@ -429,6 +429,8 @@ export function resolveAvatarUrl(raw: string | undefined, serverAddress: string,
   if (!value || !ready || value.startsWith('//')) return ''
   try {
     const url = new URL(value, `${serverAddress}/`)
+    // 旧账号未设置头像时，服务端会返回这张公共占位图，界面统一使用盒子默认头像。
+    if (url.host === 'qmplusimg.henrongyi.top' && url.pathname === '/gva_header.jpg') return ''
     return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''
   } catch {
     return ''

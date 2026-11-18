@@ -8,9 +8,9 @@ import {ensureFactoryIcons} from '../../../../pages/services/dysonSphere/factory
 import {buildBoundaryRows, formatPower, formatShare, formatValue} from '../../../../pages/services/dysonSphere/factory-analysis'
 import {BOUNDARY_FLOWS, boundaryRateOf, boundarySegments, treemapLayout, waffleLayout, type BlockRect, type BoundaryFlow} from '../../../../pages/services/dysonSphere/analysis/boundary-layout'
 
-// =============== 物料边界 ===============
+// =============== 物料统计 ===============
 // 说明：工厂每分钟吃进与吐出的物料。外部输入、目标交付、持续剩余三种流向各一种颜色，每个方块里是对应物品的图标。
-//       「网格」视图每格约等于同一速率，读构成与量级；「方块」视图按速率分面积，输入在左、输出在右，读精确比例。
+//       「网格」视图每格约等于同一速率，读构成与量级；「方块」视图按速率分面积，输入在左、输出在右，按速率分配面积，小流量保留图标空间。
 // 交互：悬停方块高亮同一物料在该流向上的全部格子并淡化其余；悬停或聚焦图例高亮整个流向并列出其中的物料；右下角切换视图，选择记在本机。
 // 边界：纯内部中间品不进入边界；网格取整且每段至少一格，精确速率以浮层为准；持续剩余用琥珀色，表示必须接出口外运，缓存不能抵消。
 const props = defineProps<{stats: FactoryStatistics; palette: AnalysisPalette}>()
@@ -73,8 +73,8 @@ const cellStyle = (segment: number, order: number): Record<string, string | numb
 const blockStyle = (rect: BlockRect, segment: number, order: number): Record<string, string | number> => ({
   ...cellStyle(segment, order), left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px`,
 })
-/** 方块里的图标：边长的 42%，最大 56px；小于 14px 时不画，交给浮层 */
-const blockIcon = (rect: BlockRect): number => Math.round(Math.min(56, Math.min(rect.width, rect.height) * 0.42))
+/** 方块里的图标：最小图标为 20px，较大的方块随短边放大，最大 56px */
+const blockIcon = (rect: BlockRect): number => Math.max(20, Math.round(Math.min(56, Math.min(rect.width, rect.height) * 0.42)))
 const blockLabeled = (rect: BlockRect): boolean => rect.width >= 84 && rect.height >= 76
 
 // =============== 悬停与浮层 ===============
@@ -161,24 +161,24 @@ const ariaLabel = computed(() => flows.value.map(flow => `${flow.label} ${format
 </script>
 
 <template>
-  <!-- ~ 物料边界 -->
-  <!-- * 说明：三种流向的物料方块，每块是对应物品的图标；网格视图读构成，方块视图读精确比例 -->
+  <!-- ~ 物料统计 -->
+  <!-- * 说明：三种流向的物料方块，每块是对应物品的图标；网格视图读构成，方块视图按速率分配面积，小流量保留图标空间 -->
   <!-- * 交互：悬停方块或图例高亮并显示浮层；右下角切换网格 / 方块视图 -->
   <!-- * 依赖：统计报告 materials 的外部输入、目标交付与持续剩余 -->
   <!-- * 边界：只含跨越工厂边界的物料；网格每格为近似单位，精确值见浮层 -->
   <AnalysisPage>
     <div ref="root" class="ledger">
-      <div ref="plot" class="ledger-plot" role="img" :aria-label="`物料边界：${ariaLabel}`" @pointermove="onPlotMove" @pointerleave="onPlotLeave">
+      <div ref="plot" class="ledger-plot" role="img" :aria-label="`物料统计：${ariaLabel}`" @pointermove="onPlotMove" @pointerleave="onPlotLeave">
         <!-- 网格：阅读顺序依次为外部输入、目标交付、持续剩余，其余位置是空仓位 -->
         <div v-if="waffle" :key="`grid-${version}`" class="waffle" :class="{'has-focus': focus}" :style="{gridTemplateColumns: `repeat(${waffle.columns}, ${waffle.size}px)`, gridAutoRows: `${waffle.size}px`, gap: `${waffle.gap}px`}">
           <span v-for="(segment, order) in waffle.cells" :key="order" class="cell" :class="segment === null ? 'is-slot' : {'is-lit': lit(segment)}" :data-seg="segment ?? undefined" :style="segment === null ? undefined : cellStyle(segment, order)">
             <ItemIcon v-if="segment !== null" :name="segments[segment].row.name" :size="cellIcon" />
           </span>
         </div>
-        <!-- 方块：输入、交付、剩余三条并列条带，块面积与速率成正比 -->
-        <div v-else-if="treemap" :key="`blocks-${version}`" class="blocks" :class="{'has-focus': focus}" :style="{width: `${size.width}px`, height: `${size.height}px`}">
+        <!-- 方块：输入、交付、剩余三条并列条带，小流量块保留图标尺寸 -->
+        <div v-else-if="treemap" :key="`blocks-${version}`" class="blocks" :class="{'has-focus': focus}" :style="{width: `${size.width}px`, height: `${treemap.height}px`}">
           <div v-for="(block, order) in treemap.blocks" :key="block.segment" class="block" :class="{'is-lit': lit(block.segment)}" :data-seg="block.segment" :style="blockStyle(block.rect, block.segment, order)">
-            <ItemIcon v-if="blockIcon(block.rect) >= 14" :name="segments[block.segment].row.name" :size="blockIcon(block.rect)" />
+            <ItemIcon :name="segments[block.segment].row.name" :size="blockIcon(block.rect)" />
             <template v-if="blockLabeled(block.rect)">
               <span class="block-name">{{ segments[block.segment].row.name }}</span>
               <span class="block-rate type-display">{{ formatValue(segments[block.segment].rate) }} /min</span>
@@ -194,9 +194,9 @@ const ariaLabel = computed(() => flows.value.map(flow => `${flow.label} ${format
           <i :style="{background: flowColor[flow.key]}" /><span>{{ flow.label }}</span><span class="legend-value type-display">{{ formatValue(totals[flow.key]) }}/min</span>
         </button>
         <span v-if="waffle" class="legend-note">每格 ≈ {{ formatValue(waffle.unit) }} 件/min，每种物料至少一格</span>
-        <span v-else-if="treemap" class="legend-note">面积与速率成正比</span>
-        <div class="view-toggle" role="radiogroup" aria-label="物料边界视图">
-          <button type="button" role="radio" class="toggle" :aria-checked="view === 'blocks'" title="方块：面积与速率成正比" @click="view = 'blocks'">
+        <span v-else-if="treemap" class="legend-note">面积按流量分配，小块保留图标</span>
+        <div class="view-toggle" role="radiogroup" aria-label="物料统计视图">
+          <button type="button" role="radio" class="toggle" :aria-checked="view === 'blocks'" title="方块：面积按流量分配，小块保留图标" @click="view = 'blocks'">
             <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="6" height="13" rx="1.2" /><rect x="9" y="1.5" width="5.5" height="6.2" rx="1.2" /><rect x="9" y="9.2" width="5.5" height="5.3" rx="1.2" /></svg>
           </button>
           <button type="button" role="radio" class="toggle" :aria-checked="view === 'grid'" title="网格：每格代表相同速率" @click="view = 'grid'">

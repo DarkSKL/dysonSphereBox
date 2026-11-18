@@ -2,8 +2,8 @@ import type {BoundaryRow} from '../factory-analysis'
 
 // =============== 物料边界布局 ===============
 // 职责：把跨越工厂边界的物料流（外部输入、目标交付、持续剩余）排成单位方格网格，或排成面积与速率成正比的矩形树图；
-// 使用：物料边界页的「网格」与「方块」两种视图；
-// 边界：纯布局计算，不读取主题或 DOM；网格按「每格 ≈ unit 件/min」取整且每段至少一格，矩形树图严格按速率分面积，精确数值由浮层给出。
+// 使用：物料统计页的「网格」与「方块」两种视图；
+// 边界：纯布局计算，不读取主题或 DOM；网格每段至少一格，方块按速率分配并为小流量保留图标空间，精确数值由浮层给出。
 
 export type BoundaryFlow = 'input' | 'target' | 'surplus'
 export const BOUNDARY_FLOWS: readonly {readonly key: BoundaryFlow; readonly label: string}[] = [
@@ -87,6 +87,7 @@ export function waffleLayout(segments: readonly BoundarySegment[], width: number
 // =============== 矩形树图 ===============
 export interface BlockRect { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
 export interface TreemapLayout {
+  readonly height: number
   readonly groups: readonly {readonly flow: BoundaryFlow; readonly rect: BlockRect}[]
   readonly blocks: readonly {readonly segment: number; readonly rect: BlockRect}[]
 }
@@ -124,6 +125,51 @@ function squarify(values: readonly number[], rect: BlockRect): BlockRect[] {
 }
 const inset = (rect: BlockRect, amount: number): BlockRect => ({x: rect.x + amount, y: rect.y + amount, width: Math.max(0, rect.width - amount * 2), height: Math.max(0, rect.height - amount * 2)})
 
+// 先锁定按比例会过小的项，其余空间仍按真实速率分配。调用方已为全部下限预留容量。
+function proportionalSizes(weights: readonly number[], minimums: readonly number[], space: number): number[] {
+  const sizes = new Array<number>(weights.length)
+  let pending = weights.map((_, index) => index)
+  while (pending.length) {
+    const total = pending.reduce((sum, i) => sum + weights[i], 0)
+    const scale = space / total
+    const small = pending.filter(i => weights[i] * scale < minimums[i])
+    if (!small.length) {
+      for (const i of pending) sizes[i] = weights[i] * scale
+      break
+    }
+    for (const i of small) {
+      sizes[i] = minimums[i]
+      space -= sizes[i]
+    }
+    pending = pending.filter(i => sizes[i] === undefined)
+  }
+  return sizes
+}
+
+// 常规树图能容纳所有图标时沿用原布局；否则按行分配，每行的高度和行内每块的宽度都有下限。
+function iconSizedBlocks(weights: number[], rect: BlockRect, minimum: number): BlockRect[] {
+  const cells = squarify(weights, rect)
+  if (cells.every(cell => Math.min(cell.width, cell.height) >= minimum)) return cells
+  const maxRows = Math.max(1, Math.floor(rect.height / minimum))
+  const maxColumns = Math.max(1, Math.floor(rect.width / minimum))
+  const columns = Math.min(maxColumns, Math.max(Math.ceil(weights.length / maxRows), Math.round(Math.sqrt(weights.length * rect.width / rect.height))))
+  const rows: number[][] = []
+  for (let i = 0; i < weights.length; i += columns) rows.push(weights.slice(i, i + columns))
+  const heights = proportionalSizes(rows.map(row => row.reduce((a, b) => a + b, 0)), rows.map(() => minimum), rect.height)
+  let y = rect.y
+  return rows.flatMap((row, index) => {
+    const height = heights[index]
+    const top = y
+    y += height
+    let x = rect.x
+    return proportionalSizes(row, row.map(() => minimum), rect.width).map(width => {
+      const cell = {x, y: top, width, height}
+      x += width
+      return cell
+    })
+  })
+}
+
 /** 方块排布：三种流向按总量切成并列的条带（宽画幅自左向右：输入 → 交付 → 剩余），条带内物料按速率 squarify；块间留 gap，条带间留 groupGap。 */
 export function treemapLayout(segments: readonly BoundarySegment[], width: number, height: number, gap = 3, groupGap = 10): TreemapLayout | null {
   if (!segments.length || width < 80 || height < 40) return null
@@ -131,18 +177,25 @@ export function treemapLayout(segments: readonly BoundarySegment[], width: numbe
     .map(({key}) => ({flow: key, members: segments.map((segment, index) => ({segment, index})).filter(item => item.segment.flow === key)}))
     .filter(group => group.members.length)
   const totals = groups.map(group => group.members.reduce((sum, item) => sum + item.segment.rate, 0))
-  const whole = totals.reduce((sum, value) => sum + value, 0)
-  const horizontal = width >= height
-  const span = (horizontal ? width : height) - groupGap * (groups.length - 1)
+  // 每块至少容纳 20px 图标和两侧各 6px 内边距；块间距单独计算。
+  const minimum = 32 + gap
+  const gutters = groupGap * (groups.length - 1)
+  const minimumSpans = (cross: number) => groups.map(group => Math.ceil(group.members.length / Math.max(1, Math.floor(cross / minimum))) * minimum)
+  const sum = (values: number[]) => values.reduce((a, b) => a + b, 0)
+  const widths = minimumSpans(height)
+  const horizontal = width >= height && width >= gutters + sum(widths)
+  const minima = horizontal ? widths : minimumSpans(width)
+  const plotHeight = horizontal ? height : Math.max(height, gutters + sum(minima))
+  const lengths = proportionalSizes(totals, minima, (horizontal ? width : plotHeight) - gutters)
   let cursor = 0
   const placedGroups: {flow: BoundaryFlow; rect: BlockRect}[] = []
   const blocks: {segment: number; rect: BlockRect}[] = []
   groups.forEach((group, order) => {
-    const length = span * totals[order] / whole
+    const length = lengths[order]
     const rect: BlockRect = horizontal ? {x: cursor, y: 0, width: length, height} : {x: 0, y: cursor, width, height: length}
     cursor += length + groupGap
     placedGroups.push({flow: group.flow, rect})
-    squarify(group.members.map(item => item.segment.rate), rect).forEach((cell, rank) => blocks.push({segment: group.members[rank].index, rect: inset(cell, gap / 2)}))
+    iconSizedBlocks(group.members.map(item => item.segment.rate), rect, minimum).forEach((cell, rank) => blocks.push({segment: group.members[rank].index, rect: inset(cell, gap / 2)}))
   })
-  return {groups: placedGroups, blocks}
+  return {height: plotHeight, groups: placedGroups, blocks}
 }

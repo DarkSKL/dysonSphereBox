@@ -44,6 +44,7 @@ declare module 'vue' {
     DysonSphereFactoryInspectorPanel: typeof import('./components/dysonSphere/factory/inspector-panel.vue')['default']
     DysonSphereFactoryItemIcon: typeof import('./components/dysonSphere/factory/item-icon.vue')['default']
     DysonSphereFactoryLatitudeGlobe: typeof import('./components/dysonSphere/factory/latitude-globe.vue')['default']
+    DysonSphereFactoryLazyPanel: typeof import('./components/dysonSphere/factory/lazy-panel.vue')['default']
     DysonSphereFactoryLogisticsSummary: typeof import('./components/dysonSphere/factory/logistics-summary.vue')['default']
     DysonSphereFactoryPanelBoltGlyph: typeof import('./components/dysonSphere/factory/panel/bolt-glyph.vue')['default']
     DysonSphereFactoryPanelBriefCard: typeof import('./components/dysonSphere/factory/panel/brief-card.vue')['default']

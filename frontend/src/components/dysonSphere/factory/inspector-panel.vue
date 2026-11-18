@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ArrowRightLeft, Factory, PackageOpen, Settings2, Trash2, X} from '@lucide/vue'
 import {computed} from 'vue'
-import type {QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
+import {sprayTiers, type QuantWorkspace} from '../../../composables/dysonSphere/useQuantWorkspace'
 import type {FlowNodeData} from '../../../pages/services/dysonSphere/factory-graph'
 import IconSelect from './icon-select.vue'
 import ItemIcon from './item-icon.vue'
@@ -11,11 +11,14 @@ import {generationDebugOptions} from '../../../composables/dysonSphere/useGenera
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
 const emit = defineEmits<{(event: 'clear'): void}>()
 
-// 设备类型方块组：每组单选；传送带与分拣器写入布局等级，生产设施写入对应类型全部配方的设备选择，增产剂写入全部支持加速配方的喷涂点数。
+// 设备方块按类型单选；物流设备写入布局等级，生产设施写入对应配方的设备选择。
 const beltTiles = [{label: '传送带', value: 1, icon: '传送带'}, {label: '高速传送带', value: 2, icon: '高速传送带'}, {label: '极速传送带', value: 3, icon: '急速传送带'}]
 const inserterTiles = [{label: '分拣器', value: 1, icon: '分拣器'}, {label: '高速分拣器', value: 2, icon: '高速分拣器'}, {label: '极速分拣器', value: 3, icon: '极速分拣器'}, {label: '集装分拣器', value: 4, icon: '集装分拣器'}]
-// 增产剂方块：value 为增产点数，0 为不喷涂（图集追加的禁用图标），1/2/4 对应 Mk.I/II/III；三档暂时统一采用加速。
-const sprayTiles = [{label: '不喷涂', value: 0, icon: 'proliferator-disabled'}, {label: '增产剂 Mk.I（加速）', value: 1, icon: '增产剂 Mk.I'}, {label: '增产剂 Mk.II（加速）', value: 2, icon: '增产剂 Mk.II'}, {label: '增产剂 Mk.III（加速）', value: 4, icon: '增产剂 Mk.III'}]
+const sprayTiles = (mode: 1 | 2, effect: string) => sprayTiers.map(({value, icon}) => ({mode, points: value, icon, label: `${icon}（${effect}）`}))
+const sprayRows = [
+  {label: '增产剂 · 加速', tiles: [{mode: 0 as const, points: 0, icon: 'proliferator-disabled', label: '不喷涂'}, ...sprayTiles(1, '加速')]},
+  {label: '额外产出', tiles: sprayTiles(2, '额外产出')},
+]
 const equipmentGroups = computed(() => [
   {key: 'belt', label: '传送带', tiles: beltTiles, selected: props.w.layout.beltLv as number | null, pick: (value: number) => { props.w.layout.beltLv = value }},
   {key: 'inserter', label: '分拣器', tiles: inserterTiles, selected: props.w.layout.inserterLv as number | null, pick: (value: number) => { props.w.layout.inserterLv = value }},
@@ -23,7 +26,6 @@ const equipmentGroups = computed(() => [
   {key: 'assembler', label: '工作台', tiles: props.w.machineChoices(4), selected: props.w.selectedMachine(4), pick: (value: number) => props.w.selectMachine(4, value)},
   {key: 'lab', label: '矩阵研究站', tiles: props.w.machineChoices(15), selected: props.w.selectedMachine(15), pick: (value: number) => props.w.selectMachine(15, value)},
   {key: 'chemical', label: '化工厂', tiles: props.w.machineChoices(2), selected: props.w.selectedMachine(2), pick: (value: number) => props.w.selectMachine(2, value)},
-  {key: 'spray', label: '增产剂', tiles: sprayTiles, selected: props.w.selectedSprayPoints, pick: (value: number) => props.w.selectSprayPoints(value), disabled: props.w.loadingDataset || !props.w.detail}
 ].filter(group => group.tiles.length > 0))
 // 生成选项使用设施或物品图标；带模式限制的选项只在对应布局下可用。
 type FacilityFlag = 'needPower' | 'enableFlowMonitor' | 'enableIntermediateBuffer' | 'requestStationWarpers'
@@ -196,13 +198,24 @@ const importedRows = computed(() => {
           </div>
         </div>
         <!-- ~ 设备类型 -->
-        <!-- * 说明：传送带、分拣器、熔炉、工作台、矩阵研究站、化工厂和增产剂各占一行，沿用图标单选；增产剂为不喷涂及 Mk.I/II/III 三档，三档暂时统一采用加速。 -->
-        <!-- * 交互：切换后更新布局等级、同类配方设备或全部支持加速配方的喷涂，触发已有的自动量化与蓝图生成；选中产线后仍可逐配方调整喷涂。 -->
-        <!-- * 依赖：equipmentGroups 从工作区数据集读取可选生产设施与统一喷涂档位；不喷涂图标为图集追加格。 -->
-        <!-- * 边界：不展示数据集中没有的设备组；各配方喷涂不一致时增产剂不高亮任何档位，数据集未就绪时禁用。 -->
+        <!-- * 各组从工作区读取设备选项，切换后触发已有的量化与生成流程。 -->
         <div v-for="group in equipmentGroups" :key="group.key" class="field equip-field">{{ group.label }}
           <div class="tile-group" role="radiogroup" :aria-label="group.label">
-            <button v-for="tile in group.tiles" :key="tile.value" type="button" role="radio" class="tile" :class="{'is-active': group.selected === tile.value}" :aria-checked="group.selected === tile.value" :disabled="group.disabled" :title="tile.label" :aria-label="tile.label" @click="group.pick(tile.value)"><ItemIcon :name="tile.icon" :size="22" /></button>
+            <button v-for="tile in group.tiles" :key="tile.value" type="button" role="radio" class="tile" :class="{'is-active': group.selected === tile.value}" :aria-checked="group.selected === tile.value" :title="tile.label" :aria-label="tile.label" @click="group.pick(tile.value)"><ItemIcon :name="tile.icon" :size="22" /></button>
+          </div>
+        </div>
+        <!-- ~ 全局喷涂：两行共用一个单选组，三个等级上下对齐；选中产线后仍可逐配方调整。 -->
+        <div class="spray-presets" role="radiogroup" aria-label="增产剂">
+          <div v-for="row in sprayRows" :key="row.label" class="field equip-field">
+            <span>{{ row.label }}</span>
+            <div class="tile-group">
+              <label v-for="tile in row.tiles" :key="tile.points" class="tile spray-tile" :title="tile.label">
+                <input type="radio" name="factory-global-spray" :aria-label="tile.label"
+                       :checked="w.selectedSpray?.mode === tile.mode && w.selectedSpray.points === tile.points"
+                       :disabled="!w.sprayAvailable(tile.mode)" @change="w.selectSpray(tile.mode, tile.points)" />
+                <ItemIcon :name="tile.icon" :size="22" />
+              </label>
+            </div>
           </div>
         </div>
         <!-- ~ 生成选项 -->
@@ -271,7 +284,13 @@ h3 { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(-
 .tile { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--ds-border-subtle); border-radius: 2px; padding: 0; background: var(--ds-hover-bg); cursor: pointer; transition: border-color 150ms, background 150ms; }
 .tile:hover:not(:disabled) { border-color: var(--ds-text-muted); }
 .tile:disabled { cursor: not-allowed; opacity: .4; }
-.tile.is-active { border-color: var(--ds-brand); background: var(--ds-active-bg); box-shadow: var(--ds-active-glow); }
+.spray-presets { display: grid; gap: 4px; }
+.spray-presets .tile-group { flex: none; flex-wrap: nowrap; }
+.spray-tile { position: relative; }
+.spray-tile input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.spray-tile:has(:disabled) { opacity: .4; cursor: not-allowed; }
+.spray-tile:has(:focus-visible) { outline: 2px solid var(--ds-brand); outline-offset: 1px; }
+.tile.is-active, .spray-tile:has(:checked) { border-color: var(--ds-brand); background: var(--ds-active-bg); box-shadow: var(--ds-active-glow); }
 .density-option { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 0 6px; background: transparent; color: var(--ds-text-muted); font-size: 12px; line-height: 1; cursor: pointer; transition: color 150ms; }
 .density-option:hover { color: var(--ds-text-secondary); }
 .density-option.is-active { color: var(--ds-text-primary); font-weight: 600; }

@@ -4,9 +4,12 @@ import type {QuantWorkspace} from '../../../../composables/dysonSphere/useQuantW
 import {useAnalysisPalette} from '../../../../composables/dysonSphere/useAnalysisCharts'
 import {factoryStatisticsOf, type FactoryStatistics} from '../../../../types/factory-statistics'
 import ShareOverview from './share-overview.vue'
-import PowerRange from './power-range.vue'
-import LineLoad from './line-load.vue'
+import LazyPanel from '../lazy-panel.vue'
 import MaterialLedger from './material-ledger.vue'
+
+// G6 和 F2 仅在对应子标签首次打开时加载，整体占比可先绘制。
+const loadPowerRange = () => import('./power-range.vue')
+const loadLineLoad = () => import('./line-load.vue')
 
 // =============== 量化分析 ===============
 // 说明：预览区「量化分析」标签：左侧子标签切换图表页；视觉沿用平面预览的戴森球深空与纪念碑谷几何。
@@ -22,7 +25,7 @@ const PAGES: readonly {key: AnalysisPageKey; label: string}[] = [
   {key: 'share', label: '整体占比'},
   {key: 'power', label: '电力构成'},
   {key: 'lines', label: '产线负载'},
-  {key: 'materials', label: '物料边界'},
+  {key: 'materials', label: '物料统计'},
 ]
 const PAGE_KEY = 'dsbox.analysis.page'
 const readPage = (): AnalysisPageKey => {
@@ -80,7 +83,7 @@ const emptyText = computed(() => {
 
 <template>
   <!-- ~ 量化分析 -->
-  <!-- * 说明：子标签切换四个图表页（整体占比 / 电力构成 / 产线负载 / 物料边界） -->
+  <!-- * 说明：子标签切换四个图表页（整体占比 / 电力构成 / 产线负载 / 物料统计） -->
   <!-- * 交互：点击或 ↑ ↓ 切换子标签，选择记在本机；刷新期间保留上一份图表并降低不透明度 -->
   <!-- * 依赖：工作区量化方案与生成结果的 statistics；G6 绘图 -->
   <!-- * 边界：只读；导入回放、无方案或旧快照缺统计时显示说明，不绘制零值图表 -->
@@ -100,8 +103,8 @@ const emptyText = computed(() => {
         <div v-for="entry in PAGES" v-show="page === entry.key" :id="`analysis-panel-${entry.key}`" :key="entry.key" class="analysis-pane" role="tabpanel" :aria-labelledby="`analysis-tab-${entry.key}`">
           <template v-if="visited.has(entry.key)">
             <ShareOverview v-if="entry.key === 'share'" :stats="stats" :palette="palette" />
-            <PowerRange v-else-if="entry.key === 'power'" :stats="stats" :palette="palette" />
-            <LineLoad v-else-if="entry.key === 'lines'" :stats="stats" :palette="palette" :plan="plan" :item-name="w.itemName" />
+            <LazyPanel v-else-if="entry.key === 'power'" label="电力构成" :load="loadPowerRange" :stats="stats" :palette="palette" />
+            <LazyPanel v-else-if="entry.key === 'lines'" label="产线负载" :load="loadLineLoad" :stats="stats" :palette="palette" :plan="plan" :item-name="w.itemName" />
             <MaterialLedger v-else :stats="stats" :palette="palette" />
           </template>
         </div>

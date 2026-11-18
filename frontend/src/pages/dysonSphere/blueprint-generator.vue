@@ -11,8 +11,10 @@ import {useBlueprintPreviewFeed} from '../../composables/dysonSphere/useBlueprin
 import {generationDebugOptions} from '../../composables/dysonSphere/useGenerationTimeline'
 import {buildFlowGraph} from '../services/dysonSphere/factory-graph'
 
-const AlgorithmStage = defineAsyncComponent(() => import('../../components/dysonSphere/factory/algorithm-stage.vue'))
-const AnalysisStage = defineAsyncComponent(() => import('../../components/dysonSphere/factory/analysis/analysis-stage.vue'))
+import LazyPanel from '../../components/dysonSphere/factory/lazy-panel.vue'
+
+const loadAlgorithmStage = () => import('../../components/dysonSphere/factory/algorithm-stage.vue')
+const loadAnalysisStage = () => import('../../components/dysonSphere/factory/analysis/analysis-stage.vue')
 const EventTimeline = defineAsyncComponent(() => import('../../components/dysonSphere/factory/event-timeline.vue'))
 
 // 说明：BlueprintViewerPanel defineExpose 暴露的完整方法签名；页面只需要 resetCamera 和预览四动作，其余为类型完整性。
@@ -185,9 +187,13 @@ const resizeByKey = (event: KeyboardEvent): void => {
           <div v-if="w.previewStale && w.code" class="preview-overlay">{{ w.generationFailed ? '最近一次生成未成功，当前显示上次成功结果' : w.generating ? '正在生成，当前显示上次成功结果' : `参数已改变，${w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览'}` }}</div>
         </div>
         <!-- 平面预览：首次切换到该标签时才创建场景，之后保持挂载以保留舞台与播放进度 -->
-        <div v-if="algorithmMounted" v-show="previewTab === 'algorithm'" id="preview-panel-algorithm" class="preview-algorithm" role="tabpanel" aria-labelledby="preview-tab-algorithm"><AlgorithmStage :w="w" :active="previewTab === 'algorithm'" /></div>
+        <div v-if="algorithmMounted" v-show="previewTab === 'algorithm'" id="preview-panel-algorithm" class="preview-algorithm" role="tabpanel" aria-labelledby="preview-tab-algorithm">
+          <LazyPanel label="平面预览" :load="loadAlgorithmStage" :w="w" :active="previewTab === 'algorithm'" />
+        </div>
         <!-- 量化分析：首次切换时挂载，子标签切换四个基于全厂整体的图表页；之后保持挂载以保留子标签与口径选择 -->
-        <div v-if="analysisMounted" v-show="previewTab === 'analysis'" id="preview-panel-analysis" class="preview-analysis" role="tabpanel" aria-labelledby="preview-tab-analysis"><AnalysisStage :w="w" :active="previewTab === 'analysis'" /></div>
+        <div v-if="analysisMounted" v-show="previewTab === 'analysis'" id="preview-panel-analysis" class="preview-analysis" role="tabpanel" aria-labelledby="preview-tab-analysis">
+          <LazyPanel label="量化分析" :load="loadAnalysisStage" :w="w" :active="previewTab === 'analysis'" />
+        </div>
       </div>
     </section>
 

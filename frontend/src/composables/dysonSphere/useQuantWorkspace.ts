@@ -26,6 +26,12 @@ export interface FactoryPreviewApi {
 }
 
 type RecipeOverride = {building: number; increasePoints: number; productionMode: number}
+type GlobalSprayMode = 0 | 1 | 2
+export const sprayTiers = [
+  {label: '1 点', value: 1, icon: '增产剂 Mk.I'},
+  {label: '2 点', value: 2, icon: '增产剂 Mk.II'},
+  {label: '4 点', value: 4, icon: '增产剂 Mk.III'},
+] as const
 type WorkspaceTarget = {key: number; itemId: number | null; ratePerMinute: number | null}
 type ExportSnapshot = {code: string; name: string; revision: number; generated: build.Result | null}
 export type PreviewState = 'idle' | 'loading' | 'ready' | 'stale' | 'error' | 'empty'
@@ -228,23 +234,38 @@ export const useQuantWorkspace = () => {
       if (recipe.type === recipeType && building >= 0) recipeOverrides[index] = {...(recipeOverrides[index] ?? {productionMode: 0, increasePoints: 0}), building}
     })
   }
-  // 增产剂统一档位：以点数表示（0 不喷涂，1/2/4 对应 Mk.I/II/III），暂时统一采用加速模式；只读写支持加速的配方，不支持喷涂或透镜等特殊配方保留逐配方设置。
-  // 读取时把加速的默认点数 0 按后端规则视为 4 点；额外产出等其它模式或各配方不一致时返回 null，界面不高亮任何档位。
-  const sprayPointsOf = (override: RecipeOverride | undefined): number => !override?.productionMode ? 0 : override.productionMode === 1 ? override.increasePoints || 4 : -1
-  const selectedSprayPoints = computed<number | null>(() => {
-    const levels = new Set<number>()
-    detail.value?.recipes.forEach((recipe, index) => { if (recipe.proliferator & 1) levels.add(sprayPointsOf(recipeOverrides[index])) })
-    const [points = 0] = levels
-    return levels.size > 1 || points < 0 ? null : points
-  })
-  // 一次点选改写全部支持加速的配方；参数签名变化后由量化防抖合并为一次重算。
-  const selectSprayPoints = (points: number): void => {
-    detail.value?.recipes.forEach((recipe, index) => {
-      if (recipe.proliferator & 1) recipeOverrides[index] = {...(recipeOverrides[index] ?? {building: 0}), productionMode: points > 0 ? 1 : 0, increasePoints: points}
+  // 全局喷涂仅管理支持加速或额外产出的配方。能力位 1、2 分别对应这两种模式。
+  const sprayRecipes = computed(() => (detail.value?.recipes ?? [])
+    .map((recipe, index) => ({mask: recipe.proliferator, index}))
+    .filter(({mask}) => mask & 3))
+  const sprayAvailable = (mode: GlobalSprayMode): boolean => !loadingDataset.value && sprayRecipes.value.some(({mask}) => mode === 0 || (mask & mode) !== 0)
+  const applicableSprayMode = (mask: number, mode: GlobalSprayMode) => (mask & mode) !== 0 ? mode : 0
+  // 从逐配方设置反推高亮。后端将启用喷涂时的默认点数解释为 4；混合配置不对应全局档位。
+  const selectedSpray = computed(() => {
+    const sprayed = sprayRecipes.value.find(({index}) => recipeOverrides[index]?.productionMode)
+    const first = sprayed && recipeOverrides[sprayed.index]
+    const mode = first?.productionMode ?? 0
+    if (mode !== 0 && mode !== 1 && mode !== 2) return null
+    const points = mode ? first?.increasePoints || 4 : 0
+    const matches = sprayRecipes.value.every(({mask, index}) => {
+      const override = recipeOverrides[index]
+      const actual = override?.productionMode ?? 0
+      return actual === applicableSprayMode(mask, mode) && (!actual || (override.increasePoints || 4) === points)
     })
+    return matches ? {mode, points} : null
+  })
+  const selectSpray = (mode: GlobalSprayMode, points: number): void => {
+    if (!sprayAvailable(mode)) return
+    for (const {mask, index} of sprayRecipes.value) {
+      const productionMode = applicableSprayMode(mask, mode)
+      const increasePoints = productionMode ? points : 0
+      const current = recipeOverrides[index]
+      if (current?.productionMode === productionMode && current.increasePoints === increasePoints) continue
+      recipeOverrides[index] = {building: current?.building ?? 0, productionMode, increasePoints}
+    }
   }
   const sprayModes = (recipe: quant.Recipe | null): {label: string; value: number; icon: string}[] => [{label: '不喷涂', value: 0, icon: ''}, ...[{label: '加速', value: 1, icon: '增产剂 Mk.III'}, {label: '额外产出', value: 2, icon: '增产剂 Mk.III'}, {label: '透镜', value: 3, icon: '引力透镜'}, {label: '分馏', value: 4, icon: '分馏塔'}].filter(value => Boolean((recipe?.proliferator ?? 0) & (1 << (value.value - 1))))]
-  const pointOptions = computed(() => [{label: '默认', value: 0, icon: ''}, {label: '1 点', value: 1, icon: '增产剂 Mk.I'}, {label: '2 点', value: 2, icon: '增产剂 Mk.II'}, {label: '4 点', value: 4, icon: '增产剂 Mk.III'}])
+  const pointOptions = computed(() => [{label: '默认', value: 0, icon: ''}, ...sprayTiers])
 
   const loadDataset = async (): Promise<void> => {
     const version = ++datasetVersion
@@ -600,7 +621,7 @@ export const useQuantWorkspace = () => {
   onActivated(() => { active.value = true; if (initialized && typeof route.query.itemId === 'string') void loadLibraryItem(route.query.itemId) })
   onDeactivated(() => { active.value = false; closeActivationPrompt() })
   onBeforeUnmount(() => { window.clearTimeout(solveTimer); window.clearTimeout(generateTimer); disposed = true; progressWriter.cancel(); stopGenerationObservations(); discardActivePreview(); closeActivationPrompt(); datasetVersion++; importVersion++; solveVersion++; media?.removeEventListener('change', updateWidth) })
-  return {generationTaskId, machineChoices, selectedMachine, selectMachine, selectedSprayPoints, selectSprayPoints, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal, registerPreviewApi, discardActivePreview}
+return {generationTaskId, machineChoices, selectedMachine, selectMachine, selectedSpray, selectSpray, sprayAvailable, customName, autoName, nameIsAuto, zones, zoneOfProduction, activeZone, focusZone, number, autoRun, targetsReady, setTargetRate, removeTarget, addTargetItem, isExternal, toggleExternal, exportWorkspace, previewRevision, itemRecipeChoices, active, datasets, datasetKey, detail, targets, itemMap, itemOptions, mineralized, fixedNum, effectiveFixedNum, automaticSurface, sprayItself, spaceCost, powerCost, mode, density, denseLatitudeZone, denseLatitudeOptions, denseLatitudeOption, denseLatitudeError, name, layout, surfaceLayout, plan, generated, generatedFlowGraph, inspection, code, replay, loadingDataset, solving, generating, generationFailed, generationProgress, importing, saving, error, previewState, previewNotice, showPreview, narrow, selectedBuildings, selectedProductions, focusIndex, focusRevision, importVisible, importText, sourceName, quantStale, previewStale, expectedBuildings, warnings, itemName, recipeOptions, selectedRecipe, overrideFor, updateRecipe, updateOverride, buildingOptions, sprayModes, pointOptions, calculate, generate, loadCode, importFile, recalculateImport, selectProduction, onBuildingSelect, onPreviewReady, onPreviewError, copy, download, save, openLibrary, addTarget, setExternal, registerPreviewApi, discardActivePreview}
 }
 
 // planZoneFallback 职责：生成前按量化归属预估分区；使用：节点图着色；边界：与 Go planZones 规则一致，生成后以 Go 结果为准。
