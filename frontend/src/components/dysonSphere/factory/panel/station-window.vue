@@ -9,7 +9,7 @@ import {formatGameEnergy, formatGamePower} from '../../../../utils/format'
 
 // 职责：复刻戴森球计划「物流运输站」窗口：物品槽位行、运输机与储能、物流站设置。
 // 使用：算法可视化选中行星内 / 星际物流运输站时显示；槽位与设置读取自蓝图参数，坐标为游戏 1:1 截图的设计像素。
-// 边界：只读；蓝图建成时的站点没有库存与在途货物，「当前」「在途」恒为 0；储能条表示储能上限，滑块不可拖动。
+// 边界：只读预览展示建成前的初始库存。补给请求与船用燃料位独立，蓝图不含存档实时电量。
 const props = defineProps<{panel: StationBuildingPanel; bounds: {width: number; height: number}; scale: number}>()
 const emit = defineEmits<{(event: 'close'): void}>()
 
@@ -19,8 +19,14 @@ const size = computed(() => ({width: 763, height: Math.round(821 + (props.panel.
 const info = computed(() => `${props.panel.owner} · ${props.panel.record} · 坐标 ${props.panel.coords}`)
 
 const logicLabels: Record<StationLogic, string> = {supply: '供应', demand: '需求', none: '仓储'}
-const markerStyle = (slot: StationSlot): Record<string, string> => ({left: `${Math.min(1, Math.max(0, slot.max / props.panel.facts.capacity)) * 100}%`})
+const capacity = computed(() => Math.max(props.panel.facts.capacity, ...props.panel.slots.map(slot => slot?.max ?? 0)))
+const markerStyle = (slot: StationSlot): Record<string, string> => ({left: `${Math.max(0, slot.max) / capacity.value * 100}%`})
 const rowTitle = (slot: StationSlot): string => `${slot.name} · 本地${logicLabels[slot.local]}${interstellar.value ? ` · 星际${logicLabels[slot.remote]}` : ''} · 上限 ${slot.max}`
+const fuelTitle = computed(() => {
+  const slot = props.panel.slots.find(item => item?.itemId === 1210)
+  const label = '运输船翘曲器燃料位 · 初始库存 0'
+  return slot ? `${label}。货槽：${rowTitle(slot)}` : label
+})
 
 // =============== 物流站设置 ===============
 // 说明：滑块比例按游戏界面的取值范围换算：充能功率为上限的 10% 到 100%，运输机路程 20° 到 180°，起送量 1% 到 100%，
@@ -45,10 +51,10 @@ const settings = computed<SettingRow[]>(() => {
   return [
     charge,
     drone,
-    {label: '运输船最远路程', value: value.shipRange === null ? '∞' : `${Math.round(value.shipRange)} ly`, ratio: value.shipRange === null ? 1 : ratio(value.shipRange, 1, 60)},
-    {label: '曲速启用路程', value: `${value.warpDistance.toFixed(1)} AU`, ratio: ratio(value.warpDistance, .5, 60), check: {label: '翘曲器必备', checked: value.warperNecessary}},
+    {label: '运输船最远路程', value: value.shipRange === null ? '∞' : `${Math.round(value.shipRange)} ly`, ratio: value.shipRange === null ? 1 : ratio(value.shipRange, 1, 60), check: {label: '轨道采集器', checked: value.includeOrbitCollector}},
+    {label: '曲速启用路程', value: `${Number(value.warpDistance.toFixed(1))} AU`, ratio: ratio(value.warpDistance, .5, 60), check: {label: '翘曲器必备', checked: value.warperNecessary}},
     droneDelivery,
-    {label: '运输船起送量', value: `${value.shipDelivery} %`, ratio: ratio(value.shipDelivery, 1, 100), check: {label: '轨道采集器', checked: value.includeOrbitCollector}},
+    {label: '运输船起送量', value: `${value.shipDelivery} %`, ratio: ratio(value.shipDelivery, 1, 100)},
     piler,
   ]
 })
@@ -61,19 +67,19 @@ const chargePower = computed(() => props.panel.settings ? formatGamePower(props.
   <!-- * 交互：徽章悬停查看归属、记录与坐标；关闭按钮关闭窗口；槽位行悬停显示物流角色摘要 -->
   <!-- * 依赖：StationBuildingPanel（STATION_FACTS 原型能力与蓝图参数解析结果） -->
   <!-- * 边界：参数读取中或不可用时槽位显示为空并在副标题说明原因；总控面板仅为外观，不可切换 -->
-  <GameWindow :title="panel.name" :size="size" :bounds="bounds" :scale="scale" tone="station" :info="info" :tab="interstellar ? 222 : 265" @close="emit('close')">
-    <div class="st">
-      <p class="st-sub"><span>本地站点 · {{ panel.owner }} · {{ panel.record }}</span><span v-if="panel.notice" class="st-notice" role="status">{{ panel.notice }}</span></p>
+  <GameWindow :class="{'interstellar-window': interstellar}" :title="panel.name" :size="size" :bounds="bounds" :scale="scale" tone="station" :info="info" :tab="interstellar ? 222 : 265" @close="emit('close')">
+    <div class="st" :class="{'is-interstellar': interstellar}">
+      <p class="st-sub"><span>{{ interstellar ? '星际站点' : '本地站点' }} · {{ panel.owner }} · {{ panel.record }}</span><span v-if="panel.notice" class="st-notice" role="status">{{ panel.notice }}</span></p>
 
       <!-- 物品槽位 -->
       <ol class="st-slots" aria-label="物品槽位">
         <template v-for="(slot, index) in panel.slots" :key="index">
-          <li v-if="slot" class="st-slot" :class="`is-${slot.local}`" :title="rowTitle(slot)">
+          <li v-if="slot" class="st-slot" :class="`is-${interstellar && slot.remote !== 'none' ? slot.remote : slot.local}`" :title="rowTitle(slot)" :aria-label="rowTitle(slot)">
             <span class="st-icon"><ItemIcon :name="slot.name" :size="70" /></span>
             <Lock class="st-lock" :size="14" :stroke-width="2.6" aria-hidden="true" />
             <span class="st-labels" aria-hidden="true"><span>当前</span><span>在途</span><span>上限</span></span>
             <span class="st-values" aria-hidden="true"><span>0</span><span>0</span><span>{{ slot.max }}</span></span>
-            <span class="st-bar" role="meter" :aria-label="`${slot.name} 库存`" aria-valuemin="0" :aria-valuemax="panel.facts.capacity" aria-valuenow="0" :aria-valuetext="`当前 0，在途 0，上限 ${slot.max}`">
+            <span class="st-bar" role="meter" :aria-label="`${slot.name} 库存`" aria-valuemin="0" :aria-valuemax="capacity" aria-valuenow="0" :aria-valuetext="`当前 0，在途 0，上限 ${slot.max}`">
               <i class="st-mark is-top" :style="markerStyle(slot)" />
               <i class="st-mark is-max" :style="markerStyle(slot)"><b>MAX</b></i>
             </span>
@@ -94,15 +100,21 @@ const chargePower = computed(() => props.panel.settings ? formatGamePower(props.
           <ArrowDownLeft class="st-carrier-arrow" :size="22" :stroke-width="3.2" aria-hidden="true" />
           <b>0/{{ carrier === 'drone' ? panel.facts.drones : panel.facts.vessels }}</b>
         </span>
+        <span v-if="interstellar" class="st-carrier st-fuel" role="img" :title="fuelTitle" :aria-label="fuelTitle">
+          <ItemIcon class="st-carrier-icon" name="空间翘曲器" :size="46" />
+          <b>0</b>
+        </span>
         <BoltGlyph class="st-bolt" :size="36" />
-        <span class="st-energy" :title="`储能上限 ${formatGameEnergy(panel.facts.energy)}`"><b>{{ formatGameEnergy(panel.facts.energy) }}</b></span>
-        <span class="st-charge" :title="`最大充能功率 ${chargePower}`"><b>{{ chargePower }}</b><span>最大充能</span></span>
+        <span class="st-energy" :title="`储能上限 ${formatGameEnergy(panel.facts.energy)}`"><b>{{ interstellar ? '0 J' : formatGameEnergy(panel.facts.energy) }}</b></span>
+        <span v-if="interstellar" class="st-charge" title="蓝图初始储能为 0 J"><b>{{ formatGameEnergy(panel.facts.energy) }}</b><span>储能上限</span></span>
+        <span v-else class="st-charge" :title="`最大充能功率 ${chargePower}`"><b>{{ chargePower }}</b><span>最大充能</span></span>
       </div>
 
       <hr class="st-divider">
 
       <div class="st-tabs" role="tablist" aria-label="物流站面板">
         <span class="st-tab is-active" role="tab" aria-selected="true">物流站设置</span>
+        <span v-if="interstellar" class="st-tab is-disabled" role="tab" aria-selected="false" aria-disabled="true" title="优先级设置仅在游戏内可用">优先级设置</span>
         <span class="st-tab is-disabled" role="tab" aria-selected="false" aria-disabled="true" title="总控面板仅在游戏内可用"><Aperture :size="17" :stroke-width="2.2" aria-hidden="true" />总控面板 (I)</span>
       </div>
 
@@ -174,4 +186,18 @@ const chargePower = computed(() => props.panel.settings ? formatGamePower(props.
 .st-value { color: #f2f3f6; font-family: var(--ds-font-display); font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; white-space: nowrap; }
 .st-check { display: flex; align-items: center; gap: 14px; padding-left: 40px; color: #e8eaef; font-size: 17px; white-space: nowrap; }
 .st-box { display: inline-flex; width: 17px; height: 17px; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1.6px #d8dbe2; color: #fff; }
+.interstellar-window :deep(.game-window-glass) {
+  background: radial-gradient(80% 40% at 90% 40%, rgba(0, 56, 112, .48), transparent 75%), linear-gradient(180deg, rgba(7, 12, 33, .95) 8%, rgba(22, 34, 58, .92) 36%, rgba(58, 78, 87, .95) 65%, rgba(66, 82, 90, .95));
+}
+.is-interstellar {
+  .st-carrier + .st-carrier { margin-left: 13px; }
+  .st-carrier b { right: 0; bottom: -3px; left: auto; transform: none; }
+  .st-fuel { border-radius: 50%; background: rgba(0, 0, 0, .35); }
+  .st-bolt { flex-shrink: 0; margin-left: 18px; color: #c57878; }
+  .st-energy { min-width: 0; justify-content: flex-start; margin-left: 13px; padding: 0 12px; background: rgba(5, 16, 25, .75); box-shadow: none; }
+  .st-energy b { color: #ef8681; }
+  .st-tab.is-disabled { margin-left: 20px; }
+  .st-role { clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 9px); }
+  .st-bar { background: rgba(61, 62, 76, .55); }
+}
 </style>

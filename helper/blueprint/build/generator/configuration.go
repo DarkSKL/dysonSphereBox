@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	core "DysonSphereBox/helper/blueprint/build/core"
 	"DysonSphereBox/helper/blueprint/build/workflow"
 )
 
@@ -154,11 +155,22 @@ func compileSources(files []schemeSource) (*runtime, error) {
 	if main == nil {
 		return nil, fmt.Errorf("factory scheme missing")
 	}
+	execution, err := loadExecutionPolicy(main)
+	if err != nil {
+		return nil, err
+	}
+	search, err := workflow.BindDocumentParameter(main, "layoutSearch", core.DefaultLayoutSearchPolicy())
+	if err != nil {
+		return nil, err
+	}
+	if err = search.Validate(); err != nil {
+		return nil, fmt.Errorf("factory.parameters.layoutSearch: %w", err)
+	}
 	plan, err := workflow.Compile(main, registry, workflow.CompileOptions{Initial: []workflow.Artifact{a.request.Ref()}, Libraries: libraries, Limits: limits})
 	if err != nil {
 		return nil, err
 	}
-	return &runtime{keys: a, plan: plan, registry: registry}, nil
+	return &runtime{keys: a, plan: plan, registry: registry, execution: execution, search: search}, nil
 }
 
 // ConfigurationSchema 职责：从真实注册工具导出可执行配置Schema；使用：编辑器、CLI和配置回归；边界：不复制一份手写工具参数定义。
@@ -171,5 +183,9 @@ func ConfigurationSchema() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return workflow.GenerateSchema(registry)
+	type factoryParameters struct {
+		Execution    executionPolicy         `json:"execution"`
+		LayoutSearch core.LayoutSearchPolicy `json:"layoutSearch"`
+	}
+	return workflow.GenerateSchemaWithParameters[factoryParameters](registry, "factory")
 }

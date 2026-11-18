@@ -6,7 +6,6 @@ import type {FlowNodeData} from '../../../pages/services/dysonSphere/factory-gra
 import IconSelect from './icon-select.vue'
 import ItemIcon from './item-icon.vue'
 import LatitudeGlobe from './latitude-globe.vue'
-import ByproductBalance from './byproduct-balance.vue'
 import {generationDebugOptions} from '../../../composables/dysonSphere/useGenerationTimeline'
 
 const props = defineProps<{w: QuantWorkspace; node: FlowNodeData | null}>()
@@ -26,16 +25,20 @@ const equipmentGroups = computed(() => [
   {key: 'chemical', label: '化工厂', tiles: props.w.machineChoices(2), selected: props.w.selectedMachine(2), pick: (value: number) => props.w.selectMachine(2, value)},
   {key: 'spray', label: '增产剂', tiles: sprayTiles, selected: props.w.selectedSprayPoints, pick: (value: number) => props.w.selectSprayPoints(value), disabled: props.w.loadingDataset || !props.w.detail}
 ].filter(group => group.tiles.length > 0))
-// 生成选项开关：供电设施、流速监测器与中转缓存同排三个图标按钮，点击切换启用，启用时边框高亮、关闭时保持灰暗边框；图标取蓝图实际放置的设施，只影响蓝图生成，不参与量化。
-type FacilityFlag = 'needPower' | 'enableFlowMonitor' | 'enableIntermediateBuffer'
-type FacilityToggle = {key: FacilityFlag; label: string; icon: string; hint?: string}
+// 生成选项使用设施或物品图标；带模式限制的选项只在对应布局下可用。
+type FacilityFlag = 'needPower' | 'enableFlowMonitor' | 'enableIntermediateBuffer' | 'requestStationWarpers'
+type FacilityToggle = {key: FacilityFlag; label: string; icon: string; hint?: string; mode?: number}
 const facilityToggles: FacilityToggle[] = [
   {key: 'needPower', label: '供电设施', icon: '电力感应塔'},
   {key: 'enableFlowMonitor', label: '流速监测器', icon: '流速监测器'},
+  {key: 'requestStationWarpers', label: '请求翘曲器', icon: '空间翘曲器', mode: 4, hint: '有星际供应或需求的塔向外星补货，专用货槽上限 500 个。塔已有翘曲器业务时复用该货槽。'},
   {key: 'enableIntermediateBuffer', label: '中转缓存', icon: '小型储物仓', hint: '在产物主带旁增加缓存箱/储液罐：箱子从同一主带取料、补回，主带保持直通；储液罐采用优先直行的溢流旁路。超密度布局会预留箱罐顶部扩建空间。缓存速度不限制主带运力，有限库存只缓解短时积压，持续过剩仍需外运。'},
 ]
 // 悬停提示带当前状态；中转缓存附带原勾选项下的缓存说明。
-const facilityTitle = (facility: FacilityToggle): string => `${facility.label}：${props.w.layout[facility.key] ? '已开启' : '已关闭'}${facility.hint ? `。${facility.hint}` : ''}`
+const facilityDisabled = (facility: FacilityToggle): boolean => facility.mode !== undefined && props.w.mode !== facility.mode
+const facilityTitle = (facility: FacilityToggle): string => facilityDisabled(facility)
+  ? `${facility.label}（仅星际物流塔模式可用）`
+  : `${facility.label}：${props.w.layout[facility.key] ? '已开启' : '已关闭'}${facility.hint ? `。${facility.hint}` : ''}`
 const merges = [{label: '纵向单列', value: 1, icon: ''}, {label: '按宽度换列', value: 2, icon: ''}]
 const densityOptions: {label: string; value: 'standard' | 'dense'; code: string}[] = [{label: '普通', value: 'standard', code: 'STD'}, {label: '超密度', value: 'dense', code: 'DENSE'}]
 // 超密度经纬位置由球体选择器呈现；纬带几何来自后端选项，未提供选项时值为空以显示占位提示。
@@ -55,7 +58,6 @@ const recipe = computed(() => props.node ? props.w.selectedRecipe(props.node.ite
 const override = computed(() => props.w.overrideFor(recipe.value))
 const production = computed(() => props.node?.production)
 const capacity = computed(() => props.node?.capacity)
-const byproducts = computed(() => (props.w.plan?.byproducts ?? []).filter(balance => !props.node || balance.itemId === props.node.itemId || props.node.production?.outputs.some(output => output.itemId === balance.itemId)))
 const kindLabel: Record<FlowNodeData['kind'], string> = {source: '外部输入', production: '产线', target: '目标产物', leftover: '剩余副产物'}
 const importedRows = computed(() => {
   const rows = new Map<number, {recipeId: number; count: number; first: number; outputs: string}>()
@@ -147,7 +149,6 @@ const importedRows = computed(() => {
           <p class="capacity-hint">这是每分钟持续过剩的产物。请连接外部接收或消耗设施；列为交付目标只改变用途标记，不能消除实际物料。</p>
           <n-button size="small" block secondary @click="w.addTargetItem(node.itemId, node.expectedRate)">列为交付目标</n-button>
         </template>
-        <ByproductBalance :balances="byproducts" :format="w.number" :stale="w.quantStale" />
       </div>
     </template>
 
@@ -184,8 +185,6 @@ const importedRows = computed(() => {
           </div>
         </template>
 
-        <ByproductBalance :balances="byproducts" :format="w.number" :stale="w.quantStale" />
-
         <h3><Factory :size="13" />蓝图布局</h3>
         <!-- ~ 密度切换 -->
         <!-- * 说明：密度独立于运输模式；交互：左右二选一滑块，超密度下球面策略原位替换为经纬位置选择，沿用现有任务替代生成；依赖：工作区 density；边界：试验规则不承诺所有设备或游戏放置。 -->
@@ -207,13 +206,13 @@ const importedRows = computed(() => {
           </div>
         </div>
         <!-- ~ 生成选项 -->
-        <!-- * 说明：供电设施、流速监测器与中转缓存由勾选框改为同一排三个图标按钮，各自独立开关。 -->
+        <!-- * 说明：图标开关控制附加设施与星际塔补货。 -->
         <!-- * 交互：点击切换启用并触发已有的蓝图重新生成；启用时边框高亮，关闭时边框灰暗；悬停查看当前状态，中转缓存附带缓存说明。 -->
-        <!-- * 依赖：facilityToggles 读写 w.layout 的 needPower、enableFlowMonitor、enableIntermediateBuffer。 -->
-        <!-- * 边界：只改变蓝图中的附加建筑，不参与量化；其后的球面策略、研究站层数与调试模式同属生成参数。 -->
+        <!-- * 依赖：facilityToggles 读写布局选项；工作区模式决定开关是否可用。 -->
+        <!-- * 边界：附加设施与补货仅影响生成蓝图。 -->
         <h3>生成选项</h3>
         <div class="tile-group toggle-group" role="group" aria-label="生成选项">
-          <button v-for="facility in facilityToggles" :key="facility.key" type="button" class="tile" :class="{'is-active': w.layout[facility.key]}" :aria-pressed="w.layout[facility.key]" :title="facilityTitle(facility)" :aria-label="facility.label" @click="w.layout[facility.key] = !w.layout[facility.key]"><ItemIcon :name="facility.icon" :size="22" /></button>
+          <button v-for="facility in facilityToggles" :key="facility.key" type="button" class="tile" :class="{'is-active': !facilityDisabled(facility) && w.layout[facility.key]}" :disabled="facilityDisabled(facility)" :aria-pressed="!facilityDisabled(facility) && w.layout[facility.key]" :title="facilityTitle(facility)" :aria-label="facility.label" @click="w.layout[facility.key] = !w.layout[facility.key]"><ItemIcon :name="facility.icon" :size="22" /></button>
         </div>
         <template v-if="w.density === 'dense'">
           <!-- 经纬位置来自后端能力目录；旧后端不提供伪造选项。 -->
@@ -272,8 +271,6 @@ h3 { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(-
 .tile { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--ds-border-subtle); border-radius: 2px; padding: 0; background: var(--ds-hover-bg); cursor: pointer; transition: border-color 150ms, background 150ms; }
 .tile:hover:not(:disabled) { border-color: var(--ds-text-muted); }
 .tile:disabled { cursor: not-allowed; opacity: .4; }
-// 生成选项开关没有左侧名称，按钮紧随标题左对齐。
-.toggle-group { justify-content: flex-start; }
 .tile.is-active { border-color: var(--ds-brand); background: var(--ds-active-bg); box-shadow: var(--ds-active-glow); }
 .density-option { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 0 6px; background: transparent; color: var(--ds-text-muted); font-size: 12px; line-height: 1; cursor: pointer; transition: color 150ms; }
 .density-option:hover { color: var(--ds-text-secondary); }

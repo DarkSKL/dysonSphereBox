@@ -112,6 +112,10 @@ func (b *builder) createStation(center vector, items []stationItem, config contr
 		}
 		parameters[i*6+3] = int32(capacity)
 	}
+	if b.warperStock > 0 && config.DualRoleFields && len(items) > 0 && !containsWarper(items) {
+		slot := parameters[len(items)*6:]
+		slot[0], slot[2], slot[3] = spaceWarperID, 2, int32(b.warperStock)
+	}
 	for i := 0; i < 12; i++ {
 		parameters[192+i*4] = 1
 		if i >= 9 {

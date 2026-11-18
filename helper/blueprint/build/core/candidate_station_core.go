@@ -15,6 +15,8 @@ import (
 
 // StationSearchOptions 职责：选择有限候选族；使用：工具默认参数或显式枚举；边界：空族等于all，不能覆盖设备事实或删除不合资格保护。
 type StationSearchOptions struct {
+	// WarperStock 是工作流给专用补给槽设置的库存上限，旧调用的零值取默认值。
+	WarperStock int `json:"warperStock"`
 	// Family 职责：选择all、blackbox或field；使用：显式候选组；边界：field仅返回真实合资格的密铺塔场。
 	Family string `json:"family" enum:",all,blackbox,field"`
 	// StandardRowSpans 职责：显式选择普通短行装箱；使用：普通塔枚举；边界：空表保留旧默认，密铺不消费。
@@ -24,10 +26,15 @@ type StationSearchOptions struct {
 }
 
 // DefaultStationSearchOptions 职责：集中提供塔候选默认策略；使用：工作流工具注册；边界：不按模式密度复制默认值。
-func DefaultStationSearchOptions() StationSearchOptions { return StationSearchOptions{Family: "all"} }
+func DefaultStationSearchOptions() StationSearchOptions {
+	return StationSearchOptions{Family: "all", WarperStock: 500}
+}
 
 // ValidateStationSearchOptions 职责：校验有限塔候选族枚举；使用：ToolSpec 静态参数及核心资格入口；边界：纯函数，空字符串保留既有 all 语义，不读取设备或装配。
 func ValidateStationSearchOptions(options StationSearchOptions) error {
+	if err := validateWarperStock(options.WarperStock); err != nil {
+		return err
+	}
 	if err := validateStandardRowSpans(options.StandardRowSpans); err != nil {
 		return err
 	}
@@ -41,6 +48,8 @@ func ValidateStationSearchOptions(options StationSearchOptions) error {
 
 // StationCandidateSpec 职责：保存一个塔候选实际消费的全部策略值；使用：跨步骤只读交接；边界：无建筑指针、回调或工作流身份，不携带旧编号。
 type StationCandidateSpec struct {
+	// WarperStock 随候选保留到精修和终检；零值表示关闭。
+	WarperStock int `json:"warperStock,omitempty"`
 	// RowPacking 职责：启用普通功能行阵；使用：显式近方形候选；边界：与共享塔场的FieldPacking配置独立。
 	RowPacking bool `json:"rowPacking"`
 	// InputFingerprint 职责：绑定规范输入；使用：阻止跨任务误用；边界：不代替实体终检。
@@ -221,6 +230,12 @@ func EnumerateStationCandidates(ctx context.Context, input *PreparedInput, optio
 	}
 	for i := range result {
 		result[i].InputFingerprint, result[i].Density, result[i].StationID = input.fingerprint, req.Density, config.StationID
+		if req.Setting.RequestStationWarpers {
+			result[i].WarperStock = options.WarperStock
+			if result[i].WarperStock == 0 {
+				result[i].WarperStock = DefaultStationSearchOptions().WarperStock
+			}
+		}
 	}
 	return prioritizeLargeStandardStationRows(ctx, input, options, result)
 }
@@ -266,6 +281,13 @@ func assembleStationCandidate(ctx context.Context, input *PreparedInput, spec St
 	if err != nil {
 		return nil, err
 	}
+	if (spec.WarperStock != 0) != input.request.Setting.RequestStationWarpers {
+		return nil, &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: "物流塔候选与当前翘曲器补给选项不一致"}
+	}
+	if err := validateWarperStock(spec.WarperStock); err != nil {
+		return nil, err
+	}
+	b.warperStock = spec.WarperStock
 	b.beginPreview()
 	if spec.Kind == "blackbox" {
 		if spec.RowPacking {
@@ -296,7 +318,9 @@ func AssembleStationCandidate(ctx context.Context, input *PreparedInput, spec St
 		}
 		return AssemblySnapshot{}, err
 	}
-	geometry, err := freezeAssembly(b.generationCtx, b, input.request, input.dataset)
+	req := input.request
+	req.warperStock = spec.WarperStock
+	geometry, err := freezeAssembly(b.generationCtx, b, req, input.dataset)
 	if err != nil {
 		b.rollbackPreview()
 	}
@@ -332,7 +356,7 @@ func (b *builder) assembleStationField(ctx context.Context, input *PreparedInput
 	if err != nil {
 		return err
 	}
-	towers, err := planDenseStationTowers(ctx, rows, routes, config.ItemSlots)
+	towers, err := planDenseStationTowers(ctx, rows, routes, stationInventory{config.ItemSlots, spec.WarperStock})
 	if err != nil {
 		return err
 	}

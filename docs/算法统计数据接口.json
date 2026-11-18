@@ -1,7 +1,7 @@
 {
   "documentVersion": "factory-statistics-doc/v1",
   "dataSchemaVersion": "factory-statistics/v1",
-  "purpose": "为后续算法统计Tab提供纯数据接口；本次不实现页面。",
+  "purpose": "为量化与蓝图页面的「量化分析」标签提供纯数据接口；页面实现见 frontend/src/components/dysonSphere/factory/analysis/。",
   "interfaces": [
     {
       "go": "quant.Solve",
@@ -29,6 +29,7 @@
       "heatmapPoints": "factoryStatisticsOf(generated)?.heatmap ?? []",
       "surplusMaterials": "factoryStatisticsOf(generated)?.materials.filter(item => item.hasSurplus) ?? []"
     },
+    "analysisPage": "量化分析标签全部以整个工厂为分母：01 整体占比（buildings 的建筑数量、额定工作功率，及 lines 净输出按设备汇总的生产件数）、02 电力构成（buildings.power 按类别）、03 产线负载（lines）、04 物料边界（materials）；生成结果属于当前方案时使用实体统计，否则使用量化统计。",
     "nullPolicy": "Wails生成类型之外额外补足JSON null语义。未知值不得转为零；旧快照缺统计时重新量化或生成。"
   },
   "report": {

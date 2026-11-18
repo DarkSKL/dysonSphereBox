@@ -34,7 +34,8 @@ func inputToolSpecs(a artifacts, implementation string) []workflow.ToolSpec {
 		spec("input.compose-transport@1", "ComposeTransport", retry, []workflow.Artifact{a.base.Ref(), stages.retryPlan.Ref(), stages.retryCapacity.Ref(), stages.retryWorkload.Ref()}, one(a.transport.Ref())),
 	}
 	// 初次阶段在最后一个真实消费者完成后消费私有产物；版本墓碑保留依赖，禁止后续读取已释放值。
-	result[0].Defaults = defaults(core.LayoutShapePolicy{MaxAspect: core.DefaultLayoutAcceptedAspect})
+	result[0].Defaults = defaults(core.DefaultLayoutShapePolicy())
+	result[0].Validate = workflow.ArgumentValidator(core.LayoutShapePolicy.Validate)
 	result[0].Consumes = one(a.request.Ref())
 	result[3].Consumes = append([]workflow.Artifact(nil), result[3].Requires...)
 	result[6].Consumes = one(stages.production.Ref())

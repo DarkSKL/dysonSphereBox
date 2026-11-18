@@ -158,6 +158,32 @@ func bindValue(v any, t reflect.Type, path string) (reflect.Value, error) {
 	return out.Elem(), nil
 }
 
+// BindDocumentParameter 在执行前按强类型默认值解析一个命名对象常量，使用与工具参数相同的严格绑定规则。
+func BindDocumentParameter[T any](doc *Document, key string, defaults T) (T, error) {
+	raw, provided := doc.Parameters[key]
+	if !provided {
+		return defaults, nil
+	}
+	path := doc.ID + ".parameters." + key
+	overrides, ok := raw.(map[string]any)
+	if !ok {
+		return defaults, fmt.Errorf("%s: expected object", path)
+	}
+	base, err := transport(defaults)
+	if err != nil {
+		return defaults, err
+	}
+	fields, ok := base.(map[string]any)
+	if !ok {
+		return defaults, fmt.Errorf("%s: expected object defaults", path)
+	}
+	value, err := bindValue(merge(fields, overrides), reflect.TypeFor[T](), path)
+	if err != nil {
+		return defaults, err
+	}
+	return value.Interface().(T), nil
+}
+
 // exactNumberHook 职责：在容器解码前保留数值类型与精度；使用：mapstructure hook；边界：窄整数先按目标位数检查，不依赖库内部截断转换。
 func exactNumberHook(from, to reflect.Type, v any) (any, error) {
 	if to.Kind() == reflect.Pointer {
@@ -206,7 +232,7 @@ func exactNumberHook(from, to reflect.Type, v any) (any, error) {
 
 // fieldRule 职责：用同一字段 Schema 校验部分默认值；使用：覆盖层与静态字段；边界：跨字段语义由 ToolSpec.Validate 补充。
 func fieldRule(f reflect.StructField, v reflect.Value, path string) error {
-	if f.Tag.Get("enum") == "" && f.Tag.Get("min") == "" && f.Tag.Get("max") == "" {
+	if f.Tag.Get("enum") == "" && f.Tag.Get("min") == "" && f.Tag.Get("max") == "" && f.Tag.Get("itemMin") == "" && f.Tag.Get("itemMax") == "" {
 		return nil
 	}
 	schema, e := schemaForField(f)

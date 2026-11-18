@@ -24,10 +24,10 @@ type denseCompactPosition struct {
 }
 
 // denseCompactObjective 职责：按当前全厂格包络计算与最终密铺一致的形状目标；使用：试探和提交比较；边界：不以增加带节点填充空白获得奖励。
-func denseCompactObjective(low, high vector) (float64, float64) {
+func (b *builder) denseCompactObjective(low, high vector) (float64, float64) {
 	w, h := math.Ceil(high.x)-math.Floor(low.x)+1, math.Ceil(high.y)-math.Floor(low.y)+1
 	area := w * h
-	return layoutShapeCost(area, math.Max(w, h)/math.Max(1, math.Min(w, h))), area
+	return layoutShapeCost(b.policy.shape.PreferredAspect, area, math.Max(w, h)/math.Max(1, math.Min(w, h))), area
 }
 
 // denseCompactBetter 职责：仅接受面积、形状和真实边长均不增加的变化；使用：压缩及内部移近；边界：至少一项严格改善，避免等价位置循环。
@@ -314,7 +314,7 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 				}
 			}
 			globalLow, globalHigh := bounds(b.all)
-			shape, area := denseCompactObjective(globalLow, globalHigh)
+			shape, area := b.denseCompactObjective(globalLow, globalHigh)
 			current := denseCompactPosition{shape: shape, area: area, wire: denseSpatialWireCost(wires, 0, 0)}
 			hole := denseEquipmentHole{}
 			if fillHoles {
@@ -341,7 +341,7 @@ func (b *builder) compactDenseSpatialUnits(ctx context.Context, units []denseSpa
 				}
 				lo := vector{x: math.Min(fixedLow.x, low.x+delta.x), y: math.Min(fixedLow.y, low.y+delta.y)}
 				hi := vector{x: math.Max(fixedHigh.x, high.x+delta.x), y: math.Max(fixedHigh.y, high.y+delta.y)}
-				shape, area := denseCompactObjective(lo, hi)
+				shape, area := b.denseCompactObjective(lo, hi)
 				candidate := denseCompactPosition{delta: delta, shape: shape, area: area, wire: denseSpatialWireCost(wires, delta.x, delta.y)}
 				if fillHoles {
 					if candidate.area <= current.area+1e-7 && candidate.shape <= current.shape+1e-7 && candidate.wire <= current.wire+math.Max(4, current.wire*.03) {

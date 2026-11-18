@@ -2,8 +2,11 @@ schemaVersion: 1
 id: dense
 # 大模式参数入口；四子模式只定义覆盖，原子实现及候选、几何和校验工作链均在共享库中唯一维护。
 parameters:
+  # 密铺直连的机器行跨度候选（工作格，有限正数）。本表覆盖 common.yaml 中的公共跨度。
   rowSpans: [12, 18, 24, 32]
+  # 局部装箱的策略序列。0、2 优先大单元，1、3 保留输入顺序，2、3 计入线长。跨带时 geography 分支会覆盖顺序。
   denseOrders: [0, 1, 2, 3]
+  # 常规密铺配送全场候选，每行是一套组合。scale 为正数，缩放模块高度。order 取 0～3，含义见上方 denseOrders。
   distributorStrategies:
     - {"scale": 0.85, "order": 2}
     - {"scale": 0.85, "order": 3}
@@ -11,6 +14,7 @@ parameters:
     - {"scale": 1, "order": 3}
     - {"scale": 1.2, "order": 2}
     - {"scale": 1.2, "order": 3}
+  # 适用原生布局时使用的替代策略表。nativeReserve 启用纬带容量预留，省略 order 时为 0。
   nativeDistributorStrategies:
     - {"scale": 0.85, "order": 2}
     - {"scale": 0.85, "order": 3}
@@ -18,22 +22,29 @@ parameters:
     - {"scale": 1, "order": 3}
     - {"scale": 1.2, "nativeReserve": true}
     - {"scale": 1.2, "order": 1, "nativeReserve": true}
+  # 主布局组。dense-blackbox 将内部产线直连并在边界接配送设施，dense-detached 将机器与配送设施分开。
+  # street: true 尝试共享街道机器布局。每个可用拓扑与适用的配送策略组合枚举。
   distributorTopologies:
     - {"topology": "dense-blackbox"}
     - {"topology": "dense-blackbox", "street": true}
     - {"topology": "dense-detached"}
     - {"topology": "dense-detached", "street": true}
+  # 分离式街道主组无解后可用的备用组合。groups 限制每街的容量分组，0 使用自适应策略。
+  # clearance 是街道折叠间隙（工作格），0 沿用 0.04。增大间隙会占用更多空间。
   distributorFallbackTopologies:
     - {"topology": "dense-detached", "street": true, "groups": 3, "clearance": 0.04}
     - {"topology": "dense-detached", "street": true, "groups": 2, "clearance": 0.2}
     - {"topology": "dense-detached", "street": true, "groups": 2, "clearance": 0.4}
     - {"topology": "dense-detached", "street": true, "groups": 2, "clearance": 0.6}
     - {"topology": "dense-detached", "street": true, "groups": 1, "clearance": 0.04}
+  # true 允许在黑盒主组符合回退条件时尝试独立地面机器轨。
   distributorGroundFallback: true
+  # true 启用上方分离式街道备用组合。前置组已有完整解时跳过相应备用组。
   distributorStreetFallback: true
 flow:
   - id: entry
     call: entry
+# entry 依次应用大模式、子模式和地理覆盖。with 中的数组会整组替换上一层。
 subflows:
   entry:
     flow:
@@ -48,11 +59,12 @@ subflows:
           cases:
             connected:
               - id: connected-parameters
+                # 折行跨度继承 common.yaml 的 bentSpans。仅需本模式例外时，在此用 with 覆盖。
                 tool: mode.submode@1
-                with: {bentSpans: [12, 18]}
             station:
               - id: station-parameters
                 tool: mode.submode@1
+                # 塔布局族可选 all（所有可用族）、blackbox（黑盒）或 field（塔场）。station.yaml 读取这里的状态。
                 with: {stationFamily: all}
             distributor:
               - id: distributor-parameters
@@ -60,6 +72,7 @@ subflows:
             bus:
               - id: bus-parameters
                 tool: mode.submode@1
+                # 允许内部总线在平面基线之外追加收紧布局。
                 with: {busTighten: true}
           otherwise:
             - id: unsupported-submode
@@ -103,6 +116,7 @@ subflows:
                       otherwise:
                         - id: geographic-default
                           tool: mode.geography@1
+  # 极区按半球覆盖窗口行数（每项 6～112 细格行）和朝向（0～3 个四分之一圈）。数组前部为优先尝试值。
   polar-policy:
     flow:
       - id: hemisphere
@@ -120,6 +134,7 @@ subflows:
           otherwise:
             - id: polar-default
               tool: mode.geography@1
+  # 经向收缩的纬圈按半球调整街道尝试方向。streetRotations 中每增加 1 表示多转 90°。
   hemisphere-policy:
     flow:
       - id: hemisphere
@@ -137,6 +152,7 @@ subflows:
           otherwise:
             - id: reduced-ring-default
               tool: mode.geography@1
+  # 配送分支把上方策略表交给枚举器，其他物流族进入各自的共享搜索文件。
   layout:
     flow:
       - id: family

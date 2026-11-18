@@ -1176,6 +1176,7 @@ export namespace build {
 	    maxLays: number;
 	    needPower?: boolean;
 	    enableFlowMonitor: boolean;
+	    requestStationWarpers?: boolean;
 	    enableIntermediateBuffer: boolean;
 	    beltSpeed: number;
 	    smelterMaxCount: number;
@@ -1209,6 +1210,7 @@ export namespace build {
 	        this.maxLays = source["maxLays"];
 	        this.needPower = source["needPower"];
 	        this.enableFlowMonitor = source["enableFlowMonitor"];
+	        this.requestStationWarpers = source["requestStationWarpers"];
 	        this.enableIntermediateBuffer = source["enableIntermediateBuffer"];
 	        this.beltSpeed = source["beltSpeed"];
 	        this.smelterMaxCount = source["smelterMaxCount"];

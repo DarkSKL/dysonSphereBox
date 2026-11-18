@@ -89,6 +89,8 @@ type ConnectedSearchOptions struct {
 	SurfaceHeightSeeds bool `json:"surfaceHeightSeeds" yaml:"surfaceHeightSeeds"`
 	// SharedRows 职责：将已配置跨度交给共同短行装箱；使用：普通模式的有限形状候选；边界：不展开密铺专属拓扑或修改设备。
 	SharedRows bool `json:"sharedRows"`
+	// SharedRowOrders 是普通共享短行按顺序尝试的排列策略，空列表不扩展。
+	SharedRowOrders []int `json:"sharedRowOrders" max:"4" itemMin:"0" itemMax:"3"`
 	// HeightLimits 职责：明确高度列表；使用：枚举阶段；边界：空时仅在允许测量时计算。
 	HeightLimits []float64 `json:"heightLimits" yaml:"heightLimits" unit:"grid"`
 	// MeasureHeightLimits 职责：允许按真实局部装配测量高度；使用：枚举阶段；边界：不是第二次完整求解。
@@ -137,13 +139,16 @@ type ConnectedSearchOptions struct {
 	FlowAwareRowThreshold int `json:"flowAwareRowThreshold" yaml:"flowAwareRowThreshold" min:"0" unit:"row"`
 }
 
+// defaultSharedRowOrders 返回普通共享行的历史排列，用于旧配置和独立核心调用。
+func defaultSharedRowOrders() []int { return []int{0, 3} }
+
 // DefaultConnectedSearchOptions 职责：集中定义与原有完整搜索一致的全部策略默认；使用：工具参数默认工厂；边界：每次返回独立切片，不执行任何求解。
 func DefaultConnectedSearchOptions() ConnectedSearchOptions {
 	return ConnectedSearchOptions{
-		MeasureHeightLimits: true,
-		Layout:              mode1common.SearchOptions{CompactModes: []bool{false, true}, WideLimitFactor: 2, Horizontal: true, HorizontalFactor: 1.6, GlobalPower: true, PowerFactor: 4.0 / 3, PowerQuantum: 10, MinimumPowerLimit: 10},
-		InputGroups:         []ConnectedInputGroup{ConnectedNearbyInputs, ConnectedConcentratedInputs},
-		DenseOrders:         []int{0, 1, 2, 3}, DenseSpans: []float64{12, 18, 24, 32}, DenseSpanRepeat: 2, RefineOrders: []int{2, 3},
+		MeasureHeightLimits: true, SharedRowOrders: defaultSharedRowOrders(),
+		Layout:      mode1common.SearchOptions{CompactModes: []bool{false, true}, WideLimitFactor: 2, Horizontal: true, HorizontalFactor: 1.6, GlobalPower: true, PowerFactor: 4.0 / 3, PowerQuantum: 10, MinimumPowerLimit: 10},
+		InputGroups: []ConnectedInputGroup{ConnectedNearbyInputs, ConnectedConcentratedInputs},
+		DenseOrders: []int{0, 1, 2, 3}, DenseSpans: []float64{12, 18, 24, 32}, DenseSpanRepeat: 2, RefineOrders: []int{2, 3},
 		Street: true, StreetGroups: []int{0, 2, -1}, StreetRotations: []int{0, 1, 2, 3},
 		CapacityFill: true, CapacityStreetPreference: []int{2, 0}, ProducerSplits: true, SplitterModels: []int16{38, 39, 40}, SplitterCapacityLimit: 8,
 		BentRows: true, BentSpans: []float64{12, 18}, BentCapacityModes: []bool{false, true}, PairedOutputs: true, TranslateCompact: true, MaterialNetworkThreshold: 90,
@@ -166,6 +171,11 @@ func ValidateConnectedSearchOptions(options ConnectedSearchOptions) error {
 	}
 	if options.DenseSpanRepeat < 0 {
 		return fmt.Errorf("denseSpanRepeat 不能为负")
+	}
+	for _, order := range options.SharedRowOrders {
+		if order < 0 || order > 3 {
+			return fmt.Errorf("sharedRowOrders 只接受 0 至 3")
+		}
 	}
 	for _, order := range options.DenseOrders {
 		if order < 0 || order > 3 {

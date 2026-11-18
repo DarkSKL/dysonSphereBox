@@ -35,7 +35,7 @@ func executePlanetRule(ctx context.Context, kind RuleKind, req Request, encoding
 	case RuleSplitterClearance:
 		return 0, encoding.validateSplitterClearance(ctx, records)
 	case RuleStationPorts:
-		return 0, validateStationPorts(ctx, records)
+		return 0, validateStationPorts(ctx, records, req.warperStock)
 	case RuleStorageRoof:
 		if req.Density == densityDense {
 			return 0, encoding.validateStorageRoofClearance(ctx, records)

@@ -111,7 +111,7 @@ func deduplicateConnectedRows(ctx context.Context, input *PreparedInput, specs [
 		eligible = append(eligible, spec)
 	}
 	unique := candidates.StableUnique(eligible, func(spec ConnectedCandidateSpec) candidateKey { return identities[spec] })
-	if input.request.Plan.MachineCount >= 256 && (input.request.Density == densityDense || input.geometry.Strategy == "native-window") {
+	if input.request.Plan.MachineCount >= input.request.search.LargeLayoutThreshold && (input.request.Density == densityDense || input.geometry.Strategy == "native-window") {
 		// 有限预算下先求较小的真实行图，避免短跨度把大厂拆成成千个独立装箱/接线路径后才尝试长行。
 		count := func(spec ConnectedCandidateSpec) int {
 			if plan, ok := plans[rowPlanKey{spec.DenseSpan, spec.CapacityFill && input.request.Mode == 1}]; ok {

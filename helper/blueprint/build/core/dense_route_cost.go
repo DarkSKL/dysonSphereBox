@@ -37,7 +37,14 @@ func (env *transportEnvironment) findDenseTransportPrefixPath(ctx context.Contex
 		for i := len(tail) - 2; i >= 0; i-- {
 			costs[i] = costs[i+1] + env.transportPathCost([]vector{tail[i].a, tail[i+1].a})
 		}
+		first := 0
 		for i, node := range tail {
+			if node.a.z > env.routeHeightLimit(node.a, source, target) {
+				first = i + 1
+			}
+		}
+		for i := first; i < len(tail); i++ {
+			node := tail[i]
 			if !denseIntegerNode(node.a) || incoming[node] >= 3 {
 				continue
 			}

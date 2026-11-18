@@ -13,7 +13,7 @@ import (
 
 // planFlySurfaceWidths 职责：比较交错配送块的完整可行球面落点；使用：组合块回退装箱；边界：不改变实体或机器图，不把容量失败当几何无解，取消不提交旧候选。
 func (b *builder) planFlySurfaceWidths(ctx context.Context, layout *SurfaceLayout, sizes []surfaceBlockSize, gap int, records [][]blueprint.Building, accept func(int, surfacePackedBand, int) bool, probeError func() error) (*surfacePacking, error) {
-	widths := surfaceBlockWidthCandidates(layout, sizes, gap, .95)
+	widths := surfaceBlockWidthCandidates(layout, sizes, gap, b.policy.search.SurfaceWidthFraction)
 	var best *surfacePacking
 	var bestMetrics LayoutMetrics
 	rejected, bestWidth := 0, 0
@@ -28,7 +28,7 @@ func (b *builder) planFlySurfaceWidths(ctx context.Context, layout *SurfaceLayou
 		stage := "packing"
 		parameters := fmt.Sprintf("widthLimit=%d;gap=%d", width, gap)
 		if len(widths) == 4 && width == widths[1] {
-			packing, err = planSurfaceBlockRectanglesBounded(ctx, layout, sizes, gap, width, max(1, width*3/5), accept, nil)
+			packing, err = planSurfaceBlockRectanglesBounded(ctx, layout, sizes, gap, width, max(1, int(float64(width)*b.policy.search.SideWidthFraction)), accept, nil)
 		} else {
 			packing, err = planSurfaceBlocksHeightSorted(ctx, layout, sizes, gap, width, accept, nil)
 		}

@@ -643,6 +643,39 @@
                         }
                       ]
                     },
+                    "sharedRowOrders": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "maxItems": 4
+                            }
+                          ],
+                          "items": {
+                            "anyOf": [
+                              {
+                                "allOf": [
+                                  {
+                                    "maximum": 3,
+                                    "minimum": 0
+                                  }
+                                ],
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
                     "sharedRows": {
                       "anyOf": [
                         {
@@ -2662,9 +2695,111 @@
                 {
                   "additionalProperties": false,
                   "properties": {
+                    "adjacentWindowScales": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "maxItems": 16,
+                              "minItems": 1
+                            }
+                          ],
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "heightScales": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "maxItems": 16,
+                              "minItems": 1
+                            }
+                          ],
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "$ref": "#/$defs/reference"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
                     "maxAspect": {
                       "anyOf": [
                         {
+                          "allOf": [
+                            {
+                              "minimum": 1
+                            }
+                          ],
+                          "type": "number"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "packingPreferredAspect": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 1
+                            }
+                          ],
+                          "type": "number"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "packingWireWeight": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "type": "number"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "preferredAspect": {
+                      "anyOf": [
+                        {
+                          "allOf": [
+                            {
+                              "minimum": 1
+                            }
+                          ],
                           "type": "number"
                         },
                         {
@@ -5174,6 +5309,18 @@
                                   "$ref": "#/$defs/reference"
                                 }
                               ]
+                            },
+                            "warperStock": {
+                              "anyOf": [
+                                {
+                                  "maximum": 9223372036854775807,
+                                  "minimum": -9223372036854775808,
+                                  "type": "integer"
+                                },
+                                {
+                                  "$ref": "#/$defs/reference"
+                                }
+                              ]
                             }
                           },
                           "type": "object"
@@ -5300,6 +5447,18 @@
                             ]
                           },
                           "type": "array"
+                        },
+                        {
+                          "$ref": "#/$defs/reference"
+                        }
+                      ]
+                    },
+                    "warperStock": {
+                      "anyOf": [
+                        {
+                          "maximum": 9223372036854775807,
+                          "minimum": -9223372036854775808,
+                          "type": "integer"
                         },
                         {
                           "$ref": "#/$defs/reference"
@@ -6205,6 +6364,13 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "if": {
+    "properties": {
+      "id": {
+        "const": "factory"
+      }
+    }
+  },
   "properties": {
     "flow": {
       "items": {
@@ -6281,5 +6447,195 @@
     "schemaVersion",
     "id"
   ],
+  "then": {
+    "properties": {
+      "parameters": {
+        "properties": {
+          "execution": {
+            "additionalProperties": false,
+            "properties": {
+              "baseSeconds": {
+                "allOf": [
+                  {
+                    "maximum": 86400,
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "extraSecondsPerBand": {
+                "allOf": [
+                  {
+                    "maximum": 86400,
+                    "minimum": 0
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "largePlanMachines": {
+                "allOf": [
+                  {
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "largePlanParallel": {
+                "allOf": [
+                  {
+                    "maximum": 10,
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "machinesPerBand": {
+                "allOf": [
+                  {
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "maxSeconds": {
+                "allOf": [
+                  {
+                    "maximum": 86400,
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "layoutSearch": {
+            "additionalProperties": false,
+            "properties": {
+              "bufferEstimateSpan": {
+                "allOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0
+                  }
+                ],
+                "type": "number"
+              },
+              "largeLayoutThreshold": {
+                "allOf": [
+                  {
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "nativeWindowRows": {
+                "allOf": [
+                  {
+                    "maxItems": 16,
+                    "minItems": 1
+                  }
+                ],
+                "items": {
+                  "allOf": [
+                    {
+                      "minimum": 6
+                    }
+                  ],
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "packingAttempts": {
+                "allOf": [
+                  {
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "powerSearchBranches": {
+                "allOf": [
+                  {
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "powerSearchNodes": {
+                "allOf": [
+                  {
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "sideWidthFraction": {
+                "allOf": [
+                  {
+                    "maximum": 1,
+                    "minimum": 0
+                  }
+                ],
+                "type": "number"
+              },
+              "stationMaterialThreshold": {
+                "allOf": [
+                  {
+                    "minimum": 0
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "stationPackingAttempts": {
+                "allOf": [
+                  {
+                    "minimum": 1
+                  }
+                ],
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+              },
+              "surfaceWidthFraction": {
+                "allOf": [
+                  {
+                    "maximum": 1,
+                    "minimum": 0
+                  }
+                ],
+                "type": "number"
+              }
+            },
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
   "type": "object"
 }

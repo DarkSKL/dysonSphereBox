@@ -232,7 +232,8 @@ func appendUniqueRuleWarnings(b *builder, warnings ...string) {
 // measureLayout 职责：只度量最终记录和已经证明的物流报告；使用：独立度量工具；边界：不再次运行物流、碰撞、供电或机器链。
 func (e *ruleEnvironment) measureLayout() error {
 	b := e.entityView()
-	b.logistics.Metrics.acceptedAspect = e.request.acceptedAspect
+	b.logistics.Metrics.acceptedAspect = e.request.shape.MaxAspect
+	b.logistics.Metrics.preferredAspect = e.request.shape.PreferredAspect
 	if err := measureLogisticsLayout(b, e.document.Buildings, e.document.Areas); err != nil {
 		return err
 	}

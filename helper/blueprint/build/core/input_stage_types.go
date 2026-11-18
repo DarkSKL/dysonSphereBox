@@ -80,10 +80,11 @@ func inputRequestIdentity(request Request) any {
 		Request            Request
 		NativeBand         [3]int
 		BandSet, PolarRoot bool
-		AdjacentDepth      int     `json:"adjacentDepth,omitempty"`
-		OffsetWindow       bool    `json:"offsetWindow,omitempty"`
-		AcceptedAspect     float64 `json:"acceptedAspect"`
-	}{request, band, set, root, depth, offset, request.acceptedAspect}
+		AdjacentDepth      int                 `json:"adjacentDepth,omitempty"`
+		OffsetWindow       bool                `json:"offsetWindow,omitempty"`
+		ShapePolicy        *LayoutShapePolicy  `json:"shapePolicy"`
+		SearchPolicy       *LayoutSearchPolicy `json:"searchPolicy"`
+	}{request, band, set, root, depth, offset, request.shape, request.search}
 }
 
 // NormalizedInputRequest 职责：保存独立且已规范的请求/设置/能力选择；使用：数据事实和来源核对；边界：尚未信任生产计划。

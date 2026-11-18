@@ -22,7 +22,7 @@ func (b *builder) validateStationTransport(ctx context.Context, records []bluepr
 	if b.flowGraph == nil || b.logistics == nil {
 		return &blueprint.Error{Code: "GEN_E_FLOW", Message: "物流塔诊断缺少规范流图"}
 	}
-	if err := validateStationPorts(ctx, records); err != nil {
+	if err := validateStationPorts(ctx, records, b.warperStock); err != nil {
 		return err
 	}
 	indices := make(map[*placed]int, len(b.all))

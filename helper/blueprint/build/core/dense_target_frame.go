@@ -5,20 +5,18 @@ package build
 
 import "math"
 
-// denseNativeLargeMachineThreshold 职责：让大厂从装箱开始固定目标球面坐标；使用：公开生成分流；边界：沿用大厂搜索阈值，小厂继续使用已验收的紧凑路径。
-const denseNativeLargeMachineThreshold = 256
-
 // denseTargetFrameExtents 职责：给出本档可用的纬向候选；使用：大厂原生生成；边界：窄环不借用相邻档位。
-func denseTargetFrameExtents(bands []surfacePackedBand) []int {
+func denseTargetFrameExtents(bands []surfacePackedBand, rows []int) []int {
 	span := bands[len(bands)-1].high - bands[0].low + 1
-	if span <= 64 {
-		return []int{span}
-	}
 	result := []int{}
-	for _, height := range []int{64, 80, 96, 112} {
+	for _, height := range rows {
 		if height <= span {
 			result = append(result, height)
 		}
+	}
+	// 窄带无法容纳任何配置窗口时使用整带。
+	if len(result) == 0 {
+		return []int{span}
 	}
 	return result
 }

@@ -396,7 +396,7 @@ func denseRouteLength(points []vector) float64 {
 // densePortals 职责：先尝试直接短接，再按高度建立连续抬升的有限候选；使用：密铺端口，可按完整整数高度层延迟展开源端；边界：最多保留每高度两个不同出口，省略高度上限时覆盖全部层，所有新增节点逐个验净距。
 func (env *transportEnvironment) densePortals(endpoint, source, target *placed, preferred vector, sourceSide, fixedGroundStem bool, heightLimits ...float64) []denseRoutePortal {
 	index := env.densePorts
-	maximumHeight := float64(transportMaxHeight)
+	maximumHeight := env.maximum.z
 	if len(heightLimits) > 0 {
 		maximumHeight = math.Min(maximumHeight, heightLimits[0])
 	}
@@ -412,7 +412,7 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 		outward = vector{x: 1}
 	}
 	inside := func(p vector) bool {
-		return p.x >= env.minimum.x && p.x <= env.maximum.x && p.y >= env.minimum.y && p.y <= env.maximum.y && p.z >= 0 && p.z <= maximumHeight
+		return p.x >= env.minimum.x && p.x <= env.maximum.x && p.y >= env.minimum.y && p.y <= env.maximum.y && p.z >= 0 && p.z <= maximumHeight && p.z <= env.routeHeightLimit(p, source, target)
 	}
 	clearNew := func(path []vector, p vector) bool {
 		permissions := densePortalLinkPermissions(linked, len(path)-1, len(path))
@@ -593,7 +593,7 @@ func (env *transportEnvironment) findDenseTransportPathPrimary(ctx context.Conte
 	}
 	tried := map[vector]bool{}
 	initialHeight := math.Min(transportMaxHeight, math.Max(0, math.Ceil(source.a.z)))
-	for height := initialHeight; height <= transportMaxHeight; height++ {
+	for height := initialHeight; height <= env.maximum.z; height++ {
 		var best []vector
 		bestIndex, bestLength, bestCost := -1, math.MaxInt, math.Inf(1)
 		for _, prefix := range env.densePortals(source, source, target, preferred, true, false, height) {

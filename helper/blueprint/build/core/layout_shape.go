@@ -63,13 +63,17 @@ func (b *builder) layoutHeightCandidates(ctx context.Context, req Request, datas
 			}
 		}
 	}
-	return rectangularHeightCandidates(area, fallback), nil
+	return rectangularHeightCandidates(area, fallback, req.shape.HeightScales), nil
 }
 
-// rectangularHeightCandidates 职责：提供固定最多四种列高；使用：真实面积估计之后；边界：只为软形状目标，不将旧平面列高作为安全规则或固定最小高度。
-func rectangularHeightCandidates(area, legacy float64) []float64 {
+// rectangularHeightCandidates 职责：按配置顺序枚举有限列高并保留退路；使用：真实面积估计之后；边界：只为软形状目标，不将旧平面列高作为安全规则或固定最小高度。
+func rectangularHeightCandidates(area, legacy float64, scales []float64) []float64 {
 	ideal := math.Max(10, math.Ceil(math.Sqrt(math.Max(1, area))))
-	values := []float64{ideal, math.Ceil(ideal * .8), math.Ceil(ideal * 1.25), math.Max(60, legacy)}
+	values := make([]float64, 0, len(scales)+1)
+	for _, scale := range scales {
+		values = append(values, math.Ceil(ideal*scale))
+	}
+	values = append(values, math.Max(60, legacy))
 	result := make([]float64, 0, len(values))
 	for _, value := range values {
 		duplicate := false
@@ -104,7 +108,11 @@ func updateLayoutShapeMetrics(summary *LogisticsSummary, areas []blueprint.Area)
 
 // layoutShapeObjective 职责：将普通布局形状评分交给共同策略；使用：完整候选评分和摘要；边界：软代价不代替验收分档，最终比较须调用BetterLayoutCandidate，缺失度量不能成为最优。
 func layoutShapeObjective(metrics LayoutMetrics) float64 {
-	return layoutShapeCost(metrics.EnvelopeArea, metrics.EnvelopeAspectRatio)
+	preferred := metrics.preferredAspect
+	if preferred == 0 {
+		preferred = defaultPreferredAspect
+	}
+	return layoutShapeCost(preferred, metrics.EnvelopeArea, metrics.EnvelopeAspectRatio)
 }
 
 // physicalShapePoint 职责：保存共同米制平面中的实体采样；使用：凸包与最小面积矩形；边界：不是Area局部网格或绘图坐标。

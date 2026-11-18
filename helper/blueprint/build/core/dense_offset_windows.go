@@ -14,7 +14,7 @@ type denseOffsetWindowKey struct{}
 
 // denseOffsetWindowEligible 职责：统一可选偏移窗的核心权限；使用：枚举和Prepare；边界：原用户ExpandAdjacent、非极区中心及大dense1缺一不可，镜像仍沿旧行为。
 func denseOffsetWindowEligible(req Request, selection densityLatitudeSelection, expand, mirror bool) bool {
-	return req.Mode == 1 && req.Density == densityDense && req.Plan.MachineCount >= denseNativeLargeMachineThreshold && req.SurfaceLayout != nil && req.SurfaceLayout.ExpandAdjacent && expand && !mirror && selection.tier < 5 && selection.position == "center"
+	return req.Mode == 1 && req.Density == densityDense && req.Plan.MachineCount >= req.search.LargeLayoutThreshold && req.SurfaceLayout != nil && req.SurfaceLayout.ExpandAdjacent && expand && !mirror && selection.tier < 5 && selection.position == "center"
 }
 
 // denseOffsetFrameStart 职责：把原居中起点夹入已有bands扣两端原边距后的范围。
@@ -42,7 +42,7 @@ func denseOffsetSurfaceSpecs(req Request, selection densityLatitudeSelection, ba
 	if !options.AllowOffsetWindows || !denseOffsetWindowEligible(req, selection, options.ExpandAdjacent, false) {
 		return nil, nil
 	}
-	extents := denseAdjacentFrameExtentsAtLimit(req.Plan.MachineCount, bands[len(bands)-1].high-bands[0].low+1-4)
+	extents := denseAdjacentFrameExtentsAtLimit(req.Plan.MachineCount, bands[len(bands)-1].high-bands[0].low+1-4, req.shape.AdjacentWindowScales)
 	if options.LargestOffsetFirst {
 		sort.Sort(sort.Reverse(sort.IntSlice(extents)))
 	}

@@ -9,13 +9,17 @@ subflows:
     flow:
       - id: bus-specs
         tool: bus.enumerate@1
+        # 内部总线总是枚举基线。无球面设置且 tighten 为 true 时追加收紧布局，可在大模式的 busTighten 中调整。
         with: {tighten: {$state: mode.bus-tighten}}
       - id: bus-window
         tool: bus.window@1
       - id: bus-attempts
         candidates:
+          # 比较通过验证的总线方案。收紧布局还要满足总建筑数约束。
           comparator: layout
+          # 本组同时试算的候选数上限。1 表示串行比较基线和可用的收紧方案。
           parallel: 1
+          # 枚举结果经 bus.window 按当前搜索窗口截取。index 指向当前规格，下方依次装配、定稿和验证。
           items: {$state: bus.candidates}
           inputs:
             index: {type: integer, required: true}

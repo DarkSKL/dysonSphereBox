@@ -9,7 +9,7 @@ import "context"
 // 使用：完整派生之后、规范化和实际分行去重之前；边界：不派生街道、分流、微调或折行，不改输入、选区和执行预算。
 func connectedSurfaceHeightSeeds(ctx context.Context, input *PreparedInput, planned []ConnectedCandidateSpec) []ConnectedCandidateSpec {
 	req, surface := input.request, input.geometry
-	if req.Mode != 1 || req.Density != densityDense || req.Plan.MachineCount < denseNativeLargeMachineThreshold || surface.Strategy != "native-window" || surface.LocalRectangleAspect <= 0 || surface.ExtentRows < 6 {
+	if req.Mode != 1 || req.Density != densityDense || req.Plan.MachineCount < req.search.LargeLayoutThreshold || surface.Strategy != "native-window" || surface.LocalRectangleAspect <= 0 || surface.ExtentRows < 6 {
 		return planned
 	}
 	height := denseLatitudeHeightLimit(ctx, float64(surface.ExtentRows))

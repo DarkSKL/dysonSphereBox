@@ -2,18 +2,31 @@ schemaVersion: 1
 id: common
 # 公共默认只在此定义；覆盖顺序为注册默认→公共→大模式→子模式→地理→枚举节点with。
 parameters:
+  # 已允许跨纬带时尝试的相邻带层数，每项为 1～3。加入更深层可覆盖更多落位，也会增加候选。
   adjacentDepths: [1, 2, 3]
+  # true 允许在已许可纬带内生成偏移窗口，为居中窗放不下的布局提供其他位置。
   allowOffsetWindows: true
+  # true 将较高的偏移窗排在前面，只在启用偏移窗时生效。
   largestOffsetFirst: true
+  # 非极区大型直连布局的局部矩形比例。最多 16 项，正数不超过 8，0 保留原策略。全厂最终比例上限在 input.yaml。
   localRectangleAspects: [1.8, 2.4, 3, 4.5, 1.5, 1.2, 0]
+  # true 会额外比较完整封闭长行转向后的布局，有助于适应经向较窄的窗口。
   compareTurnedRows: true
+  # 跨带搜索首轮在每个表面尝试的布局数量（0～4096）。0 表示一轮尝试全部，正数把余下布局留到下一轮。配送分组自行安排顺序。
   primaryLayoutsPerSurface: 1
+  # 未扩带时极区原生窗口的高度，单位为细格行，每项 6～112。dense.yaml 可按半球覆盖尝试顺序。
   polarWindowRows: [24, 32, 40, 48, 56, 64]
+  # 密铺直连候选的机器行跨度（工作格，每项为有限正数）。较短跨度会让同一产线更早分行。
   rowSpans: [12, 18, 24, 32]
+  # 直连街道的容量分组候选。0 自适应，2 尝试每街最多两组，-1 尝试把全部组放在同一街道。
   streetGroups: [0, 2, -1]
+  # 街道朝向候选，每项 0～3，对应旋转 0、1、2、3 个四分之一圈。
   streetRotations: [0, 1, 2, 3]
+  # 密铺单元排布策略。0、2 优先放占地大的单元，1、3 沿用输入顺序。2、3 额外计入估算线长。
   denseOrders: [0, 1, 2, 3]
+  # 直连折行候选的短行跨度（工作格，每项为有限正数）。子模式可单独覆盖。
   bentSpans: [12, 18]
+# 本库 surface.enumerate@1 默认从 $state 读取合并后的极区窗口。工具节点的 with 可显式覆盖该工具的默认参数。
 toolDefaults:
   surface.enumerate@1:
     polarWindowRows: {$state: mode.polar-window-rows}
@@ -21,6 +34,7 @@ flow:
   - id: entry
     call: surface
 subflows:
+  # 逐区检查最终工厂。下方 boundarySampleLimit 仅限制报告保留的跨区引用条数：正整数取前 N 条，0 保留全部。所有引用都会检查。
   selected-regions:
     flow:
       - id: describe-real-regions
@@ -82,6 +96,7 @@ subflows:
           otherwise:
             - id: unsupported-density
               fail: unsupported-density
+  # 按已计算的表面策略选分支。strict 使用原选区，adaptive 先试严格布局，native 在原生纬带内找窗口，adjacent 允许尝试获准的邻带。
   selected-surface:
     flow:
       - id: surface-workchain
@@ -103,6 +118,7 @@ subflows:
           otherwise:
             - id: unsupported-surface-strategy
               fail: unsupported-surface-strategy
+  # 严格分支只枚举原选区。可在下方与 adaptive、native 对照查看各分支采用的占位与回退策略。
   strict:
     flow:
       - id: strict-spec
@@ -110,6 +126,7 @@ subflows:
         with: {strategy: strict, expandAdjacent: false, preciseFootprint: false}
       - id: strict-attempt
         call: surface-attempts
+  # 严格候选全部无解且错误符合 fallbackOn 时，进入原生纬带分支。selection: first 配合单路并发按顺序取首个成功方案。
   adaptive:
     flow:
       - id: strict-spec
@@ -132,6 +149,7 @@ subflows:
           fallback:
             - id: native-fallback
               call: native
+  # includeBandFallback 追加原生子环候选。普通候选失败并符合回退条件时，用 preciseFootprint: true 按真实原型占位重试。
   native:
     flow:
       - id: native-specs
@@ -180,6 +198,7 @@ subflows:
                       candidates:
                         selection: first
                         parallel: 1
+                        # 单带尝试的局部时限（毫秒）。无成功结果而到期时用 timeoutFailure 指定的错误码，让外层继续尝试邻带。
                         timeoutMs: 20000
                         timeoutFailure: GEN_E_SURFACE_CAPACITY
                         items: [{}]
@@ -189,6 +208,7 @@ subflows:
                 otherwise:
                   - id: unknown-alternative
                     fail: unknown-surface-alternative
+  # 跨带几何候选读取上方的深度、偏移和矩形参数。expandAdjacent 仍需原请求已允许跨纬带。
   expanded:
     flow:
       - id: adjacent-specs
@@ -214,7 +234,7 @@ subflows:
         candidates:
           selection: first
           parallel: 1
-          # 先给每个表面一个主布局机会；第二轮从1开始，不重跑第一轮。
+          # 首轮按 primaryLayoutsPerSurface 截取每个表面的前 N 项，下一轮从下标 N 开始。
           items: {$state: search.surface-passes}
           inputs:
             start: {type: integer, required: true}
@@ -231,7 +251,7 @@ subflows:
         candidates:
           selection: first
           parallel: 1
-          # 单带已先行尝试；跨带使用任务剩余预算，保留20秒用于汇合与编码，总任务截止不延长。
+          # 单带已先行尝试；跨带使用任务剩余预算，按 reserveMs（毫秒）为汇合与编码预留时间，总任务截止不延长。
           reserveMs: 20000
           timeoutFailure: GEN_E_SURFACE_CAPACITY
           items: {$state: surface.candidates}
@@ -258,6 +278,7 @@ subflows:
               with: {index: {$input: index}}
             - id: layout
               call: layout
+  # 按密度调用各自布局链，再按 input.yaml 的 maxAspect 校验选中工厂。
   layout:
     flow:
       - id: major-mode-layout

@@ -23,6 +23,8 @@ type Setting struct {
 	NeedPower *bool `json:"needPower,omitempty"`
 	// EnableFlowMonitor 职责：保存是否在独立物料带上创建流速监测器；使用：蓝图生成选项；边界：仅覆盖本次生成，不修改游戏内监测阈值。
 	EnableFlowMonitor bool `json:"enableFlowMonitor"`
+	// RequestStationWarpers 由生成选项启用。仅星际塔的远程供需库存参与补给。
+	RequestStationWarpers bool `json:"requestStationWarpers,omitempty"`
 	// EnableIntermediateBuffer 职责：为每行净产物生成中转缓存；使用：可选蓝图功能；边界：固体用箱体、流体用储液罐，有限库存不能抵消持续过剩。
 	EnableIntermediateBuffer bool `json:"enableIntermediateBuffer"`
 	// BeltSpeed 职责：保存参考运力上限每分钟；使用：布局约束；边界：不修改全局设置。
@@ -67,8 +69,12 @@ type Setting struct {
 
 // Request 职责：承载生成边界数据；使用：服务与预览联动；边界：不承诺游戏实际验收。
 type Request struct {
-	// acceptedAspect 职责：保存工作流冻结的形状策略；使用：后续候选；边界：不接受前端覆盖。
-	acceptedAspect float64
+	// warperStock 由获选的塔候选冻结，用于最终蓝图参数校验。
+	warperStock int
+	// shape 职责：保存工作流冻结的形状策略；使用：后续候选；边界：不接受前端覆盖。
+	shape *LayoutShapePolicy
+	// search 是工作流冻结的搜索预算，不从用户请求 JSON 解码。
+	search *LayoutSearchPolicy
 	// CandidateConcurrency 职责：指定单任务候选并发上限；使用：诊断与资源调优；边界：零为自动，只允许一到十，不改变全局 GOMAXPROCS。
 	CandidateConcurrency   int `json:"candidateConcurrency,omitempty"`
 	PreviewProtocolVersion int `json:"previewProtocolVersion,omitempty"`

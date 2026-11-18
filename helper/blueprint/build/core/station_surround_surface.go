@@ -11,15 +11,10 @@ import (
 	"DysonSphereBox/helper/blueprint"
 )
 
-// stationSurfaceWidthCandidates 职责：指定塔组四宽的中间比例；使用：塔组球面回填；边界：原容量与满纬圈退路不变。
-func stationSurfaceWidthCandidates(layout *SurfaceLayout, sizes []surfaceBlockSize, gap int) []int {
-	return surfaceBlockWidthCandidates(layout, sizes, gap, .95)
-}
-
 // planStationSurfaceWidths 职责：独立验证每个塔球面宽度并按真实区域形状选优；使用：闭合塔块回退；边界：不移动 builder 实体，取消或未知规则直接失败，候选间不复用审计结果。
 // 逻辑流：1. 有界宽度装箱 => 2. 构建完整最终编号记录 => 3. 执行同一球面及最终规则 => 4. 比较区域面积与形状，仅返回通过的完整布局。
 func (b *builder) planStationSurfaceWidths(ctx context.Context, layout *SurfaceLayout, sizes []surfaceBlockSize, gap int, records [][]blueprint.Building, accept func(int, surfacePackedBand, int) bool, acceptPlacement func(surfacePackPlacement, []surfacePackPlacement) bool, probeError func() error) (*surfacePacking, error) {
-	widths := stationSurfaceWidthCandidates(layout, sizes, gap)
+	widths := surfaceBlockWidthCandidates(layout, sizes, gap, b.policy.search.SurfaceWidthFraction)
 	var best *surfacePacking
 	var bestMetrics, baselineMetrics LayoutMetrics
 	bestWidth, rejected := 0, 0
@@ -31,7 +26,7 @@ func (b *builder) planStationSurfaceWidths(ctx context.Context, layout *SurfaceL
 		}
 		stage := "packing"
 		parameters := fmt.Sprintf("widthLimit=%d;gap=%d", width, gap)
-		packing, err := planStationSurfaceWidth(ctx, layout, sizes, gap, width, accept, acceptPlacement)
+		packing, err := b.planStationSurfaceWidth(ctx, layout, sizes, gap, width, len(widths) == 4 && i == 1, accept, acceptPlacement)
 		if geometryErr := probeError(); geometryErr != nil {
 			if b.logistics != nil {
 				b.logistics.SearchCandidates = append(b.logistics.SearchCandidates, newSearchCandidateDiagnostic("station-surface-width", i, parameters, "geometry-probe", geometryErr))
@@ -78,13 +73,12 @@ func (b *builder) planStationSurfaceWidths(ctx context.Context, layout *SurfaceL
 }
 
 // planStationSurfaceWidth 职责：优先为高块预留稀缺的宽纬带行，再按原编号返回完整落点；使用：有限塔宽候选；边界：只排序尺寸副本，几何回调保持原块身份，零宽保留原顺序兼容参考。
-func planStationSurfaceWidth(ctx context.Context, layout *SurfaceLayout, sizes []surfaceBlockSize, gap, width int, accept func(int, surfacePackedBand, int) bool, acceptPlacement func(surfacePackPlacement, []surfacePackPlacement) bool) (*surfacePacking, error) {
+func (b *builder) planStationSurfaceWidth(ctx context.Context, layout *SurfaceLayout, sizes []surfaceBlockSize, gap, width int, intermediate bool, accept func(int, surfacePackedBand, int) bool, acceptPlacement func(surfacePackPlacement, []surfacePackPlacement) bool) (*surfacePacking, error) {
 	if width == 0 {
 		return planSurfaceBlocksWidthChecked(ctx, layout, sizes, gap, width, accept, acceptPlacement)
 	}
-	widths := stationSurfaceWidthCandidates(layout, sizes, gap)
-	if layout.Mode == "autoTropic" && len(widths) == 4 && width == widths[1] {
-		return planSurfaceBlockRectanglesBounded(ctx, layout, sizes, gap, width, max(1, width*3/5), accept, acceptPlacement)
+	if layout.Mode == "autoTropic" && intermediate {
+		return planSurfaceBlockRectanglesBounded(ctx, layout, sizes, gap, width, max(1, int(float64(width)*b.policy.search.SideWidthFraction)), accept, acceptPlacement)
 	}
 	return planSurfaceBlocksHeightSorted(ctx, layout, sizes, gap, width, accept, acceptPlacement)
 }

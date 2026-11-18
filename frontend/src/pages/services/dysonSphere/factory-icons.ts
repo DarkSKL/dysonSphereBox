@@ -38,6 +38,16 @@ const nameAliases: Record<string, string> = {
   '蓄电器（满）': '蓄电器 (满)',
   '全息信标': '信号塔',
   '近程电浆塔': '近程等离子体塔',
+  // 统计目录沿用游戏原型名（低速传送带、流速器等），与图鉴译名不同的建筑在此对齐，统计页面的图标才能解析。
+  '低速传送带': '传送带',
+  '低速分拣器': '分拣器',
+  '流速器': '流速监测器',
+  '物流运输站': '行星内物流运输站',
+  '制造台 Mk.IV': '重组式制造台',
+  '熔炉 Mk.III': '负熵熔炉',
+  '化工厂 Mk.II': '量子化工厂',
+  '矩阵研究站 Mk.II': '自演化研究站',
+  '激光灯塔': '信号塔',
 }
 const normalize = (name: string): string => { const value = name.replace(/\s/g, ' '); return nameAliases[value] ?? value }
 /** 量化物品名对应的图鉴中文名或稳定 ID；图标与图鉴属性（如建筑功率）按同一规则对齐 */
@@ -64,4 +74,36 @@ export function factoryIconStyle(name: string, size: number): Record<string, str
   const sprite = encyclopediaManifest.sprite
   const ratio = size / sprite.cell
   return {width: `${size}px`, height: `${size}px`, backgroundImage: `url("${sprite.path}")`, backgroundSize: `${sprite.width * ratio}px ${sprite.height * ratio}px`, backgroundPosition: `${-icon.x * ratio}px ${-icon.y * ratio}px`}
+}
+
+// =============== Canvas 图标 ===============
+// 职责：把图鉴精灵中的一格裁成独立画布，供 ECharts 富文本等 Canvas 场景使用；使用：量化分析图表的行标签。
+// 边界：精灵未加载完成或名称未收录时返回 null，调用方只显示文字；按格子与像素尺寸缓存，主题切换不影响。
+let spriteImage: HTMLImageElement | null = null
+/** 精灵原图可供 Canvas 裁切时为 true；在计算属性里读取以便加载完成后重新生成图表配置。 */
+export const factoryIconImageReady = shallowRef(false)
+const iconCanvasCache = new Map<string, HTMLCanvasElement>()
+export function factoryIconCanvas(name: string, size: number): HTMLCanvasElement | null {
+  ensureFactoryIcons()
+  if (!spriteImage) {
+    spriteImage = new Image()
+    spriteImage.onload = () => { factoryIconImageReady.value = true }
+    spriteImage.src = encyclopediaManifest.sprite.path
+  }
+  const cell = factoryIconCell(name)
+  if (!cell || !factoryIconImageReady.value) return null
+  const pixels = Math.round(size * Math.min(3, Math.max(1, window.devicePixelRatio || 1)))
+  const key = `${cell.x}:${cell.y}:${pixels}`
+  const cached = iconCanvasCache.get(key)
+  if (cached) return cached
+  const canvas = document.createElement('canvas')
+  canvas.width = pixels
+  canvas.height = pixels
+  const context = canvas.getContext('2d')
+  if (!context) return null
+  context.imageSmoothingQuality = 'high'
+  const cellSize = encyclopediaManifest.sprite.cell
+  context.drawImage(spriteImage, cell.x, cell.y, cellSize, cellSize, 0, 0, pixels, pixels)
+  iconCanvasCache.set(key, canvas)
+  return canvas
 }

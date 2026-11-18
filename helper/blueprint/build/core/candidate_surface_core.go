@@ -145,18 +145,18 @@ func enumerateSurfaceCandidatesAtDepth(ctx context.Context, input *PreparedInput
 	var extents []int
 	switch {
 	case options.ExpandAdjacent:
-		extents = denseAdjacentFrameExtents(selection, bands, req.Plan.MachineCount)
+		extents = denseAdjacentFrameExtents(selection, bands, req.Plan.MachineCount, req.shape.AdjacentWindowScales)
 	case selection.tier == 5:
 		if len(options.PolarWindowRows) == 0 {
 			return nil, fmt.Errorf("极区窗口策略不能为空")
 		}
 		extents = append([]int(nil), options.PolarWindowRows...)
 	default:
-		extents = denseTargetFrameExtents(bands)
+		extents = denseTargetFrameExtents(bands, req.search.NativeWindowRows)
 	}
 	// 普通大厂的完整带段与行间接线占地更宽；优先验证许可内宽窗口，避免先耗尽预算在细长的窄窗口结果上。
 	// 仅改变既有窗口顺序，不增加许可区域、不删除原窗口，最终形状与物理规则仍逐项执行。
-	if !options.ExpandAdjacent && denseNativeLargeRequest(ctx, req) || options.ExpandAdjacent && req.Density == densityStandard && req.Plan.MachineCount >= 256 {
+	if !options.ExpandAdjacent && denseNativeLargeRequest(ctx, req) || options.ExpandAdjacent && req.Density == densityStandard && req.Plan.MachineCount >= req.search.LargeLayoutThreshold {
 		sort.Sort(sort.Reverse(sort.IntSlice(extents)))
 	}
 	seenExtents := map[int]bool{}

@@ -6,9 +6,9 @@ import (
 	"sort"
 )
 
-// prioritizeLargeStandardStationRows 职责：复用调用者已启用的行阵能力与既有长跨度，按真实拆行数量安排新增组合；边界：仅普通>=256机器且native-window，其他输入逐项保持原样。
+// prioritizeLargeStandardStationRows 职责：复用调用者已启用的行阵能力与既有长跨度，按真实拆行数量安排新增组合；边界：仅达到大厂门槛的普通布局且native-window，其他输入逐项保持原样。
 func prioritizeLargeStandardStationRows(ctx context.Context, input *PreparedInput, options StationSearchOptions, original []StationCandidateSpec) ([]StationCandidateSpec, error) {
-	if !options.StandardRowPacking || input.request.Density != densityStandard || input.request.Plan.MachineCount < 256 || input.geometry.Strategy != "native-window" {
+	if !options.StandardRowPacking || input.request.Density != densityStandard || input.request.Plan.MachineCount < input.request.search.LargeLayoutThreshold || input.geometry.Strategy != "native-window" {
 		return original, nil
 	}
 	seen := map[StationCandidateSpec]bool{}

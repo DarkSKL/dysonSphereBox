@@ -69,20 +69,16 @@ func ComposeTransportCandidate(ctx context.Context, input *PreparedInput, plan *
 	return &result, nil
 }
 
-// completePreparedInputIdentity 职责：仅建立最终输入摘要及保守大小；使用：两个组合出口；边界：序列化不是再次执行业务校验，保持原合法输入的规范摘要。
+// completePreparedInputIdentity 职责：仅建立最终输入摘要及保守大小；使用：两个组合出口；边界：序列化不是再次执行业务校验，摘要区分实际策略和选区。
 func completePreparedInputIdentity(ctx context.Context, input *PreparedInput) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// zero规格保持原Request字节hash；派生surface必须包含JSON之外的许可及完整几何规格。
-	var identity any = input.request
-	privateSurface := input.request.SurfaceLayout != nil && (input.request.SurfaceLayout.offsetWindow || input.request.SurfaceLayout.adjacentDepth != 0 || input.request.SurfaceLayout.nativeBand != nil || input.request.SurfaceLayout.polarRoot)
-	if privateSurface || input.geometry != (SurfaceCandidateSpec{}) {
-		identity = struct {
-			Request  any
-			Geometry SurfaceCandidateSpec
-		}{inputRequestIdentity(input.request), input.geometry}
-	}
+	// 所有输入都包含冻结策略和私有选区，派生输入还需区分具体候选几何。
+	identity := struct {
+		Request  any
+		Geometry SurfaceCandidateSpec
+	}{inputRequestIdentity(input.request), input.geometry}
 	canonical, err := json.Marshal(identity)
 	if err != nil {
 		return inputStageCause(ctx, err)

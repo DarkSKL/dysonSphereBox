@@ -1,23 +1,73 @@
+# 蓝图生成总入口。任务时限和并发在本文件调整，形状与候选尺寸在 input.yaml，地理与模式策略在 common.yaml、standard.yaml、dense.yaml。
+# 外部配置由 DSBOX_BLUEPRINT_WORKFLOWS 指向整套 YAML 目录，保存后对新任务生效。使用内嵌配置时需重新构建客户端。
 schemaVersion: 1
 id: factory
+# 单任务启动时读取；截止时间同时约束子步骤。
+parameters:
+  # 布局搜索策略在任务开始时冻结，旧方案可只覆盖其中几项。
+  layoutSearch:
+    # 大厂布局门槛（正整数）。机器数达到此值时采用大厂候选排序和窗口策略。
+    # 原生分流还考虑中间缓存的估算工作量。此值独立于下方控制并发的 largePlanMachines。
+    largeLayoutThreshold: 256
+    # 估算密铺中间缓存数量时的分行跨度（工作格，0 < 值 ≤ 10000）。跨度越短，估计的行数通常越多。
+    bufferEstimateSpan: 32
+    # 非极区、未扩带时的原生窗口高度（细格行）。1～16 个互异整数，每项至少 6。
+    # 仅试当前纬带放得下的高度，全都放不下时试整带。大厂分支可优先宽窗。
+    nativeWindowRows: [64, 80, 96, 112]
+    # 密铺塔追加物料排序布局的机器数门槛（非负整数），0 表示任意规模。窄纬带本身也能触发。
+    stationMaterialThreshold: 80
+    # 配送块和物流塔闭合块的中间宽度占容量估计的比例 (0, 1]，候选宽度仍至少容得下最宽的块。
+    surfaceWidthFraction: 0.95
+    # 上述中间宽度候选给短侧纬带的横向展开比例 (0, 1]。调小会让更多块回填赤道侧。
+    sideWidthFraction: 0.6
+    # 密铺单元每个朝向最多检查的整数格位置数（正整数）。调大可搜索更多位置，也会增加耗时。
+    packingAttempts: 8192
+    # 物流塔场局部装箱对应的位置数上限（每单元、每朝向，正整数）。
+    stationPackingAttempts: 16384
+    # 一次全局供电回溯可以访问的节点总数（正整数），耗尽时当前候选报告供电覆盖失败。
+    powerSearchNodes: 8192
+    # 同一供电决策层最多尝试的高优先级分支数（正整数）。较低的值更快，但可能漏过可行塔位。
+    powerSearchBranches: 32
+  execution:
+    # 自动并发切换阈值（机器台数，正整数）。计划达到此数时使用下一项。
+    largePlanMachines: 256
+    # 大厂自动模式的计算槽数（1～10）。调大可同时试算更多候选，也会增加内存占用。手动并发和预览协议仍有各自的限制。
+    largePlanParallel: 1
+    # 首档机器数以内的任务总时限（1～86400 秒）。
+    baseSeconds: 240
+    # 每档包含的机器台数（正整数）。按当前设置，2048 台用基础时限，2049 台首次追加预算。
+    machinesPerBand: 2048
+    # 每进入下一档追加的秒数（0～86400）。填 0 使用固定时限。
+    extraSecondsPerBand: 90
+    # 累计预算上限（秒），介于 baseSeconds 和 86400 之间。父任务可以更早截止。
+    maxSeconds: 600
+# flow 自上而下执行。tool 是已注册工具的版本化标识，call 调用本库或“库名/子流程名”，with 给当前步骤传参。
+# $param 引用当前文件的命名参数，$state 取已产生的运行状态，$input 取当前子流程或候选的入参。保留引用可让修改在参数定义处统一生效。
 flow:
   - id: full-search-window
     tool: search.window@1
+    # 候选窗口从下标 start 开始，最多取 limit 项。两个值均为 0～4096，limit 为 0 表示取到列表末尾。
     with: {start: 0, limit: 0}
   - id: normalize
     call: input/prepare-production
   - id: transport-options
     tool: transport.enumerate@1
     # 只影响大接线图的有限搜索顺序；所有原档位、制造链及后续独立容量规则保留。
+    # preferFewerRoutesAbove 按最低档方案的接线路数计数，达到阈值时优先尝试接线少的档位（0 关闭，最大 100000）。
+    # workloadRowSpan 是估算路数时的分行跨度（工作格）。启用路数阈值时须大于 0 且不超过 10000。
     with: {preferFewerRoutesAbove: 512, workloadRowSpan: 32}
   - id: transport-attempts
     candidates:
+      # 逐档尝试，首个完整成功的运输档位胜出。advanceOn 列出允许试下一档的失败码，须与串行 parallel: 1 搭配。
       selection: first
       parallel: 1
       advanceOn: [GEN_E_INSERTER_CAPACITY, GEN_E_BELT_CAPACITY, GEN_E_PORT_CAPACITY, GEN_E_OVERFLOW]
+      # $state 读取枚举工具产出的档位列表，$input.index 是当前项的下标。更改优先级时调整上方枚举参数。
       items: {$state: transport.candidates}
       inputs:
         index: {type: integer, required: true}
+      # flow 自上而下执行。tool 是已注册工具的版本化标识，call 调用本库或“库名/子流程名”，with 给当前步骤传参。
+      # $param 引用当前文件的命名参数，$state 取已产生的运行状态，$input 取当前子流程或候选的入参。保留引用可让修改在参数定义处统一生效。
       flow:
         - id: prepare-transport
           call: input/prepare-transport

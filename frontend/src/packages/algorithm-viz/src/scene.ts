@@ -58,7 +58,7 @@ const DRAG_THRESHOLD = 4;
 const ICON_BELT_SIZE = 1.5;
 const ICON_BUILDING_MIN = 1.9;
 const ICON_BUILDING_MAX = 3.4;
-const CANVAS_LABEL = '平面预览器（内测版）：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
+const CANVAS_LABEL = '平面预览（内测版）：等距视角的浮空石台上，建筑按算法步骤逐个落位、移动与撤销';
 const DEFAULT_EMPTY = '产线计算完成后，算法会在这里逐步搭建蓝图';
 const NO_OFFSETS: ReadonlyMap<number, Offset> = new Map();
 
@@ -940,7 +940,7 @@ export class AlgorithmVizScene implements AlgorithmVizController {
   private showFallback(): void {
     const div = document.createElement('div');
     div.className = 'algoviz-fallback';
-    div.textContent = '当前环境不支持 WebGL，无法显示平面预览器';
+    div.textContent = '当前环境不支持 WebGL，无法显示平面预览';
     this.container.append(div);
     this.fallback = div;
   }

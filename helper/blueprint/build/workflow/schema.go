@@ -92,6 +92,29 @@ func expressionSchema(s map[string]any) map[string]any {
 
 // GenerateSchema 职责：生成与执行格式一致的 Schema；使用：配置工具；边界：不是编译器的替代品。
 func GenerateSchema(r *Registry) ([]byte, error) {
+	return json.MarshalIndent(documentSchema(r), "", "  ")
+}
+
+// GenerateSchemaWithParameter 为指定文档的命名常量补充类型提示，库内其余参数仍使用通用语法。
+func GenerateSchemaWithParameter[T any](r *Registry, document, parameter string) ([]byte, error) {
+	return schemaWithParameterProperties(r, document, map[string]any{parameter: typeSchema(reflect.TypeFor[T]())})
+}
+
+// GenerateSchemaWithParameters 按主文档命名常量的强类型字段导出提示，允许同一文件另行声明普通常量。
+func GenerateSchemaWithParameters[T any](r *Registry, document string) ([]byte, error) {
+	props := typeSchema(reflect.TypeFor[T]())["properties"].(map[string]any)
+	return schemaWithParameterProperties(r, document, props)
+}
+
+func schemaWithParameterProperties(r *Registry, document string, props map[string]any) ([]byte, error) {
+	root := documentSchema(r)
+	root["if"] = map[string]any{"properties": map[string]any{"id": map[string]any{"const": document}}}
+	parameterRules := map[string]any{"properties": props}
+	root["then"] = map[string]any{"properties": map[string]any{"parameters": parameterRules}}
+	return json.MarshalIndent(root, "", "  ")
+}
+
+func documentSchema(r *Registry) map[string]any {
 	obj := func(props map[string]any, required ...string) map[string]any {
 		return map[string]any{"type": "object", "properties": props, "required": required, "additionalProperties": false}
 	}
@@ -149,7 +172,7 @@ func GenerateSchema(r *Registry) ([]byte, error) {
 	root := obj(map[string]any{"schemaVersion": map[string]any{"const": 1}, "id": str, "parameters": with, "toolDefaults": map[string]any{"type": "object", "additionalProperties": with}, "flow": nodes, "subflows": map[string]any{"type": "object", "additionalProperties": obj(map[string]any{"inputs": inputs, "flow": nodes}, "flow")}}, "schemaVersion", "id")
 	root["$schema"] = "https://json-schema.org/draft/2020-12/schema"
 	root["$defs"] = map[string]any{"reference": map[string]any{"oneOf": refVariants}, "node": map[string]any{"oneOf": variants}}
-	return json.MarshalIndent(root, "", "  ")
+	return root
 }
 
 // sortStrings 职责：稳定 Schema 输出顺序；使用：工具目录；边界：不影响业务分支顺序。
@@ -191,6 +214,19 @@ func fieldTypeSchema(f reflect.StructField) map[string]any {
 			}
 		}
 		child["enum"] = enum
+	}
+	// 数组长度与元素数值独立校验；静态列表即使与动态 $state 参数混用也能在编译时定位错误。
+	if items, ok := child["items"].(map[string]any); ok {
+		bounds := map[string]any{}
+		if min := f.Tag.Get("itemMin"); min != "" {
+			bounds["minimum"] = json.Number(min)
+		}
+		if max := f.Tag.Get("itemMax"); max != "" {
+			bounds["maximum"] = json.Number(max)
+		}
+		if len(bounds) > 0 {
+			items["allOf"] = []any{bounds}
+		}
 	}
 	constraints := map[string]any{}
 	for _, tag := range []string{"min", "max"} {

@@ -18,7 +18,7 @@ const denseBoundaryLevels = 3
 // denseBoundaryLayout 职责：冻结共同入口边、直入交接点和交付组位置；使用：输入创建、输出创建和边界避碰共用；边界：仅属于当前装配候选，组身份取真实路线。
 type denseBoundaryLayout struct {
 	handoffX, maximumX float64
-	// staggerInputs 职责：多层原料口使用错开的升层列；使用：固定前缀构造；边界：外部端口仍只占0/2/4三层。
+	// staggerInputs 让叠放的原料口在不同列交给寻路器，保持各自槽高。
 	staggerInputs bool
 	// levelLimitX 职责：划定三层平直接口末端；使用：接口之后允许在模型盒外升降接入厂内线路；边界：整个 maximumX 以西仍禁止独立带段交叉。
 	levelLimitX                  float64
@@ -175,9 +175,14 @@ func matchDenseBoundarySlots(ctx context.Context, desired []vector, bottom, pitc
 		order[i] = i
 	}
 	sort.SliceStable(order, func(i, j int) bool { return desired[order[i]].y < desired[order[j]].y })
-	slots := make([]vector, 0, rows*denseBoundaryLevels)
+	// 保留横向选择余地，前两层能容纳所有独立接口时，无需为了靠近消费者而启用第三层。
+	levels := denseBoundaryLevels
+	if len(desired) <= 2*rows-len(reserved) {
+		levels = 2
+	}
+	slots := make([]vector, 0, rows*levels)
 	for row := 0; row < rows; row++ {
-		for level := 0; level < denseBoundaryLevels; level++ {
+		for level := 0; level < levels; level++ {
 			if level == 0 && reserved[row] {
 				continue
 			}

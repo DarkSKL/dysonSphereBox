@@ -73,7 +73,7 @@ func denseLocalRectangleRotateRows(units []denseSpatialUnit, height int) int {
 // denseLocalRectangleAspects 职责：按显式配置给非极区扩带密铺直连大厂提供独立矩形候选。
 // 使用：原窗口及方向已经枚举后；边界：普通、极区、单带和小厂保持原候选，不能用原绕圈结果绕过最终新守卫。
 func denseLocalRectangleAspects(req Request, selection densityLatitudeSelection, options SurfaceSearchOptions) []float64 {
-	if req.Mode == 1 && req.Density == densityDense && req.Plan.MachineCount >= denseNativeLargeMachineThreshold && selection.tier < 5 && options.ExpandAdjacent {
+	if req.Mode == 1 && req.Density == densityDense && req.Plan.MachineCount >= req.search.LargeLayoutThreshold && selection.tier < 5 && options.ExpandAdjacent {
 		if len(options.LocalRectangleAspects) > 0 {
 			return append([]float64(nil), options.LocalRectangleAspects...)
 		}

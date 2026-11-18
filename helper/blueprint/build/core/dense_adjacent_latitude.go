@@ -74,7 +74,7 @@ func denseLatitudeReferenceRange(selection densityLatitudeSelection) (int, int) 
 }
 
 // denseAdjacentFrameExtents 职责：按规模比较有限近方形窗口；使用：跨纬带候选；边界：窗口始终能围绕所选参考点放入允许区域。
-func denseAdjacentFrameExtents(selection densityLatitudeSelection, bands []surfacePackedBand, machines int) []int {
+func denseAdjacentFrameExtents(selection densityLatitudeSelection, bands []surfacePackedBand, machines int, scales []float64) []int {
 	south, north := denseLatitudeReferenceRange(selection)
 	limit := bands[len(bands)-1].high - bands[0].low + 1
 	switch selection.position {
@@ -88,15 +88,18 @@ func denseAdjacentFrameExtents(selection densityLatitudeSelection, bands []surfa
 	}
 	// 实体坐标边界外仍有真实模型半径，两端各留两格，不用跨带许可吞掉外侧碰撞盒。
 	limit -= 4
-	return denseAdjacentFrameExtentsAtLimit(machines, limit)
+	return denseAdjacentFrameExtentsAtLimit(machines, limit, scales)
 }
 
 // denseAdjacentFrameExtentsAtLimit 职责：在既定许可行数内复用原有限规模窗口；使用：居中和显式偏移；边界：不推导或扩大任何bands。
-func denseAdjacentFrameExtentsAtLimit(machines, limit int) []int {
+func denseAdjacentFrameExtentsAtLimit(machines, limit int, scales []float64) []int {
 	ideal := denseAdjacentIdealRows(machines)
 	out := []int{}
 	seen := map[int]bool{}
-	windows := []int{ideal, ideal * 4 / 5, ideal * 6 / 5}
+	windows := make([]int, 0, len(scales)+1)
+	for _, scale := range scales {
+		windows = append(windows, int(float64(ideal)*scale))
+	}
 	// 少量大型设施、监测器和缓存的占地不能由机器数准确代表；按比例补齐到区域上限的窗口，避免从小窗口直接跳到全带。
 	for value := ideal * 3 / 2; value < limit; value += max(1, value/2) {
 		windows = append(windows, value)

@@ -4,6 +4,7 @@ import {Copy, Download, FileInput, FileJson, FolderOpen, Pause, Play, RotateCcw,
 import BlueprintViewerPanel from '../../components/dysonSphere/blueprint/viewer-panel.vue'
 import AlgorithmHeatmap from '../../components/dysonSphere/factory/algorithm-heatmap.vue'
 import AlgorithmStage from '../../components/dysonSphere/factory/algorithm-stage.vue'
+import AnalysisStage from '../../components/dysonSphere/factory/analysis/analysis-stage.vue'
 import GenerationError from '../../components/dysonSphere/factory/generation-error.vue'
 import FlowCanvas from '../../components/dysonSphere/factory/flow-canvas.vue'
 import InspectorPanel from '../../components/dysonSphere/factory/inspector-panel.vue'
@@ -32,13 +33,17 @@ const selectedData = computed(() => {
 })
 
 // =============== 预览标签页 ===============
-// 说明：下层卡片在「蓝图预览」与「平面预览器」间切换；切走时预览只隐藏不卸载，避免重建 WebGL 视图。
-// 平面预览器在首次切换时挂载，之后同样只隐藏，渲染循环随容器不可见自动暂停。
-type PreviewTab = 'preview' | 'algorithm'
-const previewTabs: {key: PreviewTab, label: string}[] = [{key: 'preview', label: '蓝图预览'}, {key: 'algorithm', label: '平面预览器（内测版）'}]
+// 说明：下层卡片在「蓝图预览」「平面预览」「量化分析」间切换；切走时预览只隐藏不卸载，避免重建 WebGL 视图。
+// 平面预览与量化分析在首次切换时挂载，之后同样只隐藏：渲染循环随容器不可见自动暂停，分析页保留子标签与筛选状态。
+type PreviewTab = 'preview' | 'algorithm' | 'analysis'
+const previewTabs: {key: PreviewTab, label: string}[] = [{key: 'preview', label: '蓝图预览'}, {key: 'algorithm', label: '平面预览（内测版）'}, {key: 'analysis', label: '量化分析'}]
 const previewTab = ref<PreviewTab>('preview')
 const algorithmMounted = ref(false)
-watch(previewTab, tab => { if (tab === 'algorithm') algorithmMounted.value = true })
+const analysisMounted = ref(false)
+watch(previewTab, tab => {
+  if (tab === 'algorithm') algorithmMounted.value = true
+  if (tab === 'analysis') analysisMounted.value = true
+})
 
 // =============== 上下分栏 ===============
 // 说明：拖动分隔条调整网格与预览高度，比例限制在 30%–80%；双击分隔条恢复默认。
@@ -96,7 +101,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
           <button v-for="tab in previewTabs" :id="`preview-tab-${tab.key}`" :key="tab.key" type="button" role="tab" class="preview-tab" :class="{'is-active': previewTab === tab.key}" :aria-selected="previewTab === tab.key" :aria-controls="`preview-panel-${tab.key}`" @click="previewTab = tab.key">{{ tab.label }}</button>
         </div>
         <span class="bar-divider" aria-hidden="true" />
-        <!-- 算法活动热力图：仅在「平面预览器」下显示，占满标签右侧到操作区之间的空间 -->
+        <!-- 算法活动热力图：仅在「平面预览」下显示，占满标签右侧到操作区之间的空间 -->
         <AlgorithmHeatmap v-if="previewTab === 'algorithm'" />
         <!-- 多目标归属只用于查看与聚焦，真实上下游路线由统一流图决定，不要求用户手工跨区分送。 -->
         <div v-if="previewTab === 'preview' && w.zones.length > 1 && !w.replay" class="preview-zones" role="group" aria-label="蓝图分区">
@@ -125,8 +130,10 @@ const resizeByKey = (event: KeyboardEvent): void => {
           </div>
           <div v-if="w.previewStale && w.code" class="preview-overlay">{{ w.generationFailed ? '最近一次生成未成功，当前显示上次成功结果' : w.generating ? '正在生成，当前显示上次成功结果' : `参数已改变，${w.autoRun ? '正在刷新预览…' : '点击「生成」刷新预览'}` }}</div>
         </div>
-        <!-- 平面预览器：首次切换到该标签时才创建场景，之后保持挂载以保留舞台与播放进度 -->
+        <!-- 平面预览：首次切换到该标签时才创建场景，之后保持挂载以保留舞台与播放进度 -->
         <div v-if="algorithmMounted" v-show="previewTab === 'algorithm'" id="preview-panel-algorithm" class="preview-algorithm" role="tabpanel" aria-labelledby="preview-tab-algorithm"><AlgorithmStage :w="w" :active="previewTab === 'algorithm'" /></div>
+        <!-- 量化分析：首次切换时挂载，子标签切换四个基于全厂整体的图表页；之后保持挂载以保留子标签与口径选择 -->
+        <div v-if="analysisMounted" v-show="previewTab === 'analysis'" id="preview-panel-analysis" class="preview-analysis" role="tabpanel" aria-labelledby="preview-tab-analysis"><AnalysisStage :w="w" :active="previewTab === 'analysis'" /></div>
       </div>
     </section>
 
@@ -187,7 +194,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .preview-tab.is-active::after { transform: scaleX(1); }
 // 隐藏而非卸载：保留预览尺寸与 WebGL 上下文，切回时无需重建。
 .preview-stage.is-hidden { visibility: hidden; pointer-events: none; }
-.preview-algorithm { position: absolute; inset: 0; }
+.preview-algorithm, .preview-analysis { position: absolute; inset: 0; }
 .preview-body { position: relative; display: flex; min-height: 0; flex: 1; }
 .preview-stage { position: relative; min-width: 0; flex: 1; }
 .preview-empty { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); font-size: 13px; }

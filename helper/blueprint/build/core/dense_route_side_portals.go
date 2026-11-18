@@ -14,14 +14,28 @@ func (env *transportEnvironment) denseSidePortals(endpoint, source, target *plac
 	return env.denseLateralPortals(endpoint, source, target, preferred, sourceSide, fixedGroundStem, []float64{.5}, 2)
 }
 
-// findDenseTransportPath 职责：保留原完整路线的成功结果，只在确实失败后先尝试原半格/合流，再使用共用有界局部接驳。
-// 使用：全部原调用方；边界：原成功路径、合流锚点及搜索计数逐项保持，备用耗时和展开如实累加，取消不进入备用。
+// findDenseTransportPath 为边界供料和交付先找低层完整路线，再使用全高度和侧向备用接驳。
+// 其它路线直接使用完整高度。每次试算都计入搜索开销，返回前恢复候选原有的高度范围。
 func (env *transportEnvironment) findDenseTransportPath(ctx context.Context, route *transportRoute, tail []*placed, incoming map[*placed]int, preferred vector) (points []vector, tailIndex, expanded, maximum, searches int) {
-	points, tailIndex, expanded, maximum, searches = env.findDenseTransportPathPrimary(ctx, route, tail, incoming, preferred)
-	if len(points) > 0 || ctx.Err() != nil {
-		return
+	fullHeight := env.maximum.z
+	limits := []float64{fullHeight}
+	if env.densePorts.boundary != nil && (route.from == nil || route.to == nil) && fullHeight > 4 {
+		limits = []float64{2, 4, fullHeight}
 	}
+	required := max(route.transportSource().a.z, route.end.a.z)
 	var extra, peak, calls int
+	for _, limit := range limits {
+		if limit < required {
+			continue
+		}
+		env.maximum.z = limit
+		points, tailIndex, extra, peak, calls = env.findDenseTransportPathPrimary(ctx, route, tail, incoming, preferred)
+		env.maximum.z = fullHeight
+		expanded, maximum, searches = expanded+extra, max(maximum, peak), searches+calls
+		if len(points) > 0 || ctx.Err() != nil {
+			return
+		}
+	}
 	points, tailIndex, extra, peak, calls = env.findDenseTransportPathSide(ctx, route, tail, incoming, preferred)
 	expanded, maximum, searches = expanded+extra, max(maximum, peak), searches+calls
 	if len(points) == 0 && ctx.Err() == nil && len(tail) > 0 {

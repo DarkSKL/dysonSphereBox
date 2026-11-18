@@ -47,7 +47,7 @@ export const useQuantWorkspace = () => {
   const denseLatitudeZone = ref('equator')
   // 蓝图名称：默认按目标自动生成（如「电磁矩阵 60 + 能量矩阵 60」）；用户手动修改后保持手动值，清空即恢复自动。
   const customName = ref('')
-  const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, enableFlowMonitor: false, enableIntermediateBuffer: false, useMixed: false, mix2: false, needCoaterNet: false})
+  const layout = reactive({beltLv: 1, inserterLv: 1, maxLays: 3, maxMachineInALine: 15, blockWidthLimit: 50, mergeType: 2, needPower: true, enableFlowMonitor: false, enableIntermediateBuffer: false, requestStationWarpers: false, useMixed: false, mix2: false, needCoaterNet: false})
   const surfaceLayout = reactive({mode: 'autoTropic', gridSegment: 200, latitudeGridIndex: 0, expandAdjacent: true})
   const plan = ref<quant.Result | null>(null)
   const generated = ref<build.Result | null>(null)
@@ -96,7 +96,7 @@ export const useQuantWorkspace = () => {
   const requestSettings = computed(() => ({fixedNum: effectiveFixedNum.value, stackResearchLab: layout.maxLays || 3, proliferateItself: sprayItself.value, mineralizeList: Object.fromEntries(mineralized.value.map(value => [value, true]))}))
   const requestScheme = computed(() => ({itemRecipeChoices: {...itemRecipeChoices}, schemeForRecipe: (detail.value?.recipes ?? []).map((_recipe, index) => recipeOverrides[index] ?? {building: 0, productionMode: 0, increasePoints: 0}), costWeight: automaticSurface.value ? {space: 1, power: 0} : {space: spaceCost.value ?? 1, power: powerCost.value ?? 0}}))
   // 混带与旧供剂网络开关不再由工作台控制；请求保留 DTO 字段但固定为 false。
-  const requestLayout = computed(() => buildFactoryLayoutRequest(layout, density.value === 'dense' || automaticSurface.value))
+  const requestLayout = computed(() => buildFactoryLayoutRequest(layout, density.value === 'dense' || automaticSurface.value, mode.value))
   const denseLatitudeOptions = computed(() => detail.value?.densityLatitudeOptions ?? [])
   const denseLatitudeOption = computed(() => denseLatitudeOptions.value.find(option => option.value === denseLatitudeZone.value))
   const denseLatitudeError = computed(() => {

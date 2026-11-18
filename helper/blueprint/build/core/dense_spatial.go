@@ -310,13 +310,14 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 				maxX, maxY = 0, 0
 			}
 			attempts := 0
+			budget := b.policy.search.PackingAttempts
 			columns := maxX + 1
-			if columns*(maxY+1) > 8192 {
+			if columns > budget/(maxY+1) {
 				// 大厂仍保留同一搜索预算，但覆盖完整纬向范围；不能把预算全部耗在前几行。
-				columns = max(2, 8192/(maxY+1))
+				columns = max(2, budget/(maxY+1))
 			}
-			for y := 0; y <= maxY && attempts < 8192; y++ {
-				for column := 0; column < columns && attempts < 8192; column++ {
+			for y := 0; y <= maxY && attempts < budget; y++ {
+				for column := 0; column < columns && attempts < budget; column++ {
 					x := column
 					if columns < maxX+1 {
 						x = column * maxX / (columns - 1)
@@ -334,10 +335,11 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 					area := xHigh * yHigh
 					wire := denseSpatialWireCost(wires, dx, dy)
 					aspect := math.Max(xHigh, yHigh) / math.Max(1, math.Min(xHigh, yHigh))
-					score := area * math.Max(1, aspect/1.8)
+					weightedWire := 0.
 					if b.denseSpatialOrder >= 2 {
-						score += wire * 2
+						weightedWire = wire
 					}
+					score := b.policy.shape.packingCost(area, aspect, weightedWire)
 					if score > bestScore || score == bestScore && (area > bestArea || area == bestArea && (wire > bestWire || wire == bestWire && aspect >= bestAspect)) {
 						continue
 					}
@@ -376,10 +378,11 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 					area := xHigh * yHigh
 					aspect := math.Max(xHigh, yHigh) / math.Max(1, math.Min(xHigh, yHigh))
 					wire := denseSpatialWireCost(wires, dx, dy)
-					score := area * math.Max(1, aspect/1.8)
+					weightedWire := 0.
 					if b.denseSpatialOrder >= 2 {
-						score += wire * 2
+						weightedWire = wire
 					}
+					score := b.policy.shape.packingCost(area, aspect, weightedWire)
 					if score > bestScore || score == bestScore && (area > bestArea || area == bestArea && wire >= bestWire) {
 						continue
 					}

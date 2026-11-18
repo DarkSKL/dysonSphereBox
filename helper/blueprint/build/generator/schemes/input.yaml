@@ -2,13 +2,31 @@ schemaVersion: 1
 id: input
 # 单任务形状策略仅在归一入口读取，后续候选统一继承。
 parameters:
+  # 全厂验收上限（长边 ÷ 短边，有限数且 ≥1）。例如 2.050 在 2.5 内可通过形状检查，超过上限会触发 GEN_E_SHAPE。
   maxAspect: 2.5
+  # 全厂软目标（有限数且 ≥1）。候选形状代价 = 占地面积 × max(1, 实际比例 / 此值)。调大后，细长布局受到的评分惩罚减轻。
+  preferredAspect: 1.4
+  # 密铺粗排、位置微调和塔场装箱的局部软目标（有限数且 ≥1）。调小会让这些步骤更偏好方形。
+  packingPreferredAspect: 1.8
+  # 启用线长评分时，每单位估算线长增加的代价（非负有限数）。调大偏好短线，填 0 关闭这一加权项。
+  packingWireWeight: 2
+  # 普通列高相对理想高度的倍率，依次尝试并向上取整，最后追加旧列高。数组含 1～16 项，每项大于 0 且不超过 16。
+  heightScales: [1, 0.8, 1.25]
+  # 跨纬带居中窗和偏移窗的首批高度倍率，向下取整并裁入许可范围，之后补齐扩展窗口。同样接受 1～16 项，每项大于 0 且不超过 16。
+  adjacentWindowScales: [1, 0.8, 1.2]
 subflows:
+  # $param 引用本文件上方同名值。归一化时冻结整套策略，后续评分、剪枝、最佳预览与终检沿用同一任务的配置。
   prepare-production:
     flow:
       - id: normalize-request
         tool: input.normalize@1
-        with: {maxAspect: {$param: maxAspect}}
+        with:
+          maxAspect: {$param: maxAspect}
+          preferredAspect: {$param: preferredAspect}
+          packingPreferredAspect: {$param: packingPreferredAspect}
+          packingWireWeight: {$param: packingWireWeight}
+          heightScales: {$param: heightScales}
+          adjacentWindowScales: {$param: adjacentWindowScales}
       - id: load-dataset-facts
         tool: input.load-data@1
       - id: validate-plan-source
@@ -27,6 +45,7 @@ subflows:
         tool: input.estimate-workload@1
       - id: compose-prepared-input
         tool: input.compose-production@1
+  # 为指定档位复核运输容量并估算工作量。index 由 factory.yaml 的运输候选传入。
   prepare-transport:
     inputs:
       index: {type: integer, required: true}

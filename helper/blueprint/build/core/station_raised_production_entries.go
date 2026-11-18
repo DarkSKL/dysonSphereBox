@@ -12,7 +12,7 @@ import (
 // 边界：不改变输入分配、制造实体、配方、产量、容量及高度规则；共享或已连接源保持原样，未找到合法portal时不提交升层链，后续仍须完整终检。
 func (b *builder) raiseStationProductionEntries(ctx context.Context) error {
 	machines, _ := ctx.Value(generationWorkloadKey{}).(int)
-	if b.policy == nil || b.policy.density != densityStandard || b.policy.station == nil || b.directBoundaryUnits == nil || b.polarFrame == nil || machines < 256 {
+	if b.policy == nil || b.policy.density != densityStandard || b.policy.station == nil || b.directBoundaryUnits == nil || b.polarFrame == nil || machines < b.policy.search.LargeLayoutThreshold {
 		return nil
 	}
 	idx, err := b.newDenseRoutePortIndex(ctx)
