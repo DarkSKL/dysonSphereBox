@@ -10,6 +10,8 @@ import { Overlay, type ScreenPoint } from './internal/overlay';
 import { BackgroundLayer } from './layers/background';
 import { StarLayer } from './layers/star';
 import { ShellLayer } from './layers/shell';
+import { BlueprintDisplay } from './layers/blueprint';
+import { DEFAULT_BLUEPRINT_APPEARANCE, type BlueprintAppearance, type SphereBlueprint } from './blueprint';
 import { SwarmLayer } from './layers/swarm';
 import { AchievementLayer, ACHIEVEMENT_OUTER_RADIUS } from './layers/achievements';
 import { PostProcess } from './layers/postprocess';
@@ -70,6 +72,7 @@ export class DysonSphereScene implements DysonSphereController {
   private background!: BackgroundLayer;
   private star!: StarLayer;
   private shell!: ShellLayer;
+  private blueprint: BlueprintDisplay | null = null;
   private swarm!: SwarmLayer;
   private achievements!: AchievementLayer;
   private post!: PostProcess;
@@ -90,6 +93,7 @@ export class DysonSphereScene implements DysonSphereController {
   private selected = -1;
   private readonly parallax = new THREE.Vector2();
   private azimuth = -0.5;
+  private blueprintElevation = BASE_ELEVATION;
   private zoom = 1;
   private zoomTarget = 1;
   // 中键拖拽：orbitDrag 记录拖拽中的指针；dragAz / dragEl 为叠加在自动视角上的旋转偏移
@@ -160,6 +164,86 @@ export class DysonSphereScene implements DysonSphereController {
 
   getParams(): DysonSphereParams {
     return { ...this.params };
+  }
+
+  private blueprintAppearance = { ...DEFAULT_BLUEPRINT_APPEARANCE };
+
+  setBlueprintAppearance(appearance: BlueprintAppearance): void {
+    this.blueprintAppearance = { ...appearance };
+    this.blueprint?.setAppearance(appearance);
+  }
+
+  setBlueprint(model: SphereBlueprint | null): void {
+    if (this.disposed) throw new Error('戴森球场景已经释放');
+    if (!this.supported) {
+      if (model) throw new Error('当前环境不支持 WebGL，无法预览蓝图');
+      return;
+    }
+    const next = model ? new BlueprintDisplay(model) : null;
+    if (next) {
+      try {
+        next.setAppearance(this.blueprintAppearance);
+        next.daylight.value = this.palette.over;
+        this.verifyBlueprint(next);
+      } catch (error) {
+        next.dispose();
+        throw error;
+      }
+      this.scene.add(next.group);
+    }
+    this.blueprint?.dispose();
+    this.blueprint = next;
+    this.dragAz = 0;
+    this.dragEl = 0;
+    this.azimuth = -0.5;
+    this.blueprintElevation = BASE_ELEVATION;
+    // 单层图案可能只画在一侧。根据节点方向选择起始机位，保留原始节点与层坐标。
+    if (model?.type === 1 && model.layers[0]?.nodes.length) {
+      const nodes = model.layers[0].nodes;
+      const facing = new THREE.Vector3();
+      for (const { pos } of nodes) facing.add(this._v.set(pos[0], pos[1], -pos[2]).normalize());
+      if (facing.length() > nodes.length * 0.15) {
+        facing.normalize();
+        this.azimuth = Math.atan2(facing.x, facing.z);
+        this.blueprintElevation = Math.asin(THREE.MathUtils.clamp(facing.y, -1, 1));
+      }
+    }
+    this.shell.group.visible = !next;
+    this.swarm.group.visible = !next;
+    this.star.group.scale.setScalar(next?.starScale ?? 1);
+    this.star.setBlueprintMode(!!next);
+    this.post.setBlueprintMode(!!next);
+    this.renderer.domElement.setAttribute('aria-label', next ? '玩家戴森球蓝图：已设计的球层与太阳帆轨道' : CANVAS_LABEL);
+  }
+
+  /** 实际绘制到独立目标，覆盖首次上传、实例缓冲和着色器链接错误；失败时原画布和 GPU 资源仍可用。 */
+  private verifyBlueprint(display: BlueprintDisplay): void {
+    const renderer = this.renderer;
+    const gl = renderer.getContext();
+    if (gl.isContextLost()) throw new Error('WebGL 上下文已丢失');
+    const previous = renderer.getRenderTarget();
+    const target = new THREE.WebGLRenderTarget(8, 8, { type: THREE.HalfFloatType, stencilBuffer: true });
+    const stage = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 30);
+    camera.position.z = 10;
+    stage.add(display.group);
+    const priorHandler = renderer.debug.onShaderError;
+    let shaderError = '';
+    try {
+      renderer.debug.onShaderError = (context, program) => {
+        shaderError = context.getProgramInfoLog(program) || '着色器程序链接失败';
+      };
+      renderer.setRenderTarget(target);
+      renderer.render(stage, camera);
+      if (shaderError) throw new Error(`蓝图材质渲染失败：${shaderError}`);
+      const status = gl.getError();
+      if (status !== gl.NO_ERROR) throw new Error(`蓝图试绘失败（WebGL ${status}）`);
+    } finally {
+      renderer.debug.onShaderError = priorHandler;
+      renderer.setRenderTarget(previous);
+      display.group.removeFromParent();
+      target.dispose();
+    }
   }
 
   setTheme(theme: DysonTheme, immediate = false): void {
@@ -234,6 +318,10 @@ export class DysonSphereScene implements DysonSphereController {
   resetView(): void {
     if (this.disposed || !this.supported) return;
     this.zoomTarget = 1;
+    if (this.blueprint) {
+      this.dragAz = 0;
+      this.dragEl = 0;
+    }
     if (this.orbitDrag) this.endOrbitDrag();
   }
 
@@ -247,6 +335,8 @@ export class DysonSphereScene implements DysonSphereController {
       this.overlay.dispose();
       this.background.dispose();
       this.star.dispose();
+      this.blueprint?.dispose();
+      this.blueprint = null;
       this.shell.dispose();
       this.swarm.dispose();
       this.achievements.dispose();
@@ -358,6 +448,7 @@ export class DysonSphereScene implements DysonSphereController {
     this.background.applyPalette(p);
     this.star.applyPalette(p);
     this.shell.applyPalette(p);
+    if (this.blueprint) this.blueprint.daylight.value = p.over;
     this.swarm.applyPalette(p);
     this.achievements.applyPalette(p);
     this.post.applyPalette(p);
@@ -585,8 +676,8 @@ export class DysonSphereScene implements DysonSphereController {
     this.parallax.x = damp(this.parallax.x, parallaxOn ? this.pointer.x : 0, 2.2, dt);
     this.parallax.y = damp(this.parallax.y, parallaxOn ? this.pointer.y : 0, 2.2, dt);
 
-    // 松开中键后旋转偏移平滑归零，回到自动视角
-    if (!this.orbitDrag) {
+    // 默认球松开中键后回到自动视角；蓝图保留用户选定的观察偏移。
+    if (!this.orbitDrag && !this.blueprint) {
       this.dragAz = damp(this.dragAz, 0, DRAG_RETURN, dt);
       this.dragEl = damp(this.dragEl, 0, DRAG_RETURN, dt);
     }
@@ -594,7 +685,7 @@ export class DysonSphereScene implements DysonSphereController {
 
     this.azimuth += dt * 0.03 * this.params.spinSpeed * motion;
     const az = this.azimuth + this.dragAz + this.parallax.x * 0.1;
-    const el = THREE.MathUtils.clamp(BASE_ELEVATION + this.dragEl - this.parallax.y * 0.05, -ELEVATION_LIMIT, ELEVATION_LIMIT);
+    const el = THREE.MathUtils.clamp(this.blueprintElevation + this.dragEl - this.parallax.y * 0.05, -ELEVATION_LIMIT, ELEVATION_LIMIT);
     const d = Math.max(this.distance * this.zoom, MIN_DISTANCE);
     this.post.setViewScale(THREE.MathUtils.clamp(Math.pow(d / this.distance, 1.3), 0.35, 1));
     this.camera.position.set(d * Math.cos(el) * Math.sin(az), d * Math.sin(el), d * Math.cos(el) * Math.cos(az));
@@ -668,8 +759,10 @@ export class DysonSphereScene implements DysonSphereController {
       y: this.parallax.y - this.dragEl * 0.8,
     });
     this.star.update(t, this.camera, motion);
-    this.shell.update(dt, t, spin, this.camera, reduced);
-    this.swarm.update(dt, t, this.camera, spin, this.interaction.pointerAttract && !reduced);
+    if (!this.blueprint) {
+      this.shell.update(dt, t, spin, this.camera, reduced);
+      this.swarm.update(dt, t, this.camera, spin, this.interaction.pointerAttract && !reduced);
+    }
     this.achievements.update(dt, t, this.camera, spin);
 
     this.post.render(dt);

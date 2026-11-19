@@ -15,6 +15,7 @@ export { createDysonSphere } from './create';
 export { DEFAULT_INTERACTION, DEFAULT_PARAMS, QUALITY_PRESETS } from './defaults';
 export { isAchievementUnlocked, TIER_LABELS } from './achievement';
 export { DYSON_SPHERE_CSS } from './styles';
+export type { BlueprintLayer, BlueprintOrbit, SphereBlueprint } from './blueprint';
 
 export type {
   AchievementTier,

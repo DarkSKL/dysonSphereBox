@@ -20,10 +20,11 @@ export class PostProcess {
   private paletteThreshold = 0.1;
   private over = 0;
   private viewScale = 1;
+  private blueprintMode = false;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     // 半浮点缓冲，保留恒星等高亮区域的 HDR 信息供 Bloom 使用
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, stencilBuffer: true });
     this.composer = new EffectComposer(renderer, rt);
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.45, 0.6);
     this.outputPass = new OutputPass();
@@ -39,6 +40,12 @@ export class PostProcess {
 
   setEnabled(enabled: boolean): void {
     this.bloomPass.enabled = enabled;
+  }
+
+  /** 彩色壳面大面积参与泛光时保留局部明暗；普通场景继续使用原始画质参数。 */
+  setBlueprintMode(active: boolean): void {
+    this.blueprintMode = active;
+    this.refresh();
   }
 
   /** MSAA 采样数；后处理管线不走画布自带抗锯齿，细梁需要这里的多重采样 */
@@ -76,10 +83,10 @@ export class PostProcess {
   }
 
   private refresh(): void {
-    this.bloomPass.strength = this.userStrength * this.paletteScale * this.viewScale;
+    this.bloomPass.strength = this.userStrength * this.paletteScale * this.viewScale * (this.blueprintMode ? 0.28 : 1);
     // 夜间使用用户阈值；日间向调色板阈值过渡，避免浅色背景整体发白
     this.bloomPass.threshold = THREE.MathUtils.lerp(
-      this.userThreshold,
+      this.blueprintMode ? Math.max(this.userThreshold, 0.86) : this.userThreshold,
       Math.max(this.userThreshold, this.paletteThreshold),
       this.over,
     );

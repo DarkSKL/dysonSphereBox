@@ -49,6 +49,7 @@ func main() {
 	diagnostics.Default.BeginSession()
 	log.SetOutput(diagnostics.StandardWriter{})
 	app := NewApp()
+	service.ServiceGroupApp.SystemServiceGroup.ConfigurationService.DatabaseReady = app.databaseReady
 	services := append([]interface{}{app}, service.RegisterServices()...)
 
 	err := wails.Run(&options.App{

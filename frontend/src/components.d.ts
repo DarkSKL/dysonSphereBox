@@ -53,6 +53,7 @@ declare module 'vue' {
     DysonSphereFactoryPanelStationWindow: typeof import('./components/dysonSphere/factory/panel/station-window.vue')['default']
     DysonSphereHeadlessServerHeroLottie: typeof import('./components/dysonSphere/headless/server-hero-lottie.vue')['default']
     DysonSphereHeadlessServiceStatusLottie: typeof import('./components/dysonSphere/headless/service-status-lottie.vue')['default']
+    DysonSphereHomeBlueprintPanel: typeof import('./components/dysonSphere/home/blueprint-panel.vue')['default']
     DysonSphereHomeSphereScene: typeof import('./components/dysonSphere/home/sphere-scene.vue')['default']
     DysonSphereModPackCard: typeof import('./components/dysonSphere/mod/pack-card.vue')['default']
     DysonSphereModPackDialog: typeof import('./components/dysonSphere/mod/pack-dialog.vue')['default']

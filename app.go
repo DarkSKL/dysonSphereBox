@@ -28,6 +28,8 @@ import (
 // 使用：main.go 将 App 与业务服务一起绑定给 Wails，前端只调用这里的窗口级能力。
 // 边界：业务服务通过 service 包注册，App 只保留生命周期和系统对话框这类运行时胶水。
 type App struct {
+	// databaseReady 在本次进程的 SQLite 迁移结束后关闭，让首屏配置读取同步于初始化。
+	databaseReady chan struct{}
 	// 职责：保存 Wails runtime 上下文，供目录选择器等窗口级 API 使用。
 	// 使用：startup 初始化后由 App 方法读取。
 	// 边界：不得在业务 helper 或 service 中直接依赖该字段。
@@ -39,7 +41,7 @@ type App struct {
 // 使用：main.go 启动时创建一次，并与 service.RegisterServices 一起绑定给前端。
 // 边界：不初始化数据库、不读取配置、不创建业务服务实例。
 func NewApp() *App {
-	return &App{}
+	return &App{databaseReady: make(chan struct{})}
 }
 
 // startup 在 Wails 启动时初始化全局基础设施。
@@ -51,7 +53,9 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	core.GLOBAL.RuntimeContext = ctx
 
-	if err := core.InitDatabase(databaseTemplate); err != nil {
+	err := core.InitDatabase(databaseTemplate)
+	close(a.databaseReady)
+	if err != nil {
 		diagnostics.Default.Record(logging.Entry{Action: "初始化客户端基础设施失败", Level: logging.Fatal, Source: "backend.startup", Reason: "数据库、迁移或服务器配置初始化返回错误", Namespace: "system.lifecycle.initializeFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err), "result": "failed"}})
 		panic(fmt.Errorf("init database: %w", err))
 	}

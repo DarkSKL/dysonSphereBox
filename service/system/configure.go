@@ -19,13 +19,24 @@ import (
 // 职责：读取和保存数据库中的系统配置，并在关键配置变化时同步刷新运行时资源。
 // 使用：设置页通过 Wails 绑定读取配置项、保存游戏路径等配置。
 // 边界：只校验已知关键配置；远端接口可用性和其它配置的领域规则仍由对应业务服务负责。
-type ConfigurationService struct{}
+type ConfigurationService struct {
+	// DatabaseReady 由桌面入口在绑定前设置。独立构造的服务使用已有数据库。
+	DatabaseReady <-chan struct{}
+}
+
+// waitForDatabase 使 Wails 首屏请求等待正在执行的数据库迁移。
+func (model *ConfigurationService) waitForDatabase() {
+	if model.DatabaseReady != nil {
+		<-model.DatabaseReady
+	}
+}
 
 // GetConfig 按 group 和 key 读取唯一配置项。
 // 职责：读取指定分组与键名的配置值。
 // 使用：前端初始化设置表单或业务服务需要读取动态配置时调用。
 // 边界：配置不存在时返回空字符串；数据库未初始化时由 ConfigUnit 返回错误。
 func (model *ConfigurationService) GetConfig(group string, key string) (string, error) {
+	model.waitForDatabase()
 	return core.InitConfigUnit(group, key).Get()
 }
 
@@ -36,6 +47,7 @@ func (model *ConfigurationService) GetConfig(group string, key string) (string, 
 // 非空时必须是 http/https 基础地址；其它配置只写入数据库。
 // 逻辑流：1. 按配置键归一化值或拒绝无效值 => 2. 服务器地址交给 setServerAddress 刷新 GLOBAL.ServerClient => 3. 写入 ConfigUnit => 4. 记录配置变更结果。
 func (model *ConfigurationService) SetConfig(group string, key string, value string) error {
+	model.waitForDatabase()
 	switch {
 	case group == "Game" && key == "StartupFilePath":
 		normalizedPath := dysonsphere.NormalizeDir(value)

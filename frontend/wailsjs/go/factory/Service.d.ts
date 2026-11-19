@@ -3,6 +3,7 @@
 import {factorycontract} from '../models';
 import {workflowjournal} from '../models';
 import {build} from '../models';
+import {sphereblueprint} from '../models';
 import {progressjournal} from '../models';
 import {quant} from '../models';
 
@@ -25,6 +26,8 @@ export function GetWorkflowTask(arg1:string):Promise<workflowjournal.Snapshot>;
 export function Inspect(arg1:factorycontract.InspectRequest):Promise<factorycontract.InspectResponse>;
 
 export function ListDatasets():Promise<factorycontract.DatasetResponse>;
+
+export function PreviewSphereBlueprint(arg1:string):Promise<sphereblueprint.Blueprint>;
 
 export function ReadBlueprintChunk(arg1:factorycontract.ChunkRequest):Promise<factorycontract.ChunkResponse>;
 

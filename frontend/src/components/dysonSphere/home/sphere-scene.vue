@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useThemeMode} from '../../../composables/useThemeMode'
+import type {BlueprintAppearance, SphereBlueprint} from '../../../packages/dyson-sphere/src/blueprint'
 import {
   createDysonSphere,
   DEFAULT_PARAMS,
@@ -11,12 +12,20 @@ import {
 interface SphereSceneProps {
   /** 戴森壳建造进度 0~1 */
   readonly progress: number
+  readonly appearance: BlueprintAppearance
 }
 
 const props = defineProps<SphereSceneProps>()
+const emit = defineEmits<{
+  (event: 'ready', supported: boolean): void
+  (event: 'available', supported: boolean): void
+}>()
 const containerRef = ref<HTMLDivElement | null>(null)
+const contextLost = ref(false)
 const {themeMode, loadThemeMode} = useThemeMode()
 let controller: DysonSphereController | null = null
+let blueprintMode = false
+let restoredFrame = 0
 
 // =============== 太阳帆粒子 ===============
 // 说明：首页只保留 2 道太阳帆轨道；粒子数随建造进度在画质档位上限的 10%~100% 之间变化。
@@ -48,9 +57,12 @@ onMounted(async () => {
       particleCount: resolveParticleCount(props.progress),
     },
   })
+  controller.setBlueprintAppearance(props.appearance)
+  emit('ready', controller.supported)
 })
 
 onBeforeUnmount(() => {
+  cancelAnimationFrame(restoredFrame)
   controller?.dispose()
   controller = null
 })
@@ -58,13 +70,38 @@ onBeforeUnmount(() => {
 // =============== 外部状态同步 ===============
 // 说明：只读应用主题驱动场景配色，不反向修改全局主题；进度变化时场景播放壳板落位动画并同步粒子数。
 // 主题切换立即生效：应用自身已有圆形揭示动画，场景再做 400ms 渐变会在揭示圈内出现新旧配色混杂。
+watch(() => props.appearance, value => controller?.setBlueprintAppearance(value))
+
 watch(themeMode, (mode) => {
   controller?.setTheme(mode, true)
 })
 
 watch(() => props.progress, (progress) => {
-  controller?.setParams({progress, particleCount: resolveParticleCount(progress)})
+  if (!blueprintMode) controller?.setParams({progress, particleCount: resolveParticleCount(progress)})
 })
+
+// 同步返回建模结果，调用方据此决定是否允许保存；恢复默认球时补上切换期间的建造进度。
+function setBlueprint(model: SphereBlueprint | null): void {
+  if (!controller) throw new Error('戴森球场景尚未就绪')
+  if (model === null) {
+    controller.setParams({progress: props.progress, particleCount: resolveParticleCount(props.progress)})
+  }
+  controller.setBlueprint(model)
+  blueprintMode = model !== null
+}
+
+function updateContext(lost: boolean): void {
+  contextLost.value = lost
+  cancelAnimationFrame(restoredFrame)
+  if (lost) {
+    emit('available', false)
+  } else {
+    // capture 先于 Three.js 的 canvas 恢复监听执行，下一帧再提交模型以使用新上下文。
+    restoredFrame = requestAnimationFrame(() => emit('available', Boolean(controller?.supported)))
+  }
+}
+
+defineExpose({setBlueprint})
 </script>
 
 <template>
@@ -74,7 +111,10 @@ watch(() => props.progress, (progress) => {
   <!-- * 依赖：依赖 packages/dyson-sphere 与 useThemeMode -->
   <!-- * 边界：场景会向容器写入 class 与 DOM，因此使用独立内层元素，避免与 Vue 管理的根节点属性冲突 -->
   <div class="sphere-scene">
-    <div ref="containerRef" class="sphere-scene-canvas" />
+    <div ref="containerRef" class="sphere-scene-canvas"
+      @webglcontextlost.capture="updateContext(true)" @webglcontextrestored.capture="updateContext(false)">
+      <div v-if="contextLost" class="dyson-fallback" role="status">图形设备连接中断，已显示静态画面</div>
+    </div>
   </div>
 </template>
 

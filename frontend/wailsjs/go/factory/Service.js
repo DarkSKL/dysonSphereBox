@@ -42,6 +42,10 @@ export function ListDatasets() {
   return window['go']['factory']['Service']['ListDatasets']();
 }
 
+export function PreviewSphereBlueprint(arg1) {
+  return window['go']['factory']['Service']['PreviewSphereBlueprint'](arg1);
+}
+
 export function ReadBlueprintChunk(arg1) {
   return window['go']['factory']['Service']['ReadBlueprintChunk'](arg1);
 }

@@ -6082,6 +6082,179 @@ export namespace server {
 
 }
 
+export namespace sphereblueprint {
+	
+	export class Orbit {
+	    id: number;
+	    radius: number;
+	    rotation: number[];
+	    enabled: boolean;
+	    visible: boolean;
+	    hsva: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Orbit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.radius = source["radius"];
+	        this.rotation = source["rotation"];
+	        this.enabled = source["enabled"];
+	        this.visible = source["visible"];
+	        this.hsva = source["hsva"];
+	    }
+	}
+	export class Shell {
+	    id: number;
+	    nodes: number[];
+	    seed: number;
+	    color: number;
+	    proto: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Shell(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.nodes = source["nodes"];
+	        this.seed = source["seed"];
+	        this.color = source["color"];
+	        this.proto = source["proto"];
+	    }
+	}
+	export class Frame {
+	    id: number;
+	    a: number;
+	    b: number;
+	    euler: boolean;
+	    color: number;
+	    proto: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Frame(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.a = source["a"];
+	        this.b = source["b"];
+	        this.euler = source["euler"];
+	        this.color = source["color"];
+	        this.proto = source["proto"];
+	    }
+	}
+	export class Node {
+	    id: number;
+	    pos: number[];
+	    color: number;
+	    proto: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Node(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.pos = source["pos"];
+	        this.color = source["color"];
+	        this.proto = source["proto"];
+	    }
+	}
+	export class Layer {
+	    id: number;
+	    radius: number;
+	    rotation: number[];
+	    visible: boolean;
+	    nodes: Node[];
+	    frames: Frame[];
+	    shells: Shell[];
+	    gridMode: number;
+	    cellColors: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Layer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.radius = source["radius"];
+	        this.rotation = source["rotation"];
+	        this.visible = source["visible"];
+	        this.nodes = this.convertValues(source["nodes"], Node);
+	        this.frames = this.convertValues(source["frames"], Frame);
+	        this.shells = this.convertValues(source["shells"], Shell);
+	        this.gridMode = source["gridMode"];
+	        this.cellColors = source["cellColors"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Blueprint {
+	    type: number;
+	    gameVersion: string;
+	    layers: Layer[];
+	    orbits: Orbit[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Blueprint(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.gameVersion = source["gameVersion"];
+	        this.layers = this.convertValues(source["layers"], Layer);
+	        this.orbits = this.convertValues(source["orbits"], Orbit);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+
+}
+
 export namespace statistics {
 	
 	export class Thermal {

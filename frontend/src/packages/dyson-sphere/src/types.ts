@@ -5,6 +5,8 @@
  * 使用方即使是 TypeScript 4.x、没有安装 @types/three，也能直接使用本包的类型声明。
  */
 
+import type { BlueprintAppearance, SphereBlueprint } from './blueprint';
+
 /** 主题 */
 export type DysonTheme = 'dark' | 'light';
 
@@ -119,6 +121,11 @@ export interface DysonSphereOptions {
 export interface DysonSphereController {
   /** WebGL 是否可用 */
   readonly supported: boolean;
+
+  /** 展示玩家的设计完成态；null 恢复默认球。构建或试绘失败时抛出异常并保留当前场景。 */
+  setBlueprint(model: SphereBlueprint | null): void;
+  /** 即时调整骨架、板纹与帆轨道的可见性。 */
+  setBlueprintAppearance(appearance: BlueprintAppearance): void;
 
   /** 局部更新参数，立即生效。切换画质且未同时指定 particleCount 时，粒子数重置为该档位默认值 */
   setParams(patch: Partial<DysonSphereParams>): void;

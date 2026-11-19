@@ -120,6 +120,7 @@ export class StarLayer {
   private readonly color = new THREE.Color('#ffc46b');
   private pulse = 0.5;
   private glowScale = 1;
+  private coronaScale = 1;
   private readonly surfaceUniforms = {
     uTime: { value: 0 },
     uColor: { value: this.color },
@@ -169,6 +170,11 @@ export class StarLayer {
     this.pulse = v;
   }
 
+  /** 涂装预览中缩短日冕的视觉影响范围，使背光区域仍能分辨框梁。 */
+  setBlueprintMode(active: boolean): void {
+    this.coronaScale = active ? 0.38 : 1;
+  }
+
   applyPalette(p: Palette): void {
     this.glowScale = p.starGlow;
     this.coronaUniforms.uOver.value = p.over;
@@ -183,7 +189,7 @@ export class StarLayer {
     this.surfaceUniforms.uTime.value = time;
     this.surfaceUniforms.uBright.value = 1.05 + wave * 0.06 * k;
     this.coronaUniforms.uTime.value = time;
-    this.coronaUniforms.uIntensity.value = this.glowScale * (1 + wave * 0.2 * k);
+    this.coronaUniforms.uIntensity.value = this.glowScale * this.coronaScale * (1 + wave * 0.2 * k);
     this.corona.quaternion.copy(camera.quaternion);
   }
 
