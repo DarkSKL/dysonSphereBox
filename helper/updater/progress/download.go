@@ -50,7 +50,7 @@ func (reader *downloadReader) Read(buffer []byte) (int, error) {
 	return n, err
 }
 
-// ReadAll 职责：完整读取主更新包并报告进度；使用：ApplyRelease 在校验前调用；边界：无回调时直接读取，读取失败不报告下载完成。
+// ReadAll 职责：完整读取主更新包并报告进度；使用：PrepareRelease 在校验前调用；边界：无回调时直接读取，读取失败不报告下载完成。
 // 逻辑流：1. 优先读取响应长度并报告下载开始 => 2. 累计并节流报告字节数 => 3. 补发最终字节量 => 4. 成功后报告校验阶段，失败直接返回原始错误。
 func ReadAll(reader io.Reader, totalBytes int64, report Reporter) ([]byte, error) {
 	if report == nil {

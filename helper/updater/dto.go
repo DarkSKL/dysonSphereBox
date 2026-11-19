@@ -66,29 +66,14 @@ type CheckResult struct {
 	Arch string `json:"arch"`
 }
 
-// UpdateResult 是执行自更新后的返回结果。
-// 职责：承载自更新是否写入成功、目标版本和检查快照。
-// 使用：由系统更新服务返回给前端，用于提示用户是否需要重启。
-// 边界：写入成功不代表当前进程已切换版本，新版本需要重启后生效。
+// UpdateResult 职责：描述下载准备结果；使用：前端显示退出安装提示；边界：Prepared 不代表当前程序已经替换。
 type UpdateResult struct {
-	// Updated 表示本轮是否实际写入了新的可执行文件。
-	// 职责：区分无需更新和已完成写入两种结果。
-	// 使用：前端据此显示“已是最新”或“重启生效”。
-	// 边界：为 true 仍不代表当前进程已运行新版本。
-	Updated bool `json:"updated"`
-	// TargetVersion 是本轮更新目标版本。
-	// 职责：告知前端重启后预计运行的版本。
-	// 使用：UpdateAppSelf 根据 Release 或检查结果写入。
-	// 边界：无可用更新时可能为空，不能作为成功更新的唯一判断。
+	// Prepared 职责：表示新版已经校验并暂存；使用：前端展示退出并更新；边界：无更新或失败时不进入待安装状态。
+	Prepared bool `json:"prepared"`
+	// TargetVersion 职责：描述退出后将安装的版本；使用：更新提示；边界：不能单独作为成功判断。
 	TargetVersion string `json:"targetVersion"`
-	// Message 是面向用户的更新结果提示。
-	// 职责：提供简短的操作反馈。
-	// 使用：前端直接展示给用户。
-	// 边界：不承载机器可读状态，机器判断应使用 Updated。
+	// Message 职责：提供用户操作提示；使用：前端展示；边界：机器状态以 Prepared 为准。
 	Message string `json:"message"`
-	// Check 是执行更新前的检查快照。
-	// 职责：保留版本、资产和发布时间等上下文。
-	// 使用：前端在更新完成后继续展示目标 Release 信息。
-	// 边界：不记录下载校验细节或写入路径。
+	// Check 职责：保留本次 Release 信息；使用：前端展示发布说明；边界：不暴露本地暂存路径。
 	Check CheckResult `json:"check"`
 }

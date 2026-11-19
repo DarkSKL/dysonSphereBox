@@ -6,4 +6,6 @@ export function CheckAppUpdate():Promise<updater.CheckResult>;
 
 export function GetAppVersion():Promise<string>;
 
+export function PrepareAppExitUpdate():Promise<void>;
+
 export function UpdateAppSelf():Promise<updater.UpdateResult>;

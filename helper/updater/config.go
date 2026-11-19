@@ -26,7 +26,7 @@ const (
 	appUpdateAPIBaseURL = "https://gitee.com/api/v5"
 	// appUpdateChecksum 表示 Release 附带的校验清单文件名。
 	// 职责：指定 go-selfupdate 校验链中唯一的 checksum 文件。
-	// 使用：client.New 与 apply.ApplyRelease 创建校验器时读取。
+	// 使用：client.New 与 apply.PrepareRelease 创建校验器时读取。
 	// 边界：缺失时视为更新资产不可信并返回错误，不自动跳过校验。
 	appUpdateChecksum = "checksums.txt"
 	// appUpdateCommand 表示压缩包内应用可执行文件的基础名称。

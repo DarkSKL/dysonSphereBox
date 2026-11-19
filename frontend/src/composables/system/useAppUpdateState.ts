@@ -24,7 +24,7 @@ const appUpdatePercentage = computed(() => {
 const appUpdateLabel = computed(() => {
   const progress = appUpdateProgress.value
   if (!progress) return '准备更新…'
-  if (progress.stage === 'verifying') return '校验安装中…'
+  if (progress.stage === 'verifying') return '校验更新包…'
   return appUpdatePercentage.value === undefined
     ? `已下载 ${formatFileSize(progress.downloadedBytes)}`
     : `下载 ${Math.floor(appUpdatePercentage.value)}%`
@@ -33,7 +33,7 @@ const appUpdateDetail = computed(() => {
   const progress = appUpdateProgress.value
   if (!progress) return '正在检查版本并连接下载源…'
   const downloaded = formatFileSize(progress.downloadedBytes)
-  if (progress.stage === 'verifying') return `已下载 ${downloaded}，正在校验并安装…`
+  if (progress.stage === 'verifying') return `已下载 ${downloaded}，正在校验，完成后等待退出安装…`
   return progress.totalBytes > 0
     ? `${downloaded} / ${formatFileSize(progress.totalBytes)}`
     : `已下载 ${downloaded}（总大小未知）`
@@ -49,6 +49,8 @@ interface AppUpdateCheckResult {
 }
 
 const appUpdateInfo = ref<updater.CheckResult | null>(null)
+// 说明：所有更新入口共用待安装版本，切换页面或关闭弹窗不会丢失退出安装状态。
+const preparedTargetVersion = ref('')
 // 最近一次成功取得检查结果的时间，与检查结果同属程序周期缓存
 const appUpdateCheckedAt = ref<Date | null>(null)
 const isCheckingAppUpdate = ref(false)
@@ -63,7 +65,7 @@ export const useAppUpdateState = () => {
   const checkAppUpdate = async (
     options: AppUpdateCheckOptions = {},
   ): Promise<AppUpdateCheckResult> => {
-    if (!options.force && hasCheckedAppUpdateInProgramSession) {
+    if (preparedTargetVersion.value || (!options.force && hasCheckedAppUpdateInProgramSession)) {
       return {
         result: appUpdateInfo.value,
         skipped: true,
@@ -115,6 +117,7 @@ export const useAppUpdateState = () => {
       })
       const result = await UpdateAppSelf()
       appUpdateInfo.value = result.check
+      if (result.prepared) preparedTargetVersion.value = result.targetVersion || result.check.latestVersion
       return result
     } finally {
       stopProgress?.()
@@ -125,6 +128,7 @@ export const useAppUpdateState = () => {
 
   return {
     appUpdateInfo,
+    preparedTargetVersion,
     appUpdateCheckedAt,
     isCheckingAppUpdate,
     isUpdatingApp,

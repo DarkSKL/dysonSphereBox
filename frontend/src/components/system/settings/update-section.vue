@@ -11,8 +11,9 @@ import SettingsSection from './section.vue'
 import SettingsValueBox, {type SettingsValueTone} from './value-box.vue'
 import ReleaseNotes from '../release-notes.vue'
 import AppUpdateButton from '../app-update-button.vue'
+import AppUpdateProgress from '../app-update-progress.vue'
 
-type UpdateStatus = 'idle' | 'checking' | 'latest' | 'available' | 'error' | 'updated'
+type UpdateStatus = 'idle' | 'checking' | 'latest' | 'available' | 'error' | 'prepared'
 
 const message = useMessage()
 const {appVersion, loadAppVersion} = useAppVersion()
@@ -21,19 +22,18 @@ const {
   appUpdateCheckedAt,
   isCheckingAppUpdate,
   isUpdatingApp,
-  appUpdateDetail,
+  preparedTargetVersion,
   checkAppUpdate,
   updateAppSelf,
 } = useAppUpdateState()
 const checkError = ref('')
 const lastCheckAt = ref<Date | null>(null)
-const updatedTargetVersion = ref('')
 
 // =============== 更新状态归纳 ===============
-// 说明：把检查结果、检查中、检查失败和已写入更新归纳为单一状态，模板只按状态渲染。
-// 边界：已写入更新优先级最高，直到用户重启前都保持“重启生效”提示。
+// 说明：把检查结果、检查中、检查失败和待安装更新归纳为单一状态，模板只按状态渲染。
+// 边界：待安装更新优先级最高，直到用户退出前都保持“退出并更新”提示。
 const status = computed<UpdateStatus>(() => {
-  if (updatedTargetVersion.value) return 'updated'
+  if (preparedTargetVersion.value) return 'prepared'
   if (isCheckingAppUpdate.value) return 'checking'
   if (checkError.value) return 'error'
   if (!appUpdateInfo.value) return 'idle'
@@ -65,8 +65,8 @@ const valueText = computed(() => {
       return `发现新版本 ${latestVersionText.value}（当前 ${appVersion.value}）`
     case 'error':
       return `检查更新失败：${checkErrorInfo.value.summary}`
-    case 'updated':
-      return `已更新到 ${updatedTargetVersion.value}，重启应用后生效`
+    case 'prepared':
+      return `${preparedTargetVersion.value} 已准备好，退出后安装并自动重新打开`
     default:
       return `当前版本 ${appVersion.value}`
   }
@@ -74,7 +74,7 @@ const valueText = computed(() => {
 const valueTone = computed<SettingsValueTone>(() => {
   if (status.value === 'available') return 'warning'
   if (status.value === 'error') return 'error'
-  if (status.value === 'updated') return 'success'
+  if (status.value === 'prepared') return 'success'
   if (status.value === 'checking') return 'muted'
   return 'default'
 })
@@ -100,14 +100,13 @@ onMounted(() => {
 })
 
 // =============== 执行更新 ===============
-// 说明：用户确认后由后端下载、校验并替换当前程序，成功后提示重启生效。
+// 说明：用户确认后下载并校验更新包；当前程序不变，退出后安装并自动重新打开。
 // 边界：失败时保留当前程序并提示错误；后端判断无需更新时按“已是最新”处理。
 const handleUpdate = async (): Promise<void> => {
   try {
     const result = await updateAppSelf()
-    if (result.updated) {
-      updatedTargetVersion.value = result.targetVersion || result.check.latestVersion
-      message.success(result.message || '更新已完成，重启应用后生效。')
+    if (result.prepared) {
+      message.success(result.message || '更新包已准备好，退出后安装并自动重新打开应用。')
     } else {
       message.info(result.message || '当前已是最新版本。')
     }
@@ -126,14 +125,14 @@ const openReleasePage = (): void => {
 <template>
   <!-- ~ 应用更新 -->
   <!-- * 说明：值框展示当前版本与检查结论，右侧为检查与更新；提示行展示运行平台与上次检查时间 -->
-  <!-- * 交互：更新需二次确认；更新执行中禁用检查；写入完成后“更新”替换为“退出应用” -->
+  <!-- * 交互：更新需二次确认；更新执行中禁用检查；准备完成后“更新”替换为“退出并更新” -->
   <!-- * 依赖：依赖 useAppVersion、useAppUpdateState 与 Wails BrowserOpenURL / Quit 运行时 -->
   <!-- * 边界：只有检测到匹配当前平台的更新包时才允许更新；发布说明只在有新版本或等待重启时展示，检查失败时改为展示处理建议与原始错误 -->
   <SettingsSection id="settings-update" title="应用更新">
     <SettingsValueBox :tone="valueTone" :title="valueText">{{ valueText }}</SettingsValueBox>
     <n-button
       :loading="isCheckingAppUpdate"
-      :disabled="isUpdatingApp || status === 'updated'"
+      :disabled="isUpdatingApp || status === 'prepared'"
       @click="runCheck(true)"
     >
       <template #icon>
@@ -141,11 +140,11 @@ const openReleasePage = (): void => {
       </template>
       检查
     </n-button>
-    <n-button v-if="status === 'updated'" type="primary" secondary @click="Quit">
+    <n-button v-if="status === 'prepared'" type="primary" secondary @click="Quit">
       <template #icon>
         <LogOut :size="15" :stroke-width="1.8" />
       </template>
-      退出应用
+      退出并更新
     </n-button>
     <n-popconfirm v-else positive-text="立即更新" negative-text="取消" @positive-click="handleUpdate">
       <template #trigger>
@@ -156,11 +155,10 @@ const openReleasePage = (): void => {
           更新
         </AppUpdateButton>
       </template>
-      将下载 {{ appUpdateInfo?.assetName }} 并替换当前程序，完成后需重启应用。
+      将下载并校验 {{ appUpdateInfo?.assetName }}。退出应用后安装更新，完成后自动重新打开。
     </n-popconfirm>
     <template #hint>
-      <span v-if="isUpdatingApp" class="font-display tabular-nums">{{ appUpdateDetail }}</span>
-      <template v-else>当前运行环境：{{ platformText }}　上次检查：{{ lastCheckedText }}</template>
+      当前运行环境：{{ platformText }}　上次检查：{{ lastCheckedText }}
     </template>
 
     <!-- ~ 发布说明 -->
@@ -169,6 +167,7 @@ const openReleasePage = (): void => {
     <!-- * 依赖：依赖检查结果中的 releaseName、publishedAt、releaseNotes 与 releaseUrl -->
     <!-- * 边界：说明共用更新弹窗的 Markdown 渲染和外链处理，空正文显示提示 -->
     <template #after>
+      <AppUpdateProgress />
       <!-- ~ 检查失败说明 -->
       <!-- * 说明：值框给出可读原因，这里补全处理建议与后端原始错误，避免单行值框截断 -->
       <!-- * 交互：原始错误默认折叠，需要排障时展开；重新检查仍使用行内“检查”按钮 -->
@@ -186,7 +185,7 @@ const openReleasePage = (): void => {
       </section>
 
       <section
-        v-if="(status === 'available' || status === 'updated') && (releaseTitle || releaseNotes)"
+        v-if="(status === 'available' || status === 'prepared') && (releaseTitle || releaseNotes)"
         class="update-notes"
         aria-label="发布说明"
       >

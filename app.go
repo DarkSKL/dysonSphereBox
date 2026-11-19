@@ -8,8 +8,10 @@ import (
 	"DysonSphereBox/constant/logging"
 	"DysonSphereBox/core/diagnostics"
 	logStore "DysonSphereBox/helper/system/logging"
+	appUpdater "DysonSphereBox/helper/updater"
 	"DysonSphereBox/service"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -71,6 +73,22 @@ func (a *App) startup(ctx context.Context) {
 	if _, err := environmentManagerService.RecoverInterruptedOperations(); err != nil {
 		systemHelper.RecordFailure("system", "recovery", "environment", "恢复环境操作失败", err, nil)
 	}
+}
+
+// beforeClose 职责：在所有正常退出入口交接更新；使用：Wails OnBeforeClose 调用；边界：下载中保留窗口；交接失败明确提示并正常退出，保留当前程序。
+func (a *App) beforeClose(ctx context.Context) bool {
+	if err := service.ServiceGroupApp.SystemServiceGroup.UpdateService.PrepareAppExitUpdate(); err != nil {
+		busy := errors.Is(err, appUpdater.ErrUpdateInProgress)
+		title := "本次更新未安装"
+		if busy {
+			title = "暂时无法退出"
+		}
+		_, _ = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+			Type: runtime.WarningDialog, Title: title, Message: err.Error(), Buttons: []string{"确定"},
+		})
+		return busy
+	}
+	return false
 }
 
 // shutdown 在 Wails 退出时释放数据库等基础设施资源。

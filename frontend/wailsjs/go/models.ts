@@ -6950,7 +6950,7 @@ export namespace updater {
 	    }
 	}
 	export class UpdateResult {
-	    updated: boolean;
+	    prepared: boolean;
 	    targetVersion: string;
 	    message: string;
 	    check: CheckResult;
@@ -6961,7 +6961,7 @@ export namespace updater {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.updated = source["updated"];
+	        this.prepared = source["prepared"];
 	        this.targetVersion = source["targetVersion"];
 	        this.message = source["message"];
 	        this.check = this.convertValues(source["check"], CheckResult);

@@ -10,6 +10,10 @@ export function GetAppVersion() {
   return window['go']['system']['UpdateService']['GetAppVersion']();
 }
 
+export function PrepareAppExitUpdate() {
+  return window['go']['system']['UpdateService']['PrepareAppExitUpdate']();
+}
+
 export function UpdateAppSelf() {
   return window['go']['system']['UpdateService']['UpdateAppSelf']();
 }

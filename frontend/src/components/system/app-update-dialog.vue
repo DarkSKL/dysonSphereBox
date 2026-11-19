@@ -1,29 +1,28 @@
 <script setup lang="ts">
 import {CloudDownload, LogOut} from '@lucide/vue'
 import {useMessage} from 'naive-ui'
-import {computed, ref} from 'vue'
+import {computed} from 'vue'
 import {Quit} from '../../../wailsjs/runtime/runtime'
 import {useAppUpdateState} from '../../composables/system/useAppUpdateState'
 import {formatErrorMessage} from '../../utils/format'
 import ReleaseNotes from './release-notes.vue'
 import AppUpdateButton from './app-update-button.vue'
+import AppUpdateProgress from './app-update-progress.vue'
 
 const props = defineProps<{readonly show: boolean}>()
 const emit = defineEmits<{(event: 'update:show', value: boolean): void}>()
 const message = useMessage()
-const {appUpdateInfo, isUpdatingApp, appUpdateDetail, updateAppSelf} = useAppUpdateState()
-const updatedTargetVersion = ref('')
+const {appUpdateInfo, isUpdatingApp, preparedTargetVersion, updateAppSelf} = useAppUpdateState()
 const title = computed(() => `发现新版本 ${appUpdateInfo.value?.latestVersion || ''}`.trim())
 
 // =============== 应用更新弹窗动作 ===============
 // 说明：在标题栏版本提示打开后展示发布说明，并由弹窗底部按钮执行现有自更新流程。
-// 边界：更新失败时保留弹窗和说明；成功写入后提示重启，并将主操作替换为退出应用。
+// 边界：更新失败时保留弹窗和说明；准备完成后提示退出安装，并将主操作替换为退出并更新。
 const handleUpdate = async (): Promise<void> => {
   try {
     const result = await updateAppSelf()
-    if (result.updated) {
-      updatedTargetVersion.value = result.targetVersion || result.check.latestVersion
-      message.success(result.message || '更新已完成，重启应用后生效。')
+    if (result.prepared) {
+      message.success(result.message || '更新包已准备好，退出后安装并自动重新打开应用。')
       return
     }
 
@@ -37,8 +36,8 @@ const handleUpdate = async (): Promise<void> => {
 <template>
   <!-- ~ 应用更新内容弹窗 -->
   <!-- * 说明：展示新版本发布说明和唯一的更新主操作，供标题栏版本提示打开 -->
-  <!-- * 交互：更新期间阻止关闭；写入成功后将主操作改为退出应用以便重启生效 -->
-  <!-- * 依赖：共享更新检查结果、useAppUpdateState 与 Wails BrowserOpenURL / Quit 运行时 -->
+  <!-- * 交互：更新期间阻止关闭；下载完成后退出安装并自动重新打开 -->
+  <!-- * 依赖：共享更新检查结果、useAppUpdateState 与 Wails Quit 运行时 -->
   <!-- * 边界：发布说明按 Markdown 渲染并清洗，链接只放行 https 且交给系统浏览器打开 -->
   <n-modal
     :show="props.show"
@@ -56,23 +55,23 @@ const handleUpdate = async (): Promise<void> => {
         <span v-if="appUpdateInfo?.publishedAt" class="app-update-dialog-date">{{ appUpdateInfo.publishedAt }}</span>
       </header>
       <ReleaseNotes class="app-update-dialog-notes" :source="appUpdateInfo?.releaseNotes" empty-text="该版本没有附带更新说明。" />
-      <p v-if="updatedTargetVersion" class="app-update-dialog-restart" role="status">
-        已更新到 {{ updatedTargetVersion }}，退出应用后重新启动即可生效。
+      <AppUpdateProgress />
+      <p v-if="preparedTargetVersion" class="app-update-dialog-restart" role="status">
+        {{ preparedTargetVersion }} 已下载并校验。退出后安装更新，完成后自动重新打开应用。
       </p>
     </section>
 
     <template #footer>
       <div class="app-update-dialog-footer">
-        <span v-if="isUpdatingApp" class="app-update-dialog-progress">{{ appUpdateDetail }}</span>
         <n-button
-          v-if="updatedTargetVersion"
+          v-if="preparedTargetVersion"
           type="primary"
           @click="Quit"
         >
           <template #icon>
             <LogOut :size="15" :stroke-width="1.8" />
           </template>
-          退出应用
+          退出并更新
         </n-button>
         <AppUpdateButton
           v-else
@@ -138,10 +137,4 @@ const handleUpdate = async (): Promise<void> => {
   gap: 8px 16px;
 }
 
-.app-update-dialog-progress {
-  color: var(--ds-text-secondary);
-  font-family: var(--ds-font-display);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
 </style>
