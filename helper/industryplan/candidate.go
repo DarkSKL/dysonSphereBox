@@ -198,6 +198,24 @@ func (c *candidate) useResource(to *location, item int, desired float64, used ma
 	return supplied
 }
 
+// miningContribution 按本星本物料的已用矿速和实接上限，估算还能就地承担多少新增需求。
+func (c *candidate) miningContribution(site *location, item int, used, demand float64) float64 {
+	key := resourceSite{planetID: site.planet.ID, itemID: item}
+	if demand <= 0 || c.excludedSources[key] {
+		return 0
+	}
+	for _, resource := range site.planet.Resources {
+		if resource.ItemID == item {
+			capacity, _, _ := resourceCapacity(c.req, resource, used+demand)
+			if limit, ok := c.sourceLimits[key]; ok {
+				capacity = min(capacity, limit)
+			}
+			return max(0, min(demand, capacity-used))
+		}
+	}
+	return 0
+}
+
 // miningOrder 优先本地矿、再复用已开工矿区。需要新增矿区时，按可承担的缺口选矿，等量优先同系近星。
 func (c *candidate) miningOrder(to *location, item int, desired float64, used map[int64]float64) []int64 {
 	order := slices.Clone(c.orderFor(to.planet.ID))
@@ -209,19 +227,8 @@ func (c *candidate) miningOrder(to *location, item int, desired float64, used ma
 	ranks := make(map[int64]rank, len(order))
 	for _, id := range order {
 		s := c.world[id]
-		key := resourceSite{planetID: id, itemID: item}
-		available := 0.0
-		for _, resource := range s.planet.Resources {
-			if resource.ItemID == item {
-				capacity, _, _ := resourceCapacity(c.req, resource, used[id]+desired)
-				available += capacity
-			}
-		}
-		if limit, ok := c.sourceLimits[key]; ok {
-			available = min(available, limit)
-		}
-		r := rank{class: 3, contribution: max(0, min(available-used[id], desired)), near: s.planet.StarID == to.planet.StarID}
-		if !c.excludedSources[key] && significant(r.contribution) {
+		r := rank{class: 3, contribution: c.miningContribution(s, item, used[id], desired), near: s.planet.StarID == to.planet.StarID}
+		if significant(r.contribution) {
 			switch {
 			case id == to.planet.ID:
 				r.class = 0

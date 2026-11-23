@@ -1013,7 +1013,7 @@ func evaluate(ctx context.Context, req Request, base quant.Result, planets map[i
 		blockID := blockIDs[index]
 		site := c.world[assignment.moves[blockID]]
 		if site == nil {
-			site = c.placement(p, buildable, assignment.strategy)
+			site = c.placement(p, buildable, assignment.strategy, raw, explicit)
 			if assignment.fullFactories[site.planet.ID] {
 				destination := factoryDestination(site.planet.ID, usedFactories, assignment.fullFactories, planets, buildable)
 				if destination == 0 {
@@ -1183,7 +1183,7 @@ func evaluate(ctx context.Context, req Request, base quant.Result, planets map[i
 }
 
 // placement 职责：在固定中心及外围就近策略中为整条产线选址；使用：候选构建；边界：不拆分整数机器或重复生产。
-func (c *candidate) placement(production quant.Production, buildable []int64, strategy int) *location {
+func (c *candidate) placement(production quant.Production, buildable []int64, strategy int, raw, external map[int]bool) *location {
 	center := c.world[c.center]
 	if strategy == 0 {
 		return center
@@ -1205,12 +1205,11 @@ func (c *candidate) placement(production quant.Production, buildable []int64, st
 		site := c.world[id]
 		score := 0.0
 		for _, in := range production.Inputs {
-			score += math.Min(in.RatePerMinute, math.Max(0, site.balance[in.ItemID])) * float64(strategy)
-			for _, resource := range site.planet.Resources {
-				if resource.ItemID == in.ItemID {
-					capacity, _, _ := resourceCapacity(c.req, resource, in.RatePerMinute)
-					score += math.Min(in.RatePerMinute, capacity)
-				}
+			balance := site.balance[in.ItemID]
+			localOutput := min(in.RatePerMinute, max(0, balance))
+			score += localOutput * float64(strategy)
+			if raw[in.ItemID] && !external[in.ItemID] {
+				score += c.miningContribution(site, in.ItemID, max(0, -balance), in.RatePerMinute-localOutput)
 			}
 		}
 		for _, out := range production.Outputs {

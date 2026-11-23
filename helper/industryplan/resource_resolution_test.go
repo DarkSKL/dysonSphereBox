@@ -52,6 +52,52 @@ func TestSharedMiningRequiresGeometry(t *testing.T) {
 	}
 }
 
+// TestPlacementUsesRemainingLocalSupply 检查下一工序只使用已有净产出和剩余可接矿量评分。
+func TestPlacementUsesRemainingLocalSupply(t *testing.T) {
+	const item = 1001
+	ore := Resource{ItemID: item, Kind: "solid", CapacityPerMinute: 100, UnitRatePerMinute: 30}
+	key := resourceSite{planetID: 101, itemID: item}
+	for _, tc := range []struct {
+		name     string
+		balance  float64
+		limit    float64
+		excluded bool
+		want     int64
+	}{
+		{"矿速已用完", -100, 100, false, 102},
+		{"矿速仍够用", -40, 100, false, 101},
+		{"矿区仅部分接通", -10, 40, false, 102},
+		{"矿区不能施工", 0, 100, true, 102},
+		{"本星已有制造余量", 60, 0, true, 101},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := candidate{center: 101, sourceLimits: map[resourceSite]float64{key: tc.limit}, excludedSources: map[resourceSite]bool{key: tc.excluded}}
+			c.world = map[int64]*location{
+				101: {planet: Planet{ID: 101, Resources: []Resource{ore}}, balance: map[int]float64{item: tc.balance}},
+				102: {planet: Planet{ID: 102, Position: [3]float64{10}, Resources: []Resource{ore}}},
+			}
+			line := quant.Production{Inputs: []quant.ItemRate{{ItemID: item, RatePerMinute: 60}}}
+			for _, strategy := range []int{1, 2, 3} {
+				if got := c.placement(line, []int64{101, 102}, strategy, map[int]bool{item: true}, nil).planet.ID; got != tc.want {
+					t.Errorf("策略 %d 选择了 %d，应使用 %d", strategy, got, tc.want)
+				}
+			}
+		})
+	}
+	// 非采集输入仍能从本星制造获得；远星的同名矿不参与选址。
+	c := candidate{center: 101, world: map[int64]*location{
+		101: {planet: Planet{ID: 101}},
+		102: {planet: Planet{ID: 102, Position: [3]float64{10}, Resources: []Resource{ore}}},
+	}}
+	line := quant.Production{Inputs: []quant.ItemRate{{ItemID: item, RatePerMinute: 60}}}
+	raw := map[int]bool{item: true}
+	for _, inputs := range []struct{ raw, external map[int]bool }{{nil, nil}, {raw, raw}} {
+		if got := c.placement(line, []int64{101, 102}, 1, inputs.raw, inputs.external).planet.ID; got != 101 {
+			t.Fatalf("显式外供或区内制造的物品吸引了采矿选址：%d", got)
+		}
+	}
+}
+
 // TestMiningOrderConsolidatesSites 用一处零碎新矿和一处足额新矿验证选址；本地与已开工矿仍优先。
 func TestMiningOrderConsolidatesSites(t *testing.T) {
 	c := candidate{world: map[int64]*location{}, ids: []int64{101, 102, 201, 202}, req: Request{Mining: MiningSettings{FacilityID: 2301, SpeedMultiplier: 1.5, FacilityMultiplier: 1, CoveredVeins: 8}}}
