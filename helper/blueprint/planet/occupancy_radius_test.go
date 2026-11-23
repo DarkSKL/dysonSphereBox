@@ -26,13 +26,40 @@ func TestTerrainSamplingUsesHorizontalFootprint(t *testing.T) {
 			coast := func(p Position) (bool, bool) {
 				return 200*math.Hypot(p.Longitude, p.Latitude) > 8, true
 			}
-			if terrainConflict([]Object{obj}, coast, catalog) {
+			if (&Request{wet: coast}).terrainConflict([]Object{obj}, catalog) {
 				t.Fatalf("原型 %d 的水平占地不足八米，建筑高度却导致远处岸线误拒", tc.item)
 			}
-			if !terrainConflict([]Object{obj}, func(Position) (bool, bool) { return true, true }, catalog) {
+			if !(&Request{wet: func(Position) (bool, bool) { return true, true }}).terrainConflict([]Object{obj}, catalog) {
 				t.Fatal("缩小水平采样范围后不能放过建筑脚下的真实液面")
 			}
 		})
+	}
+}
+
+// TestStationPadsAt2401Shore 用原版 368 号塔的斜向支脚复现岸线缺地，核对候选和整图终检共用的规则。
+func TestStationPadsAt2401Shore(t *testing.T) {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor := Position{Longitude: 32.76 * math.Pi / 180, Latitude: 16.56 * math.Pi / 180}
+	tower := stationObject(0, anchor, 1004, 1, 1, false)
+	req := Request{PlanetID: 2401, Objects: []Object{tower}, wet: func(Position) (bool, bool) { return false, true }}
+	// 铺地后实测只有右后方这只脚落在半径 199.3742 米处；塔心及其余支脚均有地。
+	req.stationPad = func(p Position) bool {
+		return math.Abs(math.Sin(p.Latitude)-.294521) > .0001 ||
+			math.Abs(math.Cos(p.Latitude)*math.Sin(p.Longitude)-.533805) > .0001
+	}
+	if !req.terrainConflict(req.Objects, catalog) {
+		t.Fatal("选址放过了 368 号塔悬空的斜向支脚")
+	}
+	if _, err := Build(context.Background(), req); err == nil {
+		t.Fatal("含悬空塔脚的蓝图通过了终检")
+	}
+	req.Objects[0].First.Longitude += .02
+	req.Objects[0].Second = req.Objects[0].First
+	if _, err := Build(context.Background(), req); err != nil {
+		t.Fatalf("旁边八脚均有地的塔位应可施工：%v", err)
 	}
 }
 

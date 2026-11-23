@@ -58,8 +58,10 @@ type PlanetResourceDetail struct {
 	Veins          []PlanetVein      `json:"veins"`
 	Groups         []PlanetVeinGroup `json:"groups"`
 	Buildings      []PlanetBuilding  `json:"buildings"`
-	RelayZones     []RelayZone       `json:"relayZones"`
-	Terrain        PlanetTerrain     `json:"terrain"`
+	// GeothermalHoles 保存厂区内仍有建造碰撞盒的黑雾地热井中心，供施工选址避让。
+	GeothermalHoles []galaxy.Vector `json:"geothermalHoles,omitempty"`
+	RelayZones      []RelayZone     `json:"relayZones"`
+	Terrain         PlanetTerrain   `json:"terrain"`
 }
 
 // PlanetVein 职责：保存矿点状态；使用：采矿设备定位；边界：ID、组和关联实体 ID 属于当前星球。
@@ -144,9 +146,10 @@ func (t PlanetTerrain) HeightAt(position galaxy.Vector) (float64, bool) {
 
 // planetSurface 职责：保留厂区空间数据；使用：解码和详情查询；边界：快照建成后只读。
 type planetSurface struct {
-	veins     []PlanetVein
-	buildings []PlanetBuilding
-	terrain   PlanetTerrain
+	veins           []PlanetVein
+	buildings       []PlanetBuilding
+	geothermalHoles []galaxy.Vector
+	terrain         PlanetTerrain
 }
 
 // scannedPlanet 职责：保留扫描数据；使用：概要查询；边界：开采后的实时矿量优先取厂区。
@@ -272,6 +275,7 @@ func (s *Snapshot) PlanetResourceDetailContext(ctx context.Context, planetID int
 		if surface := s.surfaces[planetID]; surface != nil {
 			out.VeinSource = "saved"
 			out.Buildings = append(out.Buildings, surface.buildings...)
+			out.GeothermalHoles = slices.Clone(surface.geothermalHoles)
 			out.Terrain = surface.terrain
 			out.Terrain.ModificationSource = "saved"
 			out.Terrain.ModData = slices.Clone(out.Terrain.ModData)

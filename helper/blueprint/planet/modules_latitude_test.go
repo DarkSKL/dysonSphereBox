@@ -74,7 +74,7 @@ func TestManufacturingUsesShiftedLatitudeOnNarrowLand(t *testing.T) {
 		row := p.Latitude / float64(latitudeStep)
 		return row < 35 || row > 65, true
 	}
-	if !terrainConflict(baseline.Objects, dryStrip, catalog) {
+	if !(&Request{wet: dryStrip}).terrainConflict(baseline.Objects, catalog) {
 		t.Fatal("默认锚点意外位于窄陆带内，无法证明新增纬行有效")
 	}
 
@@ -94,7 +94,7 @@ func TestManufacturingUsesShiftedLatitudeOnNarrowLand(t *testing.T) {
 		if generations != 1 {
 			t.Fatalf("同纬带平移不应再次生成模板：%d", generations)
 		}
-		if terrainConflict(request.Objects, dryStrip, catalog) {
+		if request.terrainConflict(request.Objects, catalog) {
 			t.Fatal("平移候选占用了水面")
 		}
 		for _, want := range shiftedInput.Plan.Ports {

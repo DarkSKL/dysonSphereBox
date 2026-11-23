@@ -148,7 +148,7 @@ func appendFleetStationMinimum(ctx context.Context, req *Request, input Producti
 				return &Error{PlanetID: req.PlanetID, Item: entry.item, Code: "PLANET_FLEET_ROUTE", Message: "补充运输塔缺少已有设备的相反本地供需槽，无法形成无人机转运"}
 			}
 		}
-		position, ok := stationGridSite(ctx, append(extendOccupancy(*req, catalog), req.minerals...), req.wet, catalog, true)
+		position, ok := req.stationGridSite(ctx, append(extendOccupancy(*req, catalog), req.minerals...), catalog, true)
 		if !ok {
 			if err := ctx.Err(); err != nil {
 				return err

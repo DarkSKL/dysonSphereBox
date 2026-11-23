@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
+	"reflect"
 	"sort"
 
 	"DysonSphereBox/helper/blueprint/build"
@@ -54,13 +55,13 @@ func Generate(ctx context.Context, req Request, selection Selection, world indus
 	for _, s := range selection.Sites {
 		sites[s.ID] = s
 	}
-	validator := func(ctx context.Context, p industryplan.PlanetPlan) (industryplan.PlanetActual, error) {
+	planetInput := func(ctx context.Context, p industryplan.PlanetPlan) (planet.ProductionRequest, error) {
 		if err := ctx.Err(); err != nil {
-			return industryplan.PlanetActual{}, err
+			return planet.ProductionRequest{}, err
 		}
 		detail, err := snapshot.PlanetResourceDetailContext(ctx, p.PlanetID)
 		if err != nil {
-			return industryplan.PlanetActual{}, err
+			return planet.ProductionRequest{}, err
 		}
 		options := planet.ProductionOptions{
 			RemoteGroup: remoteGroup,
@@ -78,16 +79,43 @@ func Generate(ctx context.Context, req Request, selection Selection, world indus
 		if tech != nil {
 			options.DroneCargo, options.DroneSpeed = tech.DroneCargo, tech.DroneSpeed
 		}
-		built, err := planet.Generate(ctx, planet.ProductionRequest{Plan: p, Resources: detail, Options: options})
-		if err != nil {
-			var failure *planet.Error
-			if errors.As(err, &failure) && failure.Code == "PLANET_MINING_SITE" {
-				return industryplan.PlanetActual{}, &industryplan.SourcePlacementError{
-					ItemID: failure.Item, Err: err, AvailableRatePerMinute: failure.AvailableRatePerMinute,
-					Description: fmt.Sprintf("在%s采集%s时，%s", sites[p.PlanetID].Name, dataset.ByID[failure.Item].Name, failure.Message),
-				}
+		return planet.ProductionRequest{Plan: p, Resources: detail, Options: options}, nil
+	}
+	sourceError := func(p industryplan.PlanetPlan, err error) error {
+		var failure *planet.Error
+		if errors.As(err, &failure) && failure.Code == "PLANET_MINING_SITE" {
+			return &industryplan.SourcePlacementError{
+				ItemID: failure.Item, Err: err, AvailableRatePerMinute: failure.AvailableRatePerMinute,
+				Description: fmt.Sprintf("在%s采集%s时，%s", sites[p.PlanetID].Name, dataset.ByID[failure.Item].Name, failure.Message),
 			}
+		}
+		return err
+	}
+	// 同一快照和设置下，采集布局由矿业合同、光子数量和货物端口决定。仅记住已通过的预检，整星交付仍须生成。
+	checkedSources := make(map[int64]industryplan.PlanetPlan)
+	world.CheckSourceSites = func(ctx context.Context, p industryplan.PlanetPlan) error {
+		old, ok := checkedSources[p.PlanetID]
+		if ok && reflect.DeepEqual(old.Mines, p.Mines) && reflect.DeepEqual(old.Photons, p.Photons) && reflect.DeepEqual(old.Ports, p.Ports) {
+			return nil
+		}
+		input, err := planetInput(ctx, p)
+		if err != nil {
+			return err
+		}
+		if err = planet.CheckSourceSites(ctx, input); err != nil {
+			return sourceError(p, err)
+		}
+		checkedSources[p.PlanetID] = industryplan.PlanetPlan{Mines: p.Mines, Photons: p.Photons, Ports: p.Ports}
+		return nil
+	}
+	validator := func(ctx context.Context, p industryplan.PlanetPlan) (industryplan.PlanetActual, error) {
+		input, err := planetInput(ctx, p)
+		if err != nil {
 			return industryplan.PlanetActual{}, err
+		}
+		built, err := planet.Generate(ctx, input)
+		if err != nil {
+			return industryplan.PlanetActual{}, sourceError(p, err)
 		}
 		if built.StationCount < p.StationCount {
 			return industryplan.PlanetActual{}, fmt.Errorf("星球 %d 需要 %d 座星际物流站，实际布置 %d 座", p.PlanetID, p.StationCount, built.StationCount)
@@ -96,7 +124,7 @@ func Generate(ctx context.Context, req Request, selection Selection, world indus
 			return industryplan.PlanetActual{}, fmt.Errorf("星球 %d 的实际蓝图缺少出口货物的逐塔配船记录", p.PlanetID)
 		}
 		actual := built.Actual
-		if n := len(detail.RelayZones); n > 0 {
+		if n := len(input.Resources.RelayZones); n > 0 {
 			actual.Warnings = append(actual.Warnings, fmt.Sprintf("已绕开存档中的 %d 处黑雾基地或其落地区。若施工前基地位置发生变化，请读取新存档重算。", n))
 		}
 		parts := []ConstructionPart{{Code: built.Blueprint, Buildings: built.BuildingCount, FoundationCells: built.FoundationCells, Kind: "whole"}}

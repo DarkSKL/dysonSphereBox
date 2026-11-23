@@ -3,15 +3,14 @@ package planet
 // 文件职责：将制造、采集及货运计划装配至存档星球；使用：全局规划的逐星终检；边界：只有证据支持的实际速率才可返回。
 
 import (
-	"DysonSphereBox/helper/blueprint"
-	"DysonSphereBox/helper/blueprint/build/geometry"
 	"context"
 	"fmt"
 	"math"
 
+	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build"
 	buildcore "DysonSphereBox/helper/blueprint/build/core"
-
+	"DysonSphereBox/helper/blueprint/build/geometry"
 	"DysonSphereBox/helper/blueprint/build/placement"
 	"DysonSphereBox/helper/industryplan"
 	"DysonSphereBox/helper/quant"
@@ -22,6 +21,7 @@ import (
 // ProductionOptions 职责：携带生成策略；使用：Generate；边界：仅影响当前星球蓝图。
 type ProductionOptions struct {
 	firstVerifiedLayout bool // 多星初筛先采用已通过规则的模板，完整纬区后备继续比较布局。
+	nearMineTowers      bool // 岸边普通矿区按原带长缺矿时，重试离矿机较近的塔位。
 	// DroneCargo/DroneSpeed 使用当前存档的单机载量与速度，供本地矿料配送的飞行用电核验。
 	DroneCargo int
 	DroneSpeed float64
@@ -68,6 +68,17 @@ type ProductionResult struct {
 
 // Generate 职责：搜索存档上的落位并装配完整蓝图；使用：逐星规划回调；边界：资料、几何或物流缺口返回带物品的诊断。
 func Generate(ctx context.Context, input ProductionRequest) (ProductionResult, error) {
+	return generate(ctx, input, false)
+}
+
+// CheckSourceSites 复用施工入口检查采集、取水和光子接收器落位，供多星分工先发现资源缺口。仅完整 Generate 能出图。
+func CheckSourceSites(ctx context.Context, input ProductionRequest) error {
+	_, err := generate(ctx, input, true)
+	return err
+}
+
+// generate 按合同顺序装配同一批实体。分工预检在采集段完成时退出，制造、物流和供电由完整施工核验。
+func generate(ctx context.Context, input ProductionRequest, sourcesOnly bool) (ProductionResult, error) {
 	stage := industryplan.NewLayoutStageTimer(ctx)
 	stage("地形与已有建筑")
 	defer stage("")
@@ -105,6 +116,11 @@ func Generate(ctx context.Context, input ProductionRequest) (ProductionResult, e
 		_, sampled := terrain.HeightAt(galaxy.Vector{X: 1})
 		request.TerrainKnown = dry || sampled
 		if !dry {
+			request.stationPad = func(p Position) bool {
+				h, known := surfaceRadiusAt(terrain, p)
+				// 原版 50 号塔的 landOffset 为零，支脚至少需达到基球减 0.30 米。
+				return known && h >= 199.70 && h >= 200+*terrain.WaterHeight-.27
+			}
 			request.pumpSite = func(p Position, yaw float64) bool {
 				return pumpSurfaceFits(p, yaw, terrain)
 			}
@@ -135,6 +151,15 @@ func Generate(ctx context.Context, input ProductionRequest) (ProductionResult, e
 		}
 	}
 	occupancyRadii := map[int16]float64{}
+	for _, hole := range detail.GeothermalHoles {
+		p, err := savePosition(hole)
+		if err != nil {
+			return fail(0, "PLANET_SNAPSHOT", err.Error())
+		}
+		// 模型 406 的建造盒水平半宽 6、半长 5.75，中心向后偏 0.8 米。
+		p.Height = 0
+		request.Obstacles = append(request.Obstacles, Obstacle{Position: p, Radius: math.Hypot(6, 5.75+.8)})
+	}
 	for _, entry := range detail.Buildings {
 		point, err := savePosition(entry.Position)
 		if err != nil {
@@ -154,7 +179,7 @@ func Generate(ctx context.Context, input ProductionRequest) (ProductionResult, e
 	for _, vein := range detail.Veins {
 		p, err := savePosition(vein.Position)
 		if err == nil {
-			request.Protected = append(request.Protected, Cell{Longitude: p.Longitude, Latitude: p.Latitude})
+			request.Protected = append(request.Protected, Cell{Longitude: p.Longitude, Latitude: p.Latitude, buried: vein.IsDeepBuried()})
 			_, radius := veinCollider(vein.VeinType)
 			if !vein.IsSurfaceMiningBlocked() {
 				// 设备占地在粘贴地表量取。矿石原点的地形高差不能为地面电杆或传送带腾出净空。
@@ -163,16 +188,18 @@ func Generate(ctx context.Context, input ProductionRequest) (ProductionResult, e
 			request.minerals = append(request.minerals, Obstacle{Position: p, Radius: radius})
 		}
 	}
-	actual := industryplan.PlanetActual{}
-	var mining []MiningCoverage
 	stage("矿区与液体采集")
-	if err := appendMining(ctx, &request, input, &actual, &mining, catalog); err != nil {
+	actual, mining, err := placeMining(ctx, &request, input, catalog)
+	if err != nil {
 		return ProductionResult{}, err
 	}
 	request.mineCoverage = mining
 	stage("光子接收")
 	if err := appendPhotons(ctx, &request, input, &actual, catalog); err != nil {
 		return ProductionResult{}, err
+	}
+	if sourcesOnly {
+		return ProductionResult{}, ctx.Err()
 	}
 	stage("制造模板与传送带落位")
 	if err := appendManufacturing(ctx, &request, input, &actual, catalog); err != nil {

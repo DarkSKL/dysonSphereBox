@@ -186,6 +186,35 @@ func TestRelayZoneFootprint(t *testing.T) {
 	}
 }
 
+// TestFoundationKeepsBuriedVeins 验证铺相邻格也会翻出埋矿的边界，普通露矿仍允许在邻格施工。
+func TestFoundationKeepsBuriedVeins(t *testing.T) {
+	step, _ := geometry.LatitudeStep32(geometry.Vanilla200)
+	const row = 1
+	_, vein, ok := reformGridPosition(0, row, 8, float64(step), 0)
+	if !ok {
+		t.Fatal("缺少对照地基格")
+	}
+	for _, buried := range []bool{false, true} {
+		req := Request{PlanetID: 102, Foundation: "planet", TerrainKnown: true,
+			Protected: []Cell{{Longitude: vein.Longitude, Latitude: vein.Latitude, buried: buried}}}
+		reform, _, err := foundation(context.Background(), req, []band{{low: 0, high: 2, segments: 200}}, []blueprint.Area{{Width: 24}}, float64(step), 0)
+		if err != nil || reform == nil {
+			t.Fatalf("无法生成矿区地基：%v", err)
+		}
+		paved := func(x int) bool {
+			for _, r := range reform.Rects {
+				if r.Y == row && x >= int(r.X) && x < int(r.X)+int(r.W) {
+					return true
+				}
+			}
+			return false
+		}
+		if paved(8) || paved(11) == buried || !paved(17) {
+			t.Errorf("地下=%t 的矿心、邻格和远格铺设结果为 %t、%t、%t", buried, paved(8), paved(11), paved(17))
+		}
+	}
+}
+
 // TestRelayZoneProtectsFoundation 职责：验证两档地基都能保留黑雾已占区域；使用：地基打包回归；边界：区域外地基仍写出。
 func TestRelayZoneProtectsFoundation(t *testing.T) {
 	ctx := context.Background()

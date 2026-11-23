@@ -21,6 +21,8 @@ type Position struct {
 type Cell struct {
 	// Longitude/Latitude 职责：记录格中心；使用：地基屏蔽；边界：单位弧度。
 	Longitude, Latitude float64
+	// buried 标记地下矿点，铺地时需同时保护决定其显隐的相邻地形顶点。
+	buried bool
 }
 
 // Obstacle 职责：描述存档中已占用的空间；使用：避让建筑和预建造；边界：半径采用游戏世界距离。
@@ -79,6 +81,8 @@ type Request struct {
 	TerrainKnown bool
 	// wet 职责：采样游戏真实液面；使用：占地检查和地基保护；边界：由生产快照适配，外部格列表仍单独适用。
 	wet func(Position) (bool, bool)
+	// stationPad 核对星际塔单个支脚的地表碰撞高度，由带液面的真实存档提供。
+	stationPad func(Position) bool
 	// pumpSite 职责：检查泵脚与取水点命中的地表；使用：岸线选址和整星终检；边界：从本次快照的固态星球网格取高。
 	pumpSite func(Position, float64) bool
 	// geothermal 职责：复核熔岩类型和三点深度；使用：整星终检；边界：无回调时不得认证地热落位。

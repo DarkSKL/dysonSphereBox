@@ -215,7 +215,7 @@ func appendManufacturingRows(ctx context.Context, req *Request, input Production
 	cursors := map[string]*moduleSiteCursor{}
 	occupied := newObstacleIndex(append(extendOccupancy(*req, catalog), req.minerals...))
 	relocatable := input.Plan.CanRelocate && len(input.Plan.Plan.Productions) > 1
-	input.Options.firstVerifiedLayout = relocatable
+	input.Options.firstVerifiedLayout = relocatable || input.Plan.CenterRegionsOnly
 	// 原星低纬试摆仍给出真实前缀。整份电力合同已不可能供电时，不为它新建高纬模板。
 	powerFloor := 0.
 	if !input.Plan.SinglePlanet {
@@ -321,6 +321,16 @@ func appendManufacturingRows(ctx context.Context, req *Request, input Production
 			key := fmt.Sprintf("%s/%s", region.Value, identity)
 			value, cached := templates.Load(key)
 			generateCtx := ctx
+			if input.Plan.CenterRegionsOnly && !cached {
+				// 初筛已经生成的合规模板可以在本轮重新选址。初筛超时与完整纬区选优各自缓存。
+				if quick, found := templates.Load("relocate/" + key); found && quick.(moduleTemplate).err == nil {
+					value, cached = quick, true
+				}
+				key = "center/" + key
+				if !cached {
+					value, cached = templates.Load(key)
+				}
+			}
 			if relocatable && !cached {
 				// 首轮采用独立模板原有的选优时窗；父任务随时可取消，模块之间继续检查暂停。
 				// 其成败单独缓存，完整后备搜索依然拥有所有模板、纬区及可恢复的时窗。
@@ -649,7 +659,7 @@ func placeManufacturingTemplate(ctx context.Context, req Request, document bluep
 			position := Position{Latitude: latitude, Longitude: float64(x) * float64(step)}
 			if len(probe.Buildings) > 0 {
 				sample, err = projectModuleAtLongitude(ctx, probe, position, step, module, sample)
-				if err == nil && (placementConflict(sample, occupied, catalog) || terrainConflict(sample, req.wet, catalog)) {
+				if err == nil && (placementConflict(sample, occupied, catalog) || req.terrainConflict(sample, catalog)) {
 					continue
 				}
 			}
@@ -662,7 +672,7 @@ func placeManufacturingTemplate(ctx context.Context, req Request, document bluep
 				break
 			}
 			previous = objects
-			if placementConflict(objects, occupied, catalog) || terrainConflict(objects, req.wet, catalog) {
+			if placementConflict(objects, occupied, catalog) || req.terrainConflict(objects, catalog) {
 				continue
 			}
 			if row != anchor {

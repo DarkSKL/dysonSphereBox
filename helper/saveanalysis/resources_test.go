@@ -2,6 +2,7 @@ package saveanalysis
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"math"
@@ -11,6 +12,29 @@ import (
 
 	"DysonSphereBox/helper/saveanalysis/galaxy"
 )
+
+// TestRuinGeothermalBuildCollider 核对废墟池的空槽、无建造碰撞的残骸和仍阻挡施工的 406 号地热井。
+func TestRuinGeothermalBuildCollider(t *testing.T) {
+	data := []byte{1, 0, 0, 0, 0}
+	for _, model := range []uint16{405, 406} {
+		data = append(data, 1)
+		data = binary.LittleEndian.AppendUint32(data, 5)
+		data = binary.LittleEndian.AppendUint16(data, model)
+		data = binary.LittleEndian.AppendUint32(data, 0)
+		for _, coordinate := range []float32{-193, 16, 48} {
+			data = binary.LittleEndian.AppendUint32(data, math.Float32bits(coordinate))
+		}
+		data = append(data, make([]byte, 20)...) // 四元数和末尾的运行字段
+	}
+	r := reader{data: data, surface: &planetSurface{}}
+	for range 3 {
+		r.readRuinData()
+	}
+	holes := r.surface.geothermalHoles
+	if r.offset != int64(len(data)) || len(holes) != 1 || holes[0] != (galaxy.Vector{X: -193, Y: 16, Z: 48}) {
+		t.Fatalf("废墟游标 %d/%d，参与施工避让的地热井 %+v", r.offset, len(data), holes)
+	}
+}
 
 // TestResolvedResourceCache 职责：核对单球精算缓存；使用：覆盖并发读取、取消和换档；边界：无法确定的成功结果保留未知来源。
 func TestResolvedResourceCache(t *testing.T) {

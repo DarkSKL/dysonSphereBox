@@ -136,7 +136,7 @@ func dispatchFleet(ctx context.Context, req *Request, input ProductionRequest, c
 		if !a.enableSource(item, -1) {
 			return nil, &Error{PlanetID: req.PlanetID, Item: item, Code: "PLANET_FLEET_ROUTE", Message: "现有发货船位不足，新增转运塔没有可实际接货的本地供给槽"}
 		}
-		pos, ok := stationGridSite(ctx, append(extendOccupancy(*req, catalog), req.minerals...), req.wet, catalog, true)
+		pos, ok := req.stationGridSite(ctx, append(extendOccupancy(*req, catalog), req.minerals...), catalog, true)
 		if !ok {
 			if err := ctx.Err(); err != nil {
 				return nil, err

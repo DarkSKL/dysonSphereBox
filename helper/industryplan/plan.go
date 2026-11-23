@@ -388,6 +388,22 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 		}
 	}
 	defer finishRepair()
+	verify := func(item *Result, previous Result, policy assignment) (int64, error) {
+		if world.CheckSourceSites != nil && len(item.Planets) > 1 {
+			for _, site := range item.Planets {
+				if len(site.Mines) == 0 && site.Photons == nil {
+					continue
+				}
+				if err := search.Checkpoint(ctx); err != nil {
+					return site.PlanetID, err
+				}
+				if err := world.CheckSourceSites(ctx, site); err != nil {
+					return site.PlanetID, fmt.Errorf("星球 %d：%w", site.PlanetID, err)
+				}
+			}
+		}
+		return verifyCandidate(ctx, item, previous, policy, validate, progress)
+	}
 	for repairs := 0; ; repairs++ {
 		finishRepair()
 		if err := search.Checkpoint(ctx); err != nil {
@@ -400,7 +416,7 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 		}
 		current.policy.verifyFirst = lastFailure
 		current.policy.canOpenHost = !current.single && len(item.Planets) > 1 && len(buildable) > len(current.policy.fullFactories)+1
-		badSite, verifyErr := verifyCandidate(ctx, &item, previous, current.policy, validate, progress)
+		badSite, verifyErr := verify(&item, previous, current.policy)
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
@@ -420,7 +436,7 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 					}
 					return evaluateEnergy(ctx, req, base, world, planets, fixed, fixed, profile, p, progress)
 				}, func(next *Result, p assignment) (int64, error) {
-					return verifyCandidate(ctx, next, incumbent, p, validate, progress)
+					return verify(next, incumbent, p)
 				}, func(p assignment, next Result, id int64, err error) (assignment, bool) {
 					return repairAssignment(p, next, id, err, planets, fixed)
 				})

@@ -267,7 +267,7 @@ func validatePlacement(ctx context.Context, req Request, records []blueprint.Bui
 		if obj.Building.ItemID == 2306 && req.pumpSite != nil && !req.pumpSite(obj.First, float64(obj.Building.Yaw)) {
 			return &Error{PlanetID: req.PlanetID, Item: obj.Item, Module: obj.Module, Code: "PLANET_WATER", Message: "抽水站支脚或取水口的实测地形未满足施工条件"}
 		}
-		if terrainConflict([]Object{obj}, req.wet, catalog) {
+		if req.terrainConflict([]Object{obj}, catalog) {
 			return &Error{PlanetID: req.PlanetID, Item: obj.Item, Module: obj.Module, Code: "PLANET_WATER", Message: fmt.Sprintf("建筑 %d 的占地触及液面或未能确认的岸线", obj.Building.Index)}
 		}
 		for _, position := range []Position{obj.First, obj.Second} {
@@ -291,11 +291,18 @@ func validatePlacement(ctx context.Context, req Request, records []blueprint.Bui
 }
 
 // terrainConflict 职责：检查端点及四向占地边缘；使用：候选选址和终检；边界：未知地形仍由结果告警。
-func terrainConflict(objects []Object, wet func(Position) (bool, bool), catalog *placement.Catalog) bool {
+func (req *Request) terrainConflict(objects []Object, catalog *placement.Catalog) bool {
+	wet := req.wet
 	if wet == nil {
 		return false
 	}
 	for _, obj := range objects {
+		if obj.Building.ItemID == 2104 && req.stationPad != nil {
+			pads := [][2]float64{{4, -2}, {-4, -2}, {-4, 2}, {4, 2}, {2, -4}, {-2, -4}, {-2, 4}, {2, 4}}
+			if !surfacePoints(obj.First, float64(obj.Building.Yaw), 0, pads, req.stationPad) {
+				return true
+			}
+		}
 		if obj.Building.ItemID == 2213 {
 			for _, p := range geothermalPoints(obj.First) {
 				if water, known := wet(p); !known || !water {

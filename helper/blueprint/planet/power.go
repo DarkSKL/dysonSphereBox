@@ -108,7 +108,7 @@ func appendPower(ctx context.Context, req *Request, input ProductionRequest, act
 					if err != nil {
 						return fail(err.Error())
 					}
-					if terrainConflict(layout, req.wet, catalog) || placementConflict(layout, occupied, catalog) {
+					if req.terrainConflict(layout, catalog) || placementConflict(layout, occupied, catalog) {
 						continue
 					}
 					valid := true

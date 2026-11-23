@@ -26,7 +26,7 @@ func TestReceivingTowerUsesLandBetweenSearchRows(t *testing.T) {
 	wet := func(p Position) (bool, bool) {
 		return math.Abs(p.Latitude-latitude) > margin || math.Abs(math.Remainder(p.Longitude-longitude, 2*math.Pi)) > margin/math.Cos(latitude), true
 	}
-	if _, ok := standaloneSite(nil, wet, catalog); ok {
+	if _, ok := (&Request{wet: wet}).standaloneSite(nil, catalog); ok {
 		t.Fatal("样本干地应位于常用搜索格之外")
 	}
 	const matrix = 6001

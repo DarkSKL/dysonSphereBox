@@ -78,6 +78,31 @@ type MiningCoverage struct {
 	NewCoveredItems int64
 }
 
+// placeMining 职责：完成整份采集合同；使用：在首个施工阶段、尚无本图实体或出口记录时调用。
+// 边界：岸边普通矿机按常规塔距缺矿时才从头换用短带，只有成功尝试的实体、出口与覆盖记录进入后续施工。
+func placeMining(ctx context.Context, req *Request, input ProductionRequest, catalog *placement.Catalog) (industryplan.PlanetActual, []MiningCoverage, error) {
+	trial := *req
+	var actual industryplan.PlanetActual
+	var coverage []MiningCoverage
+	err := appendMining(ctx, &trial, input, &actual, &coverage, catalog)
+	if issue, ok := err.(*Error); ok && issue.Code == "PLANET_MINING_SITE" && req.stationPad != nil &&
+		slices.ContainsFunc(input.Plan.Mines, func(m industryplan.Mine) bool { return m.ItemID == issue.Item && m.FacilityID == 2301 }) {
+		// 缩短首台矿机的接驳带也会改变后续塔位，不能接着失败尝试的实体编号继续摆放。
+		input.Options.nearMineTowers = true
+		trial, actual, coverage = *req, industryplan.PlanetActual{}, nil
+		if retry := appendMining(ctx, &trial, input, &actual, &coverage, catalog); retry == nil {
+			err = nil
+		} else if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+	}
+	if err != nil {
+		return industryplan.PlanetActual{}, nil, err
+	}
+	*req = trial
+	return actual, coverage, nil
+}
+
 // appendMining 职责：放置真实矿机和接驳；使用：逐星可验证矿业流量；边界：仅按每矿点基础速率计数。
 func appendMining(ctx context.Context, req *Request, input ProductionRequest, actual *industryplan.PlanetActual, mining *[]MiningCoverage, catalog *placement.Catalog) error {
 	priorPorts := append([]industryplan.Port(nil), actual.Ports...)
@@ -458,7 +483,7 @@ func findMiner(ctx context.Context, req Request, options ProductionOptions, mine
 					}
 					miner := Object{Building: base, First: p, Second: p, Item: mine.ItemID, Module: "矿区"}
 					miner.Building.Yaw, miner.Building.Yaw2 = float32(yaw), float32(yaw)
-					layout, capacity := minerTransport(miner, options, occupied, minerals, req.wet, catalog, exporting, yaw, float64(candidateStep))
+					layout, capacity := req.minerTransport(miner, options, occupied, minerals, catalog, exporting, yaw, float64(candidateStep))
 					if len(layout) == 0 {
 						sites[key] = minerCandidate{}
 						continue
@@ -566,7 +591,7 @@ func minerCoverage(p Position, pt geometry.WorldPoint, yaw float64, large bool, 
 }
 
 // minerTransport 职责：串接矿机出矿端、带链与星际塔；使用：已选真实矿机候选；边界：仅选择同纬带直线带路，吞吐受单带限制。
-func minerTransport(miner Object, options ProductionOptions, occupied, minerals obstacleIndex, wet func(Position) (bool, bool), catalog *placement.Catalog, exporting bool, yaw, step float64) ([]Object, float64) {
+func (req *Request) minerTransport(miner Object, options ProductionOptions, occupied, minerals obstacleIndex, catalog *placement.Catalog, exporting bool, yaw, step float64) ([]Object, float64) {
 	level := options.Setting.BeltLv
 	if level == 0 {
 		level = 3
@@ -607,7 +632,12 @@ func minerTransport(miner Object, options ProductionOptions, occupied, minerals 
 		stationSlot = 1
 	}
 	// 密集矿区的近端塔位可能已被同区另一座塔占用，沿同一条出矿带继续核对远端塔位。
-	for _, length := range []int{15, 20, 25, 32, 40, 48, 56, 64, 80, 96} {
+	lengths := []int{8, 10, 12, 15, 20, 25, 32, 40, 48, 56, 64, 80, 96}
+	if !options.nearMineTowers || miner.Building.ItemID != 2301 {
+		// 油井与大矿机的机身可能碰到八格外的塔，沿用各自已验证的接驳距离。
+		lengths = lengths[3:]
+	}
+	for _, length := range lengths {
 		if sourceOffset >= length-2 {
 			continue
 		}
@@ -653,7 +683,7 @@ func minerTransport(miner Object, options ProductionOptions, occupied, minerals 
 			}
 			route = append(route, Object{Building: belt, First: point, Second: point, Item: miner.Item, Module: "矿区接驳"})
 		}
-		if valid && occupied.surfaceRouteConflict(route, catalog) < 0 && !terrainConflict(route, wet, catalog) {
+		if valid && occupied.surfaceRouteConflict(route, catalog) < 0 && !req.terrainConflict(route, catalog) {
 			return route, capacity
 		}
 	}

@@ -199,7 +199,7 @@ func placeEnergyUnits(ctx context.Context, req *Request, input ProductionRequest
 						if !geothermalSite(input, p) {
 							continue
 						}
-					} else if terrainConflict(objects, req.wet, catalog) {
+					} else if req.terrainConflict(objects, catalog) {
 						continue
 					}
 					if facility == 2203 || facility == 2213 {

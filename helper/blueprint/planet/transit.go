@@ -71,7 +71,7 @@ func appendTransit(ctx context.Context, req *Request, input ProductionRequest, a
 			if err := search.Checkpoint(ctx); err != nil {
 				return err
 			}
-			position, ok := standaloneSite(append(extendOccupancy(*req, catalog), req.minerals...), req.wet, catalog)
+			position, ok := req.standaloneSite(append(extendOccupancy(*req, catalog), req.minerals...), catalog)
 			if !ok {
 				return &Error{PlanetID: req.PlanetID, Item: first.ItemID, Code: "PLANET_TRANSIT_SITE", Message: fmt.Sprintf("物品 %d 缺少满足间距的中转塔落点", first.ItemID)}
 			}

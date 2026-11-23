@@ -67,7 +67,13 @@ func foundation(ctx context.Context, req Request, bands []band, areas []blueprin
 	}
 	obstacles := append([]Obstacle(nil), req.Obstacles...)
 	for _, cell := range req.Protected {
-		obstacles = append(obstacles, Obstacle{Position: Position{Longitude: cell.Longitude, Latitude: cell.Latitude}, Radius: .75})
+		radius := .75
+		if cell.buried {
+			// 原版按矿点方向最近的地形顶点决定是否翻出埋矿。三级改造影响格心周围约 2.83 米，
+			// 再留出顶点到矿点的偏移和格投影误差，保持玩家已有埋矿状态。
+			radius = 6
+		}
+		obstacles = append(obstacles, Obstacle{Position: Position{Longitude: cell.Longitude, Latitude: cell.Latitude}, Radius: radius})
 	}
 	// 原版铺格会连带抬高附近的地形顶点。给取水侧留出整段岸线，泵的陆脚仍由建造条件检查。
 	for _, obj := range req.Objects {

@@ -912,22 +912,16 @@ func (r *reader) readRuinData(props ...int64) *layoutRuinData {
 	r.section = "RuinData"
 	v := &layoutRuinData{}
 	r.expect(r.number(1, false), 1, "RuinData.version")
-	var id int64
-	id = r.number(4, true)
-	if id > 0 {
-		r.skip(2)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.readVector3()
-	}
-	if id > 0 {
+	if r.number(4, true) > 0 {
+		model := r.number(2, true)
+		r.skip(4) // 寿命不决定此刻的建造碰撞。
+		position := r.readVector3()
 		r.readQuaternion()
-	}
-	if id > 0 {
 		r.skip(4)
+		// 原版地面废墟中 406 号地热井带 Build 盒；普通残骸只带物理碰撞体。
+		if r.surface != nil && model == 406 {
+			r.surface.geothermalHoles = append(r.surface.geothermalHoles, position.vector())
+		}
 	}
 	return v
 }

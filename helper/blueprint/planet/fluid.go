@@ -47,7 +47,7 @@ func findOil(ctx context.Context, req Request, options ProductionOptions, mine i
 		for _, yaw := range []float64{90, -90, 0, 180} {
 			oil := Object{Building: b, First: position, Second: position, Item: mine.ItemID, Module: "油井"}
 			oil.Building.Yaw, oil.Building.Yaw2 = float32(yaw), float32(yaw)
-			proposed, capacity := minerTransport(oil, options, occupied, minerals, req.wet, catalog, exporting, yaw, float64(step))
+			proposed, capacity := req.minerTransport(oil, options, occupied, minerals, catalog, exporting, yaw, float64(step))
 			if available := min(capacity, rate); len(proposed) > 0 && available > bestRate {
 				best, chosen, bestRate = proposed, i, available
 			}
@@ -137,7 +137,7 @@ func findLiquid(ctx context.Context, req Request, input ProductionRequest, mine 
 				}
 				pump := Object{Building: b, First: p, Second: p, Item: mine.ItemID, Module: "液体采集"}
 				pump.Building.Yaw, pump.Building.Yaw2 = float32(yaw), float32(yaw)
-				proposed, capacity := minerTransport(pump, input.Options, occupied, minerals, req.wet, catalog, exporting, yaw, float64(step))
+				proposed, capacity := req.minerTransport(pump, input.Options, occupied, minerals, catalog, exporting, yaw, float64(step))
 				if len(proposed) != 0 {
 					*cursor = liquidSiteCursor{n, col + 1}
 					return proposed, min(capacity, 50*mine.SpeedMultiplier), nil
@@ -153,19 +153,11 @@ func pumpSurfaceFits(p Position, yaw float64, terrain saveanalysis.PlanetTerrain
 	if terrain.WaterHeight == nil {
 		return false
 	}
-	height := func(spot Position) (float64, bool) {
-		v, err := world(spot)
-		if err != nil {
-			return 0, false
-		}
-		return galaxy.TerrainSurfaceRadius(galaxy.HeightGrid{Precision: terrain.HeightPrecision, Heights: terrain.HeightCentimeters},
-			terrain.ModData, galaxy.Vector{X: float64(v.X), Y: float64(v.Y), Z: float64(v.Z)})
-	}
 	return pumpLandClear(p, yaw, func(spot Position) bool {
-		h, known := height(spot)
+		h, known := surfaceRadiusAt(terrain, spot)
 		return known && h >= 200-.20
 	}) && pumpIntakeClear(p, yaw, *terrain.WaterHeight, func(spot Position) bool {
-		h, known := height(spot)
+		h, known := surfaceRadiusAt(terrain, spot)
 		return known && 200+*terrain.WaterHeight-h > .27+.05
 	})
 }
@@ -183,22 +175,32 @@ func pumpFits(p Position, yaw float64, wet func(Position) (bool, bool)) bool {
 
 // pumpLandClear 核对水泵模型 60 的四个陆侧支脚。
 func pumpLandClear(p Position, yaw float64, check func(Position) bool) bool {
-	return pumpPoints(p, yaw, 0, [][2]float64{{-.7, 2.8}, {.7, 2.8}, {1.05, 1.95}, {-1.05, 1.95}}, check)
+	return surfacePoints(p, yaw, 0, [][2]float64{{-.7, 2.8}, {.7, 2.8}, {1.05, 1.95}, {-1.05, 1.95}}, check)
 }
 
 // pumpIntakeClear 在原版模型 60 的四个取水点检查深度；铺地时同样保留这四处水面。
 func pumpIntakeClear(p Position, yaw, waterLevel float64, check func(Position) bool) bool {
-	return pumpPoints(p, yaw, waterLevel, [][2]float64{{-.4, -2.6}, {.4, -2.6}, {-1.25, -1.8}, {1.25, -1.8}}, check)
+	return surfacePoints(p, yaw, waterLevel, [][2]float64{{-.4, -2.6}, {.4, -2.6}, {-1.25, -1.8}, {1.25, -1.8}}, check)
 }
 
-// pumpPoints 把原版模型中的局部米数投影到这台泵的经纬与朝向。
-func pumpPoints(p Position, yaw, level float64, points [][2]float64, check func(Position) bool) bool {
+// surfaceRadiusAt 职责：读取施工射线在原版地表三角形的交点；使用：塔脚和水泵；边界：缺少网格时返回未知。
+func surfaceRadiusAt(terrain saveanalysis.PlanetTerrain, spot Position) (float64, bool) {
+	v, err := world(spot)
+	if err != nil {
+		return 0, false
+	}
+	return galaxy.TerrainSurfaceRadius(galaxy.HeightGrid{Precision: terrain.HeightPrecision, Heights: terrain.HeightCentimeters},
+		terrain.ModData, galaxy.Vector{X: float64(v.X), Y: float64(v.Y), Z: float64(v.Z)})
+}
+
+// surfacePoints 把建筑模型切平面上的局部米数投影到指定经纬和朝向，逐点检查实际地面或液面。
+func surfacePoints(p Position, yaw, level float64, points [][2]float64, check func(Position) bool) bool {
 	s, c := math.Sincos(yaw * math.Pi / 180)
 	sinLat, cosLat := math.Sincos(p.Latitude)
 	radius := 200 + float64(geometry.BaseLift) + level
 	for _, point := range points {
 		east, north := point[0]*c+point[1]*s, -point[0]*s+point[1]*c
-		// 原版从泵模型的切平面沿球心方向发射射线，高纬度同样按实际径向投影。
+		// 原版从模型的切平面沿球心方向发射射线。
 		meridian := radius*cosLat - north*sinLat
 		spot := Position{Longitude: p.Longitude + math.Atan2(east, meridian), Latitude: math.Atan2(radius*sinLat+north*cosLat, math.Hypot(meridian, east))}
 		if !check(spot) {

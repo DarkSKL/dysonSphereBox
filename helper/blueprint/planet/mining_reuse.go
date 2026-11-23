@@ -6,8 +6,11 @@ import (
 	"sync"
 )
 
-// miningHistoryKey 单次模板缓存中，每颗星只保留最近一次确定的采矿选择。
-type miningHistoryKey struct{ planet int64 }
+// miningHistoryKey 按星球和接驳距离方案分别保留最近一次真实矿机序列。
+type miningHistoryKey struct {
+	planet         int64
+	nearMineTowers bool
+}
 
 type miningHistory struct {
 	snapshot            string
@@ -47,7 +50,7 @@ func beginMiningReplay(ctx context.Context, req *Request, input ProductionReques
 	if cache == nil || input.Resources.SHA256 == "" || len(req.Objects) != 0 || len(input.Plan.Mines) == 0 {
 		return nil
 	}
-	r := &miningReplay{cache: cache, key: miningHistoryKey{req.PlanetID}}
+	r := &miningReplay{cache: cache, key: miningHistoryKey{planet: req.PlanetID, nearMineTowers: input.Options.nearMineTowers}}
 	r.current = miningHistory{snapshot: input.Resources.SHA256, tick: input.Resources.Tick,
 		belt: input.Options.Setting.BeltLv, warpers: input.Options.Setting.RequestStationWarpers}
 	if v, ok := cache.Load(r.key); ok {

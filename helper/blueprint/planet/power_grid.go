@@ -101,7 +101,7 @@ func connectPowerGrid(ctx context.Context, req *Request, catalog *placement.Cata
 			network = append(network, powerNode{root.First, point(root.First), radius[0], radius[1]})
 			targets = targets[1:]
 		} else {
-			p, ok := standaloneSite(extendOccupancy(*req, catalog), req.wet, catalog)
+			p, ok := req.standaloneSite(extendOccupancy(*req, catalog), catalog)
 			if !ok {
 				return fmt.Errorf("没有可用的已有电网接入点落位")
 			}
@@ -163,7 +163,7 @@ func connectPowerGrid(ctx context.Context, req *Request, catalog *placement.Cata
 				return false
 			}
 			probe := Object{Building: poleBuilding, First: p, Second: p}
-			return !terrainConflict([]Object{probe}, req.wet, catalog)
+			return !req.terrainConflict([]Object{probe}, catalog)
 		}
 		path, err := findPowerPath(ctx, network, targetPoint, targetReach, reach, cover, available, point)
 		if err != nil && isNode && targetReach > 0 && ctx.Err() == nil {

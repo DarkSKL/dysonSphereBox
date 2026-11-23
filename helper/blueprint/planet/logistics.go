@@ -225,12 +225,12 @@ func extendOccupancy(req Request, catalog *placement.Catalog) []Obstacle {
 }
 
 // standaloneSite 找出常规独立塔候选，供可更换位置的辅助设施使用。
-func standaloneSite(obstacles []Obstacle, wet func(Position) (bool, bool), catalog *placement.Catalog) (Position, bool) {
-	return stationGridSite(context.Background(), obstacles, wet, catalog, false)
+func (req *Request) standaloneSite(obstacles []Obstacle, catalog *placement.Catalog) (Position, bool) {
+	return req.stationGridSite(context.Background(), obstacles, catalog, false)
 }
 
 // stationGridSite 在指定交付时补查全部非极点整格；塔位仍须满足陆面、原有设施、矿点和塔间距要求。
-func stationGridSite(ctx context.Context, obstacles []Obstacle, wet func(Position) (bool, bool), catalog *placement.Catalog, allRows bool) (Position, bool) {
+func (req *Request) stationGridSite(ctx context.Context, obstacles []Obstacle, catalog *placement.Catalog, allRows bool) (Position, bool) {
 	index := newObstacleIndex(obstacles)
 	tower := Object{Building: blueprint.Building{ItemID: 2104, ModelIndex: 50}}
 	towerRadius := groundRadius(catalog, tower.Building)
@@ -245,14 +245,14 @@ func stationGridSite(ctx context.Context, obstacles []Obstacle, wet func(Positio
 				continue
 			}
 			p := Position{Latitude: latitude, Longitude: float64(col) * float64(lonStep)}
-			if stride == 1 && wet != nil {
-				if water, known := wet(p); !known || water {
+			if stride == 1 && req.wet != nil {
+				if water, known := req.wet(p); !known || water {
 					continue
 				}
 			}
 			tower.First, tower.Second = p, p
 			pt, err := world(p)
-			if err == nil && !index.conflicts(pt, towerRadius) && !index.stationConflict(pt, 2104) && !terrainConflict([]Object{tower}, wet, catalog) {
+			if err == nil && !index.conflicts(pt, towerRadius) && !index.stationConflict(pt, 2104) && !req.terrainConflict([]Object{tower}, catalog) {
 				return p, true
 			}
 		}
@@ -340,7 +340,7 @@ func appendReceiving(ctx context.Context, req *Request, input ProductionRequest,
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			p, ok := stationGridSite(ctx, append(extendOccupancy(*req, catalog), req.minerals...), req.wet, catalog, true)
+			p, ok := req.stationGridSite(ctx, append(extendOccupancy(*req, catalog), req.minerals...), catalog, true)
 			if !ok {
 				if err := ctx.Err(); err != nil {
 					return err
@@ -368,7 +368,7 @@ func appendReceiving(ctx context.Context, req *Request, input ProductionRequest,
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				p, ok := standaloneSite(append(extendOccupancy(*req, catalog), req.minerals...), req.wet, catalog)
+				p, ok := req.standaloneSite(append(extendOccupancy(*req, catalog), req.minerals...), catalog)
 				if !ok {
 					return &Error{PlanetID: input.Plan.PlanetID, Item: want.ItemID, Code: "PLANET_STORAGE_SITE", Message: fmt.Sprintf("缺少本地仓储塔落点，还需 %d 座", copies)}
 				}

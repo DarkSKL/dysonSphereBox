@@ -75,10 +75,12 @@ type LogisticsSettings struct {
 
 // World 职责：提供同一存档时刻的星球快照；使用：全局分工；边界：规划后不访问存档。
 type World struct {
-	RemoteRules    func(from, to, item int64) (routed, banned bool) `json:"-"`
-	RecipeUnlocked func(id int) bool                                `json:"-"`
-	SnapshotID     string                                           `json:"snapshotId"`
-	Planets        []Planet                                         `json:"planets"`
+	// CheckSourceSites 在多星分工进入制造前检查实档采集和接收器；缺口仍交由同一分工修复流程处理。
+	CheckSourceSites func(context.Context, PlanetPlan) error          `json:"-"`
+	RemoteRules      func(from, to, item int64) (routed, banned bool) `json:"-"`
+	RecipeUnlocked   func(id int) bool                                `json:"-"`
+	SnapshotID       string                                           `json:"snapshotId"`
+	Planets          []Planet                                         `json:"planets"`
 	// ResolveResources 按需要精算一个候选星球，不在页面选档时展开整个星系的地形。
 	ResolveResources func(context.Context, int64) ([]Resource, bool, error) `json:"-"`
 	// CachedResources 职责：读取当前快照已精算的资源；使用：跨任务复用；边界：可选，found 表示完成，known 表示有可用的确定数据。
