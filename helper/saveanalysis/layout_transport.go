@@ -65,6 +65,8 @@ type layoutStationComponent struct {
 	storage         []*layoutStationStore
 	isCollector     int64
 	isVeinCollector int64
+	// remoteGroupMask 职责：保留原版塔的全部已用组位；使用：隔离组选择；边界：按位解释，不把负值视作无组。
+	remoteGroupMask uint64
 }
 
 // readStationComponent 职责：消费该区段；使用：由父区段调用；边界：短读或版本不符时终止。
@@ -186,7 +188,10 @@ func (r *reader) readStationComponent(props ...int64) *layoutStationComponent {
 	numDroneDispatchStatus = r.number(1, false)
 	ndroneDispatchStatus := r.length(numDroneDispatchStatus)
 	r.skip(ndroneDispatchStatus * 1)
-	r.skip(54)
+	r.skip(42)
+	// 原版 StationComponent v8 最后先写 Int64 分组掩码，再写 Int32 路线优先模式。
+	v.remoteGroupMask = uint64(r.number(8, false))
+	r.skip(4)
 	return v
 }
 
@@ -377,11 +382,22 @@ func (r *reader) readPlatformSystem(props ...int64) *layoutPlatformSystem {
 	var numReformData int64
 	numReformData = r.number(4, true)
 	nreformData := r.length(numReformData)
-	r.skip(nreformData * 1)
+	data := r.readSurfaceBytes(nreformData)
 	var latitudeCount int64
 	latitudeCount = r.number(4, true)
 	nreformOffsets := r.length(latitudeCount)
-	r.skip(nreformOffsets * 4)
+	if r.surface != nil {
+		r.surface.terrain.ReformData = data
+		if nreformOffsets > (int64(len(r.data))-r.offset)/4 {
+			r.fail("地基纬带偏移数组截断")
+		}
+		r.surface.terrain.ReformOffsets = make([]int64, nreformOffsets)
+		for i := range r.surface.terrain.ReformOffsets {
+			r.surface.terrain.ReformOffsets[i] = r.number(4, true)
+		}
+	} else {
+		r.skip(nreformOffsets * 4)
+	}
 	var numReformCustomColors int64
 	numReformCustomColors = r.number(4, true)
 	nreformCustomColors := r.length(numReformCustomColors)

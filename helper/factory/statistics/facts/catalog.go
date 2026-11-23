@@ -19,12 +19,29 @@ var failure error
 
 // Power 职责：保存PowerDesc原型数值；使用：额定能力；边界：每tick为1/60秒，运行负载和科技另行解释。
 type Power struct {
-	Consumer   bool  `json:"consumer"`          // 职责：识别用电设备；使用：分类；边界：节点不一定耗电。
-	Generator  bool  `json:"generator"`         // 职责：识别发电设施；使用：热能分析；边界：不保证发电。
-	Work       int64 `json:"workEnergyPerTick"` // 职责：额定每tick焦耳；使用：MW换算；边界：未喷涂。
-	Idle       int64 `json:"idleEnergyPerTick"` // 职责：待机每tick焦耳；使用：平均功耗；边界：不乘增产倍率。
-	Generation int64 `json:"genEnergyPerTick"`  // 职责：额定发电；使用：供能对比；边界：不含环境系数。
-	FuelUse    int64 `json:"useFuelPerTick"`    // 职责：额定燃料热消耗；使用：热效率；边界：不含燃料喷涂。
+	Node                  bool  `json:"node"`                  // 职责：识别电网节点；使用：设施分类；边界：不代表独立供能。
+	Consumer              bool  `json:"consumer"`              // 职责：识别用电设备；使用：分类；边界：节点不一定耗电。
+	Generator             bool  `json:"generator"`             // 职责：识别发电设施；使用：供能分析；边界：不保证发电。
+	Photovoltaic          bool  `json:"photovoltaic"`          // 职责：识别光伏；使用：太阳能倍率计算；边界：不包含昼夜与光照。
+	Wind                  bool  `json:"wind"`                  // 职责：识别风力；使用：风能倍率计算；边界：不包含星球风力。
+	Gamma                 bool  `json:"gamma"`                 // 职责：识别射线接收；使用：戴森球供能与光子计算；边界：不保证接收强度。
+	Geothermal            bool  `json:"geothermal"`            // 职责：识别地热；使用：地形供能计算；边界：不保证位置可建。
+	Work                  int64 `json:"workEnergyPerTick"`     // 职责：额定每tick焦耳；使用：MW换算；边界：未喷涂。
+	Idle                  int64 `json:"idleEnergyPerTick"`     // 职责：待机每tick焦耳；使用：平均功耗；边界：不乘增产倍率。
+	Generation            int64 `json:"genEnergyPerTick"`      // 职责：额定发电；使用：供能对比；边界：不含环境系数。
+	FuelUse               int64 `json:"useFuelPerTick"`        // 职责：额定燃料热消耗；使用：热效率；边界：不含燃料喷涂。
+	FuelMask              int   `json:"fuelMask"`              // 职责：保存接受的燃料类别；使用：与FuelType按位匹配；边界：零表示不燃烧物品。
+	CatalystID            int   `json:"catalystId"`            // 职责：保存指定催化物；使用：原型核对；边界：零时仍可能使用类别筛选。
+	CatalystMask          int   `json:"catalystMask"`          // 职责：保存催化物类别；使用：接收站透镜筛选；边界：不是燃料类别。
+	ProductID             int   `json:"productId"`             // 职责：保存供能可产物品；使用：临界光子模式；边界：不代表已选择该模式。
+	ProductHeat           int64 `json:"productHeat"`           // 职责：保存每件产物所需焦耳；使用：光子吞吐换算；边界：传输损耗另计。
+	Accumulator           bool  `json:"accumulator"`           // 职责：识别固定蓄电设施；使用：电量缓冲；边界：不作为持续能源。
+	InputEnergyPerTick    int64 `json:"inputEnergyPerTick"`    // 职责：保存额定充电焦耳；使用：蓄电充电上限；边界：每tick为1/60秒。
+	OutputEnergyPerTick   int64 `json:"outputEnergyPerTick"`   // 职责：保存额定放电焦耳；使用：蓄电放电上限；边界：受剩余电量限制。
+	MaxAcuEnergy          int64 `json:"maxAcuEnergy"`          // 职责：保存蓄电容量焦耳；使用：电池与枢纽缓冲；边界：不是发电功率。
+	Exchanger             bool  `json:"exchanger"`             // 职责：识别能量枢纽；使用：电池运输供能；边界：不确定充放电模式。
+	ExchangeEnergyPerTick int64 `json:"exchangeEnergyPerTick"` // 职责：保存额定交换焦耳；使用：枢纽充放电上限；边界：不含电池喷涂。
+	Charger               bool  `json:"charger"`               // 职责：识别充电设备；使用：电力设施分类；边界：不等同于蓄电器。
 }
 
 // Item 职责：保存物品及建筑事实；使用：按ID统计；边界：指针Power为空且PowerKnown为true才表示无电力组件。
@@ -33,6 +50,7 @@ type Item struct {
 	Name       string `json:"Name"`       // 职责：名称键；使用：显示；边界：不保证本地化。
 	ModelIndex int    `json:"ModelIndex"` // 职责：关联建筑模型；使用：版本核对；边界：不包含美术资源。
 	HeatValue  int64  `json:"HeatValue"`  // 职责：未喷涂热值J；使用：化学能通量；边界：非燃料通常为零。
+	FuelType   int    `json:"FuelType"`   // 职责：保存燃料类别位；使用：与设施FuelMask匹配；边界：热值非零不代表设施接受。
 	PowerKnown bool   `json:"powerKnown"` // 职责：区分无组件和未提取；使用：覆盖率；边界：未知不是零。
 	Power      *Power `json:"power"`      // 职责：额定电力；使用：能耗计算；边界：可无组件。
 }

@@ -89,7 +89,7 @@ func (env *transportEnvironment) findDenseTransportSideMerge(ctx context.Context
 				// 只替换本次试探的物理终点；原canonical路线及实际尾链完全不写入。
 				probe := *route
 				probe.end = tail[anchor.index]
-				full, _, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, &probe, nil, incoming, prefix, anchor.portals)
+				full, _, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, &probe, nil, incoming, prefix, anchor.portals, bestCost-anchor.cost)
 				expanded, maximum, searches = expanded+steps, max(maximum, peak), searches+calls
 				cost, length = cost+anchor.cost, length+anchor.length
 				if len(full) > 0 && (cost < bestCost || cost == bestCost && length < bestLength) {

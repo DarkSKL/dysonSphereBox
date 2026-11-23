@@ -12,6 +12,7 @@ import (
 	"DysonSphereBox/helper/blueprint"
 	core "DysonSphereBox/helper/blueprint/build/core"
 	"DysonSphereBox/helper/blueprint/build/workflow"
+	"DysonSphereBox/helper/industryplan/search"
 )
 
 // runtime 职责：只读保存工具及冻结执行计划；使用：任务共享；边界：不保存进行中的任务状态。
@@ -95,6 +96,17 @@ func Generate(parent context.Context, req core.Request) (result core.Result, err
 
 // GenerateDetailed 职责：执行并返回完整工具轨迹；使用：生成门面和架构回归；边界：轨迹不进入产品界面，不替代真实实体校验。
 func GenerateDetailed(parent context.Context, req core.Request) (result core.Result, trace *workflow.RunResult, err error) {
+	return generateDetailed(parent, req, nil)
+}
+
+// GenerateWithStationAlternative 供整星直连施工保留一份不同外形的已验证塔布局；沿用同轮候选与计时。
+func GenerateWithStationAlternative(parent context.Context, req core.Request) (core.Result, *core.VerifiedSnapshot, error) {
+	var placements core.StationPlacementOptions
+	result, _, err := generateDetailed(parent, req, &placements)
+	return result, placements.Alternative(result.SurfacePlan), err
+}
+
+func generateDetailed(parent context.Context, req core.Request, placements *core.StationPlacementOptions) (result core.Result, trace *workflow.RunResult, err error) {
 	defer func() { FinishWorkflowTracking(parent, trace, err) }()
 	if req.CandidateConcurrency < 0 || req.CandidateConcurrency > 10 {
 		return result, nil, &blueprint.Error{Code: "GEN_E_CONCURRENCY", Message: "候选并发上限必须为自动或一到十"}
@@ -109,7 +121,13 @@ func GenerateDetailed(parent context.Context, req core.Request) (result core.Res
 		}
 	}
 	workBudget := r.execution.workBudget(req.Plan.MachineCount)
-	ctx, cancel := context.WithTimeout(parent, workBudget)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if search.Controlled(parent) {
+		ctx, cancel = context.WithCancel(parent)
+	} else {
+		ctx, cancel = context.WithTimeout(parent, workBudget)
+	}
 	defer cancel()
 	ctx, observer := core.BeginObservation(ctx, req)
 	defer func() { observer.Finish(ctx, &result, err) }()
@@ -123,11 +141,13 @@ func GenerateDetailed(parent context.Context, req core.Request) (result core.Res
 	// 自动模式为大型计划保留内存余量；显式并发选择仍由请求决定，不改变全局GOMAXPROCS。
 	parallel := r.execution.parallel(req.CandidateConcurrency, req.Plan.MachineCount)
 	trace, err = workflow.Run(ctx, r.plan, instance, workflow.RunOptions{
-		Timeout:          workBudget,
-		ObserveExecution: WorkflowExecutionObserver(ctx),
-		Parallel:         observer.CandidateSlots(parallel),
-		Score:            func(*workflow.FrozenSnapshot) ([]float64, error) { return []float64{0}, nil },
-		Comparators:      map[string]workflow.Comparator{"layout": r.layoutComparison, "station-refinement": r.refinementComparison},
+		FirstVerifiedLayout: req.FirstVerifiedLayout,
+		Timeout:             workBudget,
+		UseParentDeadline:   search.Controlled(parent),
+		ObserveExecution:    WorkflowExecutionObserver(ctx),
+		Parallel:            observer.CandidateSlots(parallel),
+		Score:               func(*workflow.FrozenSnapshot) ([]float64, error) { return []float64{0}, nil },
+		Comparators:         map[string]workflow.Comparator{"layout": r.layoutComparison, "station-refinement": r.refinementComparison},
 		Observe: func(event workflow.CandidateEvent) error {
 			var verified *core.VerifiedSnapshot
 			if event.Snapshot != nil {
@@ -136,6 +156,9 @@ func GenerateDetailed(parent context.Context, req core.Request) (result core.Res
 					return readErr
 				}
 				verified = &value
+				if placements != nil && event.Kind == "succeeded" {
+					placements.Offer(value, event.Path)
+				}
 			}
 			return core.ObserveCandidate(ctx, event.Kind, event.Path, event.Ordinal, verified, event.Failure)
 		},

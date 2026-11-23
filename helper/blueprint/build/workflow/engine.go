@@ -39,6 +39,8 @@ type CandidateEvent struct {
 
 // RunOptions 职责：提供服务层评分和时限；使用：Run；边界：不把调度权限交给工具。
 type RunOptions struct {
+	// FirstVerifiedLayout 允许组合规划复用已通过完整布局规则的基线；普通工作台继续比较所有候选。
+	FirstVerifiedLayout bool
 	// ObserveExecution 职责：同步旁路投递深复制执行事件；使用：后台journal；边界：须快返，错误/panic仅计lost，不影响预览Observe或业务事务，不启动新线程。
 	ObserveExecution func(ExecutionEvent) error
 	// Parallel 职责：收紧全局工具并发及各候选组工作区派发；使用：请求级并发选择；边界：零沿用计划，显式值为一至十且不超过计划上限，YAML仍是每组上限。
@@ -53,6 +55,8 @@ type RunOptions struct {
 	Observe func(CandidateEvent) error
 	// Timeout 职责：任务总时限；使用：服务取消联动；边界：零值四分钟，负值拒绝。
 	Timeout time.Duration
+	// UseParentDeadline 职责：沿用父任务管理的时限；使用：可恢复规划；边界：仍响应父取消，普通调用保留 Timeout。
+	UseParentDeadline bool
 }
 
 // Trace 职责：记录一次粗粒度调用的可解释证据；使用：RunResult；边界：参数是独立 JSON 字节，不持有工具参数别名。
@@ -200,7 +204,12 @@ func Run(ctx context.Context, p *Plan, i *BlueprintInstance, options RunOptions)
 	i.running = true
 	i.mu.Unlock()
 	defer func() { i.mu.Lock(); i.running = false; i.mu.Unlock() }()
-	ctx, cancel := context.WithTimeout(ctx, options.Timeout)
+	var cancel context.CancelFunc
+	if options.UseParentDeadline {
+		ctx, cancel = context.WithCancel(ctx)
+	} else {
+		ctx, cancel = context.WithTimeout(ctx, options.Timeout)
+	}
 	defer cancel()
 	parallel := p.limits.Parallel
 	if options.Parallel > 0 {

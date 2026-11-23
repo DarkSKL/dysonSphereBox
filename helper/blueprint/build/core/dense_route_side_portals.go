@@ -105,7 +105,7 @@ func (env *transportEnvironment) findDenseTransportPathSide(ctx context.Context,
 			if env.transportPathCost(prefix.points) > bestCost {
 				continue
 			}
-			full, selected, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, route, tail, incoming, prefix, targets)
+			full, selected, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, route, tail, incoming, prefix, targets, bestCost)
 			expanded, maximum, searches = expanded+steps, max(maximum, peak), searches+calls
 			if len(full) > 0 && (cost < bestCost || cost == bestCost && length < bestLength) {
 				best, bestIndex, bestCost, bestLength = full, selected, cost, length

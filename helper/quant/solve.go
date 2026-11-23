@@ -8,7 +8,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"time"
 )
 
@@ -23,6 +25,30 @@ func MachineKind(id int) (int, int) {
 		}
 	}
 	return -1, 0
+}
+
+// WithUnlockedRecipes 职责：限定实际制造可用的配方；使用：读取存档科技后传入查询函数；边界：返回独立请求，nil 保留普通量化行为。
+func (req Request) WithUnlockedRecipes(unlocked func(int) bool) Request {
+	req.recipeUnlocked = unlocked
+	return req
+}
+
+// unlockedChoices 职责：替换尚未解锁的默认制造配方；使用：存档模式构图前；边界：保留玩家显式选择，实际执行时再报告锁定配方，外供及未使用的配方不阻塞规划。
+func (req Request) unlockedChoices(d *Dataset) map[string]int {
+	choices := maps.Clone(req.Scheme.ItemRecipeChoices)
+	for name, indices := range d.Choices {
+		if choices[name] != 0 || req.Settings.MineralizeList[name] || slices.Contains(req.Settings.DirectResourceItemIDs, d.ByName[name].ID) || req.recipeUnlocked(d.Recipes[indices[0]].ID) {
+			continue
+		}
+		alternative := slices.IndexFunc(indices, func(i int) bool { return req.recipeUnlocked(d.Recipes[i].ID) })
+		if alternative >= 0 {
+			if choices == nil {
+				choices = make(map[string]int)
+			}
+			choices[name] = alternative + 1
+		}
+	}
+	return choices
 }
 
 // Solve 职责：执行有界量化；使用：工作区目标请求；边界：最多 5 秒，失败不返回部分结果。
@@ -51,6 +77,9 @@ func Solve(parent context.Context, req Request) (Result, error) {
 			return out, qerror("Q_E_NO_RECIPE", fmt.Sprintf("物品 %d %s 没有配方", item.ID, item.Name))
 		}
 		needs.add(item.Name, target.RatePerMinute)
+	}
+	if req.recipeUnlocked != nil {
+		req.Scheme.ItemRecipeChoices = req.unlockedChoices(d)
 	}
 	g, err := makeGraph(d, req.Scheme, req.Settings)
 	if err != nil {
@@ -103,13 +132,17 @@ func Solve(parent context.Context, req Request) (Result, error) {
 		typ, lv := MachineKind(n.factory.ID)
 		if n.raw || typ < 0 {
 			out.RawInputs = append(out.RawInputs, ItemRate{ItemID: d.ByName[name].ID, Name: name, RatePerMinute: amount})
-			if n.raw && (!d.ExternalOnly[name] || g.settings.MineralizeList[name]) {
+			if n.raw && !n.directResource && (!d.ExternalOnly[name] || g.settings.MineralizeList[name]) {
 				out.ExternalInputItemIDs = append(out.ExternalInputItemIDs, d.ByName[name].ID)
 			}
 			if n.unsupportedFactory {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("%s 的设施 %s 不在六类可生成制造设备中，需外部供应；其功耗未计入制造功耗", name, n.factory.Name))
 			}
 			continue
+		}
+		r := d.Recipes[n.recipe]
+		if req.recipeUnlocked != nil && !req.recipeUnlocked(r.ID) {
+			return Result{}, qerror("Q_E_RECIPE_LOCKED", fmt.Sprintf("当前存档尚未解锁「%s」配方", r.Name))
 		}
 		singleOutput := machineOutputPerMinute(n)
 		if singleOutput <= 0 || math.IsNaN(singleOutput) || math.IsInf(singleOutput, 0) {
@@ -129,7 +162,6 @@ func Solve(parent context.Context, req Request) (Result, error) {
 				level = 3
 			}
 		}
-		r := d.Recipes[n.recipe]
 		p := Production{RecipeID: r.ID, MachineCount: count, ExactMachineCount: exact, RoundingMargin: float64(count) - exact, MachineType: typ, MachineLv: lv, BeltLv: 1, MachineID: n.factory.ID, OutputCount: amount, MainItemID: d.ByName[name].ID, ProductionMode: blueprintMode(n.scheme.ProductionMode), ProliferatorMode: n.scheme.ProductionMode, IncreaseLv: level, IncreasePoints: n.scheme.IncreasePoints}
 		power := 1.
 		if n.scheme.ProductionMode > 0 {

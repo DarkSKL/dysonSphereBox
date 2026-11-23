@@ -26,3 +26,4 @@ __pycache__/
 /.codex/tmp-exe-icon.png
 .docs
 /docs
+HANDOFF.md

@@ -79,6 +79,9 @@ func (a *App) startup(ctx context.Context) {
 // 边界：关闭失败只记录到控制台，避免退出流程二次 panic。
 func (a *App) shutdown(ctx context.Context) {
 	cleanupContext, cancelCleanup := context.WithTimeout(context.Background(), 3*time.Second)
+	if err := service.ServiceGroupApp.EnvironmentServiceGroup.ReleasePlanner(cleanupContext); err != nil {
+		systemHelper.RecordFailure("industryplan", "generation", "shutdown", "等待跨星球规划退出超时", err, nil)
+	}
 	if err := service.ServiceGroupApp.FactoryServiceGroup.ReleaseResources(cleanupContext); err != nil {
 		diagnostics.Default.Record(logging.Entry{Action: "等待工厂生成退出超时", Level: logging.Error, Source: "backend.shutdown", Reason: "候选计算未在关闭期限内退出", Namespace: "factory.generation.shutdown", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})
 	}

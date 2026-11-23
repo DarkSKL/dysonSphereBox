@@ -2815,52 +2815,19 @@ func (r *reader) readDFRelayComponent(props ...int64) *layoutDFRelayComponent {
 	var id int64
 	id = r.number(2, false)
 	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(2)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.readVector3()
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(1)
-	}
-	if id > 0 {
-		r.skip(2)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
+		r.skip(10) // enemyId、builderId、dockIndex。
+		hiveID, planetID := r.number(4, true), r.number(4, true)
+		position := r.readVector3()
+		yaw := floatValue(r.number(4, false))
+		baseState, baseID := r.number(1, true), r.number(2, true)
+		r.skip(4) // baseTicks。
 		r.readEvolveData()
-	}
-	if id > 0 {
-		r.skip(2)
-	}
-	if id > 0 {
-		r.skip(1)
-	}
-	if id > 0 {
-		r.skip(1)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
+		r.skip(3) // baseRespawnCD、direction。
+		stage := r.number(1, true)
+		r.skip(8) // uSpeed、param0。
+		if baseState == 1 && baseID == 0 && stage == 2 {
+			r.recordVirtualRelay(planetID, hiveID, id, position, yaw)
+		}
 	}
 	var num int64
 	num = r.number(1, false)

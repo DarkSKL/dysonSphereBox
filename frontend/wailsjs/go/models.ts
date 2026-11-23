@@ -4069,6 +4069,1118 @@ export namespace forward {
 
 }
 
+export namespace galaxy {
+	
+	export class Vector {
+	    x: number;
+	    y: number;
+	    z: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Vector(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	    }
+	}
+
+}
+
+export namespace industryplan {
+	
+	export class DysonSupply {
+	    starId: number;
+	    planetIds: number[];
+	    availableMw: number;
+	    efficiency: number;
+	    uptime: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DysonSupply(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.planetIds = source["planetIds"];
+	        this.availableMw = source["availableMw"];
+	        this.efficiency = source["efficiency"];
+	        this.uptime = source["uptime"];
+	    }
+	}
+	export class DysonSettings {
+	    mode: string;
+	    supplies: DysonSupply[];
+	    lenses: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DysonSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.supplies = this.convertValues(source["supplies"], DysonSupply);
+	        this.lenses = source["lenses"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class EnergyChoice {
+	    mode: string;
+	    facilityId: number;
+	    fuelItemId: number;
+	    gridCapacityMw: number;
+	    chargePlanetId: number;
+	    solarFactor: number;
+	    solarDuty: number;
+	    nightSeconds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnergyChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.facilityId = source["facilityId"];
+	        this.fuelItemId = source["fuelItemId"];
+	        this.gridCapacityMw = source["gridCapacityMw"];
+	        this.chargePlanetId = source["chargePlanetId"];
+	        this.solarFactor = source["solarFactor"];
+	        this.solarDuty = source["solarDuty"];
+	        this.nightSeconds = source["nightSeconds"];
+	    }
+	}
+	export class EnergyOverride {
+	    planetId: number;
+	    choice: EnergyChoice;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnergyOverride(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planetId = source["planetId"];
+	        this.choice = this.convertValues(source["choice"], EnergyChoice);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnergySettings {
+	    default: EnergyChoice;
+	    allowedFacilityIds: number[];
+	    overrides: EnergyOverride[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EnergySettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.default = this.convertValues(source["default"], EnergyChoice);
+	        this.allowedFacilityIds = source["allowedFacilityIds"];
+	        this.overrides = this.convertValues(source["overrides"], EnergyOverride);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class External {
+	    planetId: number;
+	    peerPlanetId?: number;
+	    itemId: number;
+	    ratePerMinute: number;
+	    powerMw?: number;
+	    kind: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new External(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planetId = source["planetId"];
+	        this.peerPlanetId = source["peerPlanetId"];
+	        this.itemId = source["itemId"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	        this.powerMw = source["powerMw"];
+	        this.kind = source["kind"];
+	    }
+	}
+	export class FleetCargo {
+	    itemId: number;
+	    vesselLoad: number;
+	    maxVesselMw?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FleetCargo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.vesselLoad = source["vesselLoad"];
+	        this.maxVesselMw = source["maxVesselMw"];
+	    }
+	}
+	export class FleetStation {
+	    buildingIndex: number;
+	    longitude: number;
+	    latitude: number;
+	    vessels: number;
+	    cargo: FleetCargo[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FleetStation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.buildingIndex = source["buildingIndex"];
+	        this.longitude = source["longitude"];
+	        this.latitude = source["latitude"];
+	        this.vessels = source["vessels"];
+	        this.cargo = this.convertValues(source["cargo"], FleetCargo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LayoutMetrics {
+	    rebuilds: number;
+	    reuses: number;
+	    rebuildMillis: number;
+	    repairMillis: number;
+	    stageMillis?: Record<string, number>;
+	    adjustments?: Record<string, number>;
+	
+	    static createFrom(source: any = {}) {
+	        return new LayoutMetrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rebuilds = source["rebuilds"];
+	        this.reuses = source["reuses"];
+	        this.rebuildMillis = source["rebuildMillis"];
+	        this.repairMillis = source["repairMillis"];
+	        this.stageMillis = source["stageMillis"];
+	        this.adjustments = source["adjustments"];
+	    }
+	}
+	export class LogisticsSettings {
+	    warpEnabled?: boolean;
+	    cargoPerVessel: number;
+	    cruiseSpeed: number;
+	    warpSpeed: number;
+	    warpDistance: number;
+	    turnaroundSeconds: number;
+	    speedMultiplier: number;
+	    cargoMultiplier: number;
+	    vesselsPerStation: number;
+	    maxStationsPerPlanet: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogisticsSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.warpEnabled = source["warpEnabled"];
+	        this.cargoPerVessel = source["cargoPerVessel"];
+	        this.cruiseSpeed = source["cruiseSpeed"];
+	        this.warpSpeed = source["warpSpeed"];
+	        this.warpDistance = source["warpDistance"];
+	        this.turnaroundSeconds = source["turnaroundSeconds"];
+	        this.speedMultiplier = source["speedMultiplier"];
+	        this.cargoMultiplier = source["cargoMultiplier"];
+	        this.vesselsPerStation = source["vesselsPerStation"];
+	        this.maxStationsPerPlanet = source["maxStationsPerPlanet"];
+	    }
+	}
+	export class Mine {
+	    itemId: number;
+	    kind: string;
+	    source: string;
+	    facilityId: number;
+	    count: number;
+	    ratePerMinute: number;
+	    coveredItems?: number;
+	    availableMinutes?: number;
+	    speedMultiplier: number;
+	    facilityMultiplier: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Mine(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.kind = source["kind"];
+	        this.source = source["source"];
+	        this.facilityId = source["facilityId"];
+	        this.count = source["count"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	        this.coveredItems = source["coveredItems"];
+	        this.availableMinutes = source["availableMinutes"];
+	        this.speedMultiplier = source["speedMultiplier"];
+	        this.facilityMultiplier = source["facilityMultiplier"];
+	    }
+	}
+	export class MiningSettings {
+	    facilityId: number;
+	    coveredVeins: number;
+	    speedMultiplier: number;
+	    facilityMultiplier: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MiningSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.facilityId = source["facilityId"];
+	        this.coveredVeins = source["coveredVeins"];
+	        this.speedMultiplier = source["speedMultiplier"];
+	        this.facilityMultiplier = source["facilityMultiplier"];
+	    }
+	}
+	export class PhotonPlan {
+	    count: number;
+	    ratePerMinute: number;
+	    lensRatePerMinute: number;
+	    spherePowerMw: number;
+	    efficiency: number;
+	    uptime: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PhotonPlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.count = source["count"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	        this.lensRatePerMinute = source["lensRatePerMinute"];
+	        this.spherePowerMw = source["spherePowerMw"];
+	        this.efficiency = source["efficiency"];
+	        this.uptime = source["uptime"];
+	    }
+	}
+	export class Port {
+	    itemId: number;
+	    kind: string;
+	    ratePerMinute: number;
+	    storageItems: number;
+	    peerPlanetId: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Port(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.kind = source["kind"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	        this.storageItems = source["storageItems"];
+	        this.peerPlanetId = source["peerPlanetId"];
+	    }
+	}
+	export class PowerSource {
+	    facilityId: number;
+	    fuelItemId: number;
+	    count: number;
+	    fuelRatePerMinute: number;
+	    powerMw: number;
+	    factor: number;
+	    mode?: string;
+	    peerPlanetId?: number;
+	    storedMj?: number;
+	    spherePowerMw?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PowerSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.facilityId = source["facilityId"];
+	        this.fuelItemId = source["fuelItemId"];
+	        this.count = source["count"];
+	        this.fuelRatePerMinute = source["fuelRatePerMinute"];
+	        this.powerMw = source["powerMw"];
+	        this.factor = source["factor"];
+	        this.mode = source["mode"];
+	        this.peerPlanetId = source["peerPlanetId"];
+	        this.storedMj = source["storedMj"];
+	        this.spherePowerMw = source["spherePowerMw"];
+	    }
+	}
+	export class PowerPlan {
+	    sources?: PowerSource[];
+	    facilityId: number;
+	    fuelItemId: number;
+	    count: number;
+	    fuelRatePerMinute: number;
+	    powerMw: number;
+	    externalGridMw?: number;
+	    requiredMw: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PowerPlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sources = this.convertValues(source["sources"], PowerSource);
+	        this.facilityId = source["facilityId"];
+	        this.fuelItemId = source["fuelItemId"];
+	        this.count = source["count"];
+	        this.fuelRatePerMinute = source["fuelRatePerMinute"];
+	        this.powerMw = source["powerMw"];
+	        this.externalGridMw = source["externalGridMw"];
+	        this.requiredMw = source["requiredMw"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class Progress {
+	    phase: string;
+	    completed: number;
+	    total: number;
+	    planetId: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Progress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.phase = source["phase"];
+	        this.completed = source["completed"];
+	        this.total = source["total"];
+	        this.planetId = source["planetId"];
+	    }
+	}
+	export class Request {
+	    energy: EnergySettings;
+	    dyson: DysonSettings;
+	    developFully: boolean;
+	    quant: quant.Request;
+	    centerPlanetId: number;
+	    deliveryPlanetIds: Record<number, number>;
+	    targetPlanetIds?: number[];
+	    preference: string;
+	    profile: string;
+	    enableMining?: boolean;
+	    enableOrbitalCollectors?: boolean;
+	    enableLogistics?: boolean;
+	    enableStorage?: boolean;
+	    enablePower: boolean;
+	    enableFuel: boolean;
+	    storagePlanetId: number;
+	    storageMinutes: number;
+	    mining: MiningSettings;
+	    logistics: LogisticsSettings;
+	
+	    static createFrom(source: any = {}) {
+	        return new Request(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.energy = this.convertValues(source["energy"], EnergySettings);
+	        this.dyson = this.convertValues(source["dyson"], DysonSettings);
+	        this.developFully = source["developFully"];
+	        this.quant = this.convertValues(source["quant"], quant.Request);
+	        this.centerPlanetId = source["centerPlanetId"];
+	        this.deliveryPlanetIds = source["deliveryPlanetIds"];
+	        this.targetPlanetIds = source["targetPlanetIds"];
+	        this.preference = source["preference"];
+	        this.profile = source["profile"];
+	        this.enableMining = source["enableMining"];
+	        this.enableOrbitalCollectors = source["enableOrbitalCollectors"];
+	        this.enableLogistics = source["enableLogistics"];
+	        this.enableStorage = source["enableStorage"];
+	        this.enablePower = source["enablePower"];
+	        this.enableFuel = source["enableFuel"];
+	        this.storagePlanetId = source["storagePlanetId"];
+	        this.storageMinutes = source["storageMinutes"];
+	        this.mining = this.convertValues(source["mining"], MiningSettings);
+	        this.logistics = this.convertValues(source["logistics"], LogisticsSettings);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ResourceGap {
+	    itemId: number;
+	    requiredPerMinute: number;
+	    availablePerMinute: number;
+	    pendingPlanets: number;
+	    unknownPlanets: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceGap(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.requiredPerMinute = source["requiredPerMinute"];
+	        this.availablePerMinute = source["availablePerMinute"];
+	        this.pendingPlanets = source["pendingPlanets"];
+	        this.unknownPlanets = source["unknownPlanets"];
+	    }
+	}
+	export class Route {
+	    vesselEnergyMj?: number;
+	    vesselPowerMw?: number;
+	    fromPlanetId: number;
+	    toPlanetId: number;
+	    itemId: number;
+	    ratePerMinute: number;
+	    distance: number;
+	    roundTripSeconds: number;
+	    vesselLoad: number;
+	    warperRatePerMinute: number;
+	    interstellar: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Route(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.vesselEnergyMj = source["vesselEnergyMj"];
+	        this.vesselPowerMw = source["vesselPowerMw"];
+	        this.fromPlanetId = source["fromPlanetId"];
+	        this.toPlanetId = source["toPlanetId"];
+	        this.itemId = source["itemId"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	        this.distance = source["distance"];
+	        this.roundTripSeconds = source["roundTripSeconds"];
+	        this.vesselLoad = source["vesselLoad"];
+	        this.warperRatePerMinute = source["warperRatePerMinute"];
+	        this.interstellar = source["interstellar"];
+	    }
+	}
+
+}
+
+export namespace industryworkspace {
+	
+	export class BlueprintSheet {
+	    id: number;
+	    name: string;
+	    file: string;
+	    kind: string;
+	    buildings: number;
+	    foundationCells: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlueprintSheet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.file = source["file"];
+	        this.kind = source["kind"];
+	        this.buildings = source["buildings"];
+	        this.foundationCells = source["foundationCells"];
+	    }
+	}
+	export class Chunk {
+	    text: string;
+	    nextOffset: number;
+	    done: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Chunk(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.nextOffset = source["nextOffset"];
+	        this.done = source["done"];
+	    }
+	}
+	export class ExistingSlot {
+	    itemId: number;
+	    planetId: number;
+	    stationId: number;
+	    slot: number;
+	    logic: number;
+	    remote: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExistingSlot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.planetId = source["planetId"];
+	        this.stationId = source["stationId"];
+	        this.slot = source["slot"];
+	        this.logic = source["logic"];
+	        this.remote = source["remote"];
+	    }
+	}
+	export class Issue {
+	    cause: string;
+	    action: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Issue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cause = source["cause"];
+	        this.action = source["action"];
+	    }
+	}
+	export class ItemCount {
+	    itemId: number;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemCount(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.count = source["count"];
+	    }
+	}
+	export class MinePlacement {
+	    itemId: number;
+	    facilityId: number;
+	    buildingIndex: number;
+	    longitude: number;
+	    latitude: number;
+	    veinIds: number[];
+	    coveredItems?: number;
+	    ratePerMinute: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MinePlacement(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.facilityId = source["facilityId"];
+	        this.buildingIndex = source["buildingIndex"];
+	        this.longitude = source["longitude"];
+	        this.latitude = source["latitude"];
+	        this.veinIds = source["veinIds"];
+	        this.coveredItems = source["coveredItems"];
+	        this.ratePerMinute = source["ratePerMinute"];
+	    }
+	}
+	export class Options {
+	    technologyMode?: string;
+	    continuous?: boolean;
+	    power: boolean;
+	    spray: boolean;
+	    fuel: boolean;
+	    buffer: boolean;
+	    foundation: string;
+	    beltLevel: number;
+	    inserterLevel: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Options(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.technologyMode = source["technologyMode"];
+	        this.continuous = source["continuous"];
+	        this.power = source["power"];
+	        this.spray = source["spray"];
+	        this.fuel = source["fuel"];
+	        this.buffer = source["buffer"];
+	        this.foundation = source["foundation"];
+	        this.beltLevel = source["beltLevel"];
+	        this.inserterLevel = source["inserterLevel"];
+	    }
+	}
+	export class PlanetSheet {
+	    outboundVesselMw?: number;
+	    fleet?: industryplan.FleetStation[];
+	    sheets: BlueprintSheet[];
+	    modules: number;
+	    photons?: industryplan.PhotonPlan;
+	    id: number;
+	    name: string;
+	    star: string;
+	    file: string;
+	    longitude: number;
+	    latitude: number;
+	    direction: number;
+	    buildings: number;
+	    areas: number;
+	    foundationCells: number;
+	    soilEstimateKnown: boolean;
+	    soilLowerBound: number;
+	    soilUpperBound: number;
+	    stations: number;
+	    vessels: number;
+	    powerMw: number;
+	    ports: industryplan.Port[];
+	    mines: industryplan.Mine[];
+	    minePlacements: MinePlacement[];
+	    materials: ItemCount[];
+	    stationStorage: ItemCount[];
+	    power?: industryplan.PowerPlan;
+	    existingSlots?: ExistingSlot[];
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanetSheet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.outboundVesselMw = source["outboundVesselMw"];
+	        this.fleet = this.convertValues(source["fleet"], industryplan.FleetStation);
+	        this.sheets = this.convertValues(source["sheets"], BlueprintSheet);
+	        this.modules = source["modules"];
+	        this.photons = this.convertValues(source["photons"], industryplan.PhotonPlan);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.star = source["star"];
+	        this.file = source["file"];
+	        this.longitude = source["longitude"];
+	        this.latitude = source["latitude"];
+	        this.direction = source["direction"];
+	        this.buildings = source["buildings"];
+	        this.areas = source["areas"];
+	        this.foundationCells = source["foundationCells"];
+	        this.soilEstimateKnown = source["soilEstimateKnown"];
+	        this.soilLowerBound = source["soilLowerBound"];
+	        this.soilUpperBound = source["soilUpperBound"];
+	        this.stations = source["stations"];
+	        this.vessels = source["vessels"];
+	        this.powerMw = source["powerMw"];
+	        this.ports = this.convertValues(source["ports"], industryplan.Port);
+	        this.mines = this.convertValues(source["mines"], industryplan.Mine);
+	        this.minePlacements = this.convertValues(source["minePlacements"], MinePlacement);
+	        this.materials = this.convertValues(source["materials"], ItemCount);
+	        this.stationStorage = this.convertValues(source["stationStorage"], ItemCount);
+	        this.power = this.convertValues(source["power"], industryplan.PowerPlan);
+	        this.existingSlots = this.convertValues(source["existingSlots"], ExistingSlot);
+	        this.warnings = source["warnings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Report {
+	    saveName: string;
+	    technology?: saveanalysis.PlanningTechnology;
+	    technologyChanges: string[];
+	    exportName: string;
+	    blueprintCount: number;
+	    layoutMetrics: industryplan.LayoutMetrics;
+	    issues: Issue[];
+	    achievedTargets: quant.Target[];
+	    extraTargets: quant.Target[];
+	    expansionNote: string;
+	    resourcesInspected: number;
+	    limitStage?: string;
+	    resourceGaps?: industryplan.ResourceGap[];
+	    layoutCandidates: number;
+	    remoteGroup?: number;
+	    scoreBasis: string;
+	    storagePlanetId: number;
+	    exportable: boolean;
+	    snapshotId: string;
+	    tick: number;
+	    gameVersion: string;
+	    status: string;
+	    centerPlanetId: number;
+	    targets: quant.Target[];
+	    profile: string;
+	    preference: string;
+	    candidates: number;
+	    repairs: number;
+	    planets: PlanetSheet[];
+	    routes: industryplan.Route[];
+	    external: industryplan.External[];
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Report(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.saveName = source["saveName"];
+	        this.technology = this.convertValues(source["technology"], saveanalysis.PlanningTechnology);
+	        this.technologyChanges = source["technologyChanges"];
+	        this.exportName = source["exportName"];
+	        this.blueprintCount = source["blueprintCount"];
+	        this.layoutMetrics = this.convertValues(source["layoutMetrics"], industryplan.LayoutMetrics);
+	        this.issues = this.convertValues(source["issues"], Issue);
+	        this.achievedTargets = this.convertValues(source["achievedTargets"], quant.Target);
+	        this.extraTargets = this.convertValues(source["extraTargets"], quant.Target);
+	        this.expansionNote = source["expansionNote"];
+	        this.resourcesInspected = source["resourcesInspected"];
+	        this.limitStage = source["limitStage"];
+	        this.resourceGaps = this.convertValues(source["resourceGaps"], industryplan.ResourceGap);
+	        this.layoutCandidates = source["layoutCandidates"];
+	        this.remoteGroup = source["remoteGroup"];
+	        this.scoreBasis = source["scoreBasis"];
+	        this.storagePlanetId = source["storagePlanetId"];
+	        this.exportable = source["exportable"];
+	        this.snapshotId = source["snapshotId"];
+	        this.tick = source["tick"];
+	        this.gameVersion = source["gameVersion"];
+	        this.status = source["status"];
+	        this.centerPlanetId = source["centerPlanetId"];
+	        this.targets = this.convertValues(source["targets"], quant.Target);
+	        this.profile = source["profile"];
+	        this.preference = source["preference"];
+	        this.candidates = source["candidates"];
+	        this.repairs = source["repairs"];
+	        this.planets = this.convertValues(source["planets"], PlanetSheet);
+	        this.routes = this.convertValues(source["routes"], industryplan.Route);
+	        this.external = this.convertValues(source["external"], industryplan.External);
+	        this.warnings = source["warnings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Request {
+	    saveId: string;
+	    snapshotId: string;
+	    planning: industryplan.Request;
+	    options: Options;
+	
+	    static createFrom(source: any = {}) {
+	        return new Request(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.saveId = source["saveId"];
+	        this.snapshotId = source["snapshotId"];
+	        this.planning = this.convertValues(source["planning"], industryplan.Request);
+	        this.options = this.convertValues(source["options"], Options);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Site {
+	    id: number;
+	    starId: number;
+	    name: string;
+	    star: string;
+	    position: galaxy.Vector;
+	    parentPlanetId: number;
+	    gas: boolean;
+	    source: string;
+	    resources: saveanalysis.PlanetResource[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Site(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.starId = source["starId"];
+	        this.name = source["name"];
+	        this.star = source["star"];
+	        this.position = this.convertValues(source["position"], galaxy.Vector);
+	        this.parentPlanetId = source["parentPlanetId"];
+	        this.gas = source["gas"];
+	        this.source = source["source"];
+	        this.resources = this.convertValues(source["resources"], saveanalysis.PlanetResource);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Selection {
+	    saveName: string;
+	    technology?: saveanalysis.PlanningTechnology;
+	    saveId: string;
+	    snapshotId: string;
+	    tick: number;
+	    gameVersion: string;
+	    stars: number;
+	    starSystems: saveanalysis.StarLink[];
+	    sites: Site[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Selection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.saveName = source["saveName"];
+	        this.technology = this.convertValues(source["technology"], saveanalysis.PlanningTechnology);
+	        this.saveId = source["saveId"];
+	        this.snapshotId = source["snapshotId"];
+	        this.tick = source["tick"];
+	        this.gameVersion = source["gameVersion"];
+	        this.stars = source["stars"];
+	        this.starSystems = this.convertValues(source["starSystems"], saveanalysis.StarLink);
+	        this.sites = this.convertValues(source["sites"], Site);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class TimeEstimate {
+	    minSeconds: number;
+	    maxSeconds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TimeEstimate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.minSeconds = source["minSeconds"];
+	        this.maxSeconds = source["maxSeconds"];
+	    }
+	}
+	export class Task {
+	    id: number;
+	    state: string;
+	    progress: industryplan.Progress;
+	    error?: string;
+	    elapsedSeconds: number;
+	    estimate?: TimeEstimate;
+	    expanding: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Task(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.state = source["state"];
+	        this.progress = this.convertValues(source["progress"], industryplan.Progress);
+	        this.error = source["error"];
+	        this.elapsedSeconds = source["elapsedSeconds"];
+	        this.estimate = this.convertValues(source["estimate"], TimeEstimate);
+	        this.expanding = source["expanding"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace logging {
 	
 	export class Entry {
@@ -5767,6 +6879,7 @@ export namespace quant {
 	    accRate?: number;
 	    incRate?: number;
 	    mineralizeList?: Record<string, boolean>;
+	    directResourceItemIds?: number[];
 	    naturalProductionLine?: NaturalProduction[];
 	
 	    static createFrom(source: any = {}) {
@@ -5792,6 +6905,7 @@ export namespace quant {
 	        this.accRate = source["accRate"];
 	        this.incRate = source["incRate"];
 	        this.mineralizeList = source["mineralizeList"];
+	        this.directResourceItemIds = source["directResourceItemIds"];
 	        this.naturalProductionLine = this.convertValues(source["naturalProductionLine"], NaturalProduction);
 	    }
 	
@@ -6038,6 +7152,159 @@ export namespace r2modman {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profile = this.convertValues(source["profile"], Profile);
 	        this.mods = this.convertValues(source["mods"], Mod);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace saveanalysis {
+	
+	export class PlanetResource {
+	    itemId: number;
+	    kind: string;
+	    unit: string;
+	    source: string;
+	    amount?: number;
+	    count?: number;
+	    rate?: number;
+	    occupiedCount?: number;
+	    occupiedAmount?: number;
+	    occupiedRate?: number;
+	    availableCount?: number;
+	    availableAmount?: number;
+	    availableRate?: number;
+	    infinite: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanetResource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.kind = source["kind"];
+	        this.unit = source["unit"];
+	        this.source = source["source"];
+	        this.amount = source["amount"];
+	        this.count = source["count"];
+	        this.rate = source["rate"];
+	        this.occupiedCount = source["occupiedCount"];
+	        this.occupiedAmount = source["occupiedAmount"];
+	        this.occupiedRate = source["occupiedRate"];
+	        this.availableCount = source["availableCount"];
+	        this.availableAmount = source["availableAmount"];
+	        this.availableRate = source["availableRate"];
+	        this.infinite = source["infinite"];
+	    }
+	}
+	export class PlanetResourceSummary {
+	    planetId: number;
+	    starId: number;
+	    source: string;
+	    gas: boolean;
+	    resources: PlanetResource[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanetResourceSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planetId = source["planetId"];
+	        this.starId = source["starId"];
+	        this.source = source["source"];
+	        this.gas = source["gas"];
+	        this.resources = this.convertValues(source["resources"], PlanetResource);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PlanningTechnology {
+	    blueprintLimit: number;
+	    foundationLimit: number;
+	    miningSpeed: number;
+	    miningCostRate: number;
+	    droneCargo: number;
+	    droneSpeed: number;
+	    shipCargo: number;
+	    cruiseSpeed: number;
+	    warpSpeed: number;
+	    warpUnlocked: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanningTechnology(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.blueprintLimit = source["blueprintLimit"];
+	        this.foundationLimit = source["foundationLimit"];
+	        this.miningSpeed = source["miningSpeed"];
+	        this.miningCostRate = source["miningCostRate"];
+	        this.droneCargo = source["droneCargo"];
+	        this.droneSpeed = source["droneSpeed"];
+	        this.shipCargo = source["shipCargo"];
+	        this.cruiseSpeed = source["cruiseSpeed"];
+	        this.warpSpeed = source["warpSpeed"];
+	        this.warpUnlocked = source["warpUnlocked"];
+	    }
+	}
+	export class StarLink {
+	    starId: number;
+	    name: string;
+	    generatedName: string;
+	    overrideName: string;
+	    position: galaxy.Vector;
+	    kind: number;
+	    spectrum: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new StarLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.name = source["name"];
+	        this.generatedName = source["generatedName"];
+	        this.overrideName = source["overrideName"];
+	        this.position = this.convertValues(source["position"], galaxy.Vector);
+	        this.kind = source["kind"];
+	        this.spectrum = source["spectrum"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

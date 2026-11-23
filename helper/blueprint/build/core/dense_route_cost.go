@@ -9,7 +9,7 @@ import (
 )
 
 // findDenseTransportPrefixPath 职责：按当前搜索权重与预算比较完整合法目标；使用：密铺前缀比较；边界：合流只返回至锚点的新链，代价包含完整旧尾链，每次搜索仍受固定展开上限约束，不宣称整厂全局最优。
-func (env *transportEnvironment) findDenseTransportPrefixPath(ctx context.Context, route *transportRoute, tail []*placed, incoming map[*placed]int, prefix denseRoutePortal, portals []denseRoutePortal) (full []vector, tailIndex int, cost float64, length, expanded, maximum, searches int) {
+func (env *transportEnvironment) findDenseTransportPrefixPath(ctx context.Context, route *transportRoute, tail []*placed, incoming map[*placed]int, prefix denseRoutePortal, portals []denseRoutePortal, bestCost float64) (full []vector, tailIndex int, cost float64, length, expanded, maximum, searches int) {
 	tailIndex, cost = -1, math.Inf(1)
 	source, target := route.transportSource(), route.end
 	start := prefix.points[len(prefix.points)-1]
@@ -59,6 +59,18 @@ func (env *transportEnvironment) findDenseTransportPrefixPath(ctx context.Contex
 			}
 			goals = append(goals, transportDestination{point: suffix[0], cost: env.transportPathCost(suffix), length: len(suffix) - 1})
 			suffixes, indices = append(suffixes, suffix), append(indices, -1)
+		}
+	}
+	// 只有同层已拿到完整合格路线时才比较。所有主路走正交整数格，前缀与每个目标的后缀均是实际带段。
+	// 即使无障碍仍更贵的前缀无法获选。浮点近似同价保留原搜索及长度比较。
+	if !math.IsInf(bestCost, 1) {
+		lower := math.Inf(1)
+		for _, goal := range goals {
+			horizontal := math.Abs(start.x-goal.point.x) + math.Abs(start.y-goal.point.y)
+			lower = min(lower, horizontal+env.transportElevationLowerBound(start, goal.point)+goal.cost)
+		}
+		if env.transportPathCost(prefix.points)+lower > bestCost+1e-8*max(1, math.Abs(bestCost)) {
+			return
 		}
 	}
 	// 先完整保留原四次搜索及成功结果；只有全部失败，才对实际被拒的后缀执行有限私有绕行。

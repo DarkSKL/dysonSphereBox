@@ -75,19 +75,97 @@ func (encoding *surfaceEncoding) surfaceAddonBeltPass(belt, addon int, records [
 		}
 		direction = surfaceUnit(placement.Vector{positions[other].x, positions[other].y, positions[other].z}.Sub(point))
 	}
-	for i, channel := range geometry.AddonAreaColPoses {
-		center := pose.position.Add(pose.transform(placement.Vector{float64(channel.Position[0]), float64(channel.Position[1]), float64(channel.Position[2])}))
-		forward := pose.transform(rotateSurfaceQuaternion(placement.Vector{0, 0, 1}, channel.Rotation))
-		length := float64(geometry.AddonAreaSize[i][2]) * 3
-		span := surfaceBeltSpan{ends: [2]placement.Vector{center.Sub(forward.Scale(length)), center.Add(forward.Scale(length))}}
-		logical := geometry.AddonAreaPoses[i].Position
-		logicalCenter := pose.position.Add(pose.transform(placement.Vector{float64(logical[0]), float64(logical[1]), float64(logical[2])}))
-		delta := logicalCenter.Sub(point)
-		if (delta.Dot(delta) < .05 || surfaceSpanDistanceSquared(surfaceBeltSpan{ends: [2]placement.Vector{point, point}}, span) < .09) && (!terminal || math.Abs(direction.Dot(forward)) > .95) {
+	for i := range geometry.AddonAreaColPoses {
+		channel := addonBeltChannel(pose, geometry, i)
+		if channel.contains(point) && (!terminal || math.Abs(direction.Dot(channel.forward)) > .95) {
 			return true
 		}
 	}
 	return false
+}
+
+// beltChannel 保存原版附着通道在粘贴位置的逻辑中心、轴线和方向。
+type beltChannel struct {
+	logical, forward placement.Vector
+	span             surfaceBeltSpan
+}
+
+// addonBeltChannel 还原附着碰撞通道，与原生带节点占位校验和施工分图共同使用同一坐标。
+func addonBeltChannel(pose surfacePose, geometry placement.PrefabGeometry, i int) beltChannel {
+	channel := geometry.AddonAreaColPoses[i]
+	position := func(v [3]float32) placement.Vector {
+		return pose.position.Add(pose.transform(placement.Vector{float64(v[0]), float64(v[1]), float64(v[2])}))
+	}
+	center := position(channel.Position)
+	forward := pose.transform(rotateSurfaceQuaternion(placement.Vector{0, 0, 1}, channel.Rotation))
+	length := float64(geometry.AddonAreaSize[i][2]) * 3
+	span := surfaceBeltSpan{ends: [2]placement.Vector{center.Sub(forward.Scale(length)), center.Add(forward.Scale(length))}}
+	return beltChannel{position(geometry.AddonAreaPoses[i].Position), forward, span}
+}
+
+// contains 使用原版节点和通道中心线的距离阈值，在末端朝向检查前识别可能的宿主带。
+func (channel beltChannel) contains(point placement.Vector) bool {
+	delta := channel.logical.Sub(point)
+	return delta.Dot(delta) < .05 || surfaceSpanDistanceSquared(surfaceBeltSpan{ends: [2]placement.Vector{point, point}}, channel.span) < .09
+}
+
+// JoinPlanetCoaterBelts 将喷涂机与经过两条实体通道的传送带归入同张施工图。纬度是整星锚点格；原版并不将这些附着关系写成建筑输入/输出。
+func JoinPlanetCoaterBelts(ctx context.Context, doc blueprint.Document, latitude int, join func(addon, belt int)) error {
+	if doc.PrimaryAreaIndex < 0 || int(doc.PrimaryAreaIndex) >= len(doc.Areas) {
+		return fmt.Errorf("喷涂机所需的主粘贴区域无效")
+	}
+	encoding := &surfaceEncoding{areas: doc.Areas, plan: &SurfacePlan{GridSegment: 200, AnchorLatitudeGrid: latitude, PrimaryAreaIndex: int(doc.PrimaryAreaIndex)}}
+	positions, err := encoding.surfaceWorldPositions(doc.Buildings)
+	if err != nil {
+		return err
+	}
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		return err
+	}
+	var belts worldSpatialIndex
+	for i, b := range doc.Buildings {
+		if surfaceIsBelt(b.ItemID) {
+			belts.addPoint(positions[i], 4, i)
+		}
+	}
+	for i, b := range doc.Buildings {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if b.ItemID != 2313 {
+			continue
+		}
+		model, err := catalog.Geometry(b.ItemID, b.ModelIndex)
+		if err != nil || len(model.AddonAreaColPoses) != 2 || len(model.AddonAreaSize) != 2 || len(model.AddonAreaPoses) != 2 {
+			return fmt.Errorf("无法识别喷涂机 #%d 的物料和供剂通道", i+1)
+		}
+		pose, err := encoding.recordPose(positions[i], b.Yaw, 0, 0)
+		if err != nil {
+			return err
+		}
+		for n := range model.AddonAreaPoses {
+			channel := addonBeltChannel(pose, model, n)
+			low, high := channel.logical, channel.logical
+			for axis := range low {
+				low[axis] = min(low[axis], channel.span.ends[0][axis], channel.span.ends[1][axis]) - .3
+				high[axis] = max(high[axis], channel.span.ends[0][axis], channel.span.ends[1][axis]) + .3
+			}
+			found := false
+			belts.any(worldSpatialBounds(low, high, 4), func(belt int) bool {
+				p := positions[belt]
+				if channel.contains(placement.Vector{p.x, p.y, p.z}) {
+					join(i, belt)
+					found = true
+				}
+				return false
+			})
+			if !found {
+				return fmt.Errorf("未能确定喷涂机 #%d 第 %d 个通道的宿主传送带，无法安全分图", i+1, n+1)
+			}
+		}
+	}
+	return nil
 }
 
 // validateBeltBuildingOccupancy 职责：用带节点球、游戏缩短胶囊及连接/喷涂豁免检查建筑占用；使用：动态预检；边界：保守离线规则，未复现场景碰撞恢复、合并已有带或科技限制。

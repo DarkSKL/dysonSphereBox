@@ -24,9 +24,14 @@ type reader struct {
 	pathBuffers  map[int64][]byte
 	beltPivots   map[int64][2]int64
 	currentTech  int64
+	technology   *PlanningTechnology
+	recipes      map[int]bool
 	pendingTechs map[int64]bool
 	line         *factoryLine
 	lines        map[int64]*factoryLine
+	surfaces     map[int64]*planetSurface
+	scanned      map[int64]*scannedPlanet
+	surface      *planetSurface
 	data         []byte
 	offset       int64
 	section      string
@@ -36,6 +41,14 @@ type reader struct {
 	astroNames     map[int64]string
 	worldPlanetIDs []int64
 	stations       []*layoutStationComponent
+	// virtualRelayZones 保留已落地但尚未实体化的地面基地规划坐标。
+	virtualRelayZones map[int64][]RelayZone
+	// groundBaseZones 和 pendingGroundBases 分别保留确认基地和当前厂区待关联的主基地实体。
+	groundBaseZones    map[int64][]RelayZone
+	pendingGroundBases map[int64]*layoutEnemyData
+	// astroRoutes 和 astroBans 保留原版按物品和天体的生效规则键，供规划诊断。
+	astroRoutes map[uint64]bool
+	astroBans   map[uint64]bool
 	// storages 职责：按厂区顺序保留地面储物设施；使用：分类库存索引；边界：不收集玩家背包。
 	storages []*layoutFactoryStorage
 	// world 职责：保留星系生成参数与球体结构；使用：关联查询；边界：不是完整生成后的星系。

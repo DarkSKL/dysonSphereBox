@@ -747,13 +747,17 @@ func (r *reader) readGalacticTransport(props ...int64) *layoutGalacticTransport 
 	var numAstro2astroRoutes int64
 	numAstro2astroRoutes = r.number(4, true)
 	nastro2astroRoutes := r.length(numAstro2astroRoutes)
+	r.astroRoutes = make(map[uint64]bool)
 	for i := int64(0); i < nastro2astroRoutes; i++ {
 		r.readKeyValuePair_int64__LogisticShipRoute_()
 	}
 	var numAstro2astroBans int64
 	numAstro2astroBans = r.number(4, true)
 	nastro2astroBans := r.length(numAstro2astroBans)
-	r.skip(nastro2astroBans * 8)
+	r.astroBans = make(map[uint64]bool)
+	for i := int64(0); i < nastro2astroBans; i++ {
+		r.astroBans[uint64(r.number(8, false))] = true
+	}
 	return v
 }
 
@@ -765,13 +769,16 @@ type layoutKeyValuePair_int64__LogisticShipRoute_ struct {
 func (r *reader) readKeyValuePair_int64__LogisticShipRoute_(props ...int64) *layoutKeyValuePair_int64__LogisticShipRoute_ {
 	r.section = "KeyValuePair<int64, LogisticShipRoute>"
 	v := &layoutKeyValuePair_int64__LogisticShipRoute_{}
-	r.skip(8)
-	r.readLogisticShipRoute()
+	key := uint64(r.number(8, false))
+	if r.readLogisticShipRoute().enabled {
+		r.astroRoutes[key] = true
+	}
 	return v
 }
 
 // layoutLogisticShipRoute 职责：保存该区段所需字段；使用：内部顺序解码；边界：不暴露无关游戏状态。
 type layoutLogisticShipRoute struct {
+	enabled bool
 }
 
 // readLogisticShipRoute 职责：消费该区段；使用：由父区段调用；边界：短读或版本不符时终止。
@@ -779,7 +786,7 @@ func (r *reader) readLogisticShipRoute(props ...int64) *layoutLogisticShipRoute 
 	r.section = "LogisticShipRoute"
 	v := &layoutLogisticShipRoute{}
 	r.expect(r.number(4, true), 0, "LogisticShipRoute.version")
-	r.skip(1)
+	v.enabled = r.number(1, false) != 0
 	r.string()
 	return v
 }

@@ -287,7 +287,7 @@ func (e *executor) candidateGroups(ctx context.Context, n *compiledNode, parent 
 	defer func() { e.releaseResult(best) }()
 	stopped := false
 	spec := n.ast.Candidates
-	cutoff := candidateCutoff(ctx, spec, time.Now())
+	cutoff := e.candidateCutoff(ctx, spec, time.Now())
 	for j, group := range groups {
 		record := CandidateGroupTrace{Path: fmt.Sprintf("%s/group:%06d:%s", path, j, url.PathEscape(group.ID)), ID: group.ID, Ordinal: j, Status: "enabled", Reason: "unconditional"}
 		if err = ctx.Err(); err != nil {

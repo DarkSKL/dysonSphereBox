@@ -1,5 +1,7 @@
 package environment
 
+import "context"
+
 // 文件职责：聚合环境管理领域需要暴露给 Wails 的服务结构体。
 // 使用：根 service.RegisterServices 调用本文件的 RegisterServices 后统一绑定给前端。
 // 边界：只维护环境管理服务列表，不执行扫描、同步或文件操作。
@@ -13,6 +15,8 @@ type ServiceGroup struct {
 	EnvironmentManagerService
 	// R2ModmanService 职责：暴露 Profile 直接托管；使用：资源页一键同步及模组操作；边界：注册时不检索磁盘、不读数据库。
 	R2ModmanService
+	// IndustryPlannerService 维护跨星球规划会话，注册时不读取玩家存档。
+	IndustryPlannerService
 }
 
 // RegisterServices 返回环境管理领域需要绑定给前端的服务实例。
@@ -23,5 +27,12 @@ func (serviceGroup *ServiceGroup) RegisterServices() []interface{} {
 	return []interface{}{
 		&serviceGroup.EnvironmentManagerService,
 		&serviceGroup.R2ModmanService,
+		&serviceGroup.IndustryPlannerService,
 	}
+}
+
+// ReleasePlanner 取消本地长任务并等待执行槽释放，使用应用的关闭期限。
+func (g *ServiceGroup) ReleasePlanner(ctx context.Context) error {
+	g.IndustryPlannerService.RevokeRead()
+	return g.IndustryPlannerService.tasks.Shutdown(ctx)
 }

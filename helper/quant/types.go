@@ -170,12 +170,16 @@ type Settings struct {
 	IncRate float64 `json:"incRate,omitempty"`
 	// MineralizeList 职责：保存原矿化名称集合；使用：引擎传递；边界：不隐式改变单位。
 	MineralizeList map[string]bool `json:"mineralizeList,omitempty"`
+	// DirectResourceItemIDs 职责：选择可制造物品的直接采集来源；使用：量化保留原料需求，产业规划核实产能；边界：与人工配方和玩家外供互斥。
+	DirectResourceItemIDs []int `json:"directResourceItemIds,omitempty"`
 	// NaturalProductionLine 职责：保存已有产线；使用：引擎传递；边界：不隐式改变单位。
 	NaturalProductionLine []NaturalProduction `json:"naturalProductionLine,omitempty"`
 }
 
 // Request 职责：承载量化请求；使用：量化边界；边界：不访问系统资源。
 type Request struct {
+	// recipeUnlocked 由存档规划入口提供，并随燃料、透镜等辅助目标的请求副本传递。普通量化和模拟无需存档。
+	recipeUnlocked func(int) bool
 	// Targets 职责：保存目标集合；使用：引擎传递；边界：不隐式改变单位。
 	Targets []Target `json:"targets"`
 	// Dataset 职责：保存数据集键；使用：引擎传递；边界：不隐式改变单位。

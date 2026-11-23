@@ -221,6 +221,29 @@ func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
 	return clear
 }
 
+// checkedBeltEdge 复用当前已铺带段下的无向整数邻边净空。新增真实带段会使旧结果失效；节点、端口和通行权限仍分别核对。
+func (index *denseRoutePortIndex) checkedBeltEdge(first, second vector, slot int, shift uint) bool {
+	if len(index.belts) == 0 || !index.strictBelts && !index.boundarySegment(first, second) {
+		return true
+	}
+	if slot < 0 {
+		return index.beltSpanClear(first, second)
+	}
+	cache := index.integerEdges
+	if cache.beltStates == nil {
+		cache.beltStates = make([]byte, len(cache.states))
+	} else if cache.beltCount != len(index.belts) {
+		clear(cache.beltStates)
+	}
+	cache.beltCount = len(index.belts)
+	if state := cache.beltStates[slot] >> shift & 3; state != 0 {
+		return state == 2
+	}
+	free := index.beltSpanClear(first, second)
+	storeEdgeState(cache.beltStates, slot, shift, free)
+	return free
+}
+
 // nodeClear 职责：检查新节点不会被现有带自动合并；使用：分数接驳；边界：只豁免明确复用的已有端点自身，不豁免其它同物料节点。
 func (index *denseRoutePortIndex) nodeClear(p vector, reused *placed) bool {
 	world := index.world(p)
@@ -267,7 +290,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 		slot, shift = index.integerEdges.slot(first, second)
 		if slot >= 0 {
 			if state := index.integerEdges.states[slot] >> shift & 3; state != 0 {
-				return state == 2 && index.beltSpanClear(first, second)
+				return state == 2 && index.checkedBeltEdge(first, second, slot, shift)
 			}
 		}
 	}
@@ -329,7 +352,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 			index.edges[key] = clear
 		}
 	}
-	return clear && index.beltSpanClear(first, second)
+	return clear && index.checkedBeltEdge(first, second, slot, shift)
 }
 
 // denseRouteCurvedPoint 职责：把候选点投影到建筑原点的200米局部球面切平面；使用：高架擦顶复核；边界：保留真实径向高度和横向展开，最终选区坐标仍由球面终检决定，低轨不走此附加分支。
@@ -608,7 +631,7 @@ func (env *transportEnvironment) findDenseTransportPathPrimary(ctx context.Conte
 			if env.transportPathCost(prefix.points) > bestCost {
 				continue
 			}
-			full, selected, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, route, tail, incoming, prefix, targetPortals)
+			full, selected, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, route, tail, incoming, prefix, targetPortals, bestCost)
 			expanded, maximum, searches = expanded+steps, max(maximum, peak), searches+calls
 			if len(full) > 0 && (cost < bestCost || cost == bestCost && length < bestLength) {
 				best, bestIndex, bestCost, bestLength = full, selected, cost, length

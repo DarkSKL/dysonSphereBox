@@ -28,6 +28,9 @@ func (b *builder) assembleConnectedVariant(ctx context.Context, req Request, dat
 // completePreparedConnected 职责：在已完成排布的真实端口图上接线并补齐附件；使用：直连及复用该装配能力的模式。
 // 边界：不重新装箱；集中或就近入口的差异只在这一阶段生效，之后仍须完整几何与物理规则。
 func (b *builder) completePreparedConnected(ctx context.Context, req Request) error {
+	if err := b.preflightStrictStationCapacity(req); err != nil {
+		return err
+	}
 	if err := b.prepareStationTransportEntries(ctx); err != nil {
 		return err
 	}
@@ -61,6 +64,44 @@ func (b *builder) completePreparedConnected(ctx context.Context, req Request) er
 		return b.completeConnectedPower(ctx)
 	}
 	return b.completeConnectedSurfacePower(ctx, req)
+}
+
+// preflightStrictStationCapacity 职责：提前拒绝必留设施已超过单纬带高度的标准黑盒；使用：布局固定后、运输寻路前；边界：不计算可裁尾带的包络，不影响原生跨带或后续可重排的候选。
+func (b *builder) preflightStrictStationCapacity(req Request) error {
+	if b.policy == nil || b.policy.density != densityStandard || b.policy.records != recordStationBlackbox || b.directBoundaryUnits == nil || len(b.surfaceBlocks) != 0 {
+		return nil
+	}
+	layout := req.SurfaceLayout
+	if layout == nil || layout.Mode != "explicitTropic" || layout.LatitudeZone == "" || layout.ExpandAdjacent || layout.polarRoot || layout.nativeBand != nil || b.polarFrame != nil {
+		return nil
+	}
+	band, _, err := densityLayoutBand(layout)
+	if err != nil {
+		return err
+	}
+	maximumHeight := 0
+	for _, native := range surfaceLatitudeBands(layout.GridSegment) {
+		low, high := max(band.low, native.low), min(band.high, native.high)
+		if low <= high {
+			maximumHeight = max(maximumHeight, high-low+1)
+		}
+	}
+	permanent := make([]*placed, 0, len(b.all))
+	for _, entity := range b.all {
+		if !surfaceIsBelt(entity.record.ItemID) {
+			permanent = append(permanent, entity)
+		}
+	}
+	if len(permanent) == 0 || maximumHeight == 0 {
+		return nil
+	}
+	low, high := bounds(permanent)
+	// 后续只补接线及裁掉尾带，不能缩小这些设施的纬向跨度；忽略浮点临界误差，仍由最终完整包络核验。
+	if high.y-low.y > float64(maximumHeight-1)+1e-6 {
+		width, height := int(math.Ceil(high.x-low.x))+1, int(math.Ceil(high.y-low.y))+1
+		return &blueprint.Error{Code: "GEN_E_SURFACE_CAPACITY", Message: fmt.Sprintf("标准黑盒必留设施包络%dx%d超过所选区域单纬带最大高度%d，当前严格候选无法完成运输前落位", width, height, maximumHeight)}
+	}
+	return nil
 }
 
 // prepareConnectedRows 职责：装配统一机器行和逐物品过滤端口但不决定全局运输拓扑；使用：直连带与可扩展混带环路共用局部几何；边界：调用方必须继续完成全图路由与最终规则，不能直接编码半成品。

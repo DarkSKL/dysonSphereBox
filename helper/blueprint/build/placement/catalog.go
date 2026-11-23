@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync"
 )
@@ -120,6 +121,18 @@ func LoadCatalog() (*Catalog, error) {
 
 // Version 职责：返回目录覆盖的游戏版本；使用：结果诊断；边界：不代表用户当前运行中的游戏版本。
 func (catalog *Catalog) Version() string { return catalog.version }
+
+// ModelsForItem 职责：查询物品的可用模型；使用：为缺少模型号的存量估算占位；边界：按模型编号升序。
+func (catalog *Catalog) ModelsForItem(item int16) []int16 {
+	var models []int16
+	for id, model := range catalog.models {
+		if slices.Contains(model.Items, int(item)) {
+			models = append(models, int16(id))
+		}
+	}
+	slices.Sort(models)
+	return models
+}
 
 // Shapes 职责：查询并复制已核对的建造盒；使用：生成最终占位；边界：无盒、未知模型或物品映射不匹配返回错误。
 func (catalog *Catalog) Shapes(item, model int16) ([]Collider, error) {

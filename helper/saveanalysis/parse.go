@@ -9,6 +9,9 @@ import (
 	"io"
 	"os"
 	"sort"
+	"sync"
+
+	"DysonSphereBox/helper/saveanalysis/galaxy"
 )
 
 // planetRecord 职责：保存单物品的内部星球索引；使用：快照查询；边界：统计缺失与零值分开。
@@ -18,9 +21,18 @@ type planetRecord struct {
 	slots    []Slot
 }
 
-// Snapshot 职责：保存一次解析的紧凑索引；使用：重复查询物品；边界：创建后只读，不保留整份存档或玩家身份。
+// Snapshot 职责：保存一次解析的紧凑索引；使用：重复查询物品；边界：解析数据只读，按需生成的缓存仅属于当前快照。
 type Snapshot struct {
-	stations    []*layoutStationComponent
+	stations   []*layoutStationComponent
+	technology *PlanningTechnology
+	recipes    map[int]bool
+	// virtualRelayZones 保存同一存档的已落地虚拟基地施工影响区。
+	virtualRelayZones map[int64][]RelayZone
+	// groundBaseZones 保存有原版 EnemyData 或将首次本地化的实际地面基地。
+	groundBaseZones map[int64][]RelayZone
+	// astroRoutes 和 astroBans 保留只读快照中的星际启用路线与禁运键。
+	astroRoutes map[uint64]bool
+	astroBans   map[uint64]bool
 	lines       map[int64]*factoryLine
 	digest      string
 	gameVersion string
@@ -35,8 +47,21 @@ type Snapshot struct {
 	// spheres 职责：保存按恒星展开的球层；使用：只读球体查询；边界：不含戴森云。
 	spheres []SphereView
 	// worldView 职责：保存恢复后的完整星系；使用：所有空间关联；边界：查询返回副本。
-	worldView WorldView
+	worldView          WorldView
+	surfaces           map[int64]*planetSurface
+	scanned            map[int64]*scannedPlanet
+	gas                map[int64][]PlanetResource
+	themes             map[int64]galaxy.SurfaceTheme
+	terrainPlanets     map[int64]galaxy.Planet
+	terrainStars       []galaxy.Star
+	resourceMultiplier float64
+	generatedVeins     sync.Map
+	// resolvedResources 职责：记录完整的单球精算概要；使用：同一快照的规划与资源查看；边界：成功的未知概要也保留。
+	resolvedResources sync.Map
 }
+
+// RecipeUnlocked 查询该档已经解锁的原版配方，供产业线比较自动配方时核对。
+func (s *Snapshot) RecipeUnlocked(id int) bool { return s.recipes[id] }
 
 // Read 职责：从已选择的主档读取稳定快照；使用：服务层完成路径校验后调用；边界：读取期间文件变化返回错误。
 func Read(path string) (*Snapshot, error) {
@@ -84,7 +109,7 @@ func Decode(data []byte) (snapshot *Snapshot, err error) {
 			}
 		}
 	}()
-	r := &reader{data: data}
+	r := &reader{data: data, surfaces: make(map[int64]*planetSurface), scanned: make(map[int64]*scannedPlanet)}
 	header := r.readGameSave()
 	if r.offset != int64(len(data)) {
 		r.fail("文件尾存在未识别数据")
@@ -95,6 +120,12 @@ func Decode(data []byte) (snapshot *Snapshot, err error) {
 	s := r.buildIndex(header.gameTick, fmt.Sprintf("%x", sha256.Sum256(data)))
 	s.lines = r.lines
 	s.stations = r.stations
+	s.technology = r.technology
+	s.recipes = r.recipes
+	s.virtualRelayZones = r.virtualRelayZones
+	s.groundBaseZones = r.groundBaseZones
+	s.astroRoutes, s.astroBans = r.astroRoutes, r.astroBans
+	s.surfaces, s.scanned = r.surfaces, r.scanned
 	s.gameVersion = fmt.Sprintf("%d.%d.%d.%d", header.majorGameVersion, header.minorGameVersion, header.releaseGameVersion, header.buildGameVersion)
 	r.buildInventory(s)
 	r.buildSpheres(s)

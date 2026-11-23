@@ -29,37 +29,47 @@ func (env *transportEnvironment) transportGoalHasApproach(ctx context.Context, s
 	if !transportGoalExactGrid(start) || !transportGoalExactGrid(goal) {
 		return true
 	}
-	var visited [transportGoalProbeNodes]vector
-	visited[0] = goal
+	// 反向可达分量只需证明超过 64 格。深度优先避免反复展开同一开放空间的内圈。
+	// 从目标最多走 64 次，三个有符号坐标差各占一字节；半满的开地址表只登记录入分量的点。
+	var visited [2 * transportGoalProbeNodes]uint32
+	slot := func(v vector) (*uint32, uint32) {
+		key := uint32(int(v.x-goal.x)+65)<<16 | uint32(int(v.y-goal.y)+65)<<8 | uint32(int(v.z-goal.z)+65)
+		i := (key * 2654435761) >> 25
+		for visited[i] != 0 && visited[i] != key {
+			i = (i + 1) & 127
+		}
+		return &visited[i], key
+	}
+	stamp, key := slot(goal)
+	*stamp = key
+	var pending [transportGoalProbeNodes]vector
+	pending[0] = goal
 	count := 1
-	for head := 0; head < count; head++ {
+	for size := 1; size > 0; {
 		if ctx.Err() != nil {
 			return false
 		}
-		current := visited[head]
+		size--
+		current := pending[size]
 		for _, delta := range transportNeighborOffsets {
 			previous := vector{current.x + delta.x, current.y + delta.y, current.z + delta.z}
+			stamp, key := slot(previous)
+			if *stamp != 0 {
+				continue
+			}
 			if !inside(previous) || env.blocked[beltCell(previous)] && previous != start || !env.denseTransportStepClear(previous, current) || !env.reservedSpanClear(previous, current, source, target) {
 				continue
 			}
 			if previous == start {
 				return true
 			}
-			seen := false
-			for _, point := range visited[:count] {
-				if previous == point {
-					seen = true
-					break
-				}
-			}
-			if seen {
-				continue
-			}
-			if count == len(visited) {
+			if count == transportGoalProbeNodes {
 				// 还有未核对节点时只能判为未知，保留原主路搜索。
 				return true
 			}
-			visited[count] = previous
+			*stamp = key
+			pending[size] = previous
+			size++
 			count++
 		}
 	}

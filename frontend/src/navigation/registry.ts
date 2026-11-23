@@ -51,6 +51,7 @@ export const workspaceNavigationRegistry: readonly WorkspaceNavigationDefinition
       { key: 'mods', label: '模组', to: '/dysonSphere/mod', icon: gameNavigationIcons.mods },
       { key: 'resources', label: '资源', to: '/dysonSphere/environment', icon: gameNavigationIcons.resources },
       { key: 'factory', label: '量化与蓝图', to: '/dysonSphere/blueprint-generator', icon: gameNavigationIcons.factory },
+      { key: 'industry-planner', label: '特殊蓝图', to: '/dysonSphere/industry-planner', icon: gameNavigationIcons.planet },
       { key: 'encyclopedia', label: '图鉴', to: '/dysonSphere/encyclopedia', icon: gameNavigationIcons.encyclopedia },
       { key: 'settings', label: '游戏设置', to: '/dysonSphere/settings', icon: gameNavigationIcons.settings },
     ],

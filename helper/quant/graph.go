@@ -71,6 +71,8 @@ type node struct {
 	scheme RecipeScheme
 	// raw 职责：外部原料标记；使用：结果分类；边界：不生成机器。
 	raw bool
+	// directResource 标记由星球资源预算供给的原料需求。
+	directResource bool
 	// unsupportedFactory 职责：标记需要外供的不支持设施；使用：结果告警；边界：不展开其上游配方。
 	unsupportedFactory bool
 	// runInputs 职责：单次执行的毛原料（含喷涂）；使用：依赖闭包及产线物料流；边界：精确求解系数另从原配方重建。
@@ -198,6 +200,23 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 	if err != nil {
 		return nil, err
 	}
+	direct := make(map[string]bool, len(s.DirectResourceItemIDs))
+	for _, id := range s.DirectResourceItemIDs {
+		item, ok := d.ByID[id]
+		if !ok || len(d.Choices[item.Name]) == 0 {
+			return nil, qerror("Q_E_BAD_REQUEST", fmt.Sprintf("物品 %d 没有可切换的制造配方", id))
+		}
+		if !d.groundSources[id] {
+			return nil, qerror("Q_E_BAD_REQUEST", item.Name+"没有矿机或抽水站采集来源")
+		}
+		if s.MineralizeList[item.Name] {
+			return nil, qerror("Q_E_BAD_REQUEST", item.Name+"不能同时直接采集和由玩家外供")
+		}
+		if scheme.ItemRecipeChoices[item.Name] != 0 {
+			return nil, qerror("Q_E_BAD_REQUEST", item.Name+"不能同时直接采集和指定制造配方")
+		}
+		direct[item.Name] = true
+	}
 	g := &graph{nodes: map[string]*node{}, order: append([]string{}, d.Order...), multi: newRates(), settings: s, dataset: d, scheme: scheme}
 	for _, item := range d.Items {
 		if s.MineralizeList[item.Name] && len(d.Choices[item.Name]) == 0 && !d.ExternalOnly[item.Name] {
@@ -209,8 +228,9 @@ func makeGraph(d *Dataset, scheme Scheme, settings Settings) (*graph, error) {
 	}
 	for _, name := range g.order {
 		n := g.nodes[name]
-		if s.MineralizeList[name] || d.ExternalOnly[name] {
+		if s.MineralizeList[name] || d.ExternalOnly[name] || direct[name] {
 			n.raw = true
+			n.directResource = direct[name]
 			n.rate = math.Pow(100000000, float64(*s.FixedNum+1))
 			continue
 		}

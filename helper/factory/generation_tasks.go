@@ -23,13 +23,30 @@ type generationTask struct {
 
 // Begin 职责：取消上一个请求并等待独占执行槽；使用：调用后必须 defer finish 并先检查返回上下文；边界：被替代的等待者不执行计算，finish 幂等且不清除新任务。
 func (tasks *GenerationTasks) Begin(parent context.Context) (ctx context.Context, finish func()) {
+	ctx, _, enter := tasks.reserve(parent)
+	return ctx, enter()
+}
+
+// RunAsync 在调用顺序中预留任务身份，再在后台取得执行槽；使用：桌面长任务立即返回编号，取消正在等待或计算的回调。
+func (tasks *GenerationTasks) RunAsync(parent context.Context, run func(context.Context)) context.CancelFunc {
+	ctx, cancel, enter := tasks.reserve(parent)
+	go func() {
+		finish := enter()
+		defer finish()
+		run(ctx)
+	}()
+	return cancel
+}
+
+// reserve 同步替换旧任务，使等待槽位的 goroutine 调度顺序不会颠倒新旧请求。
+func (tasks *GenerationTasks) reserve(parent context.Context) (context.Context, context.CancelFunc, func() func()) {
 	ctx, cancel := context.WithCancel(parent)
 	task := &generationTask{cancel: cancel}
 	tasks.mu.Lock()
 	if tasks.closed {
 		tasks.mu.Unlock()
 		cancel()
-		return ctx, func() {}
+		return ctx, cancel, func() func() { return func() {} }
 	}
 	if tasks.slot == nil {
 		tasks.slot = make(chan struct{}, 1)
@@ -41,25 +58,27 @@ func (tasks *GenerationTasks) Begin(parent context.Context) (ctx context.Context
 	slot := tasks.slot
 	tasks.mu.Unlock()
 
-	acquired := false
-	select {
-	case slot <- struct{}{}:
-		acquired = true
-	case <-ctx.Done():
-	}
-	var once sync.Once
-	return ctx, func() {
-		once.Do(func() {
-			cancel()
-			tasks.mu.Lock()
-			if tasks.current == task {
-				tasks.current = nil
-			}
-			tasks.mu.Unlock()
-			if acquired {
-				<-slot
-			}
-		})
+	return ctx, cancel, func() func() {
+		acquired := false
+		select {
+		case slot <- struct{}{}:
+			acquired = true
+		case <-ctx.Done():
+		}
+		var once sync.Once
+		return func() {
+			once.Do(func() {
+				cancel()
+				tasks.mu.Lock()
+				if tasks.current == task {
+					tasks.current = nil
+				}
+				tasks.mu.Unlock()
+				if acquired {
+					<-slot
+				}
+			})
+		}
 	}
 }
 

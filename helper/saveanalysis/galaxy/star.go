@@ -8,7 +8,7 @@ import "math"
 type starState struct {
 	id, kind, spectr           int
 	seed, nameSeed, planetSeed int32
-	mass, scale                float64
+	mass, scale, habitable     float64
 	position                   Vector
 	name                       string
 	planets                    []planetState
@@ -106,6 +106,11 @@ func makeStar(id, count, kind, spectr int, seed int32, p Vector) starState {
 	}
 	factor = math.Max(-4, math.Min(2, factor))
 	s.spectr = int(math.RoundToEven(single(single(factor) + 4)))
+	habitableOffset := .25
+	if id == 1 {
+		habitableOffset = single(.2)
+	}
+	s.habitable = single(power(1.7, single(single(factor)+2)) + habitableOffset)
 	s.scale = power(1.35, single(single(factor)+2))
 	if s.scale < 1 {
 		s.scale = lerp(s.scale, 1, 0.6)
@@ -114,18 +119,22 @@ func makeStar(id, count, kind, spectr int, seed int32, p Vector) starState {
 	if age >= 1 {
 		if s.mass >= 18 {
 			s.kind = 4
+			s.habitable = 0
 			s.mass = single(s.mass * (2.5 * m))
 		} else if s.mass >= 7 {
 			s.kind = 3
+			s.habitable = 0
 			s.mass = single(s.mass * (single(0.2) * n))
 			s.scale = single(s.scale * (1.5 * n))
 		} else {
 			s.kind = 2
+			s.habitable = single(s.habitable * single(.15) * m)
 			s.mass = single(s.mass * (single(0.2) * n))
 		}
 		s.spectr = 7
 	} else if age >= single(0.96) {
 		s.kind = 1
+		s.habitable = single(9 * s.habitable)
 		s.mass = single(single(1-power(age, 30)*0.5) * s.mass)
 		s.scale = single(single(3.3) * s.scale)
 	} else {

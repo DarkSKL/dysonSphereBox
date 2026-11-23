@@ -69,6 +69,8 @@ type Setting struct {
 
 // Request 职责：承载生成边界数据；使用：服务与预览联动；边界：不承诺游戏实际验收。
 type Request struct {
+	// FirstVerifiedLayout 供跨星初次装配选择第一个完整通过规则的制造模板；不从界面请求解码。
+	FirstVerifiedLayout bool `json:"-"`
 	// warperStock 由获选的塔候选冻结，用于最终蓝图参数校验。
 	warperStock int
 	// shape 职责：保存工作流冻结的形状策略；使用：后续候选；边界：不接受前端覆盖。

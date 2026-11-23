@@ -40,6 +40,8 @@ type Dataset struct {
 	Choices map[string][]int
 	// ExternalOnly 职责：标记没有真实生产配方的原料；使用：作为外部供应节点；边界：不以无中生有伪配方参与求解或菜单。
 	ExternalOnly map[string]bool
+	// groundSources 从原版来源设施识别可用矿机或抽水站采集的物品，供核对直接采集选项。
+	groundSources map[int]bool
 	// Order 职责：产物首次出现顺序；使用：复刻 JS 对象顺序；边界：不使用 map 遍历替代。
 	Order []string
 }
@@ -84,6 +86,7 @@ func LoadDataset(key string) (*Dataset, error) {
 	sum := sha256.Sum256(raw)
 	d := &Dataset{Info: DatasetInfo{Key: key, Name: key, GameVersion: input.GameVersion, DataVersion: hex.EncodeToString(sum[:8]) + "-sources-v2", ItemCount: len(input.Items)}, Items: input.Items, ByID: map[int]Item{}, ByName: map[string]Item{}, RecipeByID: map[int]int{}, Choices: map[string][]int{}, ExternalOnly: map[string]bool{}}
 	d.Info.Name = "原版游戏"
+	d.groundSources = make(map[int]bool)
 	for _, item := range d.Items {
 		d.ByID[item.ID] = item
 		d.ByName[item.Name] = item
@@ -93,6 +96,11 @@ func LoadDataset(key string) (*Dataset, error) {
 		if recipe.Type == -1 {
 			for _, id := range recipe.Results {
 				d.ExternalOnly[d.ByID[id].Name] = true
+				for _, facility := range recipe.Factories {
+					if facility == 2301 || facility == 2316 || facility == 2306 {
+						d.groundSources[id] = true
+					}
+				}
 			}
 			continue
 		}

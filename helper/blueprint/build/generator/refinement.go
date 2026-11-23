@@ -66,7 +66,7 @@ func (t *toolset) AssembleStationSpec(ctx context.Context, s *workflow.StepConte
 	}
 	ctx, err = core.WithCandidateObservation(ctx, s.Node(), s.Candidate())
 	if err != nil {
-		return err
+		return domainFailure(ctx, s, err)
 	}
 	if err = recordSpecification(s, "station-refinement", args.Specification); err != nil {
 		return err

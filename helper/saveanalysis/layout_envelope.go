@@ -140,10 +140,12 @@ func (r *reader) readGameData(props ...int64) *layoutGameData {
 
 // layoutGameDesc 职责：保存该区段所需字段；使用：内部顺序解码；边界：不暴露无关游戏状态。
 type layoutGameDesc struct {
-	galaxyAlgo   int64
-	galaxySeed   int64
-	starCount    int64
-	starNameLCID int64
+	galaxyAlgo         int64
+	galaxySeed         int64
+	starCount          int64
+	starNameLCID       int64
+	savedThemeIDs      []int64
+	resourceMultiplier float64
 }
 
 // readGameDesc 职责：消费该区段；使用：由父区段调用；边界：短读或版本不符时终止。
@@ -164,11 +166,14 @@ func (r *reader) readGameDesc(props ...int64) *layoutGameDesc {
 	var starNameLCID int64
 	starNameLCID = r.number(4, true)
 	v.starNameLCID = starNameLCID
-	r.skip(8)
+	r.skip(4)
+	v.resourceMultiplier = float64(floatValue(r.number(4, false)))
 	var numSavedThemeIds int64
 	numSavedThemeIds = r.number(4, true)
 	nsavedThemeIds := r.length(numSavedThemeIds)
-	r.skip(nsavedThemeIds * 4)
+	for i := int64(0); i < nsavedThemeIds; i++ {
+		v.savedThemeIDs = append(v.savedThemeIDs, r.number(4, true))
+	}
 	r.skip(3)
 	r.readCombatSettings()
 	r.skip(4)
@@ -446,7 +451,10 @@ func (r *reader) readGameHistoryData(props ...int64) *layoutGameHistoryData {
 	var numRecipeUnlocked int64
 	numRecipeUnlocked = r.number(4, true)
 	nrecipeUnlocked := r.length(numRecipeUnlocked)
-	r.skip(nrecipeUnlocked * 4)
+	r.recipes = make(map[int]bool)
+	for i := int64(0); i < nrecipeUnlocked; i++ {
+		r.recipes[int(r.number(4, true))] = true
+	}
 	var numEnemyDropItemUnlocked int64
 	numEnemyDropItemUnlocked = r.number(4, true)
 	nenemyDropItemUnlocked := r.length(numEnemyDropItemUnlocked)
@@ -482,7 +490,7 @@ func (r *reader) readGameHistoryData(props ...int64) *layoutGameHistoryData {
 		r.currentTech = r.number(4, true)
 		r.skip((ntechQueue - 1) * 4)
 	}
-	r.skip(234)
+	r.readPlanningTechnology()
 	r.readCombatSettings()
 	var numPropertyDataProduction int64
 	numPropertyDataProduction = r.number(4, true)
@@ -577,7 +585,10 @@ func (r *reader) readLinkedListTermM1_int32__PlanetScannedData_(props ...int64) 
 	var id int64
 	id = r.number(4, true)
 	if id != -1 {
-		r.readPlanetScannedData()
+		scan := r.readPlanetScannedData()
+		if r.scanned != nil {
+			r.scanned[id] = scan
+		}
 	}
 	if id != -1 {
 		r.readLinkedListTermM1_int32__PlanetScannedData_()
@@ -586,15 +597,12 @@ func (r *reader) readLinkedListTermM1_int32__PlanetScannedData_(props ...int64) 
 }
 
 // layoutPlanetScannedData 职责：保存该区段所需字段；使用：内部顺序解码；边界：不暴露无关游戏状态。
-type layoutPlanetScannedData struct {
-}
-
 // readPlanetScannedData 职责：消费该区段；使用：由父区段调用；边界：短读或版本不符时终止。
-func (r *reader) readPlanetScannedData(props ...int64) *layoutPlanetScannedData {
+func (r *reader) readPlanetScannedData(props ...int64) *scannedPlanet {
 	r.section = "PlanetScannedData"
-	v := &layoutPlanetScannedData{}
+	v := &scannedPlanet{}
 	r.expect(r.number(4, true), 0, "PlanetScannedData.version")
-	r.skip(4)
+	v.landPercent = float64(floatValue(r.number(4, false)))
 	r.readVector3()
 	r.readVector3()
 	r.readVector3()
@@ -603,7 +611,11 @@ func (r *reader) readPlanetScannedData(props ...int64) *layoutPlanetScannedData 
 	numVeinGroups = r.number(4, true)
 	nveinGroups := r.length(numVeinGroups - 1)
 	for i := int64(0); i < nveinGroups; i++ {
-		r.readVeinGroup()
+		group := r.readVeinGroup()
+		group.ID = i + 1
+		if group.VeinType > 0 && group.Count > 0 {
+			v.groups = append(v.groups, group)
+		}
 	}
 	return v
 }
@@ -632,18 +644,14 @@ func (r *reader) readVector3(props ...int64) *layoutVector3 {
 }
 
 // layoutVeinGroup 职责：保存该区段所需字段；使用：内部顺序解码；边界：不暴露无关游戏状态。
-type layoutVeinGroup struct {
-}
-
 // readVeinGroup 职责：消费该区段；使用：由父区段调用；边界：短读或版本不符时终止。
-func (r *reader) readVeinGroup(props ...int64) *layoutVeinGroup {
+func (r *reader) readVeinGroup(props ...int64) PlanetVeinGroup {
 	r.section = "VeinGroup"
-	v := &layoutVeinGroup{}
 	r.expect(r.number(4, true), 0, "VeinGroup.version")
-	r.skip(4)
-	r.readVector3()
-	r.skip(12)
-	return v
+	return PlanetVeinGroup{
+		VeinType: r.number(4, true), Position: r.readVector3().vector(),
+		Count: r.number(4, true), Amount: r.number(8, true),
+	}
 }
 
 // layoutLinkedListTermM1_int32__int32_ 职责：保存该区段所需字段；使用：内部顺序解码；边界：不暴露无关游戏状态。

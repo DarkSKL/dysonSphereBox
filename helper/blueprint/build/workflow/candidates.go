@@ -179,7 +179,8 @@ func (e *executor) searchCandidates(ctx context.Context, n *compiledNode, parent
 		return nil, err
 	}
 	items := bound
-	first := spec.Selection == "first"
+	verifiedLayout := e.options.FirstVerifiedLayout && spec.Comparator == "layout" && spec.SettleMs > 0
+	first := spec.Selection == "first" || verifiedLayout
 	score := e.options.Score
 	if n.scorer != "" {
 		score = e.options.Scorers[n.scorer]
@@ -200,6 +201,9 @@ func (e *executor) searchCandidates(ctx context.Context, n *compiledNode, parent
 	}
 	// 请求并发同时限制工作区派发，避免只限工具槽却预留整波大型图。
 	parallel = min(parallel, cap(e.budget.semaphore))
+	if verifiedLayout {
+		parallel = 1
+	}
 	groupCtx, cancel := context.WithCancelCause(ctx)
 	scheduled := 0
 	defer func() {
@@ -224,7 +228,7 @@ func (e *executor) searchCandidates(ctx context.Context, n *compiledNode, parent
 		}
 	}()
 	var timer *time.Timer
-	deadline := candidateCutoff(ctx, spec, time.Now())
+	deadline := e.candidateCutoff(ctx, spec, time.Now())
 	if !cutoff.IsZero() && (deadline.IsZero() || cutoff.Before(deadline)) {
 		deadline = cutoff
 	}
@@ -269,7 +273,10 @@ func (e *executor) searchCandidates(ctx context.Context, n *compiledNode, parent
 			return nil, err
 		}
 		best.context = groupCtx
-		if spec.SettleMs > 0 {
+		if e.options.FirstVerifiedLayout && spec.Comparator == "station-refinement" {
+			return best, nil
+		}
+		if spec.SettleMs > 0 && !e.options.UseParentDeadline {
 			settleOnce.Do(func() {
 				settleTimer = time.AfterFunc(time.Duration(spec.SettleMs)*time.Millisecond, func() { cancel(localSettle) })
 			})
@@ -364,7 +371,7 @@ func (e *executor) searchCandidates(ctx context.Context, n *compiledNode, parent
 				if r.err = e.observeCandidate(n, parent, CandidateEvent{Kind: "succeeded", Path: candidatePath, Ordinal: index, Context: groupCtx, Snapshot: r.snapshot}, candidateStarted); r.err != nil {
 					return
 				}
-				if spec.SettleMs > 0 {
+				if spec.SettleMs > 0 && !e.options.UseParentDeadline {
 					settleOnce.Do(func() {
 						settleTimer = time.AfterFunc(time.Duration(spec.SettleMs)*time.Millisecond, func() { cancel(localSettle) })
 					})

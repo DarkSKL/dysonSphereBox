@@ -35,23 +35,26 @@ type connectedPowerChoice struct {
 
 // connectedPowerSolver 职责：协调空间索引、共享覆盖、前向检查与有限回溯；使用：一次独立候选；边界：搜索成功前不向 builder 添加实体，失败或预算耗尽不留下部分电塔。
 type connectedPowerSolver struct {
-	index          *connectedPowerIndex
-	domains        []connectedPowerDomain
-	choices        []connectedPowerChoice
-	choiceCells    map[[2]int][]int
-	conflictCells  map[[2]int][]int
-	conflictRadius float64
-	minimumSpacing float64
-	selected       []int
-	losses         []int
-	lossEpoch      []int
-	coverEpoch     []int
-	epoch          int
-	nodes          int
-	evaluations    int
-	forwardRejects int
-	backtracks     int
+	index         *connectedPowerIndex
+	domains       []connectedPowerDomain
+	choices       []connectedPowerChoice
+	choiceCells   map[[2]int][]int
+	conflictCells worldSpatialIndex
+	// 塔盒相对塔心的逐轴范围。附近另一根塔的中心必须落在间距范围或建造盒相交的范围内。
+	minBoxOffset, maxBoxOffset placement.Vector
+	minimumSpacing             float64
+	selected                   []int
+	losses                     []int
+	lossEpoch                  []int
+	coverEpoch                 []int
+	epoch                      int
+	nodes                      int
+	evaluations                int
+	forwardRejects             int
+	backtracks                 int
 }
+
+const connectedPowerConflictCellSize = 4.0
 
 // solveConnectedPower 职责：建立完整有限合法域并提交通过前向约束的共享塔组；使用：全局紧凑候选；边界：已有塔可覆盖的消费者不再造塔，求解后仍用原索引逐塔复核并登记。
 func (b *builder) solveConnectedPower(index *connectedPowerIndex, consumers []connectedPowerConsumer, offsets []vector) error {
@@ -94,8 +97,7 @@ func (b *builder) solveConnectedPower(index *connectedPowerIndex, consumers []co
 
 // newConnectedPowerSolver 职责：以固定几何一次性枚举有限合法域并合并相同耗电中心；使用：搜索前；边界：不截断稀少消费者的合法塔位，不在动态试探中污染静态拒绝缓存。
 func newConnectedPowerSolver(index *connectedPowerIndex, consumers []connectedPowerConsumer, offsets []vector) (*connectedPowerSolver, error) {
-	solver := &connectedPowerSolver{index: index, choiceCells: map[[2]int][]int{}, conflictCells: map[[2]int][]int{}, minimumSpacing: math.Sqrt(float64(surfacePowerDistanceLimit(2201, 2201))) + 1e-4}
-	solver.conflictRadius = solver.minimumSpacing
+	solver := &connectedPowerSolver{index: index, choiceCells: map[[2]int][]int{}, minimumSpacing: math.Sqrt(float64(surfacePowerDistanceLimit(2201, 2201))) + 1e-4}
 	centers := map[placement.Vector]bool{}
 	positions := map[vector]int{}
 	for _, consumer := range consumers {
@@ -146,16 +148,15 @@ func newConnectedPowerSolver(index *connectedPowerIndex, consumers []connectedPo
 					}
 				}
 				if len(boxes) > 0 {
-					x := math.Max(math.Abs(low[0]-world[0]), math.Abs(high[0]-world[0]))
-					z := math.Max(math.Abs(low[2]-world[2]), math.Abs(high[2]-world[2]))
-					// 互斥宽相位只需覆盖世界XZ投影，塔高不应把地面查询半径膨胀成整个三维外接球。
-					solver.conflictRadius = math.Max(solver.conflictRadius, 2*math.Hypot(x, z)+1e-6)
+					for axis := range world {
+						solver.minBoxOffset[axis] = min(solver.minBoxOffset[axis], low[axis]-world[axis])
+						solver.maxBoxOffset[axis] = max(solver.maxBoxOffset[axis], high[axis]-world[axis])
+					}
 				}
 				solver.choices = append(solver.choices, connectedPowerChoice{point: point, world: world, boxes: boxes, low: low, high: high})
 				key := connectedPowerCell(world[0], world[2])
 				solver.choiceCells[key] = append(solver.choiceCells[key], number)
-				conflictKey := connectedPowerObstacleCell(world[0], world[2])
-				solver.conflictCells[conflictKey] = append(solver.conflictCells[conflictKey], number)
+				solver.conflictCells.addPoint(vector{world[0], world[1], world[2]}, connectedPowerConflictCellSize, number)
 			}
 			if !seenValues[number] {
 				seenValues[number] = true
@@ -248,19 +249,19 @@ func (solver *connectedPowerSolver) prepare(number int) error {
 	if solver.choices[number].prepared {
 		return nil
 	}
-	world := solver.choices[number].world
-	minimum := connectedPowerObstacleCell(world[0]-solver.conflictRadius, world[2]-solver.conflictRadius)
-	maximum := connectedPowerObstacleCell(world[0]+solver.conflictRadius, world[2]+solver.conflictRadius)
-	for x := minimum[0]; x <= maximum[0]; x++ {
-		for y := minimum[1]; y <= maximum[1]; y++ {
-			for _, other := range solver.conflictCells[[2]int{x, y}] {
-				if solver.choicesConflict(number, other) {
-					solver.choices[number].conflicts = append(solver.choices[number].conflicts, other)
-				}
-			}
-		}
+	choice := &solver.choices[number]
+	var low, high placement.Vector
+	for axis, center := range choice.world {
+		low[axis] = min(center-solver.minimumSpacing, choice.low[axis]-solver.maxBoxOffset[axis]-1e-6)
+		high[axis] = max(center+solver.minimumSpacing, choice.high[axis]-solver.minBoxOffset[axis]+1e-6)
 	}
-	solver.choices[number].prepared = true
+	solver.conflictCells.any(worldSpatialBounds(low, high, connectedPowerConflictCellSize), func(other int) bool {
+		if solver.choicesConflict(number, other) {
+			choice.conflicts = append(choice.conflicts, other)
+		}
+		return false
+	})
+	choice.prepared = true
 	return solver.index.builder.checkGeneration("直连约束局部互斥登记")
 }
 

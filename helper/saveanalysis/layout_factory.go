@@ -18,6 +18,7 @@ func (r *reader) readPlanetFactory(props ...int64) *layoutPlanetFactory {
 	v.planetId = planetId
 	r.planets = append(r.planets, planetId)
 	r.line = newFactoryLine()
+	r.surface = &planetSurface{}
 	r.pathBuffers = map[int64][]byte{}
 	r.beltPivots = map[int64][2]int64{}
 	r.line.drops = map[int64]DropObservation{}
@@ -90,8 +91,15 @@ func (r *reader) readPlanetFactory(props ...int64) *layoutPlanetFactory {
 	var enemyRecycleCursor int64
 	enemyRecycleCursor = r.number(4, true)
 	nenemyPool := r.length(enemyCursor - 1)
+	r.pendingGroundBases = nil
 	for i := int64(0); i < nenemyPool; i++ {
-		r.readEnemyData()
+		enemy := r.readEnemyData()
+		if enemy != nil && enemy.id == i+1 && enemy.planetID == planetId {
+			if r.pendingGroundBases == nil {
+				r.pendingGroundBases = map[int64]*layoutEnemyData{}
+			}
+			r.pendingGroundBases[enemy.id] = enemy
+		}
 	}
 	nenemyRecycle := r.length(enemyRecycleCursor)
 	r.skip(nenemyRecycle * 4)
@@ -144,6 +152,7 @@ func (r *reader) readPlanetFactory(props ...int64) *layoutPlanetFactory {
 	r.pathBuffers = nil
 	r.beltPivots = nil
 	r.readEnemyDFGroundSystem()
+	r.pendingGroundBases = nil
 	r.readCombatGroundSystem()
 	r.readDefenseSystem()
 	r.readPlanetATField()
@@ -151,6 +160,10 @@ func (r *reader) readPlanetFactory(props ...int64) *layoutPlanetFactory {
 	r.readPlanetTransport()
 	r.readPlatformSystem()
 	r.readDigitalSystem()
+	if r.surfaces != nil {
+		r.surfaces[planetId] = r.surface
+	}
+	r.surface = nil
 	if len(r.line.machines) > 0 || len(r.line.devices) > 0 {
 		r.line.currentTech = r.currentTech
 		r.line.researchPending = r.pendingTechs[r.currentTech]
@@ -172,7 +185,10 @@ func (r *reader) readPlanetData(props ...int64) *layoutPlanetData {
 	var numModData int64
 	numModData = r.number(4, true)
 	nmodData := r.length(numModData)
-	r.skip(nmodData * 1)
+	data := r.readSurfaceBytes(nmodData)
+	if r.surface != nil {
+		r.surface.terrain.ModData = data
+	}
 	var numVeinAmounts int64
 	numVeinAmounts = r.number(4, true)
 	nveinAmounts := r.length(numVeinAmounts)
@@ -247,10 +263,12 @@ func (r *reader) readEntityData(props ...int64) *layoutEntityData {
 		r.skip(2)
 	}
 	if id > 0 {
-		r.readVector3()
-	}
-	if id > 0 {
-		r.readQuaternion()
+		position, rotation := r.readVector3(), r.readQuaternion()
+		if r.surface != nil {
+			r.surface.buildings = append(r.surface.buildings, PlanetBuilding{
+				ID: id, ItemID: r.line.protos[id], Position: position.vector(), Rotation: rotation.rotation(),
+			})
+		}
 	}
 	if id > 0 {
 		r.skip(4)
@@ -523,25 +541,16 @@ func (r *reader) readPrebuildData(props ...int64) *layoutPrebuildData {
 	id = r.number(4, true)
 	v.id = id
 	if id != 0 {
-		r.skip(2)
-	}
-	if id != 0 {
-		r.skip(2)
-	}
-	if id != 0 {
-		r.skip(4)
-	}
-	if id != 0 {
-		r.readVector3()
-	}
-	if id != 0 {
-		r.readQuaternion()
-	}
-	if id != 0 {
-		r.readVector3()
-	}
-	if id != 0 {
-		r.readQuaternion()
+		itemID := r.number(2, true)
+		r.skip(6)
+		position, rotation := r.readVector3(), r.readQuaternion()
+		endPosition, endRotation := r.readVector3(), r.readQuaternion()
+		if r.surface != nil {
+			r.surface.buildings = append(r.surface.buildings, PlanetBuilding{
+				ID: id, ItemID: itemID, Prebuild: true, Position: position.vector(), Rotation: rotation.rotation(),
+				EndPosition: endPosition.vector(), EndRotation: endRotation.rotation(),
+			})
+		}
 	}
 	if id != 0 {
 		r.skip(4)
@@ -753,52 +762,39 @@ func (r *reader) readCraftData(props ...int64) *layoutCraftData {
 
 // layoutEnemyData 职责：保存该区段所需字段；使用：内部顺序解码；边界：不暴露无关游戏状态。
 type layoutEnemyData struct {
+	// 主基地只留地面原始坐标和对拍编号，其他敌实体不进入快照。
+	id, owner, planetID int64
+	localized           bool
+	position            *layoutVector3
 }
 
 // readEnemyData 职责：消费该区段；使用：由父区段调用；边界：短读或版本不符时终止。
 func (r *reader) readEnemyData(props ...int64) *layoutEnemyData {
 	r.section = "EnemyData"
-	v := &layoutEnemyData{}
 	r.expect(r.number(1, false), 0, "EnemyData.version")
 	var id int64
 	id = r.number(4, true)
-	if id > 0 {
-		r.skip(2)
+	if id <= 0 {
+		return nil
 	}
-	if id > 0 {
-		r.skip(2)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(2)
-	}
-	if id > 0 {
-		r.skip(2)
-	}
-	var dynamic int64
-	if id > 0 {
-		dynamic = r.number(1, false)
-	}
-	var isSpace int64
-	if id > 0 {
-		isSpace = r.number(1, false)
-	}
-	if id > 0 {
-		r.skip(1)
-	}
-	if id > 0 {
-		r.skip(1)
-	}
+	proto := r.number(2, true)
+	r.skip(2) // modelIndex。
+	planetID := r.number(4, true)
+	r.skip(4) // originAstroId。
+	owner := r.number(2, true)
+	r.skip(2) // port。
+	dynamic, isSpace := r.number(1, false), r.number(1, false)
+	localized := r.number(1, false) != 0
+	r.skip(1) // stateFlags。
+	var v *layoutEnemyData
 	if id > 0 && isSpace != 0 {
 		r.readVectorLF3()
 	}
 	if id > 0 && isSpace == 0 {
-		r.readVector3()
+		pos := r.readVector3()
+		if proto == 8120 && dynamic == 0 {
+			v = &layoutEnemyData{id: id, owner: owner, planetID: planetID, localized: localized, position: pos}
+		}
 	}
 	if id > 0 {
 		r.readQuaternion()
@@ -890,13 +886,20 @@ func (r *reader) readVeinData(props ...int64) *layoutVeinData {
 	v := &layoutVeinData{}
 	r.expect(r.number(1, false), 1, "VeinData.version")
 	id := r.number(4, true)
-	r.skip(6)
+	kind := r.number(2, true)
+	r.skip(2)
+	group := r.number(2, true)
 	amount, item := r.number(4, true), r.number(4, true)
 	if id > 0 {
 		r.line.veins[id] = veinSource{item, amount}
 	}
-	r.readVector3()
+	position := r.readVector3()
 	r.skip(28)
+	if r.surface != nil && id > 0 {
+		r.surface.veins = append(r.surface.veins, PlanetVein{
+			ID: id, GroupID: group, ItemID: item, VeinType: kind, Position: position.vector(), Amount: amount,
+		})
+	}
 	return v
 }
 
@@ -2099,34 +2102,15 @@ func (r *reader) readDFGBaseComponent(props ...int64) *layoutDFGBaseComponent {
 	var id int64
 	id = r.number(2, false)
 	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
-	}
-	if id > 0 {
-		r.skip(4)
+		enemyID := r.number(4, true)
+		r.skip(4) // builderId。
+		relayID := r.number(4, true)
+		r.skip(4) // relayEnemyId。
+		hiveID := r.number(4, true)
+		r.skip(20) // ruinId、ticks、activeTick、turboTicks、turboRepress。
+		if enemy := r.pendingGroundBases[enemyID]; enemy != nil && enemy.owner == id {
+			r.recordGroundBase(enemy, id, hiveID, relayID)
+		}
 	}
 	if id > 0 {
 		nforms := r.length(3)

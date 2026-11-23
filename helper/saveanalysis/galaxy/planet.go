@@ -6,9 +6,10 @@ import "math"
 
 // planetState 职责：保存轨道生成中间态；使用：卫星关系和位置计算；边界：索引只在所属恒星内有效。
 type planetState struct {
-	parent, number                                int
+	parent, number, orbit                         int
 	radius, inclination, longitude, phase, period float64
 	gas                                           bool
+	infoSeed, genSeed                             int32
 	rotation                                      quaternion
 }
 
@@ -42,10 +43,10 @@ func (q quaternion) rotate(v Vector) Vector {
 }
 
 // addPlanet 职责：从独立星球种子恢复轨道；使用：按生成顺序添加；边界：父行星必须已创建。
-func (s *starState) addPlanet(parentNumber, orbit, number int, gas bool, seed int32) {
+func (s *starState) addPlanet(parentNumber, orbit, number int, gas bool, seed, genSeed int32) {
 	r := newRandom(seed)
 	a, b, c, d, e := r.unit(), r.unit(), r.unit(), r.unit(), r.unit()
-	p := planetState{parent: -1, number: number, gas: gas}
+	p := planetState{parent: -1, number: number, orbit: orbit, gas: gas, infoSeed: seed, genSeed: genSeed}
 	factor := power(1.2, single(a*(b-0.5)*0.5))
 	if parentNumber == 0 {
 		radii := []float64{0, .4, .7, 1, 1.4, 1.9, 2.5, 3.3, 4.3, 5.5, 6.9, 8.4, 10, 11.7, 13.5, 15.4, 17.5}
@@ -99,8 +100,7 @@ func (s *starState) makePlanets() {
 	r.unit()
 	add := func(parent, orbit, number int, gas bool) {
 		seed := r.integer()
-		r.integer()
-		s.addPlanet(parent, orbit, number, gas, seed)
+		s.addPlanet(parent, orbit, number, gas, seed, r.integer())
 	}
 	firstOrbit := 2
 	if offset > 0.5 {
@@ -188,7 +188,7 @@ func (s *starState) makePlanets() {
 	number, moon, parent, orbit := 0, 0, 0, 1
 	for i := 0; i < count; i++ {
 		seed := r.integer()
-		r.integer()
+		genSeed := r.integer()
 		gasRoll, endMoon := r.unit(), r.unit()
 		gas := false
 		if parent == 0 {
@@ -226,7 +226,7 @@ func (s *starState) makePlanets() {
 		if parent != 0 {
 			selectedOrbit, selectedNumber = moon, moon
 		}
-		s.addPlanet(parent, selectedOrbit, selectedNumber, gas, seed)
+		s.addPlanet(parent, selectedOrbit, selectedNumber, gas, seed, genSeed)
 		orbit++
 		if gas {
 			parent = number

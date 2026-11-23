@@ -1,7 +1,6 @@
 package build
 
-// 文件职责：用有界紧凑数组缓存密铺整数相邻带边的静态几何结果。
-// 使用：路由环境实际边界确定后配置；边界：不缓存动态节点、端口权限、分数节点或长边，不改变任何几何判断。
+// 文件职责：用有界紧凑数组缓存整数相邻带边的净空。静态盒在候选内固定，已铺带段增加时另行失效。
 
 import "math"
 
@@ -10,10 +9,12 @@ const denseIntegerEdgeCacheBytes = 8 << 20
 
 // denseIntegerEdgeCache 职责：每格以三个两位状态保存正X/Y/Z的无向相邻边；使用：串行候选内复用静态盒结果；边界：0未知、1阻塞、2可通，索引生命周期与不变的静态盒一致。
 type denseIntegerEdgeCache struct {
-	minimum [3]int
-	size    [3]int
-	plane   int
-	states  []byte
+	minimum    [3]int
+	size       [3]int
+	plane      int
+	states     []byte
+	beltStates []byte
+	beltCount  int
 }
 
 // newDenseIntegerEdgeCache 职责：按整数节点实际可达边界创建缓存；使用：环境初始化；边界：非有限、极大坐标和超过8MiB的体积返回nil，绝不扩大原边界。
@@ -69,9 +70,13 @@ func (cache *denseIntegerEdgeCache) slot(first, second vector) (int, uint) {
 
 // store 职责：只覆盖目标边的两位静态状态；使用：原几何计算完成之后；边界：调用方保证slot有效且没有原生端口权限。
 func (cache *denseIntegerEdgeCache) store(slot int, shift uint, clear bool) {
+	storeEdgeState(cache.states, slot, shift, clear)
+}
+
+func storeEdgeState(states []byte, slot int, shift uint, clear bool) {
 	state := byte(1)
 	if clear {
 		state = 2
 	}
-	cache.states[slot] = cache.states[slot]&^(byte(3)<<shift) | state<<shift
+	states[slot] = states[slot]&^(byte(3)<<shift) | state<<shift
 }

@@ -25,6 +25,10 @@ type Star struct {
 	Name string `json:"name"`
 	// Position 职责：保存保存时刻的三轴位置；使用：空间关联；边界：单位和原点由世界契约给定。
 	Position Vector `json:"position"`
+	// HabitableRadius 职责：保留宜居带参数；使用：生成星球主题；边界：单位为游戏 AU。
+	HabitableRadius float64 `json:"-"`
+	Kind            int     `json:"-"`
+	Spectrum        int     `json:"-"`
 }
 
 // Planet 职责：保存恢复后的星球；使用：所属关系和位置查询；边界：位置使用游戏米，原点为星系原点。
@@ -49,6 +53,14 @@ type Planet struct {
 	OrbitPhase float64 `json:"orbitPhase"`
 	// OrbitalPeriod 职责：保存公转周期；使用：相位计算；边界：单位为游戏秒。
 	OrbitalPeriod float64 `json:"orbitalPeriod"`
+	// Gas 职责：保留气态轨道生成类型；使用：资源主题选择；边界：需结合已知主题表确认候选。
+	Gas bool `json:"-"`
+	// InfoSeed 职责：保留属性种子；使用：资源主题选择；边界：不同于地表生成种子。
+	InfoSeed int32 `json:"-"`
+	// GenSeed 职责：保留地表种子；使用：生成地表和矿点；边界：和 InfoSeed 独立。
+	GenSeed int32 `json:"-"`
+	// OrbitIndex 职责：保留天体轨道序号；使用：选择起始星球；边界：卫星采用围绕行星的序号。
+	OrbitIndex int `json:"-"`
 }
 
 // Generate 职责：执行受支持的确定性星系恢复；使用：传入原始生成参数和 tick；边界：未知算法返回错误，不用占位坐标。
@@ -96,7 +108,7 @@ func Generate(seed int32, algorithm, count, lcid int, tick int64) ([]Star, []Pla
 		s.name = s.starName(lcid, names)
 		s.makePlanets()
 		pos := Vector{p.X * 2400000, p.Y * 2400000, p.Z * 2400000}
-		stars = append(stars, Star{s.id, s.name, pos})
+		stars = append(stars, Star{s.id, s.name, pos, s.habitable, s.kind, s.spectr})
 		for j, v := range s.planets {
 			relative := s.relativePosition(j, float64(tick)/60)
 			parent := 0
@@ -107,7 +119,7 @@ func Generate(seed int32, algorithm, count, lcid int, tick int64) ([]Star, []Pla
 			if lcid == 2052 {
 				name = fmt.Sprintf("%s - %d号星", s.name, j+1)
 			}
-			planets = append(planets, Planet{s.id*100 + j + 1, s.id, parent, name, Vector{pos.X + relative.X*40000, pos.Y + relative.Y*40000, pos.Z + relative.Z*40000}, v.radius, v.inclination, v.longitude, v.phase, v.period})
+			planets = append(planets, Planet{s.id*100 + j + 1, s.id, parent, name, Vector{pos.X + relative.X*40000, pos.Y + relative.Y*40000, pos.Z + relative.Z*40000}, v.radius, v.inclination, v.longitude, v.phase, v.period, v.gas, v.infoSeed, v.genSeed, v.orbit})
 		}
 	}
 	return stars, planets, nil

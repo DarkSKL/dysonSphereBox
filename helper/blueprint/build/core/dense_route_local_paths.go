@@ -57,7 +57,7 @@ func (env *transportEnvironment) findDenseLocalPrefixPaths(ctx context.Context, 
 			seen[key] = true
 		}
 		*budget = *budget - 1
-		full, index, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, route, tail, incoming, prefix, targets)
+		full, index, cost, length, steps, peak, calls := env.findDenseTransportPrefixPath(ctx, route, tail, incoming, prefix, targets, bestCost)
 		expanded += steps
 		maximum = max(maximum, peak)
 		searches += calls

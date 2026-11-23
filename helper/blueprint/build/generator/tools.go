@@ -52,7 +52,7 @@ func domainFailure(ctx context.Context, step *workflow.StepContext, err error) e
 var solutionFailures = []string{
 	"GEN_E_CONNECTED_PREPARATION",
 	"GEN_E_SHAPE",
-	"GEN_E_LAYOUT", "GEN_E_COLLISION", "GEN_E_SURFACE_ROUTING", "GEN_E_SURFACE_CAPACITY", "GEN_E_DENSITY_LAYOUT", "GEN_E_DENSITY_STREET_SEAM",
+	"GEN_E_LAYOUT", "GEN_E_COLLISION", "GEN_E_SURFACE_ROUTING", "GEN_E_SURFACE_CAPACITY", "GEN_E_DENSITY_LAYOUT", "GEN_E_DENSITY_STREET_SEAM", "GEN_E_GLOBAL_CANDIDATE_BUDGET",
 	"GEN_E_INSERTER_CAPACITY", "GEN_E_BELT_CAPACITY", "GEN_E_PORT_CAPACITY", "GEN_E_OVERFLOW", "GEN_E_FLOW", "GEN_E_STATION_PORT", "GEN_E_DENSITY_CARGO",
 	"GEN_E_SPRAY_ORDER", "GEN_E_POWER_NETWORK", "GEN_E_POWER_COVERAGE", "GEN_E_MONITOR", "GEN_E_MACHINE_INTEGRITY", "GEN_I_DENSITY_DOMINATED", "GEN_I_DENSITY_EQUIVALENT",
 	"GEN_E_SURFACE", "GEN_E_CONNECTIVITY", "GEN_E_ROUTE", "GEN_E_STORAGE_CLEARANCE", "GEN_E_FLOW_MONITOR", "GEN_E_DENSITY_FACILITIES",
@@ -136,7 +136,7 @@ func (t *toolset) AssembleConnected(ctx context.Context, s *workflow.StepContext
 	}
 	ctx, err = core.WithCandidateObservation(ctx, s.Node(), s.Candidate())
 	if err != nil {
-		return err
+		return domainFailure(ctx, s, err)
 	}
 	if err = recordSpecification(s, "connected", specs[args.Index]); err != nil {
 		return err
@@ -179,7 +179,7 @@ func (t *toolset) AssembleStation(ctx context.Context, s *workflow.StepContext, 
 	}
 	ctx, err = core.WithCandidateObservation(ctx, s.Node(), s.Candidate())
 	if err != nil {
-		return err
+		return domainFailure(ctx, s, err)
 	}
 	if err = recordSpecification(s, "station", specs[args.Index]); err != nil {
 		return err
@@ -222,7 +222,7 @@ func (t *toolset) AssembleDistributor(ctx context.Context, s *workflow.StepConte
 	}
 	ctx, err = core.WithCandidateObservation(ctx, s.Node(), s.Candidate())
 	if err != nil {
-		return err
+		return domainFailure(ctx, s, err)
 	}
 	if err = recordSpecification(s, "distributor", specs[args.Index]); err != nil {
 		return err
@@ -265,7 +265,7 @@ func (t *toolset) AssembleBus(ctx context.Context, s *workflow.StepContext, args
 	}
 	ctx, err = core.WithCandidateObservation(ctx, s.Node(), s.Candidate())
 	if err != nil {
-		return err
+		return domainFailure(ctx, s, err)
 	}
 	if err = recordSpecification(s, "bus", specs[args.Index]); err != nil {
 		return err

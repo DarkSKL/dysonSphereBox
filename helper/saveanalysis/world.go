@@ -19,6 +19,9 @@ type StarLink struct {
 	OverrideName string `json:"overrideName"`
 	// Position 职责：保存保存时刻的三轴位置；使用：空间关联；边界：单位和原点由世界契约给定。
 	Position galaxy.Vector `json:"position"`
+	// Kind、Spectrum 沿用该存档生成的恒星类型与光谱级，供星图分辨主序星、巨星及致密天体。
+	Kind     int `json:"kind"`
+	Spectrum int `json:"spectrum"`
 }
 
 // PlanetLink 职责：描述全部星球；使用：关联厂区与卫星；边界：未建厂星球也有真实生成位置。
@@ -86,6 +89,11 @@ func (r *reader) buildWorld(s *Snapshot) {
 	if err != nil {
 		r.fail(err.Error())
 	}
+	s.themes = galaxy.Themes(stars, planets, desc.savedThemeIDs)
+	s.gas = buildGasResources(stars, planets, s.themes)
+	s.terrainPlanets = make(map[int64]galaxy.Planet, len(planets))
+	s.terrainStars = stars
+	s.resourceMultiplier = desc.resourceMultiplier
 	out := WorldView{SHA256: s.digest, Tick: s.tick, Seed: s.seed, Algorithm: s.algorithm, StarCount: s.starCount, NameLCID: desc.starNameLCID, CompletePlanets: true, PositionUnit: "game_m", PositionOrigin: "galaxy_origin", GameMetersPerAU: 40000, GameMetersPerLightYear: 2400000, TicksPerSecond: 60, PositionSource: "generated_at_save_tick", NameSource: "generated_with_saved_overrides", Stars: []StarLink{}, Planets: []PlanetLink{}, Missing: []string{}}
 	known := map[int64]bool{}
 	factories := map[int64]bool{}
@@ -101,10 +109,12 @@ func (r *reader) buildWorld(s *Snapshot) {
 		}
 		starNames[star.ID] = name
 		known[int64(star.ID*100)] = true
-		out.Stars = append(out.Stars, StarLink{int64(star.ID), name, star.Name, override, star.Position})
+		out.Stars = append(out.Stars, StarLink{StarID: int64(star.ID), Name: name, GeneratedName: star.Name,
+			OverrideName: override, Position: star.Position, Kind: star.Kind, Spectrum: star.Spectrum})
 	}
 	for _, p := range planets {
 		id := int64(p.ID)
+		s.terrainPlanets[id] = p
 		known[id] = true
 		// 默认星球名随所属恒星的显示名变化；星球覆盖名优先级最高。
 		generated := starNames[p.StarID] + p.Name[len(stars[p.StarID-1].Name):]

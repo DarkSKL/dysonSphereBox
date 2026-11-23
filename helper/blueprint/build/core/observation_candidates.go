@@ -126,6 +126,9 @@ func WithCandidateObservation(ctx context.Context, path string, ordinal int) (co
 	}
 	entry := state.entries[canonical]
 	if entry == nil {
+		if err := takeCandidate(ctx); err != nil {
+			return ctx, err
+		}
 		local, finish := beginCandidatePerformance(ctx, canonical, ordinal)
 		entry = &observedCandidate{path: canonical, performance: performanceFromContext(local), finish: finish}
 		if root := state.root; root != nil {

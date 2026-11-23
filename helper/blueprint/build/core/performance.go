@@ -107,6 +107,11 @@ type performanceKey struct{}
 // performanceObserverKey 职责：隔离可选诊断回调键；使用：WithPerformance；边界：与进度回调独立。
 type performanceObserverKey struct{}
 
+type performanceObserver struct {
+	mu      sync.Mutex
+	receive func(GenerationPerformance)
+}
+
 // generationPerformance 职责：维护单请求计时与确定性计数；使用：观测入口；边界：锁只保护统计，不包围生成算法。
 type generationPerformance struct {
 	// mu 职责：串行保护观测数据；使用：所有追加入口；边界：不持锁执行引擎或外部回调。
@@ -121,7 +126,7 @@ type generationPerformance struct {
 
 // WithPerformance 职责：订阅成功、失败或取消调用的最终性能快照；使用：服务或性能测试包装父上下文；边界：回调同步且应快速返回，不允许修改引擎，失败仍返回空 Result。
 func WithPerformance(ctx context.Context, observer func(GenerationPerformance)) context.Context {
-	return context.WithValue(ctx, performanceObserverKey{}, observer)
+	return context.WithValue(ctx, performanceObserverKey{}, &performanceObserver{receive: observer})
 }
 
 // beginGenerationPerformance 职责：为每次 Generate 独立创建计数器；使用：函数入口；边界：即使复用父上下文也不混入上一次请求。
@@ -281,8 +286,10 @@ func (p *generationPerformance) finish(ctx context.Context, result Result, err e
 		return snapshot.CandidateDetails[first].ID < snapshot.CandidateDetails[second].ID
 	})
 	p.mu.Unlock()
-	if observer, ok := ctx.Value(performanceObserverKey{}).(func(GenerationPerformance)); ok && observer != nil {
-		observer(snapshot)
+	if observer, ok := ctx.Value(performanceObserverKey{}).(*performanceObserver); ok && observer.receive != nil {
+		observer.mu.Lock()
+		defer observer.mu.Unlock()
+		observer.receive(snapshot)
 	}
 	return snapshot
 }

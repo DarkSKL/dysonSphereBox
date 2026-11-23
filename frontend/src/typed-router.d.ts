@@ -79,6 +79,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/dysonSphere/industry-planner': RouteRecordInfo<
+      '/dysonSphere/industry-planner',
+      '/dysonSphere/industry-planner',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/dysonSphere/mod': RouteRecordInfo<
       '/dysonSphere/mod',
       '/dysonSphere/mod',
@@ -186,6 +193,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/dysonSphere/headless.vue': {
       routes:
         | '/dysonSphere/headless'
+      views:
+        | never
+    }
+    'src/pages/dysonSphere/industry-planner.vue': {
+      routes:
+        | '/dysonSphere/industry-planner'
       views:
         | never
     }
