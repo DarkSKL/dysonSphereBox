@@ -125,6 +125,8 @@ type Result struct {
 
 // Error 职责：标明失败所在星球、物品和模块；使用：规划局部修复；边界：该星球没有可交付蓝图。
 type Error struct {
+	// mineIndex 保留本次缺矿在施工清单中的顺序，供两种塔距比较已完成的采集合同。
+	mineIndex int
 	// AvailableRatePerMinute 职责：回传本次实际可接驳的矿区速率；使用：缩减局部合同；边界：下一轮仍须完整生成和复核，零不表示可交付。
 	AvailableRatePerMinute float64
 	// PlanetID 职责：保存来源星球；使用：定位修复；边界：单星。

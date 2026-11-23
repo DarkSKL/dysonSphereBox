@@ -85,8 +85,8 @@ func placeMining(ctx context.Context, req *Request, input ProductionRequest, cat
 	var actual industryplan.PlanetActual
 	var coverage []MiningCoverage
 	err := appendMining(ctx, &trial, input, &actual, &coverage, catalog)
-	if issue, ok := err.(*Error); ok && issue.Code == "PLANET_MINING_SITE" && req.stationPad != nil &&
-		slices.ContainsFunc(input.Plan.Mines, func(m industryplan.Mine) bool { return m.ItemID == issue.Item && m.FacilityID == 2301 }) {
+	if issue, ok := err.(*Error); ok && issue.Code == "PLANET_MINING_SITE" &&
+		req.stationPad != nil && input.Plan.Mines[issue.mineIndex].FacilityID == 2301 {
 		// 缩短首台矿机的接驳带也会改变后续塔位，不能接着失败尝试的实体编号继续摆放。
 		input.Options.nearMineTowers = true
 		trial, actual, coverage = *req, industryplan.PlanetActual{}, nil
@@ -94,6 +94,11 @@ func placeMining(ctx context.Context, req *Request, input ProductionRequest, cat
 			err = nil
 		} else if ctx.Err() != nil {
 			err = ctx.Err()
+		} else if next, ok := retry.(*Error); ok && next.Code == "PLANET_MINING_SITE" {
+			// 全部前项均已接通才会走到后一矿种。同一项则按实接速率决定可保留的本星矿量。
+			if next.mineIndex > issue.mineIndex || next.mineIndex == issue.mineIndex && next.AvailableRatePerMinute > issue.AvailableRatePerMinute {
+				err = next
+			}
 		}
 	}
 	if err != nil {
@@ -133,7 +138,7 @@ func appendMining(ctx context.Context, req *Request, input ProductionRequest, ac
 	replay := beginMiningReplay(ctx, req, input, points)
 	defer replay.finish()
 	var neighborhoods veinNeighborhoods
-	for _, mine := range input.Plan.Mines {
+	for mineIndex, mine := range input.Plan.Mines {
 		if mine.FacilityID != 2301 && mine.FacilityID != 2316 && mine.FacilityID != 2307 && mine.FacilityID != 2306 {
 			return &Error{PlanetID: req.PlanetID, Item: mine.ItemID, Code: "PLANET_MINING_DEVICE", Message: "此采集设备缺少可靠的原版落点与接驳规则"}
 		}
@@ -207,7 +212,9 @@ func appendMining(ctx context.Context, req *Request, input ProductionRequest, ac
 				}
 			}
 			if len(layout) == 0 || rate <= 0 {
-				return &Error{PlanetID: req.PlanetID, Item: mine.ItemID, Code: "PLANET_MINING_SITE", AvailableRatePerMinute: mine.RatePerMinute - remaining, Message: fmt.Sprintf("可避让并接驳的采集点不足，已接驳 %d 个矿点，尚缺 %.3f 件/分钟", covered, remaining)}
+				return &Error{PlanetID: req.PlanetID, Item: mine.ItemID, Code: "PLANET_MINING_SITE",
+					mineIndex: mineIndex, AvailableRatePerMinute: mine.RatePerMinute - remaining,
+					Message: fmt.Sprintf("可避让并接驳的采集点不足，已接驳 %d 个矿点，尚缺 %.3f 件/分钟", covered, remaining)}
 			}
 			if !reused {
 				replay.remember(choice, layout, ids, rate)

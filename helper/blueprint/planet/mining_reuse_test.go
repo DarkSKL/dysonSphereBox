@@ -1,6 +1,7 @@
 package planet
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -130,5 +131,40 @@ func TestMiningRetryDiscardsPartialExports(t *testing.T) {
 	actual, coverage, err := placeMining(ctx, &req, input, catalog)
 	if err == nil || len(req.Objects) != 0 || len(req.exportFeeds) != 0 || len(actual.Ports) != 0 || len(coverage) != 0 {
 		t.Fatalf("不完整的采集合同留下了实体或出货记录：%v，%d 个建筑，%+v", err, len(req.Objects), actual)
+	}
+}
+
+// TestMiningRetryReportsReachableCapacity 核对岸边重排的失败回报。两种塔距都缺矿时，分工应从实际完成的最远一项补货。
+func TestMiningRetryReportsReachableCapacity(t *testing.T) {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name        string
+		ironDemand  float64
+		missingItem int
+		available   float64
+	}{
+		{"同一矿种保留短带已接通的产量", 150, 1001, 90},
+		{"前一矿种已足额后只报告缺少的铜矿", 90, 1002, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := miningPartialInput(tc.ironDemand)
+			input.Plan.Mines = append(input.Plan.Mines, industryplan.Mine{ItemID: 1002, FacilityID: 2301, RatePerMinute: 50})
+			req := Request{PlanetID: input.Plan.PlanetID, wet: func(Position) (bool, bool) { return false, true }, stationPad: func(p Position) bool {
+				// 矿点在负 Z 轴，18 米内的支脚允许一台短带矿机接塔，常规塔距超出岸缘。
+				w, err := world(p)
+				return err == nil && math.Hypot(float64(w.X), float64(w.Y)) < 18
+			}}
+			actual, coverage, err := placeMining(t.Context(), &req, input, catalog)
+			issue, ok := err.(*Error)
+			if !ok || issue.Code != "PLANET_MINING_SITE" || issue.Item != tc.missingItem || issue.AvailableRatePerMinute != tc.available {
+				t.Fatalf("期望物品 %d 可接通 %.0f/分，实际 %v", tc.missingItem, tc.available, err)
+			}
+			if len(req.Objects) != 0 || len(actual.Ports) != 0 || len(coverage) != 0 {
+				t.Fatal("未完成的短带尝试留下了实体、端口或矿机回执")
+			}
+		})
 	}
 }
