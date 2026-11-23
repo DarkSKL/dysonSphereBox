@@ -9,7 +9,42 @@ import (
 
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build/placement"
+	"DysonSphereBox/helper/saveanalysis"
+	"DysonSphereBox/helper/saveanalysis/galaxy"
 )
+
+// TestRaisedBeltClears1202Vein 用原版报告的 285 号硅矿核对 3976 号高架带和有净空的相邻格。
+func TestRaisedBeltClears1202Vein(t *testing.T) {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := Request{PlanetID: 1202, Foundation: "construction"}
+	req.protectVein(saveanalysis.PlanetVein{ID: 285, VeinType: 3, Position: galaxy.Vector{X: -193.41850, Y: -2.87963, Z: 55.27808}})
+	belt := blueprint.Building{ItemID: 2003, ModelIndex: 37}
+	for _, tc := range []struct {
+		name  string
+		point galaxy.Vector
+		hit   bool
+	}{
+		{"原版碰矿的第3976节", galaxy.Vector{X: -193.86534, Y: -2.53248, Z: 55.00459}, true},
+		{"相邻有净空的第3975节", galaxy.Vector{X: -193.84621, Y: -3.79859, Z: 54.99915}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := savePosition(tc.point)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Objects = []Object{{First: p, Second: p, Building: belt}}
+			if hit := placementConflict(req.Objects, newObstacleIndex(req.minerals), catalog); hit != tc.hit {
+				t.Errorf("候选位置碰撞=%t，原版=%t", hit, tc.hit)
+			}
+			if err := validatePlacement(t.Context(), req, []blueprint.Building{belt}); (err != nil) != tc.hit {
+				t.Errorf("终检结果=%v，原版碰撞=%t", err, tc.hit)
+			}
+		})
+	}
+}
 
 // TestTerrainSamplingUsesHorizontalFootprint 职责：防止高建筑把远处水面误当脚下液面；使用：星际塔和射线接收器沿岸落位；边界：八米外的海水不属于这两个原型的水平建造盒。
 func TestTerrainSamplingUsesHorizontalFootprint(t *testing.T) {

@@ -35,6 +35,9 @@ type veinNeighborhoods map[[3]int][]int
 
 const minerScanRadius = 12
 
+// reformedVeinDepth 为原版铺地后露出固矿原点低于改造地表的距离，单位为米。
+const reformedVeinDepth = .13
+
 // veinCollider 返回原版矿物碰撞球沿星面法向的位移与球半径，单位为游戏米。
 func veinCollider(kind int64) (lift, radius float64) {
 	if kind == 7 {
@@ -127,7 +130,7 @@ func appendMining(ctx context.Context, req *Request, input ProductionRequest, ac
 		point := veinPoint{id: vein.ID, item: vein.ItemID, kind: vein.VeinType, p: p, v: v, colliderCenter: v.Add(normal.Scale(lift)), colliderRadius: radius, occupied: len(vein.MinerEntityIDs) != 0, rate: rate, amount: vein.Amount}
 		if vein.VeinType != 7 && (req.Foundation == "construction" || req.Foundation == "planet") {
 			// 原版铺地将露出的固矿移到改造地高下 0.13 米，再沿法向更新其碰撞球。
-			point.pavedCenter = normal.Scale(200.2 - .13 + lift)
+			point.pavedCenter = normal.Scale(200.2 - reformedVeinDepth + lift)
 		}
 		points = append(points, point)
 	}

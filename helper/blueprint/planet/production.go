@@ -177,16 +177,7 @@ func generate(ctx context.Context, input ProductionRequest, sourcesOnly bool) (P
 		}
 	}
 	for _, vein := range detail.Veins {
-		p, err := savePosition(vein.Position)
-		if err == nil {
-			request.Protected = append(request.Protected, Cell{Longitude: p.Longitude, Latitude: p.Latitude, buried: vein.IsDeepBuried()})
-			_, radius := veinCollider(vein.VeinType)
-			if !vein.IsSurfaceMiningBlocked() {
-				// 设备占地在粘贴地表量取。矿石原点的地形高差不能为地面电杆或传送带腾出净空。
-				p.Height = 0
-			}
-			request.minerals = append(request.minerals, Obstacle{Position: p, Radius: radius})
-		}
+		request.protectVein(vein)
 	}
 	stage("矿区与液体采集")
 	actual, mining, err := placeMining(ctx, &request, input, catalog)
@@ -328,6 +319,27 @@ func productionMaterialPlan(ctx context.Context, site industryplan.PlanetPlan) (
 	plan.FlowGraph = &projected
 	plan.PlanID += "-factory-" + projected.Digest
 	return plan, nil
+}
+
+// protectVein 登记矿点的地基保护格及设备避让范围，供工区选址和整图终检共用。
+func (req *Request) protectVein(vein saveanalysis.PlanetVein) {
+	p, err := savePosition(vein.Position)
+	if err != nil {
+		return
+	}
+	req.Protected = append(req.Protected, Cell{Longitude: p.Longitude, Latitude: p.Latitude, buried: vein.IsDeepBuried()})
+	lift, radius := veinCollider(vein.VeinType)
+	if !vein.IsSurfaceMiningBlocked() {
+		// 原地形上的矿石碰撞球可能伸入高架带；地表投影仍用于保护地面设备的占地。
+		p.Height += lift / float64(geometry.LayerPitch)
+		req.minerals = append(req.minerals, Obstacle{Position: p, Radius: radius})
+		if vein.VeinType != 7 && (req.Foundation == "construction" || req.Foundation == "planet") {
+			p.Height = (lift - reformedVeinDepth) / float64(geometry.LayerPitch)
+			req.minerals = append(req.minerals, Obstacle{Position: p, Radius: radius})
+		}
+		p.Height = 0
+	}
+	req.minerals = append(req.minerals, Obstacle{Position: p, Radius: radius})
 }
 
 // savePosition 职责：从存档本地向量换算球面位置；使用：建筑和矿位；边界：原版半径。
