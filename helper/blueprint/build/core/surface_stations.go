@@ -9,15 +9,13 @@ import (
 	"math"
 
 	"DysonSphereBox/helper/blueprint"
+	"DysonSphereBox/helper/blueprint/build/placement"
 	"DysonSphereBox/helper/transport"
 )
 
-// surfaceStationDistanceLimit 职责：返回已核对 TowerTooClose 的距离平方；使用：物流塔窄相位；边界：普通塔为225，任一星际塔为841，严格小于才冲突。
+// surfaceStationDistanceLimit 复核同张图两个端点的专用站距，适用于塔和大型采矿机。
 func surfaceStationDistanceLimit(left, right int16) float32 {
-	if left == 2104 || right == 2104 {
-		return 841
-	}
-	return 225
+	return placement.StationSpacingSquared(left, right, true)
 }
 
 // surfaceIsStation 职责：识别生成器支持的两种原版物流塔；使用：站点规则分派；边界：不覆盖采矿站或轨道采集器。
@@ -33,7 +31,7 @@ func surfaceStationConflict(ctx context.Context, records []blueprint.Building, p
 		if ctx.Err() != nil {
 			return -1, -1, ctx.Err()
 		}
-		if !surfaceIsStation(record.ItemID) {
+		if !placement.HasStationSpacing(record.ItemID) {
 			continue
 		}
 		point := positions[i]

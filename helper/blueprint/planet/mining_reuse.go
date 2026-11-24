@@ -84,7 +84,17 @@ func (r *miningReplay) restore(choice miningChoice) ([]Object, []int, float64, b
 		return nil, nil, 0, false
 	}
 	step := r.previous[0]
-	if step.choice != choice {
+	old := step.choice
+	// 找不到足量单机时遍历全部落点并选最大速率。两次需求都超过该速率，选址必定相同。
+	// 若旧搜索提前找到足量落点，只能提高门槛至该落点仍足量；降低门槛可能提前选中别处。
+	if choice.facility == 2301 || choice.facility == 2316 {
+		fullRate := step.rate + 1e-6
+		if old.remaining > fullRate && choice.remaining > fullRate ||
+			old.remaining <= choice.remaining && choice.remaining <= fullRate {
+			old.remaining = choice.remaining
+		}
+	}
+	if old != choice {
 		// 从首个差异起，后面的矿机原址、空地及编号都要重新判断。
 		r.previous = nil
 		return nil, nil, 0, false

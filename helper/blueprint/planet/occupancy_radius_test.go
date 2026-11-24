@@ -4,6 +4,7 @@ package planet
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 
@@ -12,6 +13,86 @@ import (
 	"DysonSphereBox/helper/saveanalysis"
 	"DysonSphereBox/helper/saveanalysis/galaxy"
 )
+
+// TestSpaceCapsuleAt104 用原版第 2721 号塔的落点核对选址和终检，并保留相邻可放格、高空和传送带。
+func TestSpaceCapsuleAt104(t *testing.T) {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	point, err := savePosition(galaxy.Vector{X: -156.04660, Y: 26.33918, Z: -122.62030})
+	if err != nil {
+		t.Fatal(err)
+	}
+	birth := galaxy.Vector{X: -160.45245, Y: 19.09065, Z: -120.63697}
+	tower := stationObject(2721, point, 1001, 1, 0, false)
+	adjacent, elevated, belt := tower, tower, tower
+	adjacent.First.Latitude += .72 * math.Pi / 180
+	adjacent.Second = adjacent.First
+	elevated.First.Height, elevated.Second.Height = 3, 3
+	belt.Building.ItemID, belt.Building.ModelIndex = 2003, 37
+	for _, tc := range []struct {
+		name    string
+		object  Object
+		capsule *galaxy.Vector
+		blocked bool
+	}{
+		{"原塔位", tower, &birth, true},
+		{"相邻格", adjacent, &birth, false},
+		{"高空", elevated, &birth, false},
+		{"带端", belt, &birth, false},
+		{"已回收", tower, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := Request{PlanetID: 104, spaceCapsule: tc.capsule, Objects: []Object{tc.object}}
+			if blocked := req.terrainConflict(req.Objects, catalog); blocked != tc.blocked {
+				t.Errorf("候选落位拒绝=%t，需要 %t", blocked, tc.blocked)
+			}
+			err := validatePlacement(t.Context(), req, []blueprint.Building{tc.object.Building})
+			var placementError *Error
+			if tc.blocked {
+				if !errors.As(err, &placementError) || placementError.Code != "PLANET_SPACE_CAPSULE" {
+					t.Fatalf("终检未报告太空舱冲突：%v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TestStationSpacingAt3402 用实际失败的 338 号塔和存档 4611 号大型采矿机核对选址及终检。
+func TestStationSpacingAt3402(t *testing.T) {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	miner, err := savePosition(galaxy.Vector{X: -118.761856, Y: -136.126663, Z: -86.285515})
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor, err := savePosition(galaxy.Vector{X: -124.606873, Y: -115.630066, Z: -105.749008})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := Request{PlanetID: 3402, Obstacles: []Obstacle{{Position: miner, Radius: 8, stationItem: 2316}}}
+	for _, tc := range []struct {
+		offset   float64
+		collides bool
+	}{{0, true}, {.36 * math.Pi / 180, false}} {
+		p := anchor
+		p.Latitude += tc.offset
+		tower := stationObject(338, p, 1001, 1, 0, false)
+		req.Objects = []Object{tower}
+		if hit := placementConflict(req.Objects, newObstacleIndex(req.Obstacles), catalog); hit != tc.collides {
+			t.Errorf("原星塔距纬度偏移 %.6f，选址碰撞=%t", tc.offset, hit)
+		}
+		err := validatePlacement(t.Context(), req, []blueprint.Building{tower.Building})
+		if (err != nil) != tc.collides {
+			t.Errorf("原星塔距纬度偏移 %.6f，终检=%v", tc.offset, err)
+		}
+	}
+}
 
 // TestRaisedBeltClears1202Vein 用原版报告的 285 号硅矿核对 3976 号高架带和有净空的相邻格。
 func TestRaisedBeltClears1202Vein(t *testing.T) {
@@ -43,6 +124,61 @@ func TestRaisedBeltClears1202Vein(t *testing.T) {
 				t.Errorf("终检结果=%v，原版碰撞=%t", err, tc.hit)
 			}
 		})
+	}
+}
+
+// TestInserterCrosses1303Vein 回放 1303 星可燃冰 431 的原版施工预览。相邻两臂共用制造台，只有 28645 号臂身碰矿。
+func TestInserterCrosses1303Vein(t *testing.T) {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	point := func(lon, lat float64) Position {
+		return Position{Longitude: lon * math.Pi / 180, Latitude: lat * math.Pi / 180}
+	}
+	host := Object{Building: blueprint.Building{
+		Index: 28630, ItemID: 2303, ModelIndex: 65, Yaw: 90, Yaw2: 90,
+		InputObjIdx: -1, OutputObjIdx: -1, RecipeID: 36, Parameters: []int32{0},
+	}}
+	host.First = point(141.84001132, 4.31999903)
+	host.Second = host.First
+	for _, tc := range []struct {
+		id, belt              int32
+		slot                  int8
+		span                  int32
+		beltAt, first, second Position
+		hit                   bool
+	}{
+		{28645, 28571, 6, 3, point(140.40001620, 3.96000025), point(140.40001620, 4.03199727), point(141.55202323, 4.03199727), true},
+		{28644, 28590, 7, 2, point(140.76002181, 4.31999903), point(140.76002181, 4.31999903), point(141.55202323, 4.31999903), false},
+	} {
+		belt := Object{First: tc.beltAt, Second: tc.beltAt, Building: blueprint.Building{
+			Index: tc.belt, ItemID: 2003, ModelIndex: 37, Yaw: 180, Yaw2: 180,
+			InputObjIdx: -1, OutputObjIdx: -1, InputToSlot: 1,
+		}}
+		arm := Object{First: tc.first, Second: tc.second, Building: blueprint.Building{
+			Index: tc.id, ItemID: 2013, ModelIndex: 43, Yaw: 90, Yaw2: 90,
+			InputObjIdx: tc.belt, OutputObjIdx: host.Building.Index, InputFromSlot: -1,
+			OutputToSlot: tc.slot, InputToSlot: 1, Parameters: []int32{tc.span},
+		}}
+		req := Request{PlanetID: 1303, TerrainKnown: true, Foundation: "construction", Objects: []Object{belt, host, arm}}
+		req.protectVein(saveanalysis.PlanetVein{ID: 431, VeinType: 8, Position: galaxy.Vector{X: 126.2834, Y: 13.76171, Z: 154.5675}})
+		occupied := newObstacleIndex(req.minerals)
+		if placementConflict(req.Objects, occupied, catalog) {
+			t.Fatalf("原图 %d 的端点和普通设备应均有净空", tc.id)
+		}
+		if req.siteOccupied(t.Context(), req.Objects, occupied, catalog) != tc.hit {
+			t.Errorf("原图 %d 选址与原版施工结果不符", tc.id)
+		}
+		_, err := Build(t.Context(), req)
+		if tc.hit {
+			var issue *Error
+			if !errors.As(err, &issue) || issue.Code != "PLANET_VEIN_OCCUPIED" {
+				t.Errorf("原图 %d 终检应报告臂身碰矿，得到 %v", tc.id, err)
+			}
+		} else if err != nil {
+			t.Errorf("原图 %d 的相邻分拣器应能施工：%v", tc.id, err)
+		}
 	}
 }
 
@@ -81,7 +217,7 @@ func TestStationPadsAt2401Shore(t *testing.T) {
 	tower := stationObject(0, anchor, 1004, 1, 1, false)
 	req := Request{PlanetID: 2401, Objects: []Object{tower}, wet: func(Position) (bool, bool) { return false, true }}
 	// 铺地后实测只有右后方这只脚落在半径 199.3742 米处；塔心及其余支脚均有地。
-	req.stationPad = func(p Position) bool {
+	req.groundPad = func(p Position) bool {
 		return math.Abs(math.Sin(p.Latitude)-.294521) > .0001 ||
 			math.Abs(math.Cos(p.Latitude)*math.Sin(p.Longitude)-.533805) > .0001
 	}
@@ -95,6 +231,77 @@ func TestStationPadsAt2401Shore(t *testing.T) {
 	req.Objects[0].Second = req.Objects[0].First
 	if _, err := Build(context.Background(), req); err != nil {
 		t.Fatalf("旁边八脚均有地的塔位应可施工：%v", err)
+	}
+}
+
+// TestDryGroundPadsAt2003 用旱星实测的悬空塔脚隔离地面支撑规则，同时从选址和整图导出验证塔与电杆。
+func TestDryGroundPadsAt2003(t *testing.T) {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	towerSite := Position{Longitude: 133.2 * math.Pi / 180, Latitude: -41.4 * math.Pi / 180}
+	// 原档右后脚半径 198.79868 米；同纬度西移到 130.5° 时，八脚最低 199.90139 米。
+	lowPad := Position{Longitude: 2.3516448584, Latitude: -.7323765272}
+	supported := towerSite
+	supported.Longitude = 130.5 * math.Pi / 180
+	tower := stationObject(0, towerSite, 1001, 1, 0, false)
+	pole := Object{First: lowPad, Second: lowPad, Building: blueprint.Building{ItemID: 2201, ModelIndex: 44, InputObjIdx: -1, OutputObjIdx: -1}}
+	for _, tc := range []struct {
+		name      string
+		obj       Object
+		obstacles []Obstacle
+	}{{"地表终检中的塔", tower, []Obstacle{{Position: Position{}, Radius: 1}}}, {"无障碍的塔", tower, nil}, {"无障碍的电杆", pole, nil}} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := Request{PlanetID: 2003, TerrainKnown: true, Objects: []Object{tc.obj}, Obstacles: tc.obstacles}
+			req.groundPad = func(p Position) bool {
+				return math.Abs(p.Latitude-lowPad.Latitude) > 1e-6 || math.Abs(p.Longitude-lowPad.Longitude) > 1e-6
+			}
+			if !req.terrainConflict(req.Objects, catalog) {
+				t.Error("选址放过了缺少支撑的落点")
+			}
+			var issue *Error
+			if _, err := Build(t.Context(), req); !errors.As(err, &issue) || issue.Code != "PLANET_WATER" {
+				t.Errorf("终检没有报告地面缺少支撑：%v", err)
+			}
+			req.Objects[0].First, req.Objects[0].Second = supported, supported
+			if req.terrainConflict(req.Objects, catalog) {
+				t.Error("选址拒绝了相邻有支撑的落点")
+			}
+			if _, err := Build(t.Context(), req); err != nil {
+				t.Errorf("有支撑的设施导出失败：%v", err)
+			}
+		})
+	}
+}
+
+// TestTeslaPoleLandPad 回归 101 星 5880 号电杆。熔岩液面 197.5 米，落点虽无液体，
+// 铺地后中心射线只命中半径 199.2649 米。附近有支撑的电杆以及普通传送带仍可通过。
+func TestTeslaPoleLandPad(t *testing.T) {
+	catalog, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	position := Position{Longitude: 4.442212105, Latitude: .043982267}
+	pole := Object{First: position, Second: position, Building: blueprint.Building{ItemID: 2201, ModelIndex: 44, InputObjIdx: -1, OutputObjIdx: -1}}
+	req := Request{PlanetID: 101, TerrainKnown: true, wet: func(Position) (bool, bool) { return false, true }}
+	req.groundPad = func(p Position) bool { return math.Abs(p.Longitude-position.Longitude) > .001 }
+	if !req.terrainConflict([]Object{pole}, catalog) {
+		t.Fatal("原版铺地后悬空的中心支点通过了供电选址")
+	}
+	req.Objects = []Object{pole}
+	if _, err := Build(t.Context(), req); err == nil {
+		t.Fatal("悬空电杆通过了整星终检")
+	}
+	pole.First.Longitude += .02
+	pole.Second = pole.First
+	req.Objects = []Object{pole}
+	if _, err := Build(t.Context(), req); err != nil {
+		t.Fatal("相邻有地落点不能施工", err)
+	}
+	belt := Object{First: position, Second: position, Building: blueprint.Building{ItemID: 2003, ModelIndex: 37}}
+	if req.terrainConflict([]Object{belt}, catalog) {
+		t.Fatal("电杆中心支点被套用到传送带")
 	}
 }
 

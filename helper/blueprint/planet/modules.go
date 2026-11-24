@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"time"
 
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build"
@@ -32,11 +33,13 @@ type moduleTemplate struct {
 
 // moduleSiteCursor 记录同一装配里同一模板已经检查的落点；该次装配的地形固定，已占空间只会增加。
 type moduleSiteCursor struct {
-	row, x    int
-	last      error
-	exhausted bool
-	placedAt  Position
-	certified bool
+	row, x     int
+	last       error
+	exhausted  bool
+	placedAt   Position
+	certified  bool
+	preferred  *Position // 占地已变的旧落点，须按本轮几何重验。
+	outOfOrder bool      // 使用提示时保留正常逐格搜索的起点。
 }
 
 const moduleLongitudeStride = 5
@@ -214,13 +217,17 @@ func appendManufacturingRows(ctx context.Context, req *Request, input Production
 	hints, _ := ctx.Value(moduleRegionHintsKey{}).(*sync.Map)
 	cursors := map[string]*moduleSiteCursor{}
 	occupied := newObstacleIndex(append(extendOccupancy(*req, catalog), req.minerals...))
-	relocatable := input.Plan.CanRelocate && len(input.Plan.Plan.Productions) > 1
+	// 单块也可迁往其他建设星。初筛遗漏的纬带仍由原合同的中心档与全纬区后备复查。
+	relocatable := input.Plan.CanRelocate && !input.Plan.SinglePlanet
+	singleBlockTrial := relocatable && len(input.Plan.Plan.Productions) == 1
 	input.Options.firstVerifiedLayout = relocatable || input.Plan.CenterRegionsOnly
 	// 原星低纬试摆仍给出真实前缀。整份电力合同已不可能供电时，不为它新建高纬模板。
 	powerFloor := 0.
 	if !input.Plan.SinglePlanet {
-		powerFloor = insufficientManufacturingPower(*req, input)
+		powerFloor = measuredSourceLoad(*req).shortfall(input.Plan, input.Options.Setting.InserterLv)
 	}
+	// 中心档遇到空间限制时，分工层还会恢复原星的全纬区合同。已欠电的合同先按原时窗取实物前缀。
+	centerTrial := input.Plan.CenterRegionsOnly && !input.Plan.SinglePlanet && powerFloor == 0
 	quickCenterTiers := 2
 	if receivers := input.Plan.Photons; receivers != nil && receivers.Count > 0 && powerFloor == 0 {
 		// 接收器在制造前占地。实档的前两档都被挡住，试到第四档仍可在原星留下十二块工序。
@@ -314,11 +321,46 @@ func appendManufacturingRows(ctx context.Context, req *Request, input Production
 				}
 			}
 		}
+		place := func(template moduleTemplate, key string, region build.DensityLatitudeOption) (bool, error) {
+			generated, document := template.generated, template.document
+			if generated.SurfacePlan == nil || generated.LogisticsSummary == nil {
+				return false, fmt.Errorf("制造模块缺少纬度或物流核验")
+			}
+			cursor := cursors[key]
+			if cursor == nil {
+				cursor = &moduleSiteCursor{}
+				cursors[key] = cursor
+			}
+			recordSite := resumeModuleSite(templates, *req, input.Resources, template, index, cursor)
+			objects, err := placeManufacturingTemplate(ctx, *req, document, generated.SurfacePlan.AnchorLatitudeGrid, region, fmt.Sprintf("制造模块 %d", index+1), cursor, occupied, catalog)
+			if ctx.Err() != nil {
+				return false, ctx.Err()
+			}
+			if recordSite != nil {
+				recordSite(len(objects) > 0)
+			}
+			if err != nil {
+				last = err
+			}
+			if len(objects) == 0 {
+				return false, nil
+			}
+			attachManufacturing(req, objects, moduleBoundaryPorts(production, generated.LogisticsSummary.ExternalPorts), document.GameVersion, &occupied, catalog, &boundary)
+			if hintKey.blockID != "" {
+				hints.Store(hintKey, region.Value)
+			}
+			markPlaced(index)
+			return true, nil
+		}
+		triedEquatorialRegions := false
 		for _, region := range ordered {
 			if err := search.Checkpoint(ctx); err != nil {
 				return err
 			}
+			// 可迁星的中纬试摆在单带和邻带之间分配短时窗。中心档继续完整核验前三纬区，原星全纬区后备重新搜索限时失败的模板。
+			timedTrial := singleBlockTrial || relocatable && region.Tier >= 2 || centerTrial && region.Tier > 3
 			key := fmt.Sprintf("%s/%s", region.Value, identity)
+			var reusableTrialKey string
 			value, cached := templates.Load(key)
 			generateCtx := ctx
 			if input.Plan.CenterRegionsOnly && !cached {
@@ -345,6 +387,13 @@ func appendManufacturingRows(ctx context.Context, req *Request, input Production
 				value, cached = templates.Load(key)
 				generateCtx = search.WithControl(ctx, nil)
 			}
+			if timedTrial && !cached {
+				// 成功形状可共享，限时失败只在同一试摆档复用。原星完整搜索仍有自己的时窗和缓存。
+				reusableTrialKey = key
+				key = "timed-trial/" + key
+				value, cached = templates.Load(key)
+				deferredRegions = deferredRegions || centerTrial
+			}
 			// 欠电的完整合同仍先尝试中纬中心。堆叠研究站在第四纬区有能保住同星上下游的真实落点。
 			if !cached && input.Plan.CenterRegionsOnly && powerFloor == 0 && (region.Position != "center" || region.Tier >= 5) {
 				deferredRegions = true
@@ -352,12 +401,49 @@ func appendManufacturingRows(ctx context.Context, req *Request, input Production
 			}
 			postpone := relocatable && (region.Position != "center" || region.Tier > quickCenterTiers) ||
 				!relocatable && powerFloor > 0 && (region.Position != "center" || region.Tier >= 5)
+			// 为某一纬区重新布置带路之前，先在南北两侧试放本轮已有的赤道工区。
+			// 同一块的每种形状仍按目标纬区逐栋核验；全都放不下时继续搜索原生模板。
+			if !triedEquatorialRegions && !input.Plan.SinglePlanet && region.Position == "center" && region.Tier >= 2 && region.Tier <= 4 && (!cached || value.(moduleTemplate).err != nil) {
+				for _, target := range equatorialPlacementRegions(ordered, req.wet != nil || len(input.Resources.Buildings) > 0) {
+					shape, cursorKey := cachedRegionRotation(ctx, templates, "equator", target, identity)
+					if cursorKey == "" {
+						continue
+					}
+					triedEquatorialRegions = true
+					if target.Tier == 1 {
+						// 赤道半环里的转动仍可在整个同档陆面试摆，下次按赤道原区恢复选址。
+						target = regions[0]
+					}
+					placed, err = place(shape, cursorKey, target)
+					if err != nil {
+						return err
+					}
+					if placed {
+						break
+					}
+				}
+				if placed {
+					break
+				}
+			}
 			if postpone && !cached {
 				if !relocatable {
 					templates.Store(powerDeferredRegion{req.PlanetID, key}, struct{}{})
 					deferredPower = true
 				}
 				continue
+			}
+			// 中高纬还可用同档对侧的实图，两个形状都放不下时继续原生搜索。
+			if relocatable && region.Position == "center" && region.Tier > 2 && (!cached || value.(moduleTemplate).err != nil) {
+				if shape, cursorKey := oppositeModuleTemplate(ctx, templates, regions, region, identity); cursorKey != "" {
+					placed, err = place(shape, cursorKey, region)
+					if err != nil {
+						return err
+					}
+					if placed {
+						break
+					}
+				}
 			}
 			if !cached && relocatable && parallel > 1 && region.Value == regions[0].Value && misses != nil && misses.Load() >= 2 && !buildcore.CandidateBudgetLimited(ctx) {
 				// 大厂的直连组合已经回退，优先并行准备接下来的独立赤道模板。真实占地仍逐块、按原顺序核验。
@@ -369,11 +455,11 @@ func appendManufacturingRows(ctx context.Context, req *Request, input Production
 				template = value.(moduleTemplate)
 			}
 			if !cached {
-				template, err = generateManufacturingTemplate(generateCtx, input.Options, material, independentWorkers, region, false)
+				template, err = generateIndependentTemplate(generateCtx, input.Options, material, independentWorkers, region, timedTrial)
 				// 多个工作区共享内存预算。执行器拒绝派发时回到原并发核验，不能把资源限额记作纬区无解。
 				var execution *blueprint.Error
 				if independentWorkers > parallel && ctx.Err() == nil && errors.As(err, &execution) && execution.Code == "GEN_E_WORKFLOW" {
-					template, err = generateManufacturingTemplate(generateCtx, input.Options, material, parallel, region, false)
+					template, err = generateIndependentTemplate(generateCtx, input.Options, material, parallel, region, timedTrial)
 				}
 				if err != nil {
 					if ctx.Err() != nil {
@@ -384,42 +470,22 @@ func appendManufacturingRows(ctx context.Context, req *Request, input Production
 					last = err
 					continue
 				}
+				if reusableTrialKey != "" {
+					key = reusableTrialKey
+				}
 				templates.Store(key, template)
 			}
 			if template.err != nil {
 				last = template.err
 				continue
 			}
-			generated, document := template.generated, template.document
-			if generated.SurfacePlan == nil || generated.LogisticsSummary == nil {
-				return fmt.Errorf("制造模块缺少纬度或物流核验")
-			}
-			cursor := cursors[key]
-			if cursor == nil {
-				cursor = &moduleSiteCursor{}
-				cursors[key] = cursor
-			}
-			recordSite := resumeModuleSite(templates, *req, input.Resources, template, index, cursor)
-			objects, err := placeManufacturingTemplate(ctx, *req, document, generated.SurfacePlan.AnchorLatitudeGrid, region, fmt.Sprintf("制造模块 %d", index+1), cursor, occupied, catalog)
-			if recordSite != nil && ctx.Err() == nil {
-				recordSite(len(objects) > 0)
-			}
+			placed, err = place(template, key, region)
 			if err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				last = err
+				return err
 			}
-			if len(objects) == 0 {
-				continue
+			if placed {
+				break
 			}
-			attachManufacturing(req, objects, moduleBoundaryPorts(production, generated.LogisticsSummary.ExternalPorts), document.GameVersion, &occupied, catalog, &boundary)
-			if hintKey.blockID != "" {
-				hints.Store(hintKey, region.Value)
-			}
-			placed = true
-			markPlaced(index)
-			break
 		}
 		if !placed {
 			message := fmt.Sprintf("第 %d 个制造模块在本轮选区与落点候选中未能完成放置", index+1)
@@ -541,6 +607,18 @@ func prepareIndependentBatch(ctx context.Context, cache *sync.Map, input Product
 	workers.Wait()
 }
 
+// generateIndependentTemplate 职责：为可迁星合同的单块或额外纬区执行限时试摆。使用：独立制造模板初筛。边界：原星后备使用调用方的完整搜索时窗。
+func generateIndependentTemplate(ctx context.Context, opts ProductionOptions, plan quant.Result, workers int, region build.DensityLatitudeOption, timedTrial bool) (moduleTemplate, error) {
+	if timedTrial {
+		var cancel context.CancelFunc
+		ctx, cancel = search.WithActiveTimeout(ctx, initialTemplateWindow)
+		defer cancel()
+	}
+	return generateManufacturingTemplate(ctx, opts, plan, workers, region, false)
+}
+
+const initialTemplateWindow = 12 * time.Second
+
 // generateManufacturingTemplate 复用原版塔模式的路由与严格编解码，缓存只保存落位所需的数据。
 func generateManufacturingTemplate(ctx context.Context, options ProductionOptions, material quant.Result, parallel int, region build.DensityLatitudeOption, keepAlternative bool) (moduleTemplate, error) {
 	request := build.Request{Plan: material, Mode: 4, Setting: options.Setting, Name: options.Name, CandidateConcurrency: parallel, FirstVerifiedLayout: options.firstVerifiedLayout,
@@ -613,12 +691,34 @@ func placeManufacturingTemplate(ctx context.Context, req Request, document bluep
 			return nil, err
 		}
 		objects, err := ProjectDocument(ctx, document, cursor.placedAt, module)
-		if err == nil {
+		if err == nil && !cursor.outOfOrder {
 			cursor.x += moduleLongitudeStride
 		}
 		return objects, err
 	}
 	latitudeStep, _ := geometry.LatitudeStep32(geometry.Vanilla200)
+	if p := cursor.preferred; p != nil {
+		cursor.preferred = nil
+		if err := search.Checkpoint(ctx); err != nil {
+			return nil, err
+		}
+		objects, err := ProjectDocument(ctx, document, *p, module)
+		if err == nil && !req.siteOccupied(ctx, objects, occupied, catalog) && !req.terrainConflict(objects, catalog) {
+			if p.Latitude != float64(float32(anchor)*float32(latitudeStep)) {
+				local := req
+				local.Foundation, local.Obstacles = "", extendOccupancy(req, catalog)
+				local.placementIndices, err = indexPlacement(local)
+				if err == nil {
+					local.Objects = objects
+					_, err = Build(ctx, local)
+				}
+			}
+			if err == nil {
+				cursor.placedAt, cursor.outOfOrder = *p, true
+				return objects, nil
+			}
+		}
+	}
 	rows := moduleLatitudeRows(document, anchor, region, catalog)
 	// 先查实际物流塔及分散在布局中的真实建筑。其任一冲突都能淘汰此位置，通过后仍逐栋复核。
 	probe := document
@@ -672,7 +772,7 @@ func placeManufacturingTemplate(ctx context.Context, req Request, document bluep
 				break
 			}
 			previous = objects
-			if placementConflict(objects, occupied, catalog) || req.terrainConflict(objects, catalog) {
+			if req.siteOccupied(ctx, objects, occupied, catalog) || req.terrainConflict(objects, catalog) {
 				continue
 			}
 			if row != anchor {

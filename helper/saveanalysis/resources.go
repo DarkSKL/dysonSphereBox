@@ -60,8 +60,10 @@ type PlanetResourceDetail struct {
 	Buildings      []PlanetBuilding  `json:"buildings"`
 	// GeothermalHoles 保存厂区内仍有建造碰撞盒的黑雾地热井中心，供施工选址避让。
 	GeothermalHoles []galaxy.Vector `json:"geothermalHoles,omitempty"`
-	RelayZones      []RelayZone     `json:"relayZones"`
-	Terrain         PlanetTerrain   `json:"terrain"`
+	// SpaceCapsule 仅在原版母星仍有太空舱时提供。零向量表示档内缺少所需出生点。
+	SpaceCapsule *galaxy.Vector `json:"spaceCapsule,omitempty"`
+	RelayZones   []RelayZone    `json:"relayZones"`
+	Terrain      PlanetTerrain  `json:"terrain"`
 }
 
 // PlanetVein 职责：保存矿点状态；使用：采矿设备定位；边界：ID、组和关联实体 ID 属于当前星球。
@@ -155,6 +157,7 @@ type planetSurface struct {
 // scannedPlanet 职责：保留扫描数据；使用：概要查询；边界：开采后的实时矿量优先取厂区。
 type scannedPlanet struct {
 	landPercent float64
+	birthPoint  galaxy.Vector
 	groups      []PlanetVeinGroup
 }
 
@@ -272,6 +275,14 @@ func (s *Snapshot) PlanetResourceDetailContext(ctx context.Context, planetID int
 			Terrain: PlanetTerrain{ModificationSource: "unknown", WaterSource: "unknown"},
 		}
 		out.RelayZones = s.GroundBaseZones(planetID)
+		// 原版主题表的出生主题为 1，游戏从第一个星系选择出生星。
+		if planet.StarID == 1 && s.themes[planetID].ID == 1 && !s.capsuleRemoved {
+			var point galaxy.Vector
+			if scan := s.scanned[planetID]; scan != nil {
+				point = scan.birthPoint
+			}
+			out.SpaceCapsule = &point
+		}
 		if surface := s.surfaces[planetID]; surface != nil {
 			out.VeinSource = "saved"
 			out.Buildings = append(out.Buildings, surface.buildings...)

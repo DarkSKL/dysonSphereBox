@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 
+	buildcore "DysonSphereBox/helper/blueprint/build/core"
 	"DysonSphereBox/helper/quant"
 )
 
@@ -69,6 +70,166 @@ func localFactoryFlow(balance map[int]float64, line quant.Production) float64 {
 		matched += math.Min(output.RatePerMinute, max(0, -balance[output.ItemID]))
 	}
 	return matched
+}
+
+// spreadFactorySeed 为严重集中在一颗星的大单建立备用初始分工。使用原分工已开工的星和同系干燥邻星，
+// 先按地表分担设备，再按可就地消纳的物料决定去向。参考份额仅用于选址，实际施工仍逐星核验。
+func spreadFactorySeed(ctx context.Context, seed evaluated, planets map[int64]Planet, buildable []int64, world World, req Request) (assignment, bool) {
+	plan := seed.result
+	total := plan.Plan.MachineCount
+	if len(plan.Planets) < 2 || len(plan.Plan.Productions) < 2 {
+		return seed.policy, false
+	}
+	average := (total + len(plan.Planets) - 1) / len(plan.Planets)
+	var peak int
+	for _, site := range plan.Planets {
+		peak = max(peak, site.Plan.MachineCount)
+	}
+	// 小订单继续直接施工。一个标准块有 32 台；单星超过整个订单的平均份额两倍时才另试分工。
+	peakLimit := max(2*average, 32*16)
+	if peak <= peakLimit {
+		return seed.policy, false
+	}
+	weights := map[int64]float64{}
+	balances := map[int64]map[int]float64{}
+	origins := map[string]int64{}
+	for _, site := range plan.Planets {
+		id := site.PlanetID
+		if !planets[id].Buildable {
+			continue
+		}
+		weights[id] = .25
+		if planets[id].DrySurface {
+			weights[id] = 1
+		}
+		balances[id] = factoryHostBalance(site)
+		if len(site.BlockIDs) != len(site.Plan.Productions) {
+			return seed.policy, false
+		}
+		for i, line := range site.Plan.Productions {
+			origins[site.BlockIDs[i]] = id
+			for _, in := range line.Inputs {
+				balances[id][in.ItemID] += in.RatePerMinute
+			}
+			for _, out := range line.Outputs {
+				balances[id][out.ItemID] -= out.RatePerMinute
+			}
+		}
+	}
+	for _, site := range plan.Planets {
+		from := planets[site.PlanetID]
+		if site.Plan.MachineCount <= average || from.DrySurface {
+			continue
+		}
+		var nearest int64
+		for _, id := range buildable {
+			to := planets[id]
+			if to.StarID == from.StarID && to.DrySurface && (nearest == 0 || distance(from, to) < distance(from, planets[nearest])) {
+				nearest = id
+			}
+		}
+		if nearest != 0 && weights[nearest] == 0 {
+			weights[nearest] = 1
+			balances[nearest] = map[int]float64{}
+		}
+	}
+	hosts := slices.Sorted(maps.Keys(weights))
+	if len(hosts) < 2 {
+		return seed.policy, false
+	}
+	var sum float64
+	for _, id := range hosts {
+		if ctx.Err() != nil {
+			return seed.policy, false
+		}
+		if world.FactoryLandShare != nil && (!planets[id].DrySurface || planets[id].HasFactory) {
+			if share, ok := world.FactoryLandShare(ctx, id); ok && share > 0 && share <= 1 {
+				weights[id] = share
+			}
+		}
+		sum += weights[id]
+	}
+	// 已开工星的厂区和海面可能把可用陆面压缩到少数几颗星。用原先判定过度集中的同一设备数
+	// 检查满份额的承接星；必要时从已有星系补充最近的空旱星，优先把迁移留在原星系。
+	if world.FactoryLandShare != nil && float64(total) > sum*float64(peakLimit) {
+		type nearbyHost struct {
+			id   int64
+			dist float64
+		}
+		var nearby []nearbyHost
+		for _, id := range buildable {
+			body := planets[id]
+			if weights[id] > 0 || !body.DrySurface || body.HasFactory {
+				continue
+			}
+			closest := math.Inf(1)
+			for _, origin := range hosts {
+				if from := planets[origin]; from.StarID == body.StarID {
+					closest = min(closest, distance(body, from))
+				}
+			}
+			if !math.IsInf(closest, 1) {
+				nearby = append(nearby, nearbyHost{id, closest})
+			}
+		}
+		sort.Slice(nearby, func(i, j int) bool {
+			return nearby[i].dist < nearby[j].dist || nearby[i].dist == nearby[j].dist && nearby[i].id < nearby[j].id
+		})
+		for _, host := range nearby {
+			weights[host.id] = 1
+			balances[host.id] = map[int]float64{}
+			sum++
+			if float64(total) <= sum*float64(peakLimit) {
+				break
+			}
+		}
+		hosts = slices.Sorted(maps.Keys(weights))
+	}
+	policy := seed.policy
+	policy.moves = make(map[string]int64, len(origins))
+	policy.estimateLocalPower = true
+	if world.FactoryLandShare != nil {
+		policy.factoryLand = weights
+	}
+	// 同数化工厂和堆叠研究站占用的地面行长不同。只改变初次分地使用的单位，原合同设备数和可迁移的块都保持完整。
+	var spans []float64
+	totalSpan := float64(total)
+	if world.FactoryLandShare != nil && req.ConstructionBeltLevel > 0 && req.ConstructionInserterLevel > 0 {
+		if data, err := quant.LoadDataset(plan.Plan.Dataset); err == nil {
+			spans = buildcore.EstimateFactoryGroundSpans(data, plan.Plan.Productions, req.ConstructionBeltLevel, req.ConstructionInserterLevel)
+			totalSpan = 0
+			for _, span := range spans {
+				totalSpan += span
+			}
+		}
+	}
+	load := map[int64]float64{}
+	ids := productionBlockIDs(plan.Plan.Productions)
+	for i, line := range plan.Plan.Productions {
+		from := origins[ids[i]]
+		if from == 0 {
+			return seed.policy, false
+		}
+		span := float64(line.MachineCount)
+		if spans != nil {
+			span = spans[i]
+		}
+		best := int64(0)
+		bestOver, bestFlow, bestDistance := math.Inf(1), -1., math.Inf(1)
+		for _, id := range hosts {
+			quota := totalSpan * weights[id] / sum
+			over := max(0, load[id]+span-quota) / quota
+			flow := localFactoryFlow(balances[id], line)
+			dist := distance(planets[from], planets[id])
+			if over < bestOver || over == bestOver && (flow > bestFlow || flow == bestFlow && dist < bestDistance) {
+				best, bestOver, bestFlow, bestDistance = id, over, flow, dist
+			}
+		}
+		policy.moves[ids[i]] = best
+		load[best] += span
+		changeFactoryBalance(balances[best], line)
+	}
+	return policy, !maps.Equal(origins, policy.moves)
 }
 
 // connectedFactoryDestination 为整批迁移的制造块选择选址。批内产耗先抵消，只比较建设星可就地接通的净进出量。
@@ -134,7 +295,7 @@ func distributeFactoryOverflow(single assignment, previous Result, from int64, p
 		capacity += source.Plan.Productions[first].MachineCount
 		first++
 	}
-	if capacity <= 0 || first >= len(source.BlockIDs) {
+	if first >= len(source.BlockIDs) || capacity <= 0 && len(single.factoryLand) == 0 {
 		return single, false
 	}
 	dest := single.moves[source.BlockIDs[first]]
@@ -161,8 +322,33 @@ func distributeFactoryOverflow(single assignment, previous Result, from int64, p
 		total += p.MachineCount
 		largest = max(largest, p.MachineCount)
 	}
-	if total > capacity*len(hosts) {
-		capacity = (total+len(hosts)-1)/len(hosts) + largest - 1
+	limits := make(map[int64]float64, len(hosts))
+	if len(single.factoryLand) == 0 {
+		if total > capacity*len(hosts) {
+			capacity = (total+len(hosts)-1)/len(hosts) + largest - 1
+		}
+		for _, id := range hosts {
+			limits[id] = float64(capacity)
+		}
+	} else {
+		// 已经实放的前缀只反映原星的地形。各承接星按连续陆地分别取额度，并为不可拆的一块留出取整空间。
+		share := func(id int64) float64 {
+			if value := single.factoryLand[id]; value > 0 {
+				return value
+			}
+			if planets[id].DrySurface {
+				return 1
+			}
+			return .25
+		}
+		var sum float64
+		for _, id := range hosts {
+			sum += share(id)
+		}
+		perLand := max(float64(capacity)/share(from), float64(total)/sum)
+		for _, id := range hosts {
+			limits[id] = math.Ceil(perLand*share(id)) + float64(largest-1)
+		}
 	}
 	for i := first; i < len(source.BlockIDs); i++ {
 		block := source.BlockIDs[i]
@@ -171,7 +357,7 @@ func distributeFactoryOverflow(single assignment, previous Result, from int64, p
 		host := single.moves[block]
 		bestFlow := -1.0
 		for _, id := range hosts {
-			if load[id]+line.MachineCount <= capacity {
+			if float64(load[id]+line.MachineCount) <= limits[id] {
 				if flow := localFactoryFlow(balances[id], line); flow > bestFlow {
 					host, bestFlow = id, flow
 				}
@@ -306,9 +492,19 @@ func freightAndLocalFlow(r Result) (warpers, local float64) {
 	return warpers, local
 }
 
+// improvesFactoryFreight 职责：核对换位后整条产业线的航线估算和本地供料。使用：初始分工和施工后选优共用。边界：星数、可用状态和玩家评分均须合格，施工由逐星核验确认。
+func improvesFactoryFreight(before, after Result) bool {
+	if rank(after.Status) > rank(before.Status) || len(after.Planets) == 0 || len(after.Planets) > len(before.Planets) || after.Score > before.Score+1e-6 {
+		return false
+	}
+	oldWarp, oldLocal := freightAndLocalFlow(before)
+	warp, local := freightAndLocalFlow(after)
+	return warp < oldWarp-1e-6 && local >= oldLocal-quant.FlowTolerance(local, oldLocal)
+}
+
 // improveVerifiedFreight 用已通过的整线作后备。只复核同星上下游与玩家评分都合格的换位；某星放不下则保留它的原工序。
 func improveVerifiedFreight(ctx context.Context, incumbent Result, initial assignment, estimate func(assignment) Result, check func(*Result, assignment) (int64, error), repower func(assignment, Result, int64, error) (assignment, bool)) Result {
-	oldWarp, oldLocal := freightAndLocalFlow(incumbent)
+	oldWarp, _ := freightAndLocalFlow(incumbent)
 	if oldWarp == 0 {
 		return incumbent
 	}
@@ -324,9 +520,7 @@ func improveVerifiedFreight(ctx context.Context, incumbent Result, initial assig
 		powered := map[int64]bool{}
 		for ctx.Err() == nil {
 			next := estimate(policy)
-			warp, local := freightAndLocalFlow(next)
-			if rank(next.Status) > rank(incumbent.Status) || len(next.Planets) == 0 || len(next.Planets) > len(incumbent.Planets) ||
-				warp >= oldWarp-1e-6 || local < oldLocal-quant.FlowTolerance(local, oldLocal) || next.Score > incumbent.Score+1e-6 {
+			if !improvesFactoryFreight(incumbent, next) {
 				incumbent.Repairs = repairs
 				return incumbent
 			}

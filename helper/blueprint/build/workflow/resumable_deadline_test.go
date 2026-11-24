@@ -41,6 +41,35 @@ func TestWorkflowResumableDeadlines(t *testing.T) {
 	t.Run("paused_parent_cancellation", func(t *testing.T) { testResumableDeadline(t, "items", true, true) })
 }
 
+// TestFirstLayoutTrialCutoffs 职责：核对短父时窗能进入邻带；使用：以同一起点分别计算单带和收尾截止；边界：普通工作台与可暂停任务保留各自的时限语义。
+func TestFirstLayoutTrialCutoffs(t *testing.T) {
+	start := time.Now()
+	short, cancelShort := context.WithDeadline(t.Context(), start.Add(12*time.Second))
+	defer cancelShort()
+	long, cancelLong := context.WithDeadline(t.Context(), start.Add(time.Minute))
+	defer cancelLong()
+	for _, tc := range []struct {
+		name           string
+		ctx            context.Context
+		options        RunOptions
+		single, finish time.Time
+	}{
+		{"short", short, RunOptions{FirstVerifiedLayout: true}, start.Add(4 * time.Second), start.Add(10500 * time.Millisecond)},
+		{"long", long, RunOptions{FirstVerifiedLayout: true}, start.Add(20 * time.Second), start.Add(40 * time.Second)},
+		{"workbench", short, RunOptions{}, start.Add(20 * time.Second), start.Add(-8 * time.Second)},
+		{"resumable", short, RunOptions{FirstVerifiedLayout: true, UseParentDeadline: true}, time.Time{}, time.Time{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := executor{options: tc.options}
+			single := e.candidateCutoff(tc.ctx, &Candidates{Selection: "first", TimeoutMs: 20000}, start)
+			finish := e.candidateCutoff(tc.ctx, &Candidates{Selection: "first", ReserveMs: 20000}, start)
+			if !single.Equal(tc.single) || !finish.Equal(tc.finish) {
+				t.Fatalf("单带截止 %v，邻带截止 %v，预期 %v / %v", single, finish, tc.single, tc.finish)
+			}
+		})
+	}
+}
+
 // TestFirstVerifiedLayout 检查跨星装配的首个合规模板，以及普通工作台仍然执行完整的模板比较和塔位优化。
 func TestFirstVerifiedLayout(t *testing.T) {
 	for _, quick := range []bool{false, true} {

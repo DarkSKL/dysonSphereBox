@@ -13,6 +13,42 @@ import (
 	"DysonSphereBox/helper/saveanalysis/galaxy"
 )
 
+// TestScannedSpaceCapsulePosition 区分扫描中的矿脉偏向、实际出生点和起始矿位置，并复核母星与回收状态。
+func TestScannedSpaceCapsulePosition(t *testing.T) {
+	data := make([]byte, 8) // 扫描版本和陆地比例
+	values := []float32{1, 2, 3, -160.45245, 19.09065, -120.63697, 4, 5, 6, 7, 8, 9}
+	for _, v := range values {
+		data = binary.LittleEndian.AppendUint32(data, math.Float32bits(v))
+	}
+	data = binary.LittleEndian.AppendUint32(data, 1) // 矿群零号占位
+	r := reader{data: data}
+	scan := r.readPlanetScannedData()
+	want := galaxy.Vector{X: float64(values[3]), Y: float64(values[4]), Z: float64(values[5])}
+	if r.offset != int64(len(data)) || scan.birthPoint != want {
+		t.Fatalf("扫描出生点 %+v，游标 %d/%d", scan.birthPoint, r.offset, len(data))
+	}
+	s := &Snapshot{
+		worldView: WorldView{Planets: []PlanetLink{{PlanetID: 104, StarID: 1}, {PlanetID: 101, StarID: 1}}},
+		themes:    map[int64]galaxy.SurfaceTheme{104: {ID: 1}},
+		scanned:   map[int64]*scannedPlanet{101: scan, 104: scan},
+	}
+	for _, tc := range []struct {
+		id              int64
+		removed, active bool
+	}{
+		{104, false, true}, {101, false, false}, {104, true, false},
+	} {
+		s.capsuleRemoved = tc.removed
+		detail, err := s.PlanetResourceDetailContext(t.Context(), tc.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if point := detail.SpaceCapsule; (point != nil) != tc.active || point != nil && *point != want {
+			t.Errorf("星球 %d，回收=%t，实际舱位 %+v", tc.id, tc.removed, point)
+		}
+	}
+}
+
 // TestRuinGeothermalBuildCollider 核对废墟池的空槽、无建造碰撞的残骸和仍阻挡施工的 406 号地热井。
 func TestRuinGeothermalBuildCollider(t *testing.T) {
 	data := []byte{1, 0, 0, 0, 0}

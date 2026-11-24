@@ -66,19 +66,36 @@ type ProductionResult struct {
 	Mining []MiningCoverage
 }
 
-// Generate 职责：搜索存档上的落位并装配完整蓝图；使用：逐星规划回调；边界：资料、几何或物流缺口返回带物品的诊断。
-func Generate(ctx context.Context, input ProductionRequest) (ProductionResult, error) {
-	return generate(ctx, input, false)
+type templatePerformanceKey struct{}
+
+// WithTemplatePerformance 按真实星球标识汇报各制造模板的用时；不同星可同时回调。
+func WithTemplatePerformance(ctx context.Context, receive func(int64, build.GenerationPerformance)) context.Context {
+	return context.WithValue(ctx, templatePerformanceKey{}, receive)
 }
 
-// CheckSourceSites 复用施工入口检查采集、取水和光子接收器落位，供多星分工先发现资源缺口。仅完整 Generate 能出图。
+// Generate 职责：搜索存档上的落位并装配完整蓝图；使用：逐星规划回调；边界：资料、几何或物流缺口返回带物品的诊断。
+func Generate(ctx context.Context, input ProductionRequest) (ProductionResult, error) {
+	if receive, _ := ctx.Value(templatePerformanceKey{}).(func(int64, build.GenerationPerformance)); receive != nil {
+		ctx = build.WithPerformance(ctx, func(p build.GenerationPerformance) { receive(input.Plan.PlanetID, p) })
+	}
+	return generate(ctx, input, nil)
+}
+
+// SurveySourceLoad 复用施工入口核验采集、取水和接收器落位，并返回这些设施的实装负荷。仅完整 Generate 能出图。
+func SurveySourceLoad(ctx context.Context, input ProductionRequest) (SourceLoadMW, error) {
+	var load SourceLoadMW
+	_, err := generate(ctx, input, &load)
+	return load, err
+}
+
+// CheckSourceSites 检查同一采集和接收器合同的落位，供只需几何结果的回放程序使用。供电下限由 SurveySourceLoad 的调用方另算。
 func CheckSourceSites(ctx context.Context, input ProductionRequest) error {
-	_, err := generate(ctx, input, true)
+	_, err := SurveySourceLoad(ctx, input)
 	return err
 }
 
 // generate 按合同顺序装配同一批实体。分工预检在采集段完成时退出，制造、物流和供电由完整施工核验。
-func generate(ctx context.Context, input ProductionRequest, sourcesOnly bool) (ProductionResult, error) {
+func generate(ctx context.Context, input ProductionRequest, sourceLoad *SourceLoadMW) (ProductionResult, error) {
 	stage := industryplan.NewLayoutStageTimer(ctx)
 	stage("地形与已有建筑")
 	defer stage("")
@@ -102,6 +119,12 @@ func generate(ctx context.Context, input ProductionRequest, sourcesOnly bool) (P
 		return ProductionResult{}, err
 	}
 	request := Request{PlanetID: plan.PlanetID, Name: options.Name, GameVersion: options.GameVersion, Foundation: options.Foundation}
+	if point := detail.SpaceCapsule; point != nil {
+		if _, err := savePosition(*point); err != nil {
+			return fail(0, "PLANET_CAPSULE_POSITION", "母星太空舱仍存在，存档缺少可定位的出生点")
+		}
+		request.spaceCapsule = point
+	}
 	request.geothermal = func(p Position) bool { return geothermalSite(input, p) }
 	for _, zone := range detail.RelayZones {
 		position, err := savePosition(zone.Position)
@@ -115,12 +138,14 @@ func generate(ctx context.Context, input ProductionRequest, sourcesOnly bool) (P
 		dry := *terrain.WaterItemID == 0
 		_, sampled := terrain.HeightAt(galaxy.Vector{X: 1})
 		request.TerrainKnown = dry || sampled
-		if !dry {
-			request.stationPad = func(p Position) bool {
+		if sampled {
+			request.groundPad = func(p Position) bool {
 				h, known := surfaceRadiusAt(terrain, p)
-				// 原版 50 号塔的 landOffset 为零，支脚至少需达到基球减 0.30 米。
-				return known && h >= 199.70 && h >= 200+*terrain.WaterHeight-.27
+				// 44 号电杆和 50 号塔的 landOffset 均为零。即使在液面以上也可能因支脚悬空而失败。
+				return known && h >= 199.70 && (dry || h >= 200+*terrain.WaterHeight-.27)
 			}
+		}
+		if !dry {
 			request.pumpSite = func(p Position, yaw float64) bool {
 				return pumpSurfaceFits(p, yaw, terrain)
 			}
@@ -189,8 +214,14 @@ func generate(ctx context.Context, input ProductionRequest, sourcesOnly bool) (P
 	if err := appendPhotons(ctx, &request, input, &actual, catalog); err != nil {
 		return ProductionResult{}, err
 	}
-	if sourcesOnly {
+	if sourceLoad != nil {
+		*sourceLoad = measuredSourceLoad(request)
 		return ProductionResult{}, ctx.Err()
+	}
+	if plan.CanRelocate && !plan.SinglePlanet {
+		if err := measuredSourceLoad(request).CheckManufacturingPower(plan, options.Setting.InserterLv); err != nil {
+			return ProductionResult{}, err
+		}
 	}
 	stage("制造模板与传送带落位")
 	if err := appendManufacturing(ctx, &request, input, &actual, catalog); err != nil {
@@ -330,12 +361,17 @@ func (req *Request) protectVein(vein saveanalysis.PlanetVein) {
 	req.Protected = append(req.Protected, Cell{Longitude: p.Longitude, Latitude: p.Latitude, buried: vein.IsDeepBuried()})
 	lift, radius := veinCollider(vein.VeinType)
 	if !vein.IsSurfaceMiningBlocked() {
+		addBody := func(position Position) {
+			body := Obstacle{Position: position, Radius: radius}
+			req.minerals = append(req.minerals, body)
+			req.veinBodies.add(body)
+		}
 		// 原地形上的矿石碰撞球可能伸入高架带；地表投影仍用于保护地面设备的占地。
 		p.Height += lift / float64(geometry.LayerPitch)
-		req.minerals = append(req.minerals, Obstacle{Position: p, Radius: radius})
+		addBody(p)
 		if vein.VeinType != 7 && (req.Foundation == "construction" || req.Foundation == "planet") {
 			p.Height = (lift - reformedVeinDepth) / float64(geometry.LayerPitch)
-			req.minerals = append(req.minerals, Obstacle{Position: p, Radius: radius})
+			addBody(p)
 		}
 		p.Height = 0
 	}

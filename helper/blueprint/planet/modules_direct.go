@@ -147,7 +147,7 @@ func directTemplateInput(ctx context.Context, input ProductionRequest, group []i
 }
 
 func generateDirectTemplate(ctx context.Context, input ProductionRequest, material quant.Result, parallel int, region build.DensityLatitudeOption) moduleTemplate {
-	buildCtx, cancel := context.WithTimeout(search.WithControl(ctx, nil), 12*time.Second)
+	buildCtx, cancel := context.WithTimeout(search.WithControl(ctx, nil), initialTemplateWindow)
 	defer cancel()
 	template, err := generateManufacturingTemplate(buildCtx, input.Options, material, parallel, region, input.Plan.SinglePlanet && !input.Options.firstVerifiedLayout)
 	if err == nil && !template.hasDirectRoutes(material.FlowGraph) {

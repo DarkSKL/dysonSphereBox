@@ -19,6 +19,10 @@ type Request struct {
 	postPowerShipping map[int64]float64
 	// ConstructionInserterLevel 由施工入口按存档设定，用于估算各配方必须安装的分拣器功耗。
 	ConstructionInserterLevel int `json:"-"`
+	// ConstructionBeltLevel 由施工入口按存档设定，用于按单带容量估算机器行与喷涂机。
+	ConstructionBeltLevel int `json:"-"`
+	// ConstructionDroneCargo 携带实档单架无人机载量，供大单初排预估本地配送；零表示没有科技依据。
+	ConstructionDroneCargo int `json:"-"`
 	// Energy、Dyson 职责：保存电源和光子前提；使用：完整规划；边界：只对本次快照生效。
 	Energy EnergySettings `json:"energy"`
 	Dyson  DysonSettings  `json:"dyson"`
@@ -75,7 +79,11 @@ type LogisticsSettings struct {
 
 // World 职责：提供同一存档时刻的星球快照；使用：全局分工；边界：规划后不访问存档。
 type World struct {
-	// CheckSourceSites 在多星分工进入制造前检查实档采集和接收器；缺口仍交由同一分工修复流程处理。
+	// FactoryLandShare 估算候选星可容纳连续制造工区的陆面比例。仅分担大单时采样，未知地形仍可进入实际施工。
+	FactoryLandShare func(context.Context, int64) (float64, bool) `json:"-"`
+	// LayoutWorkers 由线程安全的施工入口指定可并行核验的星球数；未指定的校验器继续逐星调用。
+	LayoutWorkers int `json:"-"`
+	// CheckSourceSites 在多星制造前检查实档采集、接收器和该分工的供电下限。逐星缺口交给同一分工修复流程。
 	CheckSourceSites func(context.Context, PlanetPlan) error          `json:"-"`
 	RemoteRules      func(from, to, item int64) (routed, banned bool) `json:"-"`
 	RecipeUnlocked   func(id int) bool                                `json:"-"`

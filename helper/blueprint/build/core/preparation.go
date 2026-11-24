@@ -57,6 +57,80 @@ func normalizeSetting(s Setting) (Setting, error) {
 	return s, nil
 }
 
+// EstimateFactoryAccessories 按施工档位的机器行、底层机位和物料口估算分拣器及喷涂机数量。
+// 使用：多星分工初排电源。边界：布局可能拆成更多行、启用不同轨道或升档，最终功率始终按实物结算。
+func EstimateFactoryAccessories(data *quant.Dataset, rows []quant.Production, belt, inserter int) (arms, coaters int) {
+	return estimateFactoryRows(data, rows, belt, inserter, nil)
+}
+
+// EstimateFactoryGroundSpans 按普通机行的水平间距累计各工区所需的地面行长，以一个熔炉机位为单位。
+// 使用：大单初排时比较不同设备的占地；边界：整块未能估算时按原机器数分担，施工仍核验完整布局。
+func EstimateFactoryGroundSpans(data *quant.Dataset, rows []quant.Production, belt, inserter int) []float64 {
+	spans := make([]float64, len(rows))
+	for i, row := range rows {
+		spans[i] = float64(row.MachineCount)
+	}
+	estimateFactoryRows(data, rows, belt, inserter, spans)
+	return spans
+}
+
+// estimateFactoryRows 共用真实拆行、端口和堆叠规则。需要初排土地份额时才记录地面行长。
+func estimateFactoryRows(data *quant.Dataset, rows []quant.Production, belt, inserter int, spans []float64) (arms, coaters int) {
+	setting, err := normalizeSetting(Setting{BeltLv: belt, InserterLv: inserter})
+	if err != nil {
+		return 0, 0
+	}
+	facts, err := loadAssemblyFacts()
+	if err != nil {
+		return 0, 0
+	}
+	ordinary := stationRowPlans()[0]
+	for i, row := range rows {
+		index, ok := data.RecipeByID[row.RecipeID]
+		if !ok || row.MachineType < 1 || row.MachineType > 6 {
+			continue
+		}
+		recipe := data.Recipes[index]
+		counts, err := lineCounts(row, recipe, setting, data.ByID[row.MachineID].Speed)
+		if err != nil {
+			continue
+		}
+		// 同一带宽组可能拆成多行。每行分别配喷涂机，研究站按该行实际层数配底层分拣器。
+		span := ordinary.spec.MaxSpan
+		if recipeHasMachineRecycle(recipe) {
+			span = ordinary.recycleSpan
+		}
+		counts, err = singleRowCounts(row, recipe, setting, counts, span)
+		if err != nil {
+			continue
+		}
+		ground, measured := 0, 0
+		for _, count := range counts {
+			ports := planMachineInserters(row, recipe, setting, count)
+			if ports.capacityError != nil {
+				continue
+			}
+			bases := (count + ports.layers - 1) / ports.layers
+			ground += bases
+			measured += count
+			for _, p := range ports.inputs {
+				arms += bases * len(p.slots)
+			}
+			for _, p := range ports.outputs {
+				arms += bases * len(p.slots)
+			}
+			if productionSprayItem(row) != 0 {
+				coaters += len(recipe.Items)
+			}
+		}
+		if spans != nil && measured == row.MachineCount && ground > 0 {
+			pitch := machineSpacing(row.MachineType, facts.geometry[row.MachineType], setting.extraSpace(row.MachineType))
+			spans[i] = float64(ground) * pitch / facts.geometry[1].Space
+		}
+	}
+	return arms, coaters
+}
+
 // lineCounts 职责：按单机满负荷毛流、真实带宽和列上限均匀拆列；使用：每条量化产线；边界：不把期望速率均摊到整数机器当作已降速，不丢机器。
 func lineCounts(p quant.Production, r quant.Recipe, s Setting, speed float64) ([]int, error) {
 	return lineCountsWithStrategy(p, r, s, speed, false)

@@ -40,6 +40,14 @@ func (move *denseSurfaceRelocation) mapPoint(point blueprint.Point, yaw float32)
 	oldUp := surfaceUnit(placement.Vector{float64(cosLatitude * float32(math.Sin(float64(oldLongitude)))), float64(float32(math.Sin(float64(oldLatitude)))), float64(-cosLatitude * float32(math.Cos(float64(oldLongitude))))})
 	delta := float64(move.targetAnchor-move.sourceAnchor) * float64(step)
 	sine, cosine := math.Sin(delta), math.Cos(delta)
+	longitude, latitude, yawShift := RotateSurfacePose(oldUp, sine, cosine)
+	newLongitudeStep := float64(float32(2*float32(math.Pi)) / float32(move.targetSegments*5))
+	return blueprint.Point{X: float32(longitude/newLongitudeStep - move.shiftX), Y: float32(latitude/float64(step) - float64(move.targetAnchor) - move.shiftY), Z: point.Z}, float32(math.Mod(float64(yaw)+yawShift+360, 360))
+}
+
+// RotateSurfacePose 将单位径向和当地正北一起绕世界 X 轴旋转。密铺和整星工区共用此变换。
+// 经度、纬度返回弧度，航向增量返回原版蓝图使用的角度。高度、俯仰和倾角由调用者保留。
+func RotateSurfacePose(oldUp placement.Vector, sine, cosine float64) (longitude, latitude, yawShift float64) {
 	rotate := func(p placement.Vector) placement.Vector {
 		return placement.Vector{p[0], cosine*p[1] - sine*p[2], sine*p[1] + cosine*p[2]}
 	}
@@ -48,11 +56,8 @@ func (move *denseSurfaceRelocation) mapPoint(point blueprint.Point, yaw float32)
 	newEast := surfaceUnit(newUp.Cross(placement.Vector{0, 1, 0}))
 	newNorth := newEast.Cross(newUp)
 	transportedNorth := rotate(oldEast.Cross(oldUp))
-	yawShift := math.Atan2(transportedNorth.Dot(newEast), transportedNorth.Dot(newNorth)) * 180 / math.Pi
-	longitude := math.Atan2(newUp[0], -newUp[2])
-	latitude := math.Asin(max(-1., min(1., newUp[1])))
-	newLongitudeStep := float64(float32(2*float32(math.Pi)) / float32(move.targetSegments*5))
-	return blueprint.Point{X: float32(longitude/newLongitudeStep - move.shiftX), Y: float32(latitude/float64(step) - float64(move.targetAnchor) - move.shiftY), Z: point.Z}, float32(math.Mod(float64(yaw)+yawShift+360, 360))
+	yawShift = math.Atan2(transportedNorth.Dot(newEast), transportedNorth.Dot(newNorth)) * 180 / math.Pi
+	return math.Atan2(newUp[0], -newUp[2]), math.Asin(max(-1., min(1., newUp[1]))), yawShift
 }
 
 // relocatedSurfaceRecords 职责：生成目标纬度的新记录和Area；使用：边缘与高纬候选；边界：不修改source或records，整数原点平移与建议纬度同步，变形后的几何须重新校验。

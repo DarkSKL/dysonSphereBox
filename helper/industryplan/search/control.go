@@ -41,22 +41,62 @@ func Controlled(ctx context.Context) bool {
 // ActiveTimer 统计阶段的实际运行时长；暂停中的所有并发检查点共用同一段等待时间。
 func ActiveTimer(ctx context.Context) func() time.Duration {
 	c, _ := ctx.Value(key{}).(*Control)
-	now := time.Now
-	if c != nil {
-		now = c.activeNow
+	if c == nil {
+		start := time.Now()
+		return func() time.Duration { return time.Since(start) }
 	}
-	start := now()
-	return func() time.Duration { return now().Sub(start) }
+	start, _ := c.activeClock()
+	return func() time.Duration {
+		now, _ := c.activeClock()
+		return now.Sub(start)
+	}
 }
 
-// activeNow 从单调时钟扣除本任务累计等待；暂停时停在当前时窗结束的检查点。
-func (c *Control) activeNow() time.Time {
+// activeClock 在同一把锁下读取有效时刻和对应的继续信号；暂停后的时刻扣除累计等待。
+func (c *Control) activeClock() (time.Time, <-chan struct{}) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.resume != nil {
-		return c.pausedAt.Add(-c.pausedFor)
+		return c.pausedAt.Add(-c.pausedFor), c.resume
 	}
-	return time.Now().Add(-c.pausedFor)
+	return time.Now().Add(-c.pausedFor), nil
+}
+
+// WithActiveTimeout 为子任务设置实际计算时窗；暂停中等待原检查点，耗尽时通过 context.Cause 报告 DeadlineExceeded。
+func WithActiveTimeout(parent context.Context, window time.Duration) (context.Context, context.CancelFunc) {
+	c, _ := parent.Value(key{}).(*Control)
+	if c == nil || window <= 0 {
+		return context.WithTimeout(parent, window)
+	}
+	ctx, cancel := context.WithCancelCause(parent)
+	start, _ := c.activeClock()
+	end := start.Add(window)
+	timer := time.NewTimer(window)
+	go func() {
+		defer timer.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+			}
+			now, resume := c.activeClock()
+			if !now.Before(end) {
+				cancel(context.DeadlineExceeded)
+				return
+			}
+			if resume != nil {
+				select {
+				case <-ctx.Done():
+					return
+				case <-resume:
+				}
+				now, _ = c.activeClock()
+			}
+			timer.Reset(end.Sub(now))
+		}
+	}()
+	return ctx, func() { cancel(context.Canceled) }
 }
 
 // Checkpoint 职责：在时间到后等待玩家继续；使用：矿源、分工、模块及布局候选边界；边界：没有控制器的批处理仅检查取消。

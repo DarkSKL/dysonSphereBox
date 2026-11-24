@@ -7,11 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/pprof"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"DysonSphereBox/helper/blueprint/build"
+	"DysonSphereBox/helper/blueprint/planet"
 	"DysonSphereBox/helper/industryplan"
 	"DysonSphereBox/helper/industryplan/search"
 	"DysonSphereBox/helper/quant"
@@ -123,10 +125,12 @@ func TestMatrixSavedScale(t *testing.T) {
 				calls, totalMS := 0, 0.0
 				failed1504, slow1504 := 0, 0
 				var failedMS1504, slowMS1504 float64
-				ctx = build.WithPerformance(ctx, func(sample build.GenerationPerformance) {
+				var sampleMu sync.Mutex
+				ctx = planet.WithTemplatePerformance(ctx, func(planetID int64, sample build.GenerationPerformance) {
+					sampleMu.Lock()
+					defer sampleMu.Unlock()
 					calls++
 					totalMS += sample.TotalDurationMs
-					planetID := lastPlanet.Load()
 					if planetID == 1504 && sample.Outcome == "failed" {
 						failed1504++
 						failedMS1504 += sample.TotalDurationMs

@@ -4,14 +4,17 @@ package industryworkspace
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"math/bits"
-	"reflect"
+	"runtime"
 	"sort"
+	"sync"
 
 	"DysonSphereBox/helper/blueprint/build"
+	buildcore "DysonSphereBox/helper/blueprint/build/core"
 	"DysonSphereBox/helper/blueprint/planet"
 	"DysonSphereBox/helper/industryplan"
 	"DysonSphereBox/helper/quant"
@@ -22,6 +25,44 @@ import (
 type verifiedConstruction struct {
 	layout planet.ProductionResult
 	parts  []ConstructionPart
+}
+
+// sourceSiteKey 标识采集预检的实体输入；同一任务内可复用选址结论，发船量、库存和工厂带口仍由整星实装核验。
+func sourceSiteKey(p industryplan.PlanetPlan) (string, error) {
+	type miningSite struct {
+		Item, Facility       int
+		Rate, Speed, Setting float64
+		Export               bool
+	}
+	type sourceSites struct {
+		Planet                              int64
+		Mines                               []miningSite
+		Receivers                           int
+		HasReceivers                        bool
+		Lenses, ImportLenses, ExportPhotons bool
+	}
+	contract := sourceSites{Planet: p.PlanetID}
+	exports := map[int]bool{}
+	for _, port := range p.Ports {
+		if port.Kind == "export" {
+			exports[port.ItemID] = true
+		}
+	}
+	for _, mine := range p.Mines {
+		contract.Mines = append(contract.Mines, miningSite{mine.ItemID, mine.FacilityID, mine.RatePerMinute, mine.SpeedMultiplier, mine.FacilityMultiplier, exports[mine.ItemID]})
+	}
+	if receivers := p.Photons; receivers != nil {
+		contract.HasReceivers = true
+		contract.Receivers, contract.Lenses = receivers.Count, receivers.LensRatePerMinute > 0
+		contract.ExportPhotons = exports[1208]
+		for _, port := range p.Ports {
+			if contract.Lenses && port.Kind == "import" && port.ItemID == 1209 {
+				contract.ImportLenses = true
+			}
+		}
+	}
+	key, err := json.Marshal(contract)
+	return string(key), err
 }
 
 // Generate 编排一次完整计算。布局回传的实物证据和蓝图由同一候选携带，只发布最终获选版本。
@@ -35,6 +76,10 @@ func Generate(ctx context.Context, req Request, selection Selection, world indus
 		return nil, err
 	}
 	req.Planning.ConstructionInserterLevel = req.Options.InserterLevel
+	req.Planning.ConstructionBeltLevel = req.Options.BeltLevel
+	if tech != nil {
+		req.Planning.ConstructionDroneCargo = tech.DroneCargo
+	}
 	if req.Options.TechnologyMode == "save" {
 		req.Planning.Quant = req.Planning.Quant.WithUnlockedRecipes(snapshot.RecipeUnlocked)
 	}
@@ -50,6 +95,9 @@ func Generate(ctx context.Context, req Request, selection Selection, world indus
 	limit := 0
 	ctx, geometryBudget := planet.WithCandidateBudget(ctx, limit)
 	ctx = planet.WithTemplateCache(ctx)
+	if req.Planning.Profile != "low" && !buildcore.CandidateBudgetLimited(ctx) {
+		world.LayoutWorkers = min(4, runtime.GOMAXPROCS(0)/4)
+	}
 	remoteGroup := snapshot.FreeRemoteGroup()
 	sites := make(map[int64]Site, len(selection.Sites))
 	for _, s := range selection.Sites {
@@ -91,22 +139,41 @@ func Generate(ctx context.Context, req Request, selection Selection, world indus
 		}
 		return err
 	}
-	// 同一快照和设置下，采集布局由矿业合同、光子数量和货物端口决定。仅记住已通过的预检，整星交付仍须生成。
-	checkedSources := make(map[int64]industryplan.PlanetPlan)
+	// 矿机与接收器按实体输入记住成功及确定的缺口。调整外运目的地后仍重新计算真实货流、仓储和供电。
+	type sourceReceipt struct {
+		load planet.SourceLoadMW
+		err  error
+	}
+	var checkedSources sync.Map
 	world.CheckSourceSites = func(ctx context.Context, p industryplan.PlanetPlan) error {
-		old, ok := checkedSources[p.PlanetID]
-		if ok && reflect.DeepEqual(old.Mines, p.Mines) && reflect.DeepEqual(old.Photons, p.Photons) && reflect.DeepEqual(old.Ports, p.Ports) {
-			return nil
+		if len(p.Mines) == 0 && p.Photons == nil {
+			return planet.SourceLoadMW(0).CheckManufacturingPower(p, req.Options.InserterLevel)
+		}
+		key, err := sourceSiteKey(p)
+		if err != nil {
+			return err
+		}
+		if previous, ok := checkedSources.Load(key); ok {
+			receipt := previous.(sourceReceipt)
+			if receipt.err != nil {
+				return receipt.err
+			}
+			return receipt.load.CheckManufacturingPower(p, req.Options.InserterLevel)
 		}
 		input, err := planetInput(ctx, p)
 		if err != nil {
 			return err
 		}
-		if err = planet.CheckSourceSites(ctx, input); err != nil {
-			return sourceError(p, err)
+		load, err := planet.SurveySourceLoad(ctx, input)
+		err = sourceError(p, err)
+		var placement *industryplan.SourcePlacementError
+		if ctx.Err() == nil && (err == nil || errors.As(err, &placement)) {
+			checkedSources.Store(key, sourceReceipt{load, err})
 		}
-		checkedSources[p.PlanetID] = industryplan.PlanetPlan{Mines: p.Mines, Photons: p.Photons, Ports: p.Ports}
-		return nil
+		if err != nil {
+			return err
+		}
+		return load.CheckManufacturingPower(p, req.Options.InserterLevel)
 	}
 	validator := func(ctx context.Context, p industryplan.PlanetPlan) (industryplan.PlanetActual, error) {
 		input, err := planetInput(ctx, p)

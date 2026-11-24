@@ -45,7 +45,7 @@ func TestMiningReuseRechecksContracts(t *testing.T) {
 	}
 }
 
-// TestMiningReuseEndsAtFirstDifference 首个几何或额定需求差异会使其后的旧选址失效，即使后续矿机规格相同。
+// TestMiningReuseEndsAtFirstDifference 验证需求变化落在同一选址区间时可以复用，跨过速率门槛则重算整个后缀。
 func TestMiningReuseEndsAtFirstDifference(t *testing.T) {
 	ctx := WithTemplateCache(t.Context())
 	input := miningPartialInput(90)
@@ -61,8 +61,19 @@ func TestMiningReuseEndsAtFirstDifference(t *testing.T) {
 	read := beginMiningReplay(ctx, &req, input, point)
 	changed := a
 	changed.remaining = 91
+	if _, _, _, ok := read.restore(changed); !ok {
+		t.Fatal("两次都需遍历全部候选，未复用已知最大速率的矿机")
+	}
+	changed = b
+	changed.remaining = 45
+	if _, _, _, ok := read.restore(changed); !ok {
+		t.Fatal("提高需求后原首个足量候选仍然足量")
+	}
+	read = beginMiningReplay(ctx, &req, input, point)
+	changed = a
+	changed.remaining = 40
 	if _, _, _, ok := read.restore(changed); ok {
-		t.Fatal("额定剩余已改变，仍复用了首台矿机")
+		t.Fatal("降低门槛可能选中更早的矿机")
 	}
 	if _, _, _, ok := read.restore(b); ok {
 		t.Fatal("首个落位分歧后仍复用了后续矿机")
@@ -115,7 +126,7 @@ func TestMiningRetryDiscardsPartialExports(t *testing.T) {
 	input.Resources.SHA256 = "缺少第二矿种"
 	input.Plan.Ports = []industryplan.Port{{Kind: "export", ItemID: 1001, PeerPlanetID: 102, RatePerMinute: 50}}
 	input.Plan.Mines = append(input.Plan.Mines, industryplan.Mine{ItemID: 1002, FacilityID: 2301, RatePerMinute: 50})
-	req := Request{PlanetID: input.Plan.PlanetID, wet: func(Position) (bool, bool) { return false, true }, stationPad: func(Position) bool { return true }}
+	req := Request{PlanetID: input.Plan.PlanetID, wet: func(Position) (bool, bool) { return false, true }, groundPad: func(Position) bool { return true }}
 	for _, near := range []bool{false, true} {
 		input.Options.nearMineTowers = near
 		trial := req
@@ -152,7 +163,7 @@ func TestMiningRetryReportsReachableCapacity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			input := miningPartialInput(tc.ironDemand)
 			input.Plan.Mines = append(input.Plan.Mines, industryplan.Mine{ItemID: 1002, FacilityID: 2301, RatePerMinute: 50})
-			req := Request{PlanetID: input.Plan.PlanetID, wet: func(Position) (bool, bool) { return false, true }, stationPad: func(p Position) bool {
+			req := Request{PlanetID: input.Plan.PlanetID, wet: func(Position) (bool, bool) { return false, true }, groundPad: func(p Position) bool {
 				// 矿点在负 Z 轴，18 米内的支脚允许一台短带矿机接塔，常规塔距超出岸缘。
 				w, err := world(p)
 				return err == nil && math.Hypot(float64(w.X), float64(w.Y)) < 18

@@ -289,16 +289,28 @@ func TestIndustrySavedOptions(t *testing.T) {
 		t.Run("foundation-"+option, func(t *testing.T) {
 			r := base(1101)
 			r.Options.Foundation = option
-			b, doc := generate(t, r)
-			if doc.Reform == nil || len(doc.Reform.Rects) == 0 {
-				t.Fatal("原版蓝图无地基矩形")
-			}
+			b, _ := generate(t, r)
 			sheet := b.Report.Planets[0]
-			count := 0
-			for _, rect := range doc.Reform.Rects {
-				count += int(rect.W) * int(rect.H)
+			count, rectangles := 0, 0
+			// 整星地基超过科技上限时，星球编号对应末张建筑图，地基分布在前面的施工图中。
+			for _, part := range sheet.Sheets {
+				doc, err := blueprint.Decode(b.Codes[part.ID], true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cells := 0
+				if doc.Reform != nil {
+					rectangles += len(doc.Reform.Rects)
+					for _, rect := range doc.Reform.Rects {
+						cells += int(rect.W) * int(rect.H)
+					}
+				}
+				if cells != part.FoundationCells {
+					t.Fatalf("%s 地基实数 %d，清单 %d", part.Name, cells, part.FoundationCells)
+				}
+				count += cells
 			}
-			t.Logf("实测地基格=%d 矩形=%d 沙土依据=%t 区间=%d~%d", count, len(doc.Reform.Rects), sheet.SoilEstimateKnown, sheet.SoilLowerBound, sheet.SoilUpperBound)
+			t.Logf("实测地基格=%d 矩形=%d 沙土依据=%t 区间=%d~%d", count, rectangles, sheet.SoilEstimateKnown, sheet.SoilLowerBound, sheet.SoilUpperBound)
 			if count != sheet.FoundationCells || count <= lastCells || !sheet.SoilEstimateKnown || sheet.SoilUpperBound < sheet.SoilLowerBound {
 				t.Fatal("地基用量与蓝图或覆盖范围不一致")
 			}

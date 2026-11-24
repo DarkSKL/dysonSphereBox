@@ -213,12 +213,12 @@ func extendOccupancy(req Request, catalog *placement.Catalog) []Obstacle {
 	for _, o := range req.Objects {
 		radius := groundRadius(catalog, o.Building)
 		station := int16(0)
-		if o.Building.ItemID == 2104 || o.Building.ItemID == 2103 {
+		if placement.HasStationSpacing(o.Building.ItemID) {
 			station = o.Building.ItemID
 		}
-		obstacles = append(obstacles, Obstacle{Position: o.First, Radius: radius, stationItem: station})
+		obstacles = append(obstacles, Obstacle{Position: o.First, Radius: radius, stationItem: station, plannedStation: station != 0})
 		if o.Second != o.First {
-			obstacles = append(obstacles, Obstacle{Position: o.Second, Radius: radius, stationItem: station})
+			obstacles = append(obstacles, Obstacle{Position: o.Second, Radius: radius})
 		}
 	}
 	return obstacles

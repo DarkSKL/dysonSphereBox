@@ -29,6 +29,11 @@ const (
 type assignment struct {
 	center   int64
 	strategy int
+	// estimateLocalPower 给按地表分担的候选预留本地配送用电，最终船机和电源均按实际塔位结算。
+	estimateLocalPower bool
+	// factoryLand 保存初排时已采样的连续陆地比例，供同一分工迁移制造后缀时估算承接量。
+	// 此表在初排后只读；地形份额仅决定试摆顺序，所有设备仍由逐星施工核验。
+	factoryLand map[int64]float64
 	// verifyFirst 优先复核上一轮失败星球，避免为尚未修好的方案先重建其他星球。
 	verifyFirst int64
 	// canOpenHost 表示跨星方案还有新的建设星可承接制造，候选仍须通过真实布局。
@@ -334,6 +339,11 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 		}
 		return evaluated{}, false
 	}
+	orderSeeds := func() {
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return preferCandidate(candidates[i].result, candidates[j].result, req.Preference)
+		})
+	}
 	// 单星条件不满足时才比较同一交付中心的不同跨星分工。
 	seedCandidates := func() {
 		for len(candidates) == 0 && inspectedAssignments < len(assignments) && ctx.Err() == nil {
@@ -346,9 +356,7 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 				candidates = append(candidates, candidate)
 			}
 		}
-		sort.SliceStable(candidates, func(i, j int) bool {
-			return preferCandidate(candidates[i].result, candidates[j].result, req.Preference)
-		})
+		orderSeeds()
 	}
 	defer func() { out.Candidates = inspectedAssignments + singleEvaluations }()
 	current, single, err := nextSingle()
@@ -366,6 +374,22 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 				rejected.Status, rejected.LimitStage = "budget_exhausted", "resources"
 			}
 			return rejected, nil
+		}
+		if validate != nil && (req.Preference == "energy" || req.Preference == "logistics") {
+			if spread, ok := spreadFactorySeed(ctx, candidates[0], planets, buildable, world, req); ok {
+				item := evaluateEnergy(ctx, req, base, world, planets, ids, buildable, profile, spread, progress)
+				if (item.Status == "ready" || item.Status == "conditional") && len(item.Planets) > 1 {
+					candidates = append(candidates, evaluated{result: item, policy: spread})
+					if matched, changed := matchedFactoryPolicy(item, spread, nil); len(changed) > 0 {
+						paired := evaluateEnergy(ctx, req, base, world, planets, ids, buildable, profile, matched, progress)
+						if improvesFactoryFreight(item, paired) {
+							candidates = append(candidates, evaluated{result: paired, policy: matched})
+						}
+					}
+					// 集中、分担和换位分工都服从玩家偏好。首选无法施工时，后续仍可核验其余合同。
+					orderSeeds()
+				}
+			}
 		}
 		current, next = candidates[0], 1
 	}
@@ -389,20 +413,7 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 	}
 	defer finishRepair()
 	verify := func(item *Result, previous Result, policy assignment) (int64, error) {
-		if world.CheckSourceSites != nil && len(item.Planets) > 1 {
-			for _, site := range item.Planets {
-				if len(site.Mines) == 0 && site.Photons == nil {
-					continue
-				}
-				if err := search.Checkpoint(ctx); err != nil {
-					return site.PlanetID, err
-				}
-				if err := world.CheckSourceSites(ctx, site); err != nil {
-					return site.PlanetID, fmt.Errorf("星球 %d：%w", site.PlanetID, err)
-				}
-			}
-		}
-		return verifyCandidate(ctx, item, previous, policy, validate, progress)
+		return verifyCandidate(ctx, item, previous, policy, world, validate, progress)
 	}
 	for repairs := 0; ; repairs++ {
 		finishRepair()
@@ -531,6 +542,16 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 		policy, ok := repairAssignment(current.policy, previous, badSite, verifyErr, planets, buildable)
 		if ok {
 			options := []assignment{policy}
+			var batch *siteFeedbackBatch
+			if errors.As(verifyErr, &batch) {
+				combined := policy
+				for _, extra := range batch.others {
+					if adjusted, applied := repairAssignment(combined, previous, extra.planetID, extra.err, planets, buildable); applied {
+						combined = adjusted
+					}
+				}
+				options = []assignment{combined, policy}
+			}
 			if !current.policy.fullFactories[badSite] {
 				if spread, changed := distributeFactoryOverflow(policy, previous, badSite, planets); changed {
 					options = []assignment{spread, policy}
@@ -586,13 +607,30 @@ func planOnce(ctx context.Context, req Request, world World, validate Validator,
 }
 
 // verifyCandidate 职责：逐星球回收蓝图反馈；使用：初选和修复；边界：仅复用完整合同相同的成功回执。
-func verifyCandidate(ctx context.Context, item *Result, previous Result, policy assignment, validate Validator, progress func(Progress)) (int64, error) {
+func verifyCandidate(ctx context.Context, item *Result, previous Result, policy assignment, world World, validate Validator, progress func(Progress)) (int64, error) {
 	item.Actuals = map[int64]PlanetActual{}
-	var done, total, available int
+	var total, available int
 	for _, site := range item.Planets {
 		total += layoutWork(site)
 		if !policy.fullFactories[site.PlanetID] {
 			available++
+		}
+	}
+	// 采集预检和完整施工使用同一搜索档位。中心档和完整搜索仍可先取得实际可建前缀。
+	layoutInput := func(site PlanetPlan) PlanetPlan {
+		depth := policy.fullSearch[site.PlanetID]
+		site.CanRelocate = depth == quickFactorySearch && (policy.canOpenHost || available > 1 || available == 1 && policy.fullFactories[site.PlanetID])
+		site.SinglePlanet = len(item.Planets) == 1
+		site.CenterRegionsOnly = depth == centerFactorySearch && !site.SinglePlanet
+		return site
+	}
+	if world.CheckSourceSites != nil && len(item.Planets) > 1 {
+		surveys := make([]PlanetPlan, len(item.Planets))
+		for i, site := range item.Planets {
+			surveys[i] = layoutInput(site)
+		}
+		if id, err := surveySourceSites(ctx, surveys, world); err != nil {
+			return id, err
 		}
 	}
 	// 每颗星只保留最近一次成功的合同。中途先在另一颗星失败也不会丢掉可复用的实物。
@@ -627,67 +665,49 @@ func verifyCandidate(ctx context.Context, item *Result, previous Result, policy 
 			return layoutWork(a) < layoutWork(b)
 		})
 	}
-	for n, site := range sites {
-		if err := ctx.Err(); err != nil {
-			return site.PlanetID, err
-		}
-		p := Progress{Phase: "blueprint", Completed: n, Total: len(item.Planets), PlanetID: site.PlanetID, WorkDone: done, WorkTotal: total, SimpleLayout: simpleLayout(item.Plan)}
-		progress(p)
+	p := Progress{Phase: "blueprint", Total: len(sites), WorkTotal: total, SimpleLayout: simpleLayout(item.Plan)}
+	jobs := make([]siteLayoutCheck, len(sites))
+	for i, site := range sites {
 		old, ok := verified[site.PlanetID]
 		if !ok || !reflect.DeepEqual(old.site, site) {
 			old, ok = incumbent[site.PlanetID]
 			ok = ok && reflect.DeepEqual(old.site, site)
 		}
-		actual := old.actual
-		if ok {
+		jobs[i] = siteLayoutCheck{input: layoutInput(site), reused: ok, actual: old.actual}
+	}
+	checked := checkLayoutBatch(ctx, jobs, world.LayoutWorkers, validate, p, progress)
+	for i, result := range checked {
+		site := sites[i]
+		if result.reused {
 			if timing != nil {
 				timing.Reuses++
 			}
 		} else {
-			var err error
-			layoutCtx := context.WithValue(ctx, placedMachinesKey{}, func(machines int) {
-				p.WorkDone += machines
-				progress(p)
-			})
-			input := site
-			depth := policy.fullSearch[site.PlanetID]
-			input.CanRelocate = depth == quickFactorySearch && (policy.canOpenHost || available > 1 || available == 1 && policy.fullFactories[site.PlanetID])
-			input.CenterRegionsOnly = depth == centerFactorySearch && len(item.Planets) > 1
-			input.SinglePlanet = len(item.Planets) == 1
-			var elapsed func() time.Duration
-			if timing != nil || checks != nil {
-				elapsed = search.ActiveTimer(ctx)
-			}
-			actual, err = validate(layoutCtx, input)
-			if err == nil {
-				err = verifyPorts(site, actual)
-			}
-			var duration time.Duration
-			if elapsed != nil {
-				duration = elapsed()
-			}
 			if checks != nil {
 				s := checks[site.PlanetID]
-				s.elapsed += duration
-				if err != nil {
+				s.elapsed += result.elapsed
+				if result.err != nil {
 					s.failures++
 				}
 				checks[site.PlanetID] = s
 			}
 			if timing != nil {
 				timing.Rebuilds++
-				timing.rebuild += duration
+				timing.rebuild += result.elapsed
 				timing.RebuildMillis = timing.rebuild.Milliseconds()
 			}
-			if err != nil {
-				return site.PlanetID, fmt.Errorf("星球 %d：%w", site.PlanetID, err)
+			if result.err == nil {
+				verified[site.PlanetID] = verifiedLayout{site: site, actual: result.actual}
 			}
-			verified[site.PlanetID] = verifiedLayout{site: site, actual: actual}
 		}
-		item.Actuals[site.PlanetID] = actual
-		done += layoutWork(site)
+		if result.err == nil {
+			item.Actuals[site.PlanetID] = result.actual
+		}
 	}
-	return 0, nil
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	return layoutBatchFailure(checked)
 }
 
 // repairAssignment 职责：负荷不足原星补电，容量失败迁移未落位后缀，其他失败迁移单条最大产线；使用：有限局部修复；边界：保留成功前缀和其他分工，不声称穷尽所有布局。
@@ -988,6 +1008,10 @@ func centerOrder(req Request, base quant.Result, planets map[int64]Planet, build
 
 // evaluate 职责：对一个分工同时结清所有物料；使用：候选搜索；边界：只输出可重建逐星球守恒图的切片。
 func evaluate(ctx context.Context, req Request, base quant.Result, planets map[int64]Planet, ids, buildable []int64, profile transport.VesselProfile, assignment assignment, rules func(int64, int64, int64) (bool, bool)) Result {
+	if !assignment.estimateLocalPower {
+		req.ConstructionDroneCargo = 0
+		req.ConstructionBeltLevel = 0
+	}
 	result := Result{CenterPlanetID: assignment.center, Plan: base, Preference: req.Preference, Status: "ready", Logistics: req.Logistics}
 	c := candidate{ctx: ctx, req: req, center: assignment.center, ids: ids, world: make(map[int64]*location, len(ids)), profile: profile, result: result}
 	c.excludedSources = assignment.excludedSources

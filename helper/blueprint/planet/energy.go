@@ -192,11 +192,11 @@ func placeEnergyUnits(ctx context.Context, req *Request, input ProductionRequest
 							return err
 						}
 					}
-					if placementConflict(objects, occupied, catalog) {
+					if req.siteOccupied(ctx, objects, occupied, catalog) {
 						continue
 					}
 					if facility == 2213 {
-						if !geothermalSite(input, p) {
+						if !geothermalSite(input, p) || req.capsuleConflict(objects, catalog) {
 							continue
 						}
 					} else if req.terrainConflict(objects, catalog) {

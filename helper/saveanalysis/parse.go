@@ -23,9 +23,11 @@ type planetRecord struct {
 
 // Snapshot 职责：保存一次解析的紧凑索引；使用：重复查询物品；边界：解析数据只读，按需生成的缓存仅属于当前快照。
 type Snapshot struct {
-	stations   []*layoutStationComponent
-	technology *PlanningTechnology
-	recipes    map[int]bool
+	// capsuleRemoved 来自原版太空舱的两个历史特征键，供母星施工使用。
+	capsuleRemoved bool
+	stations       []*layoutStationComponent
+	technology     *PlanningTechnology
+	recipes        map[int]bool
 	// virtualRelayZones 保存同一存档的已落地虚拟基地施工影响区。
 	virtualRelayZones map[int64][]RelayZone
 	// groundBaseZones 保存有原版 EnemyData 或将首次本地化的实际地面基地。
@@ -122,6 +124,7 @@ func Decode(data []byte) (snapshot *Snapshot, err error) {
 	s.stations = r.stations
 	s.technology = r.technology
 	s.recipes = r.recipes
+	s.capsuleRemoved = r.capsuleRemoved
 	s.virtualRelayZones = r.virtualRelayZones
 	s.groundBaseZones = r.groundBaseZones
 	s.astroRoutes, s.astroBans = r.astroRoutes, r.astroBans

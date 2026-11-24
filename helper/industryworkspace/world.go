@@ -25,6 +25,13 @@ func Describe(saveID string, snapshot *saveanalysis.Snapshot) (Selection, indust
 	input := industryplan.World{SnapshotID: world.SHA256, Planets: make([]industryplan.Planet, 0, len(world.Planets))}
 	input.RemoteRules = snapshot.RemoteAstroRules
 	input.RecipeUnlocked = snapshot.RecipeUnlocked
+	input.FactoryLandShare = func(ctx context.Context, id int64) (float64, bool) {
+		detail, err := snapshot.PlanetResourceDetailContext(ctx, id)
+		if err != nil {
+			return 0, false
+		}
+		return factoryLandShare(ctx, detail)
+	}
 	input.CachedResources = func(id int64) ([]industryplan.Resource, bool, bool) {
 		summary, found := snapshot.CachedPlanetResources(id)
 		if !found {

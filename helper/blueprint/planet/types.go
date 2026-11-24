@@ -7,6 +7,7 @@ import (
 
 	"DysonSphereBox/helper/blueprint"
 	"DysonSphereBox/helper/blueprint/build"
+	"DysonSphereBox/helper/saveanalysis/galaxy"
 )
 
 // Position 职责：标识绝对球面建筑端点；使用：以弧度提供经纬度，以原版建筑层提供高度；边界：半径 200 的固态星球。
@@ -35,6 +36,8 @@ type Obstacle struct {
 	surfaceOnly bool
 	// stationItem 职责：保留物流塔类型；使用：独立复核塔间距；边界：不把间距限制施加到普通设备。
 	stationItem int16
+	// plannedStation 标识同次施工的物流设施，供有方向的大型采矿机与行星塔间距检查。
+	plannedStation bool
 }
 
 // Object 职责：关联原版建筑记录和绝对端点；使用：整星装配；边界：连接使用全局建筑 Index，-1 表示无连接。
@@ -55,6 +58,8 @@ type Request struct {
 	manufacturingOccupancy *manufacturingOccupancy
 	// placementIndices 只供同一制造块在固定前序占地下逐格复核，整星编码自行检查全部占地。
 	placementIndices *placementIndices
+	// veinBodies 只索引露出矿物的实际碰撞球，供分拣器跨距检查。地基保护格另由 minerals 和 Protected 保存。
+	veinBodies obstacleIndex
 	// localPorts 与 mineCoverage 保存实装制造、电厂及采集塔的带路速率，用于核验本地配送。requiredGridMW 仅在需要外接电网时填写。
 	localPorts                   []build.BoundaryPort
 	mineCoverage                 []MiningCoverage
@@ -75,14 +80,16 @@ type Request struct {
 	Objects []Object
 	// Obstacles 职责：提供存量和预建占用；使用：避让；边界：不会自动拆除。
 	Obstacles []Obstacle
+	// spaceCapsule 保存母星未回收太空舱的实际坐标；传送带和高空设施按原版另行处理。
+	spaceCapsule *galaxy.Vector
 	// Protected 职责：提供地基需保留格；使用：屏蔽采集水面和矿点；边界：仅格中心。
 	Protected []Cell
 	// TerrainKnown 职责：确认保护格数据完整；使用：启用铺设；边界：缺失时拒绝推测。
 	TerrainKnown bool
 	// wet 职责：采样游戏真实液面；使用：占地检查和地基保护；边界：由生产快照适配，外部格列表仍单独适用。
 	wet func(Position) (bool, bool)
-	// stationPad 核对星际塔单个支脚的地表碰撞高度，由带液面的真实存档提供。
-	stationPad func(Position) bool
+	// groundPad 核对零偏移支脚在存档地表三角形上的实高，供电杆中心和星际塔各支脚选址。
+	groundPad func(Position) bool
 	// pumpSite 职责：检查泵脚与取水点命中的地表；使用：岸线选址和整星终检；边界：从本次快照的固态星球网格取高。
 	pumpSite func(Position, float64) bool
 	// geothermal 职责：复核熔岩类型和三点深度；使用：整星终检；边界：无回调时不得认证地热落位。

@@ -142,3 +142,50 @@ func sourceCapacityRate(site PlanetPlan, itemID int) float64 {
 	}
 	return rate
 }
+
+// TestConcurrentSourceFeedback 确认各颗星在相同的原候选中分别核矿，串行预算仍遇首个缺口即返回。
+func TestConcurrentSourceFeedback(t *testing.T) {
+	sites := []PlanetPlan{{PlanetID: 101, Mines: []Mine{{ItemID: 1001}}}, {PlanetID: 102}, {PlanetID: 103, Photons: &PhotonPlan{}}, {PlanetID: 104, Mines: []Mine{{ItemID: 1002}}}}
+	for _, workers := range []int{1, 3} {
+		w := World{LayoutWorkers: workers, CheckSourceSites: func(_ context.Context, p PlanetPlan) error {
+			if p.PlanetID == 103 {
+				return nil
+			}
+			if p.PlanetID == 102 {
+				t.Error("未使用矿区或接收器的星球不应核验")
+			}
+			return &SourcePlacementError{ItemID: 1001, AvailableRatePerMinute: float64(p.PlanetID), Err: errors.New("实接不足")}
+		}}
+		id, err := surveySourceSites(t.Context(), sites, w)
+		var extra *siteFeedbackBatch
+		if id != 101 || (workers > 1) != errors.As(err, &extra) || extra != nil && (len(extra.others) != 1 || extra.others[0].planetID != 104) {
+			t.Fatalf("核矿首星或附加回执不符：%d %v %+v", id, err, extra)
+		}
+	}
+}
+
+// TestSurveyUsesFreeWorker 核对较慢矿区仍在核验时，空闲槽可以开始后面的星球，首个失败仍按原合同次序返回。
+func TestSurveyUsesFreeWorker(t *testing.T) {
+	sites := []PlanetPlan{{PlanetID: 101, Photons: &PhotonPlan{}}, {PlanetID: 102, Photons: &PhotonPlan{}}, {PlanetID: 103, Photons: &PhotonPlan{}}}
+	third := make(chan struct{})
+	w := World{LayoutWorkers: 2, CheckSourceSites: func(_ context.Context, p PlanetPlan) error {
+		switch p.PlanetID {
+		case 101:
+			select {
+			case <-third:
+			case <-time.After(2 * time.Second):
+				t.Error("首星占用一个槽时第三星一直未开始")
+			}
+			return &SourcePlacementError{ItemID: 1208, Err: errors.New("首星接收器不足")}
+		case 103:
+			close(third)
+			return &SourcePlacementError{ItemID: 1208, Err: errors.New("末星接收器不足")}
+		}
+		return nil
+	}}
+	id, err := surveySourceSites(t.Context(), sites, w)
+	var batch *siteFeedbackBatch
+	if id != 101 || !errors.As(err, &batch) || len(batch.others) != 1 || batch.others[0].planetID != 103 {
+		t.Fatalf("矿区完成先后改变了反馈顺序：%d %v", id, err)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync"
 	"time"
 
 	"DysonSphereBox/helper/industryplan/search"
@@ -47,6 +48,7 @@ type layoutTimingKey struct{}
 
 type layoutTiming struct {
 	LayoutMetrics
+	stageMu sync.Mutex // 并行施工时累计各星的工序用时，墙钟时间在工作区入口独立计量。
 	rebuild time.Duration
 	repair  time.Duration
 	stages  map[string]time.Duration
@@ -71,8 +73,10 @@ func NewLayoutStageTimer(ctx context.Context) func(string) {
 	return func(next string) {
 		now := clock()
 		if current != "" {
+			timing.stageMu.Lock()
 			timing.stages[current] += now - start
 			timing.StageMillis[current] = timing.stages[current].Milliseconds()
+			timing.stageMu.Unlock()
 		}
 		current, start = next, now
 	}

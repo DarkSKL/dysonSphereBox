@@ -142,3 +142,25 @@ func TestDirectSiteInterruptionKeepsUndecidedCell(t *testing.T) {
 		t.Fatalf("未重新核验上轮中断的首格：%+v，%v", cursor, err)
 	}
 }
+
+// TestChangedOccupancyRechecksHint 旧落点被占则从原搜索起点选址，空闲旧落点通过重验后可以优先放置。
+func TestChangedOccupancyRechecksHint(t *testing.T) {
+	cat, err := placement.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := blueprint.Document{Areas: []blueprint.Area{{AreaSegments: 200, ParentIndex: -1}}, Buildings: []blueprint.Building{{ItemID: 2001, ModelIndex: 35, InputObjIdx: -1, OutputObjIdx: -1}}}
+	region := build.DensityLatitudeOption{Value: "equator", LatitudeLow: -30, LatitudeHigh: 30}
+	hint := Position{Longitude: .3}
+	for _, blocked := range []bool{false, true} {
+		var obs []Obstacle
+		if blocked {
+			obs = []Obstacle{{Position: hint, Radius: 3}}
+		}
+		cur := moduleSiteCursor{preferred: &hint}
+		objs, err := placeManufacturingTemplate(t.Context(), Request{}, doc, 0, region, "试放", &cur, newObstacleIndex(obs), cat)
+		if err != nil || len(objs) != 1 || cur.outOfOrder == blocked || blocked && cur.placedAt.Longitude != 0 || !blocked && cur.placedAt != hint {
+			t.Fatalf("旧落点受阻=%t 坐标=%+v 错误=%v", blocked, cur, err)
+		}
+	}
+}

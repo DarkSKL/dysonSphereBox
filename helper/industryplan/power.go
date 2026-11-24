@@ -1,14 +1,43 @@
 package industryplan
 
 import (
+	buildcore "DysonSphereBox/helper/blueprint/build/core"
 	"DysonSphereBox/helper/factory/statistics/facts"
 	"DysonSphereBox/helper/quant"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 )
 
 const coalItemID = 1006
 const thermalFacilityID = 2204
+
+// estimatedFactoryDronePower 以本星开采和制造能满足的进料及平均航程预估初排所需电源。
+// 使用原版每次满载往返的耗能；直连、外运、实际塔位及充电档位由后续实物核验结算。
+func estimatedFactoryDronePower(site *location, cargo int) float64 {
+	if cargo <= 0 || len(site.plan.Plan.Productions) == 0 {
+		return 0
+	}
+	supplied, used := map[int]float64{}, map[int]float64{}
+	for _, mine := range site.plan.Mines {
+		supplied[mine.ItemID] += mine.RatePerMinute
+	}
+	for _, row := range site.plan.Plan.Productions {
+		for _, output := range row.Outputs {
+			supplied[output.ItemID] += output.RatePerMinute
+		}
+		for _, input := range row.Inputs {
+			used[input.ItemID] += input.RatePerMinute
+		}
+	}
+	var local float64
+	for _, id := range slices.Sorted(maps.Keys(used)) {
+		local += min(used[id], supplied[id])
+	}
+	arc := (site.planet.dispatchRadius() + 26.2) * math.Pi / 2
+	return local / float64(cargo) * (.8 + .04*arc) / 60
+}
 
 // MinimumFactoryInserterMW 按原配方的进出货种与可选档位，核算非堆叠制造设备必须安装的分拣器负荷。
 // 研究站共用底层分拣器，分馏塔与采集设备使用原生带口，这些设备交给实物计量。
@@ -43,6 +72,31 @@ func MinimumFactoryInserterMW(catalog *facts.Catalog, dataset string, rows []qua
 		}
 	}
 	return total
+}
+
+// estimatedFactoryEquipmentMW 按施工带速和堆叠机位估算初排辅机用电，供分担大单的建设星选电源。
+// 使用：常规矿区按一机一塔、制造按每块一塔估算待机。边界：组合工区、配船、接收器及实际塔数由实物复算。
+func estimatedFactoryEquipmentMW(catalog *facts.Catalog, req Request, site *location, minimumArms float64) float64 {
+	if req.ConstructionBeltLevel <= 0 || req.ConstructionInserterLevel <= 0 || len(site.plan.Plan.Productions) == 0 {
+		return minimumArms
+	}
+	data, err := quant.LoadDataset(req.Quant.Dataset)
+	if err != nil {
+		return minimumArms
+	}
+	arm, _ := catalog.Lookup(2010 + req.ConstructionInserterLevel)
+	coater, _ := catalog.Lookup(2313)
+	tower, _ := catalog.Lookup(2104)
+	if arm.Power == nil || coater.Power == nil || tower.Power == nil {
+		return minimumArms
+	}
+	arms, coaters := buildcore.EstimateFactoryAccessories(data, site.plan.Plan.Productions, req.ConstructionBeltLevel, req.ConstructionInserterLevel)
+	towers := len(site.plan.Plan.Productions)
+	for _, mine := range site.plan.Mines {
+		towers += mine.Count
+	}
+	return max(minimumArms, float64(arms)*float64(arm.Power.Work)*.00006) +
+		(float64(coaters)*float64(coater.Power.Work)+float64(towers)*float64(tower.Power.Idle))*.00006
 }
 
 // powerDemand 汇总本星制造、采集与已分配航线的满载派船负荷，物流塔同时充电的上限另列。

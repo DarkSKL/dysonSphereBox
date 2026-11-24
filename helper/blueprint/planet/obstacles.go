@@ -20,8 +20,9 @@ type obstacleBox struct {
 
 // stationObstacle 职责：保留物流塔中心及原型；使用：原版塔间最小距离核对；边界：不将专用塔距扩成普通设施禁建区。
 type stationObstacle struct {
-	center geometry.WorldPoint
-	item   int16
+	center  geometry.WorldPoint
+	item    int16
+	planned bool
 }
 
 // obstacleIndex 职责：按世界空间 16 米体素分别组织实体、地表和物流塔；使用：筛选候选落点；边界：实体范围可跨体素，物流塔只按中心登记。
@@ -48,12 +49,12 @@ func (idx *obstacleIndex) add(o Obstacle) {
 	if err != nil || o.Radius <= 0 || o.Radius > 100 {
 		return
 	}
-	if o.stationItem == 2103 || o.stationItem == 2104 {
+	if placement.HasStationSpacing(o.stationItem) {
 		if idx.stations == nil {
 			idx.stations = make(map[[3]int][]stationObstacle)
 		}
 		key := [3]int{obstacleCell(float64(center.X)), obstacleCell(float64(center.Y)), obstacleCell(float64(center.Z))}
-		idx.stations[key] = append(idx.stations[key], stationObstacle{center, o.stationItem})
+		idx.stations[key] = append(idx.stations[key], stationObstacle{center, o.stationItem, o.plannedStation})
 	}
 	target := &idx.volume
 	if o.surfaceOnly {
@@ -79,9 +80,9 @@ func (idx obstacleIndex) conflicts(p geometry.WorldPoint, radius float64) bool {
 	return overlapsObstacle(idx.volume, p, radius) || idx.surfaceConflict(p, radius)
 }
 
-// stationConflict 职责：按原版单精度距离拒绝过近物流塔；使用：塔候选在一般占地之外单独核对；边界：任一星际塔为29米，普通塔为15米，等于阈值允许且普通设备不参与。
+// stationConflict 按原版单精度核对塔和大型采矿机的独立站距。只对同次施工的设备双向核对。
 func (idx obstacleIndex) stationConflict(p geometry.WorldPoint, item int16) bool {
-	if item != 2103 && item != 2104 || len(idx.stations) == 0 {
+	if !placement.HasStationSpacing(item) || len(idx.stations) == 0 {
 		return false
 	}
 	x, y, z := float64(p.X), float64(p.Y), float64(p.Z)
@@ -89,10 +90,7 @@ func (idx obstacleIndex) stationConflict(p geometry.WorldPoint, item int16) bool
 		for iy := obstacleCell(y - 29); iy <= obstacleCell(y+29); iy++ {
 			for iz := obstacleCell(z - 29); iz <= obstacleCell(z+29); iz++ {
 				for _, other := range idx.stations[[3]int{ix, iy, iz}] {
-					limit := float32(225)
-					if item == 2104 || other.item == 2104 {
-						limit = 841
-					}
+					limit := placement.StationSpacingSquared(item, other.item, other.planned)
 					dx, dy, dz := float32(p.X)-float32(other.center.X), float32(p.Y)-float32(other.center.Y), float32(p.Z)-float32(other.center.Z)
 					if dx*dx+dy*dy+dz*dz < limit {
 						return true
@@ -234,7 +232,7 @@ func indexPlacement(req Request) (*placementIndices, error) {
 
 // validatePlacement 检查实际双端点、地面和已知障碍，保留物品与模块定位。
 func validatePlacement(ctx context.Context, req Request, records []blueprint.Building) error {
-	if len(req.Obstacles) == 0 && len(req.minerals) == 0 && req.wet == nil {
+	if len(req.Obstacles) == 0 && len(req.minerals) == 0 && req.wet == nil && req.groundPad == nil && req.spaceCapsule == nil {
 		return nil
 	}
 	indices := req.placementIndices
@@ -256,6 +254,12 @@ func validatePlacement(ctx context.Context, req Request, records []blueprint.Bui
 	if i := index.surfaceRouteConflict(req.Objects, catalog); i >= 0 {
 		return relayError(req.Objects[i])
 	}
+	if i, err := req.inserterVeinConflict(ctx, req.Objects); err != nil {
+		return err
+	} else if i >= 0 {
+		obj := req.Objects[i]
+		return &Error{PlanetID: req.PlanetID, Item: obj.Item, Module: obj.Module, Code: "PLANET_VEIN_OCCUPIED", Message: fmt.Sprintf("分拣器 %d 的臂身与需保留的矿点相交", records[i].Index)}
+	}
 	for i, obj := range req.Objects {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -268,7 +272,10 @@ func validatePlacement(ctx context.Context, req Request, records []blueprint.Bui
 			return &Error{PlanetID: req.PlanetID, Item: obj.Item, Module: obj.Module, Code: "PLANET_WATER", Message: "抽水站支脚或取水口的实测地形未满足施工条件"}
 		}
 		if req.terrainConflict([]Object{obj}, catalog) {
-			return &Error{PlanetID: req.PlanetID, Item: obj.Item, Module: obj.Module, Code: "PLANET_WATER", Message: fmt.Sprintf("建筑 %d 的占地触及液面或未能确认的岸线", obj.Building.Index)}
+			if req.capsuleConflict([]Object{obj}, catalog) {
+				return &Error{PlanetID: req.PlanetID, Item: obj.Item, Module: obj.Module, Code: "PLANET_SPACE_CAPSULE", Message: fmt.Sprintf("建筑 %d 与母星太空舱的净距不足", obj.Building.Index)}
+			}
+			return &Error{PlanetID: req.PlanetID, Item: obj.Item, Module: obj.Module, Code: "PLANET_WATER", Message: fmt.Sprintf("建筑 %d 的支脚缺少地面支撑，或占地不满足液面条件", obj.Building.Index)}
 		}
 		for _, position := range []Position{obj.First, obj.Second} {
 			p, err := world(position)
@@ -290,18 +297,60 @@ func validatePlacement(ctx context.Context, req Request, records []blueprint.Bui
 	return nil
 }
 
-// terrainConflict 职责：检查端点及四向占地边缘；使用：候选选址和终检；边界：未知地形仍由结果告警。
-func (req *Request) terrainConflict(objects []Object, catalog *placement.Catalog) bool {
-	wet := req.wet
-	if wet == nil {
+// capsuleConflict 按原版单精度比较近地非带设施的首端点和太空舱，水平半径取整体建造盒。
+func (req *Request) capsuleConflict(objects []Object, catalog *placement.Catalog) bool {
+	capsule := req.spaceCapsule
+	if capsule == nil {
 		return false
 	}
 	for _, obj := range objects {
-		if obj.Building.ItemID == 2104 && req.stationPad != nil {
+		b := obj.Building
+		if b.ItemID >= 2001 && b.ItemID <= 2003 {
+			continue
+		}
+		p, err := world(obj.First)
+		if err != nil {
+			return true
+		}
+		x, y, z := float32(p.X), float32(p.Y), float32(p.Z)
+		if float32(math.Sqrt(float64(x*x+y*y+z*z))) >= 203 {
+			continue
+		}
+		envelope, ok := catalog.BuildEnvelope(b.ItemID, b.ModelIndex)
+		if !ok {
+			return true
+		}
+		dx, dy, dz := x-float32(capsule.X), y-float32(capsule.Y), z-float32(capsule.Z)
+		distance := float32(math.Sqrt(float64(dx*dx + dy*dy + dz*dz)))
+		ex, ez := envelope.Extents[0], envelope.Extents[2]
+		if distance-float32(math.Sqrt(float64(ex*ex+ez*ez))) < 3.7 {
+			return true
+		}
+	}
+	return false
+}
+
+// terrainConflict 在候选选址和终检共用原版太空舱净距、陆脚及水面规则。
+func (req *Request) terrainConflict(objects []Object, catalog *placement.Catalog) bool {
+	if req.capsuleConflict(objects, catalog) {
+		return true
+	}
+	wet := req.wet
+	if wet == nil && req.groundPad == nil {
+		return false
+	}
+	for _, obj := range objects {
+		if obj.Building.ItemID == 2201 && req.groundPad != nil && !req.groundPad(obj.First) {
+			return true
+		}
+		if obj.Building.ItemID == 2104 && req.groundPad != nil {
 			pads := [][2]float64{{4, -2}, {-4, -2}, {-4, 2}, {4, 2}, {2, -4}, {-2, -4}, {-2, 4}, {2, 4}}
-			if !surfacePoints(obj.First, float64(obj.Building.Yaw), 0, pads, req.stationPad) {
+			if !surfacePoints(obj.First, float64(obj.Building.Yaw), 0, pads, req.groundPad) {
 				return true
 			}
+		}
+		if wet == nil {
+			continue
 		}
 		if obj.Building.ItemID == 2213 {
 			for _, p := range geothermalPoints(obj.First) {

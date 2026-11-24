@@ -609,8 +609,10 @@ func (c *candidate) planEnergy() error {
 		arms := float64(site.plan.Plan.MachineCount) * .054
 		if len(c.ids) > 1 && c.req.ConstructionInserterLevel > 0 {
 			arms = max(arms, MinimumFactoryInserterMW(catalog, c.req.Quant.Dataset, site.plan.Plan.Productions, c.req.ConstructionInserterLevel))
+			arms = estimatedFactoryEquipmentMW(catalog, c.req, site, arms)
 		}
-		loads[id] = (powerDemand(catalog, site) + c.req.postPowerShipping[id] + arms) * max(1, c.powerMultipliers[id])
+		droneMW := estimatedFactoryDronePower(site, c.req.ConstructionDroneCargo)
+		loads[id] = (powerDemand(catalog, site) + c.req.postPowerShipping[id] + arms + droneMW) * max(1, c.powerMultipliers[id])
 		if p := site.plan.Photons; p != nil {
 			consume(site, 1209, p.LensRatePerMinute)
 		}

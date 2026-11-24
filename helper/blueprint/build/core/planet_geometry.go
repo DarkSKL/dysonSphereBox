@@ -6,7 +6,20 @@ import (
 	"context"
 
 	"DysonSphereBox/helper/blueprint"
+	gridgeo "DysonSphereBox/helper/blueprint/build/geometry"
+	"DysonSphereBox/helper/blueprint/build/placement"
 )
+
+// PlanetInserterBoxes 用已投影到行星的分拣器、输入和输出设施重建原版拉伸盒，供矿点避让。三条记录保留原连接编号。
+func PlanetInserterBoxes(ctx context.Context, records [3]blueprint.Building, starts [3]gridgeo.WorldPoint, armEnd gridgeo.WorldPoint) ([]placement.OwnedBox, error) {
+	var first [3]vector
+	for i, p := range starts {
+		first[i] = vector{float64(p.X), float64(p.Y), float64(p.Z)}
+	}
+	second := first
+	second[0] = vector{float64(armEnd.X), float64(armEnd.Y), float64(armEnd.Z)}
+	return (&surfaceEncoding{}).surfaceInserterBoxesAtWorld(ctx, records[:], first[:], second[:], nil)
+}
 
 // ValidatePlanetGeometry 职责：复核同一星球内的静态碰撞、传送带接线及物流塔；使用：整星文档编码前；边界：地形、存量和跨星运力由调用方验证。
 func ValidatePlanetGeometry(ctx context.Context, document blueprint.Document, latitude int) error {

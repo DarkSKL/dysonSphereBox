@@ -14,6 +14,115 @@ import (
 	"DysonSphereBox/helper/quant"
 )
 
+// TestSpreadFactorySeed 核对集中大单的每一块都有唯一归属，并覆盖不可用地表和缺失工序身份的后备。
+func TestSpreadFactorySeed(t *testing.T) {
+	world := map[int64]Planet{101: {ID: 101, StarID: 1, Buildable: true}, 102: {ID: 102, StarID: 1, Buildable: true, DrySurface: true}, 103: {ID: 103, StarID: 1, Buildable: true}, 201: {ID: 201, StarID: 2, Buildable: true, DrySurface: true}}
+	var rows []quant.Production
+	for range 32 {
+		rows = append(rows, quant.Production{MachineCount: 32, RecipeID: 1, MainItemID: 1101})
+	}
+	a := PlanetPlan{PlanetID: 101, BlockIDs: productionBlockIDs(rows), Plan: quant.Result{MachineCount: 1024, Productions: rows}}
+	seed := evaluated{result: Result{Plan: a.Plan, Planets: []PlanetPlan{a, {PlanetID: 103}, {PlanetID: 105}}}}
+	hosts := []int64{101, 102, 103, 201}
+	p, ok := spreadFactorySeed(t.Context(), seed, world, hosts, World{}, Request{})
+	counts := map[int64]int{}
+	for _, key := range a.BlockIDs {
+		counts[p.moves[key]]++
+	}
+	if !ok || !p.estimateLocalPower || len(p.moves) != len(rows) || counts[102] <= counts[101] || counts[101] == 0 || counts[103] == 0 || len(counts) != 3 {
+		t.Fatalf("集中合同分担或地表筛选有误：%v %v", ok, counts)
+	}
+	// 同为有水主题，大陆星可承接的连续工区多于岛屿星；纯陆星不应触发额外地形读取。
+	survey := World{FactoryLandShare: func(_ context.Context, id int64) (float64, bool) {
+		switch id {
+		case 101:
+			return .94, true
+		case 103:
+			return .095, true
+		default:
+			t.Fatalf("读取了分担范围外或已知纯陆的星球 %d", id)
+			return 0, false
+		}
+	}}
+	p, ok = spreadFactorySeed(t.Context(), seed, world, hosts, survey, Request{})
+	counts = map[int64]int{}
+	for _, id := range p.moves {
+		counts[id]++
+	}
+	if !ok || counts[101] <= counts[103] || counts[103] == 0 {
+		t.Fatalf("测得的连续陆地份额未用于分工：%v", counts)
+	}
+	seed.result.Planets[0].BlockIDs = nil
+	if _, ok = spreadFactorySeed(t.Context(), seed, world, hosts, World{}, Request{}); ok {
+		t.Fatal("没有工序身份的种子不能改写")
+	}
+}
+
+// TestSpreadFactorySeedUsesVacantNeighbors 职责：核对已建旱星的占地及同星系空旱星分担。使用：大单首次分工回归。边界：已建邻星、陌生星系以及原星份额充足时均不增加承接星。
+func TestSpreadFactorySeedUsesVacantNeighbors(t *testing.T) {
+	planets := map[int64]Planet{
+		101: {ID: 101, StarID: 1, Buildable: true, DrySurface: true, HasFactory: true},
+		103: {ID: 103, StarID: 1, Buildable: true, DrySurface: true},
+		104: {ID: 104, StarID: 1, Buildable: true, DrySurface: true, HasFactory: true},
+		201: {ID: 201, StarID: 2, Buildable: true},
+		203: {ID: 203, StarID: 2, Buildable: true, DrySurface: true},
+		301: {ID: 301, StarID: 3, Buildable: true},
+		401: {ID: 401, StarID: 4, Buildable: true, DrySurface: true},
+	}
+	var rows []quant.Production
+	for range 64 {
+		rows = append(rows, quant.Production{MachineCount: 32, RecipeID: 1, MainItemID: 1101})
+	}
+	origin := PlanetPlan{PlanetID: 101, BlockIDs: productionBlockIDs(rows), Plan: quant.Result{MachineCount: 2048, Productions: rows}}
+	seed := evaluated{result: Result{Plan: origin.Plan, Planets: []PlanetPlan{origin, {PlanetID: 201}, {PlanetID: 301}}}}
+	for _, share := range []float64{.1, .9} {
+		world := World{FactoryLandShare: func(_ context.Context, id int64) (float64, bool) {
+			if id != 101 && id != 201 && id != 301 {
+				t.Fatalf("读取了原分工之外的星球 %d", id)
+			}
+			return share, true
+		}}
+		policy, changed := spreadFactorySeed(t.Context(), seed, planets, []int64{101, 103, 104, 201, 203, 301, 401}, world, Request{})
+		hosted := map[int64]int{}
+		for _, id := range policy.moves {
+			hosted[id]++
+		}
+		if !changed || len(policy.moves) != len(rows) || policy.factoryLand[101] != share || hosted[104] != 0 || hosted[401] != 0 {
+			t.Fatalf("已有厂区、分工总量或承接范围错误，份额 %v：%v", share, hosted)
+		}
+		if share == .1 && (hosted[103] <= hosted[101] || hosted[203] <= hosted[201]) || share == .9 && (hosted[103] != 0 || hosted[203] != 0) {
+			t.Fatalf("空旱星未按可用面积分担，份额 %v：%v", share, hosted)
+		}
+	}
+}
+
+// TestOverflowUsesHostLand 验证原星第一块即失败时，岛屿先接本地矿的工序，其余交给陆地星；原集中方案仍可复查。
+func TestOverflowUsesHostLand(t *testing.T) {
+	source := spillTestSite(101, "a", "b", "c", "d", "e", "f", "g", "h", "i", "j")
+	island := spillTestSite(103)
+	island.Ports = []Port{{Kind: "mining", ItemID: 1001, RatePerMinute: 100}}
+	single := assignment{fullFactories: map[int64]bool{101: true}, moves: map[string]int64{}}
+	for i, block := range source.BlockIDs {
+		source.Plan.Productions[i].Inputs = []quant.ItemRate{{ItemID: 1001, RatePerMinute: 1}}
+		single.moves[block] = 103
+	}
+	previous := Result{Planets: []PlanetPlan{source, spillTestSite(102), island}}
+	world := map[int64]Planet{101: {ID: 101, Buildable: true}, 102: {ID: 102, Buildable: true, DrySurface: true}, 103: {ID: 103, Buildable: true}}
+	if _, changed := distributeFactoryOverflow(single, previous, 101, world); changed {
+		t.Fatal("缺少实测前缀及地形的分工发生改变")
+	}
+	single.factoryLand = map[int64]float64{101: .4, 102: 1, 103: .1}
+	spread, changed := distributeFactoryOverflow(single, previous, 101, world)
+	if !changed || spread.moves["a"] != 103 {
+		t.Fatalf("岛屿未承接可由本地矿供料的第一块：%v", spread.moves)
+	}
+	for _, block := range source.BlockIDs[1:] {
+		if spread.moves[block] != 102 || single.moves[block] != 103 {
+			t.Fatalf("其余工序或集中后备分工有误：%v / %v", spread.moves, single.moves)
+		}
+	}
+}
+
 // TestOverflowFollowsLocalMaterial 校验原料生产方和后续消费方随制造块逐个归位，保持对应上下游在同一颗星。
 func TestOverflowFollowsLocalMaterial(t *testing.T) {
 	planets := map[int64]Planet{

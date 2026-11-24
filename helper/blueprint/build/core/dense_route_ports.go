@@ -452,30 +452,34 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 		return true
 	}
 	byExit := map[vector]denseRoutePortal{}
-	appendCandidate := func(path []vector, p vector) {
-		if !denseIntegerNode(p) || !clearNew(path, p) {
+	appendCandidate := func(path []vector, pathCost float64, p vector) {
+		if !denseIntegerNode(p) {
 			return
 		}
 		if len(path) == 1 && (p.x-endpoint.a.x)*outward.x+(p.y-endpoint.a.y)*outward.y < -1e-6 {
 			return
 		}
 		delta := denseRouteWorld(p).Sub(denseRouteWorld(path[len(path)-1]))
-		candidate := denseRoutePortal{cost: denseRouteLength(path) + math.Sqrt(delta.Dot(delta)), height: p.z}
+		cost := pathCost + math.Sqrt(delta.Dot(delta))
+		old, exists := byExit[p]
+		// 一个出口只保留代价最小的可接路径，同代价择短。已有可行解时才跳过不会入选的几何试探。
+		if exists && !(cost < old.cost-1e-9 || math.Abs(cost-old.cost) <= 1e-9 && len(path)+1 < len(old.points)) {
+			return
+		}
+		if !clearNew(path, p) {
+			return
+		}
+		candidate := denseRoutePortal{cost: cost, height: p.z, points: make([]vector, len(path)+1)}
 		for _, point := range path {
 			candidate.height = math.Max(candidate.height, point.z)
 		}
-		old, exists := byExit[p]
-		if !exists || candidate.cost < old.cost-1e-9 || math.Abs(candidate.cost-old.cost) <= 1e-9 && len(path)+1 < len(old.points) {
-			// 先比较完整代价，仅为真正获选的出口分配一次路径。
-			candidate.points = make([]vector, len(path)+1)
-			copy(candidate.points, path)
-			candidate.points[len(path)] = p
-			byExit[p] = candidate
-		}
+		copy(candidate.points, path)
+		candidate.points[len(path)] = p
+		byExit[p] = candidate
 	}
 	last := base[len(base)-1]
 	// 老整数口优先保持原有短接，分数口允许邻近整格，但不能退回低轨内部。
-	appendCandidate(base, vector{math.Round(last.x + outward.x), math.Round(last.y + outward.y), math.Round(last.z)})
+	appendCandidate(base, denseRouteLength(base), vector{math.Round(last.x + outward.x), math.Round(last.y + outward.y), math.Round(last.z)})
 	stems := [][]vector{base}
 	if !fixedGroundStem {
 		for _, length := range []float64{.5, 1} {
@@ -498,7 +502,7 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 					if z-previous[len(previous)-1].z > denseRouteMaximumSpan/1.3333333 {
 						break
 					}
-					if clearNew(previous, point) && (path == nil || len(previous)+1 < len(path)) {
+					if (path == nil || len(previous)+1 < len(path)) && clearNew(previous, point) {
 						path = append(append([]vector{}, previous...), point)
 					}
 				}
@@ -508,15 +512,16 @@ func (env *transportEnvironment) densePortals(endpoint, source, target *placed, 
 				reachable = append(reachable, path)
 			}
 			point := path[len(path)-1]
+			pathCost := denseRouteLength(path)
 			if denseIntegerNode(point) && len(path) > 1 {
-				candidate := denseRoutePortal{points: path, cost: denseRouteLength(path), height: point.z}
+				candidate := denseRoutePortal{points: path, cost: pathCost, height: point.z}
 				if old, exists := byExit[point]; !exists || candidate.cost < old.cost {
 					byExit[point] = candidate
 				}
 			}
 			for dx := -1.; dx <= 1; dx++ {
 				for dy := -1.; dy <= 1; dy++ {
-					appendCandidate(path, vector{math.Round(point.x) + dx, math.Round(point.y) + dy, math.Round(z)})
+					appendCandidate(path, pathCost, vector{math.Round(point.x) + dx, math.Round(point.y) + dy, math.Round(z)})
 				}
 			}
 		}

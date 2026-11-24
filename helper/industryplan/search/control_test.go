@@ -124,6 +124,38 @@ func TestActiveTimerExcludesPause(t *testing.T) {
 	}
 }
 
+// TestActiveTimeoutAfterContinue 校验在暂停中创建的子时窗，继续后用完实际计算预算才超时，父任务仍可使用。
+func TestActiveTimeoutAfterContinue(t *testing.T) {
+	const budget = 35 * time.Millisecond
+	paused := make(chan struct{})
+	control := New(time.Hour, func() { close(paused) })
+	control.deadline = time.Now().Add(-time.Second)
+	parent := WithControl(t.Context(), control)
+	resumed := make(chan error, 1)
+	go func() { resumed <- Checkpoint(parent) }()
+	<-paused
+	trial, stop := WithActiveTimeout(parent, budget)
+	defer stop()
+	active := ActiveTimer(parent)
+	select {
+	case <-trial.Done():
+		t.Fatal("暂停耗尽了试摆时窗", context.Cause(trial))
+	case <-time.After(2 * budget):
+	}
+	control.Continue()
+	if err := <-resumed; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-trial.Done():
+		if context.Cause(trial) != context.DeadlineExceeded || active() < budget || parent.Err() != nil {
+			t.Fatalf("实际计算 %s，试摆结束原因 %v，父任务 %v", active(), context.Cause(trial), parent.Err())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("实际试摆预算耗尽仍未停止")
+	}
+}
+
 // TestCancellationWakesPausedCheckpoint 职责：确认用户取消能够唤醒暂停任务；使用：取消按钮回归；边界：无需先调用 Continue。
 func TestCancellationWakesPausedCheckpoint(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

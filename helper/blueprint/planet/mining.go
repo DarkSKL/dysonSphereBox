@@ -89,7 +89,7 @@ func placeMining(ctx context.Context, req *Request, input ProductionRequest, cat
 	var coverage []MiningCoverage
 	err := appendMining(ctx, &trial, input, &actual, &coverage, catalog)
 	if issue, ok := err.(*Error); ok && issue.Code == "PLANET_MINING_SITE" &&
-		req.stationPad != nil && input.Plan.Mines[issue.mineIndex].FacilityID == 2301 {
+		req.wet != nil && req.groundPad != nil && input.Plan.Mines[issue.mineIndex].FacilityID == 2301 {
 		// 缩短首台矿机的接驳带也会改变后续塔位，不能接着失败尝试的实体编号继续摆放。
 		input.Options.nearMineTowers = true
 		trial, actual, coverage = *req, industryplan.PlanetActual{}, nil
@@ -487,7 +487,7 @@ func findMiner(ctx context.Context, req Request, options ProductionOptions, mine
 					if rate <= bestRate {
 						continue
 					}
-					if occupied.conflicts(site.point, minerRadius) {
+					if occupied.conflicts(site.point, minerRadius) || large && occupied.stationConflict(site.point, base.ItemID) {
 						sites[key] = minerCandidate{}
 						continue
 					}
@@ -633,6 +633,14 @@ func (req *Request) minerTransport(miner Object, options ProductionOptions, occu
 	}
 	gridSize := 200 * (math.Abs(east)*math.Cos(miner.First.Latitude)*step + math.Abs(north)*float64(latStep))
 	sourceOffset := max(1, int(math.Round(portDistance/gridSize)))
+	// 大型采矿机本身也参与站距检查，接驳塔在同一批次中尚未将它纳入占用索引。
+	var minerCenter geometry.WorldPoint
+	if miner.Building.ItemID == 2316 {
+		minerCenter, err = world(miner.First)
+		if err != nil {
+			return nil, 0
+		}
+	}
 	stationSlot := 4
 	if east < 0 {
 		stationSlot = 10
@@ -658,6 +666,12 @@ func (req *Request) minerTransport(miner Object, options ProductionOptions, occu
 		pw, err := world(towerPoint)
 		if err != nil || occupied.conflicts(pw, towerRadius) || occupied.stationConflict(pw, towerBuilding.ItemID) || minerals.conflicts(pw, groundRadius(catalog, towerBuilding)) {
 			continue
+		}
+		if miner.Building.ItemID == 2316 {
+			dx, dy, dz := float32(pw.X-minerCenter.X), float32(pw.Y-minerCenter.Y), float32(pw.Z-minerCenter.Z)
+			if dx*dx+dy*dy+dz*dz < placement.StationSpacingSquared(2104, 2316, true) {
+				continue
+			}
 		}
 		towerIndex := miner.Building.Index + 1
 		remote := 0

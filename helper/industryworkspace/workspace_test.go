@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,84 @@ import (
 	"DysonSphereBox/helper/industryplan"
 	"DysonSphereBox/helper/quant"
 	"DysonSphereBox/helper/saveanalysis"
+	"DysonSphereBox/helper/saveanalysis/galaxy"
 )
+
+// TestFactoryLandShareOnBuiltDryPlanet 职责：验证已建旱星工区按建筑两端扣减。使用：初始分工回归。边界：跨换日经线、同格端点和缺少端点都只扣实际覆盖的采样窗。
+func TestFactoryLandShareOnBuiltDryPlanet(t *testing.T) {
+	water, height := int64(0), 0.
+	site := saveanalysis.PlanetResourceDetail{Terrain: saveanalysis.PlanetTerrain{WaterItemID: &water, WaterHeight: &height}}
+	share := func(buildings ...saveanalysis.PlanetBuilding) float64 {
+		t.Helper()
+		site.Buildings = buildings
+		got, known := factoryLandShare(t.Context(), site)
+		if !known {
+			t.Fatal("已知旱星无法计算可用厂区")
+		}
+		return got
+	}
+	if got := share(); got != 1 {
+		t.Fatalf("空旱星的可用份额为 %v", got)
+	}
+	point := func(lon float64) galaxy.Vector { return galaxy.Vector{X: 200 * math.Sin(lon), Z: 200 * math.Cos(lon)} }
+	a, west, east := point(0), point(math.Pi-.001), point(-math.Pi+.001)
+	first := share(saveanalysis.PlanetBuilding{Position: a})
+	both := share(saveanalysis.PlanetBuilding{Position: a, EndPosition: west})
+	if !(0 < both && both < first && first < 1) {
+		t.Fatalf("单端与远端工区的可用份额有误：%v / %v", first, both)
+	}
+	if got := share(saveanalysis.PlanetBuilding{Position: a}, saveanalysis.PlanetBuilding{Position: east}); got != both {
+		t.Fatalf("跨经线的等价终点扣减不同：%v / %v", got, both)
+	}
+	if got := share(saveanalysis.PlanetBuilding{Position: west, EndPosition: east}); got != share(saveanalysis.PlanetBuilding{Position: west}) {
+		t.Fatalf("跨经线的同一工区被重复扣减：%v", got)
+	}
+}
+
+// TestSourceSiteKey 核对实际影响采集落位的条件与只影响收发合同的条件。
+func TestSourceSiteKey(t *testing.T) {
+	base := industryplan.PlanetPlan{PlanetID: 101, Mines: []industryplan.Mine{{ItemID: 1001, FacilityID: 2301, RatePerMinute: 480, SpeedMultiplier: 1.5, FacilityMultiplier: 1}},
+		Ports: []industryplan.Port{{Kind: "export", ItemID: 1001, PeerPlanetID: 102, RatePerMinute: 300}}, Photons: &industryplan.PhotonPlan{Count: 2, LensRatePerMinute: 2}}
+	original, err := sourceSiteKey(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, example := range []struct {
+		name   string
+		change func(*industryplan.PlanetPlan)
+		same   bool
+	}{
+		{"去向和仓量", func(p *industryplan.PlanetPlan) {
+			p.Ports[0].PeerPlanetID = 103
+			p.Ports[0].RatePerMinute = 200
+			p.Ports[0].StorageItems = 500
+		}, true},
+		{"采速", func(p *industryplan.PlanetPlan) { p.Mines[0].RatePerMinute++ }, false},
+		{"矿机", func(p *industryplan.PlanetPlan) { p.Mines[0].FacilityID = 2316 }, false},
+		{"矿源出口", func(p *industryplan.PlanetPlan) { p.Ports = nil }, false},
+		{"透镜进口", func(p *industryplan.PlanetPlan) {
+			p.Ports = append(p.Ports, industryplan.Port{Kind: "import", ItemID: 1209})
+		}, false},
+		{"光子出口", func(p *industryplan.PlanetPlan) {
+			p.Ports = append(p.Ports, industryplan.Port{Kind: "export", ItemID: 1208})
+		}, false},
+		{"接收器数量", func(p *industryplan.PlanetPlan) { p.Photons.Count++ }, false},
+		{"没有接收器", func(p *industryplan.PlanetPlan) { p.Photons = nil }, false},
+	} {
+		t.Run(example.name, func(t *testing.T) {
+			p := base
+			p.Mines = append([]industryplan.Mine(nil), base.Mines...)
+			p.Ports = append([]industryplan.Port(nil), base.Ports...)
+			ph := *base.Photons
+			p.Photons = &ph
+			example.change(&p)
+			key, err := sourceSiteKey(p)
+			if err != nil || (key == original) != example.same {
+				t.Fatalf("预检复用结果错误：%v %s", err, key)
+			}
+		})
+	}
+}
 
 // TestResourceCapacityAvailability 职责：验证规划选址使用可选矿点；使用：覆盖当前和旧资源概要；边界：显式零代表没有可选矿。
 func TestResourceCapacityAvailability(t *testing.T) {

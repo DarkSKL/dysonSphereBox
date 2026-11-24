@@ -20,6 +20,8 @@ func (e decodeError) Error() string { return e.message }
 
 // reader 职责：维护快照游标和必要查询区段；使用：单次解析独占；边界：不写文件、不跨解析复用。
 type reader struct {
+	// capsuleRemoved 表示存档已经记录回收或跳过初始太空舱。
+	capsuleRemoved bool
 	// 厂区解码期间借用货运缓冲，仅保留分拣器投放点已证实的结果。
 	pathBuffers  map[int64][]byte
 	beltPivots   map[int64][2]int64

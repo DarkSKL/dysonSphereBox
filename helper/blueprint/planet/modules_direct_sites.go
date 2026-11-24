@@ -44,6 +44,7 @@ type directSitePrefix struct {
 	last                        error // 跳过已经穷尽的位置时保留原来的几何诊断。
 	placedAt                    Position
 	placed                      bool
+	outOfOrder                  bool
 }
 
 // resumeModuleSite 复用同一工区、占地和搜索起点的成功落点，或续查此前排除的纬行。每个实际形状保留最近一次记录。
@@ -51,16 +52,24 @@ func resumeModuleSite(cache *sync.Map, req Request, resources saveanalysis.Plane
 	if resources.SHA256 == "" || cursor.exhausted || len(template.document.Buildings) == 0 {
 		return nil
 	}
+	cursor.preferred, cursor.outOfOrder = nil, false
 	key := directSiteKey{req.PlanetID, &template.document.Buildings[0], block}
 	prefix := directSitePrefix{snapshot: resources.SHA256, gameVersion: req.GameVersion, name: req.Name, tick: resources.Tick, startRow: cursor.row, startX: cursor.x}
 	var hashed bool
 	if value, ok := cache.Load(key); ok {
 		old := value.(directSitePrefix)
-		if old.snapshot == prefix.snapshot && old.tick == prefix.tick && old.gameVersion == prefix.gameVersion && old.name == prefix.name && old.startRow == prefix.startRow && old.startX == prefix.startX {
-			prefix.occupancy, hashed = directSiteOccupancy(req), true
-			if old.occupancy == prefix.occupancy {
-				cursor.row, cursor.x, cursor.last = old.row, old.x, old.last
-				cursor.placedAt, cursor.certified = old.placedAt, old.placed
+		if old.snapshot == prefix.snapshot && old.tick == prefix.tick && old.gameVersion == prefix.gameVersion && old.name == prefix.name {
+			if old.placed {
+				cursor.preferred = &old.placedAt
+			}
+			if old.startRow == prefix.startRow && old.startX == prefix.startX {
+				prefix.occupancy, hashed = directSiteOccupancy(req), true
+				if old.occupancy == prefix.occupancy {
+					cursor.row, cursor.x, cursor.last = old.row, old.x, old.last
+					cursor.placedAt, cursor.certified = old.placedAt, old.placed
+					cursor.outOfOrder = old.outOfOrder
+					cursor.preferred = nil
+				}
 			}
 		}
 	}
@@ -74,7 +83,10 @@ func resumeModuleSite(cache *sync.Map, req Request, resources saveanalysis.Plane
 		prefix.row, prefix.x, prefix.last = cursor.row, cursor.x, cursor.last
 		if placed {
 			// 下次从同一格投影独立的实体及参数，运输端口由当前合同重新分配。
-			prefix.x -= moduleLongitudeStride
+			prefix.outOfOrder = cursor.outOfOrder
+			if !cursor.outOfOrder {
+				prefix.x -= moduleLongitudeStride
+			}
 			prefix.placedAt, prefix.placed = cursor.placedAt, true
 		}
 		cache.Store(key, prefix)
@@ -116,6 +128,9 @@ func directSiteOccupancy(req Request) [sha256.Size]byte {
 				flags := uint64(uint16(obstacle.stationItem))
 				if obstacle.surfaceOnly {
 					flags |= 1 << 16
+				}
+				if obstacle.plannedStation {
+					flags |= 1 << 17
 				}
 				write(flags)
 			}

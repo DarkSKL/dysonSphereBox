@@ -5,8 +5,111 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// TestLayoutWorkersPickNextSite 职责：核实短工地完工可立即接下一星。使用：多星调度回归。
+// 边界：长工地独立完成，逐块进度与整星总量只计一次，未派发的失败后缀不产生回执。
+func TestLayoutWorkersPickNextSite(t *testing.T) {
+	sites := []PlanetPlan{{PlanetID: 101}, {PlanetID: 102}, {PlanetID: 103}}
+	for i := range sites {
+		sites[i].Plan.MachineCount = 1
+	}
+	third := make(chan struct{})
+	check := func(ctx context.Context, p PlanetPlan) (PlanetActual, error) {
+		ReportPlacedMachines(ctx, 1)
+		switch p.PlanetID {
+		case 101:
+			select {
+			case <-third:
+			case <-time.After(2 * time.Second):
+				return PlanetActual{}, errors.New("第三颗星未接上第二颗星空出的工位")
+			}
+		case 103:
+			close(third)
+		}
+		return PlanetActual{Artifact: p.PlanetID}, nil
+	}
+	item := Result{Planets: sites}
+	var last Progress
+	_, err := verifyCandidate(t.Context(), &item, Result{}, assignment{}, World{LayoutWorkers: 2}, check, func(p Progress) {
+		if p.WorkDone < last.WorkDone || p.WorkDone > p.WorkTotal {
+			t.Errorf("逐星进度回退或重复计数：前次 %+v，本次 %+v", last, p)
+		}
+		last = p
+	})
+	if err != nil || len(item.Actuals) != 3 || last.Completed != 3 || last.WorkDone != 6 {
+		t.Fatalf("施工回执或进度缺失：%v，%+v，%+v", err, item.Actuals, last)
+	}
+	calls := 0
+	id, err := verifyCandidate(t.Context(), &item, Result{}, assignment{}, World{LayoutWorkers: 1}, func(_ context.Context, site PlanetPlan) (PlanetActual, error) {
+		calls++
+		if site.PlanetID == 102 {
+			return PlanetActual{}, errors.New("本星施工失败")
+		}
+		return PlanetActual{Artifact: site.PlanetID}, nil
+	}, func(Progress) {})
+	if id != 102 || err == nil || calls != 2 || len(item.Actuals) != 1 || item.Actuals[101].Artifact != int64(101) {
+		t.Fatalf("失败后的未派发星球参与结算：%d，%v，%d，%+v", id, err, calls, item.Actuals)
+	}
+}
+
+// TestIndependentShortfallsBeyondFirstWorkers 职责：验证首批工位之外的矿源、供电缺口可在同轮收齐；使用：小规模逐星调度回归；边界：只有实际完成的成功合同可复用。
+func TestIndependentShortfallsBeyondFirstWorkers(t *testing.T) {
+	item := Result{Planets: []PlanetPlan{{PlanetID: 101}, {PlanetID: 102}, {PlanetID: 103}, {PlanetID: 104}}}
+	check := func(_ context.Context, site PlanetPlan) (PlanetActual, error) {
+		switch site.PlanetID {
+		case 101, 103:
+			return PlanetActual{}, &PowerLoadError{RequiredMW: 80, Err: errors.New("实装设备需增配电源")}
+		case 104:
+			return PlanetActual{}, &SourcePlacementError{ItemID: 1001, AvailableRatePerMinute: 25, Err: errors.New("实装矿区只能供一部分铁矿")}
+		}
+		return PlanetActual{Artifact: site.PlanetID}, nil
+	}
+	id, err := verifyCandidate(t.Context(), &item, Result{}, assignment{}, World{LayoutWorkers: 2}, check, func(Progress) {})
+	var batch *siteFeedbackBatch
+	if id != 101 || !errors.As(err, &batch) || len(batch.others) != 2 || batch.others[0].planetID != 103 || batch.others[1].planetID != 104 {
+		t.Fatalf("预期按原合同顺序收齐三处缺口，首星 %d，反馈 %+v", id, batch)
+	}
+	if len(item.Actuals) != 1 || item.Actuals[102].Artifact != int64(102) {
+		t.Fatalf("成功星实际回执不符，得到 %+v", item.Actuals)
+	}
+}
+
+// TestConcurrentPowerFeedback 同批两颗星实测缺电时同时返回两个修正量，第三颗成功星保有完整回执。低并发入口仍保持原单星顺序。
+func TestConcurrentPowerFeedback(t *testing.T) {
+	ctx, metrics := WithLayoutMetrics(t.Context())
+	verified := map[int64]verifiedLayout{}
+	ctx = context.WithValue(ctx, verifiedLayoutsKey{}, verified)
+	item := Result{Planets: []PlanetPlan{{PlanetID: 101}, {PlanetID: 102}, {PlanetID: 103}}}
+	var arrived atomic.Int32
+	ready := make(chan struct{})
+	validate := func(ctx context.Context, p PlanetPlan) (PlanetActual, error) {
+		if arrived.Add(1) == 3 {
+			close(ready)
+		}
+		select {
+		case <-ready:
+		case <-time.After(2 * time.Second):
+			return PlanetActual{}, errors.New("三个独立合同未同期核验")
+		}
+		timer := NewLayoutStageTimer(ctx)
+		timer("施工")
+		defer timer("")
+		ReportPlacedMachines(ctx, 1)
+		if p.PlanetID != 102 {
+			return PlanetActual{}, &PowerLoadError{RequiredMW: float64(p.PlanetID), Err: errors.New("需补电")}
+		}
+		return PlanetActual{Artifact: "102 的实图"}, nil
+	}
+	id, err := verifyCandidate(ctx, &item, Result{}, assignment{}, World{LayoutWorkers: 3}, validate, func(Progress) {})
+	var feedback *siteFeedbackBatch
+	if id != 101 || !errors.As(err, &feedback) || len(feedback.others) != 1 || feedback.others[0].planetID != 103 || verified[102].actual.Artifact != "102 的实图" || metrics.Rebuilds != 3 {
+		t.Fatalf("批量回执错误：%d %v %+v %+v", id, err, verified, metrics)
+	}
+}
 
 // TestSinglePlanetBeforeSpill 第一颗资源足够但无法施工时，应该先核验第二颗能够独立交付的星球。
 func TestSinglePlanetBeforeSpill(t *testing.T) {
@@ -46,7 +149,7 @@ func TestVerifiedLayoutSurvivesUnrelatedFailure(t *testing.T) {
 	var previous Result
 	for i, sites := range [][]PlanetPlan{{{PlanetID: 101}, kept}, {{PlanetID: 103}}, {kept}, {{PlanetID: 102, StationCount: 1}}} {
 		item := Result{Planets: sites}
-		_, err := verifyCandidate(ctx, &item, previous, assignment{}, validator, func(Progress) {})
+		_, err := verifyCandidate(ctx, &item, previous, assignment{}, World{}, validator, func(Progress) {})
 		if (err != nil) != (i == 1) {
 			t.Fatalf("第 %d 轮核验结果有误：%v", i+1, err)
 		}
@@ -72,7 +175,7 @@ func TestVerifiedSwapRestoresConstruction(t *testing.T) {
 		want string
 	}{{base, "原图"}, {swapped, "换位图"}, {changed, "新图"}} {
 		item := Result{Planets: []PlanetPlan{trial.site}}
-		_, err := verifyCandidate(ctx, &item, incumbent, assignment{}, func(context.Context, PlanetPlan) (PlanetActual, error) {
+		_, err := verifyCandidate(ctx, &item, incumbent, assignment{}, World{}, func(context.Context, PlanetPlan) (PlanetActual, error) {
 			return PlanetActual{Artifact: "新图"}, nil
 		}, func(Progress) {})
 		if err != nil || item.Actuals[101].Artifact != trial.want {
@@ -103,6 +206,63 @@ func TestLogisticsPreferenceProcessesAtTheMine(t *testing.T) {
 	if len(result.Routes) != 1 || result.Routes[0].ItemID != 1109 || result.Routes[0].RatePerMinute != 300 ||
 		result.CenterPlanetID != 201 || result.Candidates != 4 {
 		t.Fatalf("运输偏好没有在煤矿星制造石墨并交付：状态 %s，候选 %d，运输 %+v", result.Status, result.Candidates, result.Routes)
+	}
+}
+
+// TestLogisticsPreferenceBeforeFactorySpread 回归同系三地交付的大额铁块单。矿区能施工时只外运两地订单，集中厂放不下时仍可分担。
+func TestLogisticsPreferenceBeforeFactorySpread(t *testing.T) {
+	req := Request{Preference: "logistics", CenterPlanetID: 101, TargetPlanetIDs: []int64{101, 102, 103},
+		Quant: quant.Request{Targets: []quant.Target{{ItemID: 1101, RatePerMinute: 90000}, {ItemID: 1101, RatePerMinute: 60}, {ItemID: 1101, RatePerMinute: 60}}}}
+	world := World{Planets: []Planet{
+		{ID: 101, StarID: 1, Buildable: true, DrySurface: true, ResourcesKnown: true, Resources: []Resource{{ItemID: 1001, Kind: "solid", Count: 10000}}},
+		{ID: 102, StarID: 1, Buildable: true, DrySurface: true, ResourcesKnown: true, Position: [3]float64{30000}},
+		{ID: 103, StarID: 1, Buildable: true, DrySurface: true, ResourcesKnown: true, Position: [3]float64{40000}},
+	}}
+	for _, tc := range []struct {
+		capacity  int
+		hasPrefix bool
+	}{{1502, false}, {600, false}, {600, true}} {
+		capacity := tc.capacity
+		rejected := 0
+		result, err := Plan(t.Context(), req, world, func(_ context.Context, site PlanetPlan) (PlanetActual, error) {
+			if site.Plan.MachineCount > capacity {
+				rejected++
+				if !tc.hasPrefix {
+					return PlanetActual{}, errors.New("本星没有足够落点")
+				}
+				machines := 0
+				for i, line := range site.Plan.Productions {
+					machines += line.MachineCount
+					if machines > capacity {
+						return PlanetActual{}, &FactoryPlacementError{FirstUnplaced: i, Err: errors.New("本星没有足够落点")}
+					}
+				}
+			}
+			return PlanetActual{Ports: site.Ports}, nil
+		}, nil)
+		if err != nil || !result.Verified || len(result.Planets) != 3 {
+			t.Fatalf("中心容量 %d，三地交付未通过核验：%s，%v", capacity, result.Status, err)
+		}
+		var traffic float64
+		for _, route := range result.Routes {
+			traffic += route.RatePerMinute
+		}
+		if capacity == 1502 && traffic != 120 {
+			t.Errorf("矿区可施工时外运 %.0f 件/分，应只运两地订单的 120 件/分", traffic)
+		}
+		if capacity == 600 {
+			if rejected == 0 || traffic <= 120 {
+				t.Errorf("中心容量不足时应先尝试集中方案，再由三地分担，超容量分工被拒 %d 次，跨星运输 %.0f", rejected, traffic)
+			}
+			if tc.hasPrefix && rejected != 1 {
+				t.Errorf("收到首个放不下的制造块后应一次分流到可施工的合同，实际被拒 %d 次", rejected)
+			}
+			for _, site := range result.Planets {
+				if site.Plan.MachineCount < 1 || site.Plan.MachineCount > capacity {
+					t.Errorf("%d 星分到 %d 台，实际可施工范围为 1 到 %d 台", site.PlanetID, site.Plan.MachineCount, capacity)
+				}
+			}
+		}
 	}
 }
 
@@ -262,7 +422,7 @@ func TestFeedbackReuseAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	calls := 0
-	_, err := verifyCandidate(ctx, &current, previous, assignment{}, func(_ context.Context, site PlanetPlan) (PlanetActual, error) {
+	_, err := verifyCandidate(ctx, &current, previous, assignment{}, World{}, func(_ context.Context, site PlanetPlan) (PlanetActual, error) {
 		calls++
 		if site.PlanetID != 102 {
 			t.Fatalf("未变化星球重复生成：%d", site.PlanetID)

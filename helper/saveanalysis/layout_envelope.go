@@ -466,7 +466,12 @@ func (r *reader) readGameHistoryData(props ...int64) *layoutGameHistoryData {
 	var numFeatureKeys int64
 	numFeatureKeys = r.number(4, true)
 	nfeatureKeys := r.length(numFeatureKeys)
-	r.skip(nfeatureKeys * 4)
+	for i := int64(0); i < nfeatureKeys; i++ {
+		key := r.number(4, true)
+		if key == 1000103 || key == 1000111 {
+			r.capsuleRemoved = true
+		}
+	}
 	var numFeatureValues int64
 	numFeatureValues = r.number(4, true)
 	nfeatureValues := r.length(numFeatureValues)
@@ -603,8 +608,8 @@ func (r *reader) readPlanetScannedData(props ...int64) *scannedPlanet {
 	v := &scannedPlanet{}
 	r.expect(r.number(4, true), 0, "PlanetScannedData.version")
 	v.landPercent = float64(floatValue(r.number(4, false)))
-	r.readVector3()
-	r.readVector3()
+	r.readVector3() // 矿脉偏向
+	v.birthPoint = r.readVector3().vector()
 	r.readVector3()
 	r.readVector3()
 	var numVeinGroups int64

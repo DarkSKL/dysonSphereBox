@@ -13,30 +13,57 @@ import (
 )
 
 func TestManufacturingPowerFloorUsesMandatoryArms(t *testing.T) {
-	input := ProductionRequest{Plan: industryplan.PlanetPlan{Power: &industryplan.PowerPlan{PowerMW: 100},
-		Plan: quant.Result{Dataset: "vanilla", Productions: []quant.Production{{RecipeID: 17, MachineCount: 96, PowerMW: 90}}}}}
-	input.Options.Setting.InserterLv = 3
-	if got := insufficientManufacturingPower(Request{}, input); math.Abs(got-103.824) > 1e-6 {
+	plan := industryplan.PlanetPlan{Power: &industryplan.PowerPlan{PowerMW: 100},
+		Plan: quant.Result{Dataset: "vanilla", Productions: []quant.Production{{RecipeID: 17, MachineCount: 96, PowerMW: 90}}}}
+	var source SourceLoadMW
+	if got := source.shortfall(plan, 3); math.Abs(got-103.824) > 1e-6 {
 		t.Fatalf("96 台石墨设备的机器加 192 把三级分拣器最低 %.6f MW", got)
 	}
-	input.Plan.Power.PowerMW = 104
-	if got := insufficientManufacturingPower(Request{}, input); got != 0 {
+	plan.Power.PowerMW = 104
+	if got := source.shortfall(plan, 3); got != 0 {
 		t.Fatalf("补足供电后仍被提前排除：%.6f", got)
 	}
-	input.Plan.Power.PowerMW = 100
-	input.Options.Setting.InserterLv = 1
-	if got := insufficientManufacturingPower(Request{}, input); got != 0 {
+	plan.Power.PowerMW = 100
+	if got := source.shortfall(plan, 1); got != 0 {
 		t.Fatalf("低档分拣器被按高档用电排除：%.6f", got)
 	}
-	input.Options.Setting.InserterLv = 3
-	input.Plan.Plan.Productions[0].MachineType = 6
-	if got := insufficientManufacturingPower(Request{}, input); got != 0 {
+	plan.Plan.Productions[0].MachineType = 6
+	if got := source.shortfall(plan, 3); got != 0 {
 		t.Fatalf("堆叠设备被逐层重复计臂：%.6f", got)
 	}
-	input.Plan.Plan.Productions[0].MachineType = 8
-	input.Plan.Plan.Productions[0].RecipeID = 115
-	if got := insufficientManufacturingPower(Request{}, input); got != 0 {
+	plan.Plan.Productions[0].MachineType = 8
+	plan.Plan.Productions[0].RecipeID = 115
+	if got := source.shortfall(plan, 3); got != 0 {
 		t.Fatalf("分馏塔的原生带口被计为分拣器：%.6f", got)
+	}
+}
+
+// TestSourceLoadRechecksCurrentContract 使用同一已落位塔，分别改变发船、制造与供电合同，核对缓存命中时的补电量和完整搜索后备。
+func TestSourceLoadRechecksCurrentContract(t *testing.T) {
+	req := Request{Objects: []Object{stationObject(0, Position{}, 1001, 1, 0, false)}}
+	load := measuredSourceLoad(req)
+	if math.Abs(float64(load)-.06) > 1e-8 {
+		t.Fatalf("采集供货塔的实装待机负荷 %.6f MW", load)
+	}
+	site := industryplan.PlanetPlan{CanRelocate: true, Power: &industryplan.PowerPlan{PowerMW: 104},
+		Plan: quant.Result{Dataset: "vanilla", Productions: []quant.Production{{RecipeID: 17, MachineCount: 96, PowerMW: 90}}}}
+	if err := load.CheckManufacturingPower(site, 3); err != nil {
+		t.Fatal(err)
+	}
+	site.OutboundVesselMW = 10
+	var shortage *industryplan.PowerLoadError
+	if err := load.CheckManufacturingPower(site, 3); !errors.As(err, &shortage) || math.Abs(shortage.RequiredMW-113.884) > 1e-6 {
+		t.Fatalf("新航线未按本轮合同补电：%v %+v", err, shortage)
+	}
+	site.Plan.Productions[0].PowerMW -= 4
+	site.Power.ExternalGridMW = 6
+	if err := load.CheckManufacturingPower(site, 3); err != nil {
+		t.Fatalf("分工减载、外电补足后要求重复加电：%v", err)
+	}
+	site.Power.ExternalGridMW = 0
+	site.CanRelocate = false
+	if err := load.CheckManufacturingPower(site, 3); err != nil {
+		t.Fatalf("完整搜索应保留实放前缀：%v", err)
 	}
 }
 

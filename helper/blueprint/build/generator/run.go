@@ -187,7 +187,7 @@ func generateDetailed(parent context.Context, req core.Request, placements *core
 // publicError 职责：保留既有公开错误类别；使用：服务边界；边界：不把内核失败当作布局无解。
 func publicError(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
-		if errors.Is(ctx.Err(), context.Canceled) {
+		if errors.Is(ctx.Err(), context.Canceled) && !errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
 			return &blueprint.Error{Code: "GEN_E_CANCELED", Message: "蓝图生成已取消"}
 		}
 		return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "蓝图生成超过总截止时间"}
