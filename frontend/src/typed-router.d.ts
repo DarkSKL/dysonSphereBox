@@ -37,6 +37,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/community/feedback': RouteRecordInfo<
+      '/community/feedback',
+      '/community/feedback',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/community/multiplayer': RouteRecordInfo<
       '/community/multiplayer',
       '/community/multiplayer',
@@ -150,6 +157,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/community/index.vue': {
       routes:
         | '/community/'
+      views:
+        | never
+    }
+    'src/pages/community/feedback.vue': {
+      routes:
+        | '/community/feedback'
       views:
         | never
     }

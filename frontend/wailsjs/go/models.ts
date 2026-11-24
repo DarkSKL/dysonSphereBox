@@ -4028,6 +4028,681 @@ export namespace factorycontract {
 
 }
 
+export namespace feedback {
+	
+	export class Bounds {
+	    minX: number;
+	    minY: number;
+	    maxX: number;
+	    maxY: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Bounds(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.minX = source["minX"];
+	        this.minY = source["minY"];
+	        this.maxX = source["maxX"];
+	        this.maxY = source["maxY"];
+	    }
+	}
+	export class DetailRequest {
+	    sessionKey?: string;
+	    starId: string;
+	    page?: number;
+	    pageSize?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DetailRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.starId = source["starId"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	    }
+	}
+	export class EditRequest {
+	    sessionKey?: string;
+	    requestId: string;
+	    starId: string;
+	    bodyVersion: string;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.requestId = source["requestId"];
+	        this.starId = source["starId"];
+	        this.bodyVersion = source["bodyVersion"];
+	        this.body = source["body"];
+	    }
+	}
+	export class Entry {
+	    id: string;
+	    kind: string;
+	    body: string;
+	    displayName: string;
+	    createdAt: string;
+	    reviewState: string;
+	    bodyVersion: string;
+	    reviewVersion: string;
+	    reviewReason?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Entry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.body = source["body"];
+	        this.displayName = source["displayName"];
+	        this.createdAt = source["createdAt"];
+	        this.reviewState = source["reviewState"];
+	        this.bodyVersion = source["bodyVersion"];
+	        this.reviewVersion = source["reviewVersion"];
+	        this.reviewReason = source["reviewReason"];
+	    }
+	}
+	export class EntryPage {
+	    page: number;
+	    pageSize: number;
+	    total: number;
+	    list: Entry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EntryPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.total = source["total"];
+	        this.list = this.convertValues(source["list"], Entry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LikeRequest {
+	    sessionKey?: string;
+	    starId: string;
+	    bodyVersion: string;
+	    liked: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LikeRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.starId = source["starId"];
+	        this.bodyVersion = source["bodyVersion"];
+	        this.liked = source["liked"];
+	    }
+	}
+	export class LikeResult {
+	    liked: boolean;
+	    likeCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LikeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.liked = source["liked"];
+	        this.likeCount = source["likeCount"];
+	    }
+	}
+	export class MapRequest {
+	    sessionKey?: string;
+	    minX?: number;
+	    minY?: number;
+	    maxX?: number;
+	    maxY?: number;
+	    version?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MapRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.minX = source["minX"];
+	        this.minY = source["minY"];
+	        this.maxX = source["maxX"];
+	        this.maxY = source["maxY"];
+	        this.version = source["version"];
+	    }
+	}
+	export class StarPoint {
+	    starId: string;
+	    previewVersion?: string;
+	    x: number;
+	    y: number;
+	    z: number;
+	    progress: string;
+	    brightness: number;
+	    count?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new StarPoint(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.previewVersion = source["previewVersion"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	        this.progress = source["progress"];
+	        this.brightness = source["brightness"];
+	        this.count = source["count"];
+	    }
+	}
+	export class MapResult {
+	    version: string;
+	    bounds: Bounds;
+	    unchanged: boolean;
+	    points: StarPoint[];
+	
+	    static createFrom(source: any = {}) {
+	        return new MapResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.bounds = this.convertValues(source["bounds"], Bounds);
+	        this.unchanged = source["unchanged"];
+	        this.points = this.convertValues(source["points"], StarPoint);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MyStar {
+	    starId: string;
+	    x: number;
+	    y: number;
+	    z: number;
+	    preview: string;
+	    displayName?: string;
+	    reviewState: string;
+	    bodyVersion: string;
+	    reviewReason: string;
+	    progress: string;
+	    withdrawn: boolean;
+	    newComment: boolean;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MyStar(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	        this.preview = source["preview"];
+	        this.displayName = source["displayName"];
+	        this.reviewState = source["reviewState"];
+	        this.bodyVersion = source["bodyVersion"];
+	        this.reviewReason = source["reviewReason"];
+	        this.progress = source["progress"];
+	        this.withdrawn = source["withdrawn"];
+	        this.newComment = source["newComment"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class MineResult {
+	    page: number;
+	    pageSize: number;
+	    total: number;
+	    list: MyStar[];
+	
+	    static createFrom(source: any = {}) {
+	        return new MineResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.total = source["total"];
+	        this.list = this.convertValues(source["list"], MyStar);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class Notice {
+	    id: string;
+	    kind: string;
+	    starId: string;
+	    contentId: string;
+	    createdAt: string;
+	    readAt?: string | null;
+	
+	    static createFrom(source: any = {}) {
+	        return new Notice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.starId = source["starId"];
+	        this.contentId = source["contentId"];
+	        this.createdAt = source["createdAt"];
+	        this.readAt = source["readAt"];
+	    }
+	}
+	export class NoticesResult {
+	    page: number;
+	    pageSize: number;
+	    total: number;
+	    list: Notice[];
+	    unreadCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoticesResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.total = source["total"];
+	        this.list = this.convertValues(source["list"], Notice);
+	        this.unreadCount = source["unreadCount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class OKResult {
+	    ok: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new OKResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	    }
+	}
+	export class PageRequest {
+	    sessionKey?: string;
+	    page?: number;
+	    pageSize?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PageRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	    }
+	}
+	export class PreviewRequest {
+	    sessionKey?: string;
+	    starId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.starId = source["starId"];
+	    }
+	}
+	export class PreviewResult {
+	    starId: string;
+	    preview: string;
+	    displayName?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.preview = source["preview"];
+	        this.displayName = source["displayName"];
+	    }
+	}
+	export class PreviewsRequest {
+	    starIds: string[];
+	    sessionKey?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewsRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starIds = source["starIds"];
+	        this.sessionKey = source["sessionKey"];
+	    }
+	}
+	export class PreviewsResult {
+	    items: PreviewResult[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], PreviewResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PublishRequest {
+	    sessionKey?: string;
+	    requestId: string;
+	    body: string;
+	    showName: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PublishRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.requestId = source["requestId"];
+	        this.body = source["body"];
+	        this.showName = source["showName"];
+	    }
+	}
+	export class ReadNoticeRequest {
+	    sessionKey?: string;
+	    id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReadNoticeRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.id = source["id"];
+	    }
+	}
+	export class ReplyRequest {
+	    sessionKey?: string;
+	    requestId: string;
+	    starId: string;
+	    bodyVersion: string;
+	    kind: string;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReplyRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.requestId = source["requestId"];
+	        this.starId = source["starId"];
+	        this.bodyVersion = source["bodyVersion"];
+	        this.kind = source["kind"];
+	        this.body = source["body"];
+	    }
+	}
+	export class ReplyResult {
+	    id: string;
+	    reviewState: string;
+	    bodyVersion: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReplyResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.reviewState = source["reviewState"];
+	        this.bodyVersion = source["bodyVersion"];
+	    }
+	}
+	export class SeenRequest {
+	    sessionKey?: string;
+	    starId: string;
+	    reviewVersion: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SeenRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.starId = source["starId"];
+	        this.reviewVersion = source["reviewVersion"];
+	    }
+	}
+	export class StarDetail {
+	    starId: string;
+	    x: number;
+	    y: number;
+	    z: number;
+	    original: Entry;
+	    progress: string;
+	    releaseVersion: string;
+	    likeCount: number;
+	    liked: boolean;
+	    owned: boolean;
+	    canEdit: boolean;
+	    withdrawn: boolean;
+	    reviewReason: string;
+	    replies: EntryPage;
+	    officialReplies: Entry[];
+	    supplements: Entry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StarDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	        this.original = this.convertValues(source["original"], Entry);
+	        this.progress = source["progress"];
+	        this.releaseVersion = source["releaseVersion"];
+	        this.likeCount = source["likeCount"];
+	        this.liked = source["liked"];
+	        this.owned = source["owned"];
+	        this.canEdit = source["canEdit"];
+	        this.withdrawn = source["withdrawn"];
+	        this.reviewReason = source["reviewReason"];
+	        this.replies = this.convertValues(source["replies"], EntryPage);
+	        this.officialReplies = this.convertValues(source["officialReplies"], Entry);
+	        this.supplements = this.convertValues(source["supplements"], Entry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class WithdrawRequest {
+	    sessionKey?: string;
+	    starId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WithdrawRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionKey = source["sessionKey"];
+	        this.starId = source["starId"];
+	    }
+	}
+	export class WithdrawResult {
+	    starId: string;
+	    withdrawn: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WithdrawResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.withdrawn = source["withdrawn"];
+	    }
+	}
+	export class WriteStarResult {
+	    starId: string;
+	    x: number;
+	    y: number;
+	    z: number;
+	    reviewState: string;
+	    bodyVersion: string;
+	    withdrawn: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WriteStarResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.starId = source["starId"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	        this.reviewState = source["reviewState"];
+	        this.bodyVersion = source["bodyVersion"];
+	        this.withdrawn = source["withdrawn"];
+	    }
+	}
+
+}
+
 export namespace forward {
 	
 	export class LocalPort {

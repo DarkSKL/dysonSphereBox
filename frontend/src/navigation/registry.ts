@@ -5,6 +5,7 @@ import {
   IconInfoCircle,
   IconMessages,
   IconNetwork,
+  IconStars,
 } from '@tabler/icons-vue'
 import {gameNavigationIcons} from './game-icons'
 
@@ -64,6 +65,7 @@ export const workspaceNavigationRegistry: readonly WorkspaceNavigationDefinition
     requiresAuth: true,
     navigation: [
       { key: 'multiplayer', label: '联机', to: '/community/multiplayer', icon: IconNetwork, requiresAuth: true },
+      { key: 'feedback', label: '反馈星系', to: '/community/feedback', icon: IconStars, requiresAuth: true },
     ],
   },
 ]
