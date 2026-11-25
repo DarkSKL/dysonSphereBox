@@ -2,9 +2,9 @@ import type {StarProgress} from '../../types/feedback'
 
 // =============== 星图双主题调色 ===============
 // 说明：画布绘制不能读取 CSS 变量，星云、星核与背景尘点的日夜色值集中在此。
-// 深色保持通透的星云丝缕与三层景深；浅色维持 --ds-bg-shell（#ebebeb）底色，对齐首页戴森球日间气质，
-// 用克制的暖金灰银心过渡到淡靛蓝雾丝，避免灰墨渍涂抹与深色反相。
-// 边界：舞台底色与文字使用 style.scss 的 --ds-* token，本文件只负责画布内的颜色。
+// 深色保持通透的星云丝缕与三层景深；浅色采用宣纸浅底、松烟墨灰浓淡晕染的近单色水墨星图，
+// 中心温润浅宣纸向边缘自然衔接 --ds-bg-shell（#ebebeb）外壳，墨分五色而克制留白。
+// 边界：舞台底色与文字使用 style.scss 的 --ds-* token 及主题模式类，本文件负责画布内的颜色与曝光参数。
 export type GalaxyMode = 'dark' | 'light'
 export type NebulaBlend = 'screen' | 'over'
 type Stop = readonly [position: number, red: number, green: number, blue: number]
@@ -72,33 +72,37 @@ const DARK: GalaxyTheme = {
 
 const LIGHT: GalaxyTheme = {
   mode: 'light',
-  stage: '#ebebeb',
-  // 克制的深靛 / 深鸢尾 / 深琥珀金星核：对 #ebebeb 对比度均高于 6.1:1，落在清透淡雾上也清晰可辨。
-  starColors: {feedback: '#25527d', accepted: '#584186', implemented: '#7d4a0c'},
-  privateColor: '#666b75',
-  coreHighlight: '#f2f6fb',
-  coreCushion: '#f5f6f8',
-  focusOutline: 'rgba(246, 247, 250, 0.86)',
+  // 宣纸浅底中位参考色（舞台由 #f4f2ed 中心向 #ebebeb 边缘极柔和过渡，无缝衔接浅灰壳体）。
+  stage: '#f2f0eb',
+  // 近单色水墨星点：纯正焦墨（普通反馈）、极克制青黛深墨（已采纳）、一抹淡朱砂深墨印泥点睛（已实现）。
+  // 三色对宣纸底对比度均远超 9:1，配合柔和宣纸托底在密集墨带中清晰跳出。
+  starColors: {feedback: '#1a1e24', accepted: '#243646', implemented: '#723026'},
+  privateColor: '#5c626a',
+  coreHighlight: '#efede8',
+  coreCushion: '#f5f3ee',
+  focusOutline: 'rgba(245, 243, 238, 0.90)',
   composite: 'source-over',
-  glow: {base: .26, slope: .24},
+  glow: {base: .20, slope: .20},
   sky: {
-    dust: '#747f92',
-    warmDust: '#938370',
-    wispCool: '#95a5bc',
-    wispWarm: '#bca484',
-    wispAlpha: .048,
-    glow: '#c2a680',
-    glowMid: '#98a9c0',
-    glowAlpha: .25,
-    dustScale: 1.18,
+    dust: '#747a82',
+    warmDust: '#646970',
+    wispCool: '#8e949c',
+    wispWarm: '#7d838b',
+    wispAlpha: .052,
+    // 去掉褐色银心斑，改用极淡清墨旋涡微晕，0 条时保持静谧留白与水墨呼吸感。
+    glow: '#9aa0a8',
+    glowMid: '#aeb3ba',
+    glowAlpha: .15,
+    dustScale: 1.05,
   },
   nebula: {
     blend: 'over',
-    gain: .84,
-    // 由银心向外：柔和暖金灰 / 浅琥珀雾 → 极淡灰藕荷过渡 → 清透低饱和淡靛蓝 / 雾蓝灰，自然融入 #ebebeb。
+    gain: .74,
+    // 近单色松烟墨灰阶（墨分五色：淡重墨中轴 → 松烟中墨 → 清墨羽化 → 纸色留白），
+    // 控制峰值墨色深度在中浅灰墨阶，密集 200 条不糊成黑团，焦墨星点清晰跃出。
     stops: [
-      [0, 180, 158, 126], [.16, 174, 155, 134], [.32, 156, 149, 162],
-      [.50, 130, 143, 168], [.70, 120, 138, 168], [.86, 146, 160, 182], [1, 188, 196, 208],
+      [0, 146, 150, 156], [.16, 134, 139, 146], [.32, 114, 120, 128],
+      [.50, 108, 114, 122], [.68, 124, 130, 138], [.85, 156, 161, 168], [1, 194, 198, 202],
     ],
   },
 }

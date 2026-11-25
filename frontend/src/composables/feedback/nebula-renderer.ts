@@ -141,16 +141,18 @@ function createPipeline(gl: WebGLRenderingContext, theme: GalaxyTheme) {
 }
 
 // =============== 软件绘制 ===============
-// WebView 禁用硬件加速时沿用同一批 XYZ、相机和色温。宽光团用缓存笔刷，细尘以有界采样绘制。
+// WebView 禁用硬件加速时沿用同一批 XYZ、相机和色温。
+// 按材质对宽雾/气晕、丝缕与细尘分别做确定性有界抽样并用能量守恒公式补偿单粒透明度，
+// 同步搭配适度降采样离屏画布与预烘 32×32 笔刷，确保 200 星下帧耗时远低于逐粒全量绘制且与 WebGL 视觉一致。
 function softwareBrush(index: number, theme: GalaxyTheme): HTMLCanvasElement {
   const brush = document.createElement('canvas')
-  brush.width = brush.height = 48
+  brush.width = brush.height = 32
   const ctx = brush.getContext('2d')!
   const color = nebulaPaletteFor(theme).slice(index * 4, index * 4 + 3).join(',')
-  const gradient = ctx.createRadialGradient(24, 24, 0, 24, 24, 24)
+  const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16)
   for (const [stop, alpha] of [[0, 1], [.22, .62], [.48, .22], [.74, .05], [1, 0]]) gradient.addColorStop(stop, 'rgba(' + color + ',' + alpha + ')')
   ctx.fillStyle = gradient
-  ctx.fillRect(0, 0, 48, 48)
+  ctx.fillRect(0, 0, 32, 32)
   return brush
 }
 
@@ -159,82 +161,112 @@ function fadeEdge(value: number): number {
   return t * t * (3 - 2 * t)
 }
 
-// 宽雾保留全部采样以维持连续明暗。丝和细尘按材质各自抽样，选择只取决于颗粒自身，换视区仍是同一批纹理。
+// 宽雾/气晕、纤维丝缕与细尘按材质各自有界抽样（稀疏 1–6 星全量不抽样，密集 200 星控在 ~7,500–8,000 粒以内）。
+// 选择只取决于颗粒自身哈希，换视区或缩放仍是同一批稳定纹理。
 function softwareParticles(samples: Float32Array, peak: number) {
-  const silkStep = Math.max(1, Math.ceil(peak * 3 / 16 / 11500))
-  const grainStep = Math.max(1, Math.ceil(peak * 12 / 16 / 15000))
+  const fogStep = Math.max(1, Math.ceil(peak * 4 / 16 / 2800))
+  const silkStep = Math.max(1, Math.ceil(peak * 3 / 16 / 2400))
+  const grainStep = Math.max(1, Math.ceil(peak * 9 / 16 / 2200))
   const bits = new Uint32Array(samples.buffer, samples.byteOffset, samples.length)
-  const offsets = new Uint32Array(samples.length / SAMPLE_STRIDE)
+  const count = samples.length / SAMPLE_STRIDE
+  const offsets = new Uint32Array(count)
+  const strides = new Uint16Array(count)
   let n = 0
   for (let i = 0; i < samples.length; i += SAMPLE_STRIDE) {
     const diameter = samples[i + 3]
-    const stride = diameter >= 4000 ? 1 : diameter < 640 ? grainStep : silkStep
+    const stride = diameter >= 3500 ? fogStep : diameter < 640 ? grainStep : silkStep
+    if (stride === 1) {
+      offsets[n] = i
+      strides[n++] = 1
+      continue
+    }
     const hash = (bits[i] ^ Math.imul(bits[i + 1], 16777619) ^ bits[i + 2] ^ bits[i + 15]) >>> 0
-    if (hash % stride === 0) offsets[n++] = i
+    if (hash % stride === 0) {
+      offsets[n] = i
+      strides[n++] = stride
+    }
   }
-  return {samples, offsets: offsets.subarray(0, n), silkStep, grainStep}
+  return {samples, offsets: offsets.subarray(0, n), strides: strides.subarray(0, n)}
 }
 
-function drawSoftware(canvas: HTMLCanvasElement, brushes: HTMLCanvasElement[], theme: GalaxyTheme, particles: ReturnType<typeof softwareParticles>, camera: Camera, size: ViewSize, dpr: number, gain: number, time: number, shadow: readonly [number, number]) {
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  const {samples, offsets, silkStep, grainStep} = particles
+function drawSoftware(ctx: CanvasRenderingContext2D, brushes: HTMLCanvasElement[], theme: GalaxyTheme, particles: ReturnType<typeof softwareParticles>, camera: Camera, size: ViewSize, dpr: number, gain: number, time: number, shadow: readonly [number, number]) {
+  const {samples, offsets, strides} = particles
   const {width, height} = size
   const {right, down, scale} = cameraFrame(camera, size)
+  const r0 = right[0], r1 = right[1]
+  const d0 = down[0], d1 = down[1], d2 = down[2]
+  const halfW = width / 2, halfH = height / 2
+  const shadowX = shadow[0], shadowY = shadow[1]
   const materialScale = scale / Math.pow(camera.zoom, .23)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, width + 1, height + 1)
   ctx.globalCompositeOperation = theme.nebula.blend === 'over' ? 'source-over' : 'screen'
   let lastX = NaN, lastY = NaN, lastZ = NaN, edgeLight = 0
-  for (const i of offsets) {
+  let rotated = false
+  for (let k = 0; k < offsets.length; k++) {
+    const i = offsets[k]
     const ox = samples[i + 6], oy = samples[i + 7], oz = samples[i + 8]
     if (ox !== lastX || oy !== lastY || oz !== lastZ) {
       lastX = ox; lastY = oy; lastZ = oz
-      const edgeX = width / 2 - Math.abs(scale * (right[0] * ox + right[1] * oy))
-      const edgeY = height / 2 - Math.abs(scale * (down[0] * ox + down[1] * oy + down[2] * oz))
-      edgeLight = edgeTransmission(Math.min(edgeX, edgeY), width, height)
+      const edgeX = halfW - Math.abs(scale * (r0 * ox + r1 * oy))
+      const edgeY = halfH - Math.abs(scale * (d0 * ox + d1 * oy + d2 * oz))
+      edgeLight = edgeTransmission(edgeX < edgeY ? edgeX : edgeY, width, height)
     }
     if (!edgeLight) continue
     const age = (samples[i + 15] + time * samples[i + 16]) % 1, u = 2 * age - 1
     const dx = samples[i] + u * (samples[i + 9] + u * samples[i + 12])
     const dy = samples[i + 1] + u * (samples[i + 10] + u * samples[i + 13])
     const dz = samples[i + 2] + u * (samples[i + 11] + u * samples[i + 14])
-    const x = width / 2 + scale * (dx * right[0] + dy * right[1])
-    const y = height / 2 + scale * (dx * down[0] + dy * down[1] + dz * down[2])
+    const x = halfW + scale * (dx * r0 + dy * r1)
+    const y = halfH + scale * (dx * d0 + dy * d1 + dz * d2)
     let ax = 1, ay = 0, aspect = 1
-    if (samples[i + 17] > 1) {
+    const baseAspect = samples[i + 17]
+    if (baseAspect > 1) {
       const tx = samples[i + 9] + 2 * u * samples[i + 12]
       const ty = samples[i + 10] + 2 * u * samples[i + 13]
       const tz = samples[i + 11] + 2 * u * samples[i + 14]
-      const sx = tx * right[0] + ty * right[1], sy = tx * down[0] + ty * down[1] + tz * down[2]
+      const sx = tx * r0 + ty * r1, sy = tx * d0 + ty * d1 + tz * d2
       const projected = Math.hypot(sx, sy)
       if (projected > .01) {
         ax = sx / projected
         ay = sy / projected
-        aspect += (samples[i + 17] - 1) * Math.min(1, projected / Math.max(1, Math.hypot(tx, ty, tz)))
+        aspect += (baseAspect - 1) * Math.min(1, projected / Math.max(1, Math.hypot(tx, ty, tz)))
       }
     }
-    const raw = samples[i + 3] * materialScale * Math.sqrt(aspect)
+    const baseDiameter = samples[i + 3]
+    const stride = strides[k]
+    // 稀疏抽样时按面积守恒适度放宽宽雾/丝缕核半径，使邻近抽样无缝融合、消除孤立云球斑驳感。
+    const spread = stride > 1
+      ? (baseDiameter >= 3500 ? Math.min(1.85, 1 + .22 * Math.log2(stride)) : baseDiameter >= 640 ? Math.min(1.38, 1 + .10 * Math.log2(stride)) : 1)
+      : 1
+    const raw = baseDiameter * materialScale * Math.sqrt(aspect)
     // 近景让细尘保持纹理尺度，只有可点星核获得实心轮廓。
-    const limit = samples[i + 3] < 640 ? 1.8 + samples[i + 3] * .0035 :
-      Math.max(10, Math.min(180, 8 + samples[i + 3] * .014))
-    const diameter = Math.max(1.2, raw / Math.sqrt(1 + (raw / limit) ** 2))
+    const limit = baseDiameter < 640 ? 1.8 + baseDiameter * .0035 :
+      Math.max(10, Math.min(180, 8 + baseDiameter * .014))
+    const diameter = Math.max(1.2, raw / Math.sqrt(1 + (raw / limit) ** 2)) * spread
     if (x < -diameter || x > width + diameter || y < -diameter || y > height + diameter) continue
+    const front = .5 + .5 * (samples[i + 18] * shadowX + samples[i + 19] * shadowY)
+    const transmission = 1 - samples[i + 20] * (.29 + .59 * front * front)
+    const edgeAge = age < 1 - age ? age : 1 - age
+    const alpha = edgeLight * gain * samples[i + 4] * 1.19 * fadeEdge(edgeAge) * transmission
+    const single = Math.min(1, alpha * Math.min(1, Math.max(.45, raw / 1.2)))
+    const effectiveStride = stride === 1 ? 1 : stride / (spread * spread)
+    const outAlpha = effectiveStride <= 1 ? single * effectiveStride : 1 - (1 - single) ** effectiveStride
+    if (outAlpha <= .002) continue
     const index = samples[i + 5]
     const brush = brushes[index] ?? (brushes[index] = softwareBrush(index, theme))
-    const front = .5 + .5 * (samples[i + 18] * shadow[0] + samples[i + 19] * shadow[1])
-    const transmission = 1 - samples[i + 20] * (.29 + .59 * front * front)
-    const alpha = edgeLight * gain * samples[i + 4] * 1.19 * fadeEdge(Math.min(age, 1 - age)) * transmission
-    const single = Math.min(1, alpha * Math.min(1, Math.max(.45, raw / 1.2)))
-    const stride = samples[i + 3] >= 4000 ? 1 : samples[i + 3] < 640 ? grainStep : silkStep
-    ctx.globalAlpha = stride === 1 ? single : 1 - (1 - single) ** stride
+    ctx.globalAlpha = outAlpha
     if (aspect > 1.01) {
       const minor = diameter / aspect
       ctx.setTransform(dpr * ax, dpr * ay, -dpr * ay, dpr * ax, x * dpr, y * dpr)
       ctx.drawImage(brush, -diameter / 2, -minor / 2, diameter, minor)
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    } else ctx.drawImage(brush, x - diameter / 2, y - diameter / 2, diameter, diameter)
+      rotated = true
+    } else {
+      if (rotated) { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); rotated = false }
+      ctx.drawImage(brush, x - diameter / 2, y - diameter / 2, diameter, diameter)
+    }
   }
+  if (rotated) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.globalAlpha = 1
   ctx.globalCompositeOperation = 'source-over'
 }
@@ -242,6 +274,7 @@ function drawSoftware(canvas: HTMLCanvasElement, brushes: HTMLCanvasElement[], t
 export function createNebulaLayer(redraw: () => void) {
   const surface = document.createElement('canvas'), fallback = document.createElement('canvas')
   const gl = surface.getContext('webgl', {alpha: true, antialias: false, depth: false, preserveDrawingBuffer: true})
+  let fallbackCtx: CanvasRenderingContext2D | null = null
   let theme = GALAXY_THEMES.dark
   let pipeline = gl && createPipeline(gl, theme)
   let previous: {camera: Camera; samples: Float32Array; width: number; height: number; gain: number; dpr: number; tick: number} | undefined
@@ -263,7 +296,8 @@ export function createNebulaLayer(redraw: () => void) {
         previous = undefined
       }
       const output = pipeline ? surface : fallback
-      const resolution = pipeline ? dpr : Math.min(dpr, 1, 960 / Math.max(size.width, size.height))
+      // 软件回退使用柔和降采样离屏层再平滑放大回舞台，大幅降低像素填充带宽且保持水墨与云雾柔顺无锯齿。
+      const resolution = pipeline ? dpr : Math.min(dpr, .68, 560 / Math.max(size.width, size.height))
       // level 为 0..1 的云雾亮度（存在感 × 数量曝光，由调用方缓动），镜头缩放只做轻微补偿。
       // 切换视区快照不会按缓冲区长度重新打光。
       const gain = 1.32 * theme.nebula.gain * level * (focused ? .12 : 1) / (1 + .30 * Math.log2(camera.zoom))
@@ -277,11 +311,16 @@ export function createNebulaLayer(redraw: () => void) {
       if (output.width !== w || output.height !== h) { output.width = w; output.height = h }
       if (pipeline) pipeline.draw(samples, camera, size, dpr, gain, time, shadow)
       else {
-        if (software?.samples !== samples) {
-          softwarePeak = Math.max(softwarePeak, samples.length / SAMPLE_STRIDE)
-          software = softwareParticles(samples, softwarePeak)
+        fallbackCtx ??= fallback.getContext('2d')
+        if (fallbackCtx) {
+          const count = samples.length / SAMPLE_STRIDE
+          if (software?.samples !== samples) {
+            // 稀疏目录（如 200→1 条）恢复全量抽样，避免沿用旧高水位导致单星雾团稀疏。
+            softwarePeak = count <= 8000 || count < softwarePeak * .25 ? count : Math.max(softwarePeak, count)
+            software = softwareParticles(samples, softwarePeak)
+          }
+          drawSoftware(fallbackCtx, brushes, theme, software, camera, size, resolution, gain, time, shadow)
         }
-        drawSoftware(output, brushes, theme, software, camera, size, resolution, gain, time, shadow)
       }
       previous = {camera, samples, width: size.width, height: size.height, dpr, gain, tick}
       return output
@@ -291,6 +330,7 @@ export function createNebulaLayer(redraw: () => void) {
       surface.removeEventListener('webglcontextrestored', restored)
       pipeline?.release()
       gl?.getExtension('WEBGL_lose_context')?.loseContext()
+      fallbackCtx = null
       surface.width = fallback.width = 1
     },
   }

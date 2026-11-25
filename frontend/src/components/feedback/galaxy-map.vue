@@ -62,6 +62,7 @@ const visibleMass = computed(() => {
   }, 0)
 })
 let nebula: ReturnType<typeof createNebulaLayer> | undefined
+let stageContext: CanvasRenderingContext2D | null = null
 let frame = 0
 let flowTimer: number | undefined
 let lastFlowFrame: number | undefined
@@ -119,12 +120,14 @@ function draw(now: number): void {
   window.clearTimeout(flowTimer)
   flowTimer = undefined
   const surface = canvas.value
-  const context = surface?.getContext('2d')
+  const context = surface ? (stageContext ??= surface.getContext('2d')) : null
   const {width, height} = size.value
   if (!surface || !context || !width || !height || !props.active || document.hidden) { pauseFlow(); return }
+  const dpr = surface.width / width
   context.resetTransform()
   context.clearRect(0, 0, surface.width, surface.height)
-  context.setTransform(surface.width / width, 0, 0, surface.height / height, 0, 0)
+  context.setTransform(dpr, 0, 0, dpr, 0, 0)
+  context.imageSmoothingEnabled = true
   const palette = theme.value
   if (glowsMode !== palette.mode) { glows = createStarGlows(palette); glowsMode = palette.mode }
   // 星云层与远景尘点对任意数量都走同一套绘制，仅亮度由 cloudLevel 连续变化，0 条也保留同一张星图。
@@ -135,7 +138,7 @@ function draw(now: number): void {
   const cloudSamples = plan.use
   const hasCloud = plan.draw
   if (plan.release) { nebula?.dispose(); nebula = undefined }
-  drawSkyDust(context, props.camera, size.value, palette, cloudLevel)
+  drawSkyDust(context, props.camera, size.value, palette, cloudLevel, dpr)
   drawSeedGlow(context, size.value, palette, 1 - Math.min(.84, cloudLevel * 1.52), props.camera)
   if (!props.stars.length && !settling && !hasCloud) { pauseFlow(); return }
   const flowing = hasCloud && !props.focused && !reduced.matches
@@ -148,7 +151,7 @@ function draw(now: number): void {
   } else lastFlowFrame = undefined
   if (hasCloud) {
     nebula ??= createNebulaLayer(scheduleDraw)
-    const volume = nebula.render(cloudSamples!, props.camera, size.value, surface.width / width, cloudLevel, palette, props.focused, flowElapsed)
+    const volume = nebula.render(cloudSamples!, props.camera, size.value, dpr, cloudLevel, palette, props.focused, flowElapsed)
     context.drawImage(volume, 0, 0, width, height)
   }
   const rawPulse = reduced.matches || !arrivalsAt ? 0 : Math.max(0, 1 - (now - arrivalsAt) / 420)
@@ -350,6 +353,7 @@ onBeforeUnmount(() => {
   observer?.disconnect()
   cancelAnimationFrame(frame)
   nebula?.dispose()
+  stageContext = null
 })
 
 defineExpose({focus: () => stage.value?.focus({preventScroll: true})})
@@ -361,7 +365,7 @@ defineExpose({focus: () => stage.value?.focus({preventScroll: true})})
   <!-- * 交互：拖动或方向键环绕，滚轮缩放，回车浏览星点，右击打开操作菜单。 -->
   <!-- * 依赖：当前相机、服务器返回星点和账号范围内的私有星。 -->
   <!-- * 边界：0 条与多条共用同一张星图，只有云雾亮度随数量连续变化；减少动态效果时亮度直接到位。 -->
-  <div ref="stage" class="galaxy-stage" :class="{dragging, 'has-star': hovered}" tabindex="0"
+  <div ref="stage" class="galaxy-stage" :class="{dragging, 'has-star': hovered, 'is-light': theme.mode === 'light'}" tabindex="0"
        role="region" aria-haspopup="menu" aria-keyshortcuts="Shift+F10" :aria-controls="menuOpen ? 'feedback-map-actions' : undefined"
        aria-label="立体反馈星图，方向键绕银心旋转，加减键缩放，回车浏览星点，右击或 Shift 加 F10 打开反馈菜单"
        @contextmenu.prevent="onContextMenu" @wheel.prevent="onWheel" @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp"
@@ -385,8 +389,12 @@ defineExpose({focus: () => stage.value?.focus({preventScroll: true})})
   position: absolute;
   inset: 0;
   overflow: hidden;
-  // 舞台底色与首页戴森球场景一致：日间 #ebebeb 的白灰底，夜间深空黑；星云与星核由画布按主题绘制。
+  // 深色沿用 --ds-bg-shell（深空黑）；日间水墨采用温润浅宣纸中心向 --ds-bg-shell（#ebebeb）边缘的柔和径向过渡，无缝衔接壳体。
   background: var(--ds-bg-shell);
+  &.is-light {
+    background-color: #f2f0eb;
+    background-image: radial-gradient(ellipse 74% 74% at 50% 50%, #f4f2ed 0%, #efede8 58%, var(--ds-bg-shell) 100%);
+  }
   cursor: grab;
   touch-action: none;
 
@@ -404,6 +412,9 @@ defineExpose({focus: () => stage.value?.focus({preventScroll: true})})
     &::before { content: ''; position: absolute; left: -4px; top: 50%; width: 5px; height: 1px; background: currentColor; opacity: .36; }
     &.on-left::before { left: auto; right: -4px; }
     &:hover, &:focus-visible { background: var(--ds-bg-panel-elevated); outline: 1px solid var(--ds-brand); }
+  }
+  &.is-light .star-caption {
+    text-shadow: 0 0 7px rgba(244, 242, 237, .96), 0 0 3px rgba(244, 242, 237, .98), 0 1px 2px rgba(244, 242, 237, .92);
   }
 }
 </style>

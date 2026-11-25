@@ -52,6 +52,7 @@ const {HOME_CAMERA, project, usefulZoomLimit, queryBounds, queryRegionKey, norma
 const {SAMPLE_STRIDE, sampleNebula, cloudPresence, cloudExposure, cloudPlan, easeCloudLevel, CLOUD_VISIBLE} = await vite.ssrLoadModule('/galaxy-nebula.ts')
 const {galaxyStatus, isPublicFeedback, isCoveredByAggregate} = await vite.ssrLoadModule('/galaxy-status.ts')
 const {haloScale} = await vite.ssrLoadModule('/galaxy-art.ts')
+const {GALAXY_THEMES} = await vite.ssrLoadModule('/galaxy-theme.ts')
 const {useGalaxyMap} = await vite.ssrLoadModule('/useGalaxyMap.ts')
 const star = (id, x, y, z) => ({starId: String(id), x, y, z, progress: 'feedback', brightness: .4})
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -645,4 +646,19 @@ test('P2-1 组合态 useGalaxyMap.retry：慢重试期间连续切换 3 次视�
     assert.equal(map.snapshotRegion.value, latestRegion)
     assert.deepEqual(map.points.value.map(p => p.starId), ['8002'])
   }
+})
+
+test('日间水墨风调色规格：松烟墨灰阶近单色且控制峰值墨深，深色主题保持不变', () => {
+  const {light, dark} = GALAXY_THEMES
+  // 日间云雾色标均为低饱和近单色松烟墨灰（通道最大差 <= 16），且最深色标保持中浅灰阶避免 200 条糊黑。
+  for (const [, r, g, b] of light.nebula.stops) {
+    assert.ok(Math.max(r, g, b) - Math.min(r, g, b) <= 16, `日间水墨色标应为低饱和松烟灰：${r},${g},${b}`)
+    assert.ok(Math.min(r, g, b) >= 100, `日间水墨色标峰值不得过黑：${r},${g},${b}`)
+  }
+  assert.equal(light.nebula.blend, 'over')
+  assert.ok(light.coreCushion, '日间焦墨星核保留宣纸柔光托底')
+  // 深色主题保持原有调色与发光混合模式不变。
+  assert.equal(dark.stage, '#03060d')
+  assert.equal(dark.nebula.blend, 'screen')
+  assert.deepEqual(dark.starColors, {feedback: '#8ad8ff', accepted: '#c4a4ff', implemented: '#ffca80'})
 })
