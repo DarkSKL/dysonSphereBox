@@ -8,8 +8,69 @@ import {GALAXY_EDGE, normalizeQueryScope, type QueryScope} from './galaxy-camera
 // 边界：只做判定，不读取画布、不发请求；文案在组件内，便于样式与文案同处维护。
 export type GalaxyStatusKind = 'loading' | 'error' | 'empty' | 'selected-offscreen' | 'selected-grouped' | 'offscreen' | ''
 
-/** 聚合快照中单格覆盖的最大占比（按至少 16×16 空间网格保守估算）。 */
-export const AGGREGATE_CELL_DIVISOR = 16
+/** 服务端聚合快照使用的网格宽度（32×32 = 1024 桶，与 server/service/feedback/map.go:18-19 一致）。 */
+export const AGGREGATE_GRID_WIDTH = 32
+
+let snapshotOrderCounter = 0
+
+/**
+ * 分配严格递增的客户端因果序号，用于标记「地图请求发起」与「详情观测到已过审」的先后顺序，
+ * 避免依赖可能同毫秒碰撞的墙钟时间。
+ */
+export function nextSnapshotOrder(): number {
+  return ++snapshotOrderCounter
+}
+
+export interface AggregateCell {
+  col: number
+  row: number
+  index: number
+}
+
+/**
+ * 计算当前快照用于 32×32 分桶的有效边界，与服务端 intersectGalaxy(view)（map.go:86-91）保持一致：
+ * 全景（null）对应 [-GALAXY_EDGE, GALAXY_EDGE]；局部边界取整后与星系边界求交，交集为空返回 null。
+ */
+export function aggregateGridBounds(snapshotBounds: Bounds | null): Bounds | null {
+  if (!snapshotBounds) {
+    return {minX: -GALAXY_EDGE, minY: -GALAXY_EDGE, maxX: GALAXY_EDGE, maxY: GALAXY_EDGE}
+  }
+  if (!Number.isFinite(snapshotBounds.minX) || !Number.isFinite(snapshotBounds.minY) ||
+    !Number.isFinite(snapshotBounds.maxX) || !Number.isFinite(snapshotBounds.maxY)) {
+    return null
+  }
+  const minX = Math.max(Math.trunc(snapshotBounds.minX), -GALAXY_EDGE)
+  const minY = Math.max(Math.trunc(snapshotBounds.minY), -GALAXY_EDGE)
+  const maxX = Math.min(Math.trunc(snapshotBounds.maxX), GALAXY_EDGE)
+  const maxY = Math.min(Math.trunc(snapshotBounds.maxY), GALAXY_EDGE)
+  if (minX > maxX || minY > maxY) return null
+  return {minX, minY, maxX, maxY}
+}
+
+/**
+ * 计算坐标 (x, y) 在当前快照 32×32 网格中的分桶坐标，与服务端 cellIndex(view, x, y)
+ * 及 approvedInView 闭区间 BETWEEN（map_geometry.go:48-52, 105）完全一致：
+ * - 坐标落在有效闭区间 [minX, maxX] × [minY, maxY] 之外返回 null；
+ * - col = floor((x - minX) * 32 / (maxX - minX + 1))；
+ * - row = floor((y - minY) * 32 / (maxY - minY + 1))；
+ * - index = row * 32 + col。
+ */
+export function aggregateCellOf(
+  point: Pick<StarDetail, 'x' | 'y'>,
+  snapshotBounds: Bounds | null,
+): AggregateCell | null {
+  const inside = aggregateGridBounds(snapshotBounds)
+  if (!inside) return null
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null
+  const x = Math.trunc(point.x)
+  const y = Math.trunc(point.y)
+  if (x < inside.minX || x > inside.maxX || y < inside.minY || y > inside.maxY) return null
+  const spanX = inside.maxX - inside.minX + 1
+  const spanY = inside.maxY - inside.minY + 1
+  const col = Math.floor(((x - inside.minX) * AGGREGATE_GRID_WIDTH) / spanX)
+  const row = Math.floor(((y - inside.minY) * AGGREGATE_GRID_WIDTH) / spanY)
+  return {col, row, index: row * AGGREGATE_GRID_WIDTH + col}
+}
 
 /**
  * 只有审核通过且未撤回的反馈才进入公开星图体系；
@@ -19,26 +80,42 @@ export function isPublicFeedback(reviewState: ReviewState | undefined, withdrawn
   return !withdrawn && reviewState === 'approved'
 }
 
+export interface AggregateCoverageOptions {
+  /**
+   * 当前快照是否已由「在观测到该星审核通过之后才发起」的 Map 请求结算确认。
+   * 为 false 时表示旧快照可能尚未收录刚过审的新星，证据不足，一律不判为聚合覆盖。
+   */
+  snapshotConfirmed?: boolean
+}
+
 /**
  * 判断一颗公开反馈星在当前快照中是否存在明确的聚合覆盖依据：
- * 快照中必须存在至少一颗公开聚合星（count > 1，非私有星且非目标本身），
- * 且目标星的盘面坐标落在其对应快照跨度的聚合邻域内，而非遥远无关处恰好存在聚合点。
+ * 1. 目标必须是已审核通过且未撤回的公开反馈；
+ * 2. 若调用方提供快照因果确认标志，必须为真（证据不足绝不误报）；
+ * 3. 目标本身未直接出现在当前快照的公开星点中；
+ * 4. 快照中存在至少一颗公开聚合代表星（count > 1、非私有星），与目标落在与服务端完全一致的 32×32 同一分桶内；
+ *    跨过网格线的相邻桶即使几何距离极近也绝不匹配，同桶 count === 1 独立星同样不匹配。
  */
 export function isCoveredByAggregate(
   target: Pick<StarDetail, 'starId' | 'x' | 'y' | 'withdrawn'> & {original: Pick<StarDetail['original'], 'reviewState'>},
   points: readonly DisplayStar[],
   snapshotBounds: Bounds | null,
+  options?: AggregateCoverageOptions,
 ): boolean {
   if (!isPublicFeedback(target.original.reviewState, target.withdrawn)) return false
-  const spanX = snapshotBounds ? Math.max(1, snapshotBounds.maxX - snapshotBounds.minX) : 2 * GALAXY_EDGE
-  const spanY = snapshotBounds ? Math.max(1, snapshotBounds.maxY - snapshotBounds.minY) : 2 * GALAXY_EDGE
-  const cellX = spanX / AGGREGATE_CELL_DIVISOR
-  const cellY = spanY / AGGREGATE_CELL_DIVISOR
+  if (options?.snapshotConfirmed === false) return false
+  if (!points.length) return false
+  const targetCell = aggregateCellOf(target, snapshotBounds)
+  if (!targetCell) return false
+  let sameCellAggregate = false
   for (const point of points) {
-    if (point.privateLabel || (point.count ?? 1) <= 1 || point.starId === target.starId) continue
-    if (Math.abs(target.x - point.x) <= cellX && Math.abs(target.y - point.y) <= cellY) return true
+    if (point.privateLabel) continue
+    if (point.starId === target.starId) return false
+    if ((point.count ?? 1) <= 1) continue
+    const cell = aggregateCellOf(point, snapshotBounds)
+    if (cell && cell.index === targetCell.index) sameCellAggregate = true
   }
-  return false
+  return sameCellAggregate
 }
 
 export interface GalaxyStatusInput {

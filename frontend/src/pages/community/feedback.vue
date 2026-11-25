@@ -12,7 +12,7 @@ import StarQuote from '../../components/feedback/star-quote.vue'
 import VisibleStars from '../../components/feedback/visible-stars.vue'
 import type {ProjectedStar} from '../../composables/feedback/galaxy-camera'
 import {isInView, revalidateCandidates} from '../../composables/feedback/galaxy-camera'
-import {galaxyStatus, isCoveredByAggregate, isPublicFeedback} from '../../composables/feedback/galaxy-status'
+import {galaxyStatus, isCoveredByAggregate, isPublicFeedback, nextSnapshotOrder} from '../../composables/feedback/galaxy-status'
 import {useFeedbackGalaxy} from '../../composables/feedback/useFeedbackGalaxy'
 
 definePage({meta: {layout: 'main', keepAlive: true, title: '反馈星系'}})
@@ -25,7 +25,7 @@ const {
   actionMenu, openActions, dismissActions, openPanel,
   changePersonalPage, openDetail, openMine, hover, changeStar, resetCamera, zoom, locate,
 } = useFeedbackGalaxy(focusAfterPanel)
-const {camera, arrivals, ready, error: mapError, loading: mapLoading, snapshotRegion, viewRegion, snapshotBounds, updateCamera, retry: retryRequest} = map
+const {camera, arrivals, ready, error: mapError, loading: mapLoading, snapshotRegion, viewRegion, snapshotBounds, snapshotSyncedOrder, updateCamera, retry: retryRequest} = map
 const {hover: hoveredStar, hovered, quote} = preview
 const {detail: selectedStar, highlightedEntry, target, busy: detailBusy, unavailable, error: detailError} = detail
 const {editor: openedEditor, draft, error: editorError, saving, length, limit, valid} = editor
@@ -56,16 +56,58 @@ const selectedPublic = computed(() => panel.value === 'detail' && !unavailable.v
   !!selectedStar.value && isPublicFeedback(selectedStar.value.original.reviewState, selectedStar.value.withdrawn))
 const selectedOnMap = computed(() => panel.value === 'detail' && !unavailable.value &&
   !!selectedStar.value && (selectedPublic.value || points.value.some(star => star.starId === target.value)))
+// 按详情自己的坐标判断是否在画面内：聚合时快照只含代表星，不能用「快照里有没有这个 ID」代替。
+const selectedVisible = computed(() => selectedOnMap.value && !!selectedStar.value &&
+  isInView(selectedStar.value, camera.value, map.size.value))
+const selectedClickable = computed(() => visibleStars.value.some(star => star.point.starId === target.value))
+// 因果快照证据：记录当前详情首次被观测为已过审公开态的逻辑序号；
+// 只有在此之后才发起并结算的地图快照，才可证实刚过审的星已被服务端纳入本轮快照计算。
+const selectedApprovedOrder = ref(0)
+let selectedApprovedKey = ''
+let confirmedSyncOrder = 0
+watch([panel, unavailable, selectedStar], () => {
+  const star = panel.value === 'detail' && !unavailable.value ? selectedStar.value : null
+  if (!star || !isPublicFeedback(star.original.reviewState, star.withdrawn)) {
+    selectedApprovedKey = ''
+    selectedApprovedOrder.value = 0
+    confirmedSyncOrder = 0
+    return
+  }
+  const key = `${star.starId}:${star.original.reviewVersion}`
+  if (key !== selectedApprovedKey) {
+    selectedApprovedKey = key
+    selectedApprovedOrder.value = nextSnapshotOrder()
+    confirmedSyncOrder = 0
+  }
+}, {flush: 'sync', immediate: true})
+const selectedSnapshotConfirmed = computed(() =>
+  selectedApprovedOrder.value > 0 && snapshotSyncedOrder.value >= selectedApprovedOrder.value,
+)
+// 公开星在画面内但未出现在旧快照时，主动触发一次条件快照同步：
+// 刚过审的独立星会立刻现身可点；确被同 32×32 桶聚合星代表时，同步结算后再显示聚合提示。
+watch([
+  foreground, selectedPublic, selectedVisible, selectedClickable,
+  mapError, snapshotRegion, viewRegion, snapshotSyncedOrder, selectedApprovedOrder,
+], () => {
+  const order = selectedApprovedOrder.value
+  if (!foreground.value || !selectedPublic.value || !selectedVisible.value || selectedClickable.value) return
+  if (mapError.value || !snapshotRegion.value || snapshotRegion.value !== viewRegion.value) return
+  if (!order || snapshotSyncedOrder.value >= order || confirmedSyncOrder === order) return
+  confirmedSyncOrder = order
+  map.refreshNow()
+}, {flush: 'post', immediate: true})
 const galaxyState = computed(() => galaxyStatus({
   foreground: foreground.value, ready: ready.value, error: mapError.value,
   total: points.value.length, visible: visibleStars.value.length,
   snapshotRegion: snapshotRegion.value, viewRegion: viewRegion.value, loading: mapLoading.value,
   selectedId: selectedOnMap.value ? target.value : '',
   selectedPublic: selectedPublic.value,
-  // 按详情自己的坐标判断是否在画面内：聚合时快照只含代表星，不能用「快照里有没有这个 ID」代替。
-  selectedVisible: selectedOnMap.value && !!selectedStar.value && isInView(selectedStar.value, camera.value, map.size.value),
-  selectedClickable: visibleStars.value.some(star => star.point.starId === target.value),
-  selectedGrouped: selectedPublic.value && !!selectedStar.value && isCoveredByAggregate(selectedStar.value, points.value, snapshotBounds.value),
+  selectedVisible: selectedVisible.value,
+  selectedClickable: selectedClickable.value,
+  selectedGrouped: selectedPublic.value && !!selectedStar.value &&
+    isCoveredByAggregate(selectedStar.value, points.value, snapshotBounds.value, {
+      snapshotConfirmed: selectedSnapshotConfirmed.value,
+    }),
 }))
 // 列表打开时不再提示「画面内无星」；发布面板已打开时，空状态卡片的「提意见」入口是多余的。
 const statusKind = computed(() => {

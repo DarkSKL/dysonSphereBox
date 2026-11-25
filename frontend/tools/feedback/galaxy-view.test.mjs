@@ -50,7 +50,7 @@ after(async () => {
 const {HOME_CAMERA, project, usefulZoomLimit, queryBounds, queryRegionKey, normalizeQueryScope, includeStar, starsNear, AMBIGUOUS_GAP, isInView, resolveClick, revalidateCandidates, resolveFocusFallback} =
   await vite.ssrLoadModule('/galaxy-camera.ts')
 const {SAMPLE_STRIDE, sampleNebula, cloudPresence, cloudExposure, cloudPlan, easeCloudLevel, CLOUD_VISIBLE} = await vite.ssrLoadModule('/galaxy-nebula.ts')
-const {galaxyStatus, isPublicFeedback, isCoveredByAggregate} = await vite.ssrLoadModule('/galaxy-status.ts')
+const {galaxyStatus, isPublicFeedback, isCoveredByAggregate, aggregateCellOf, aggregateGridBounds, nextSnapshotOrder, AGGREGATE_GRID_WIDTH} = await vite.ssrLoadModule('/galaxy-status.ts')
 const {haloScale} = await vite.ssrLoadModule('/galaxy-art.ts')
 const {GALAXY_THEMES} = await vite.ssrLoadModule('/galaxy-theme.ts')
 const {useGalaxyMap} = await vite.ssrLoadModule('/useGalaxyMap.ts')
@@ -67,8 +67,9 @@ function setupMap(t, invoke) {
   globalThis.__mapTest.call = async (op, input) => { calls.push([op, input]); return await invoke(op, input) }
   const scope = effectScope()
   const map = scope.run(() => useGalaxyMap(foreground))
-  t.after(() => scope.stop())
-  return {map, foreground, calls}
+  const stop = () => scope.stop()
+  t.after(stop)
+  return {map, foreground, calls, stop}
 }
 
 test('任意镜头固定银心；轴对称查询包围可见厚度', () => {
@@ -661,4 +662,325 @@ test('日间水墨风调色规格：松烟墨灰阶近单色且控制峰值墨�
   assert.equal(dark.stage, '#03060d')
   assert.equal(dark.nebula.blend, 'screen')
   assert.deepEqual(dark.starColors, {feedback: '#8ad8ff', accepted: '#c4a4ff', implemented: '#ffca80'})
+})
+
+test('复审 P2-1 换账号交接：旧账号慢重试/普通请求在途切账号、连切账号与登出再登录均不吞新账号首次查询', async t => {
+  t.after(() => { sessionKey.value = 'session-1' })
+  const size = {width: 960, height: 640}
+  const waitMacro = (ms = 25) => new Promise(resolve => setTimeout(resolve, ms))
+
+  // 1) 旧账号慢重试在途 → 切换到新账号 A：旧重试立即退场、绝不吞掉新账号 A 首次查询，无需等轮询立即发出并结算。
+  {
+    sessionKey.value = 'acct-old'
+    const pendingBySession = []
+    let failOldInitial = true
+    const {map, stop} = setupMap(t, () => {
+      const current = sessionKey.value
+      if (current === 'acct-old' && failOldInitial) {
+        return Promise.reject(new FeedbackError('requestFailed', '旧账号初始 503'))
+      }
+      const d = later()
+      pendingBySession.push({session: current, d})
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await map.retry()
+    assert.equal(map.error.value, '旧账号初始 503')
+
+    failOldInitial = false
+    let oldRetrySettled = false
+    const oldRetry = map.retry().then(() => { oldRetrySettled = true })
+    await tick()
+    assert.equal(pendingBySession.length, 1)
+    assert.equal(pendingBySession[0].session, 'acct-old')
+    assert.equal(map.loading.value, true)
+
+    // 模拟旧账号曾在放大态，确保换账号重置镜头也不会被 160ms 防抖或旧重试吞掉首次查询。
+    map.updateCamera({...HOME_CAMERA, zoom: 8}, size)
+    // 旧重试在途时切换到新账号 A：
+    sessionKey.value = 'acct-a'
+    await tick()
+    assert.equal(oldRetrySettled, true, '换账号后旧账号的 retry Promise 应立即结束，不阻塞新账号')
+    assert.equal(map.error.value, '', '换账号后旧错误立即清空')
+    assert.equal(map.points.value.length, 0)
+    // 等待 0ms 调度宏任务（远小于 2s 轮询周期）：新账号 A 必须立即发出首次查询，且在旧请求尚未回执时也不被阻塞。
+    await waitMacro(30)
+    assert.equal(pendingBySession.length, 2, '新账号 A 必须立即发出首次地图查询（不能被旧重试吞掉）')
+    assert.equal(pendingBySession[1].session, 'acct-a')
+    assert.equal(map.loading.value, true)
+
+    // 旧账号慢请求此时才返回错误（或旧数据）：绝不覆盖新账号状态，也不提前复位新账号 loading。
+    pendingBySession[0].d.reject(new FeedbackError('stale', '旧账号迟到错误'))
+    await tick(); await tick()
+    assert.equal(map.error.value, '', '旧账号迟到错误不得污染新账号 A')
+    assert.equal(map.loading.value, true, '旧账号收尾不得提前复位新账号 A 的 loading')
+
+    // 新账号 A 首次查询返回：正常渲染星图且 loading 复位。
+    pendingBySession[1].d.resolve({version: 'a#1', unchanged: false, points: [star('9001', 120, 80, 0)]})
+    await oldRetry
+    await tick(); await tick()
+    assert.equal(map.loading.value, false)
+    assert.equal(map.ready.value, true)
+    assert.equal(map.error.value, '')
+    assert.equal(map.snapshotRegion.value, 'all')
+    assert.deepEqual(map.points.value.map(p => p.starId), ['9001'])
+    stop()
+  }
+
+  // 2) 旧账号慢重试在途时连续切换账号（旧 → A → B，含已发出 A 后再切 B）与先切空会话再切回 B：
+  // 绝不对空会话发请求，最终活跃账号 B 稳定发起并结算首次查询，无残留旧数据或错误。
+  {
+    sessionKey.value = 'acct-1'
+    const requests = []
+    let failInitial = true
+    const {map, stop} = setupMap(t, () => {
+      const current = sessionKey.value
+      if (current === 'acct-1' && failInitial) {
+        return Promise.reject(new FeedbackError('requestFailed', 'acct-1 503'))
+      }
+      const d = later()
+      requests.push({session: current, d})
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await map.retry()
+    failInitial = false
+    const pOld = map.retry()
+    await tick()
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].session, 'acct-1')
+
+    // 同步连切 acct-1 → acct-a → ''（登出空会话）：不得对空会话或被取消的 acct-a 发请求。
+    sessionKey.value = 'acct-a'
+    sessionKey.value = ''
+    await waitMacro(30)
+    assert.equal(requests.length, 1, '切到空会话期间绝不发起任何地图请求')
+    assert.equal(map.loading.value, false, '空会话下 loading 保持为 false')
+    // 旧请求在空会话期间返回旧数据：同样不得写入或发起空会话查询。
+    requests[0].d.resolve({version: 'old#stale', unchanged: false, points: [star('1', 0, 0, 0)]})
+    await pOld
+    await waitMacro(30)
+    assert.equal(requests.length, 1, '旧请求在空会话期间结算后仍不得对空会话发请求')
+    assert.equal(map.points.value.length, 0)
+    assert.equal(map.loading.value, false)
+
+    // 再切回新账号 B：立即发起首次查询；在 B 在途时再切到账号 C，B 的迟到结果不得污染 C。
+    sessionKey.value = 'acct-b'
+    await waitMacro(30)
+    assert.equal(requests.length, 2)
+    assert.equal(requests[1].session, 'acct-b')
+    assert.equal(map.loading.value, true)
+
+    sessionKey.value = 'acct-c'
+    await waitMacro(30)
+    assert.equal(requests.length, 3)
+    assert.equal(requests[2].session, 'acct-c')
+    assert.equal(map.loading.value, true)
+
+    // acct-b 迟到成功返回：丢弃；acct-c 结算后正常显示 acct-c 数据。
+    requests[1].d.resolve({version: 'b#stale', unchanged: false, points: [star('9100', 500, 500, 0)]})
+    await tick(); await tick()
+    assert.equal(map.points.value.length, 0, '被取代的 acct-b 数据不得残留到 acct-c')
+    assert.equal(map.loading.value, true)
+
+    requests[2].d.resolve({version: 'c#1', unchanged: false, points: [star('9200', -300, 240, 0)]})
+    await tick(); await tick()
+    assert.equal(map.loading.value, false)
+    assert.equal(map.ready.value, true)
+    assert.equal(map.error.value, '')
+    assert.deepEqual(map.points.value.map(p => p.starId), ['9200'])
+    assert.ok(requests.every(r => r.session !== ''), '所有已发请求均不包含空会话')
+    stop()
+  }
+
+  // 3) 旧账号普通请求（非重试）在途时切换账号：新账号首次查询同样正常衔接且不被旧请求阻塞或污染。
+  {
+    sessionKey.value = 'acct-normal-1'
+    const requests = []
+    const {map, stop} = setupMap(t, () => {
+      const d = later()
+      requests.push({session: sessionKey.value, d})
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await waitMacro(30)
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].session, 'acct-normal-1')
+    assert.equal(map.loading.value, true)
+
+    // 普通请求在途期间切换账号：
+    sessionKey.value = 'acct-normal-2'
+    await waitMacro(30)
+    assert.equal(requests.length, 2, '普通请求在途切账号后新账号立即发出首次查询')
+    assert.equal(requests[1].session, 'acct-normal-2')
+    assert.equal(map.loading.value, true)
+
+    requests[0].d.resolve({version: 'n1#late', unchanged: false, points: [star('100', 0, 0, 0)]})
+    await tick(); await tick()
+    assert.equal(map.points.value.length, 0)
+    assert.equal(map.loading.value, true)
+
+    requests[1].d.resolve({version: 'n2#ok', unchanged: false, points: [star('200', 50, 60, 0)]})
+    await tick(); await tick()
+    assert.equal(map.loading.value, false)
+    assert.equal(map.ready.value, true)
+    assert.deepEqual(map.points.value.map(p => p.starId), ['200'])
+    stop()
+  }
+
+  // 4) 同账号内并发/重复调用 retry() 复用同一在途重试，不发出重复请求。
+  {
+    sessionKey.value = 'acct-dup-retry'
+    let firstFail = true
+    const pending = []
+    const {map, stop} = setupMap(t, () => {
+      if (firstFail) return Promise.reject(new FeedbackError('requestFailed', '503'))
+      const d = later()
+      pending.push(d)
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await map.retry()
+    firstFail = false
+    const r1 = map.retry()
+    const r2 = map.retry()
+    assert.equal(r1, r2, '同账号并发调用 retry 复用同一个 Promise')
+    await tick()
+    assert.equal(pending.length, 1, '同账号并发 retry 只发出一次请求')
+    pending[0].resolve({version: 'dup#ok', unchanged: false, points: [star('300', 10, 10, 0)]})
+    await Promise.all([r1, r2])
+    assert.equal(map.loading.value, false)
+    assert.equal(map.error.value, '')
+    stop()
+  }
+})
+
+test('复审 P2-2 精确 32×32 网格分桶与快照因果证据：相邻桶绝不误报，刚过审未入快照不误报，快照更新后准确切换', async t => {
+  t.after(() => { sessionKey.value = 'session-1' })
+  assert.equal(AGGREGATE_GRID_WIDTH, 32)
+  const detailOf = (id, x, y, reviewState = 'approved', withdrawn = false) => ({
+    starId: String(id), x, y, z: 0, withdrawn, original: {reviewState},
+  })
+
+  // 1) 与 Go 服务端 map_geometry.go:48-52 完全一致的 32×32 网格分桶边界核对：
+  // 1a) 服务端单测同款局部边界 {0, 0, 3199, 3199}：每格恰好 100×100，(99, 99) 与 (100, 99) 仅差 1 单位但分属相邻桶。
+  const local3200 = {minX: 0, minY: 0, maxX: 3199, maxY: 3199}
+  assert.deepEqual(aggregateCellOf({x: 23, y: 48}, local3200), {col: 0, row: 0, index: 0})
+  assert.deepEqual(aggregateCellOf({x: 74, y: 87}, local3200), {col: 0, row: 0, index: 0})
+  assert.deepEqual(aggregateCellOf({x: 99, y: 99}, local3200), {col: 0, row: 0, index: 0})
+  assert.deepEqual(aggregateCellOf({x: 100, y: 99}, local3200), {col: 1, row: 0, index: 1})
+  assert.deepEqual(aggregateCellOf({x: 99, y: 100}, local3200), {col: 0, row: 1, index: 32})
+  assert.deepEqual(aggregateCellOf({x: 3199, y: 3199}, local3200), {col: 31, row: 31, index: 1023})
+  assert.equal(aggregateCellOf({x: 3200, y: 0}, local3200), null, '超出闭区间右界不在任何桶内')
+  assert.equal(aggregateCellOf({x: -1, y: 0}, local3200), null, '超出闭区间左界不在任何桶内')
+
+  // 1b) 全景边界 [-100000, 100000]（span = 200001）：x=0 落第 15 列，x=1 落第 16 列，跨网格线仅差 1 单位。
+  assert.deepEqual(aggregateCellOf({x: -100000, y: -100000}, null), {col: 0, row: 0, index: 0})
+  assert.deepEqual(aggregateCellOf({x: 100000, y: 100000}, null), {col: 31, row: 31, index: 1023})
+  assert.equal(aggregateCellOf({x: 0, y: 0}, null).col, 15)
+  assert.equal(aggregateCellOf({x: 1, y: 0}, null).col, 16)
+  assert.equal(aggregateCellOf({x: 6250, y: 0}, null).col, 16)
+  assert.equal(aggregateCellOf({x: 6251, y: 0}, null).col, 17)
+  // 超出 GALAXY_EDGE 的输入按服务端 intersectGalaxy 截断到 [-100000, 100000]。
+  assert.deepEqual(aggregateGridBounds({minX: -120000, minY: -120000, maxX: 120000, maxY: 120000}),
+    {minX: -100000, minY: -100000, maxX: 100000, maxY: 100000})
+
+  // 2) 全景与局部视区下：同桶 count > 1 返回 true；跨线 1 单位的相邻桶 count > 1 绝不误报；同桶 count === 1 / 省略 count 不误报。
+  const panoAgg = [{...star('7001', 0, 0, 0), count: 5}] // col 15, row 15
+  assert.equal(isCoveredByAggregate(detailOf('7002', -1000, -500), panoAgg, null), true, '全景同桶 (15,15) count>1 正确匹配')
+  assert.equal(isCoveredByAggregate(detailOf('7003', 1, 0), panoAgg, null), false, '全景跨线 1 单位相邻桶 (16,15) 绝不误报')
+  assert.equal(isCoveredByAggregate(detailOf('7004', 0, 1), panoAgg, null), false, '全景跨线 1 单位相邻桶 (15,16) 绝不误报')
+  assert.equal(isCoveredByAggregate(detailOf('7005', -1000, -500), [{...star('7001', 0, 0, 0), count: 1}], null), false, '同桶 count===1 独立星绝不误报')
+  assert.equal(isCoveredByAggregate(detailOf('7006', -1000, -500), [star('7001', 0, 0, 0)], null), false, '同桶未聚合单星（省略 count）绝不误报')
+  assert.equal(isCoveredByAggregate(detailOf('7001', 0, 0), panoAgg, null), false, '代表星自身已在快照中绝不误报')
+  assert.equal(isCoveredByAggregate(detailOf('7002', -1000, -500), [], null), false, '空快照绝不误报')
+
+  // 局部视区 {0,0,3199,3199} 与对称局部 {-16384,-16384,16384,16384}：
+  const localAgg = [{...star('7101', 99, 99, 0), count: 4}] // col 0, row 0
+  assert.equal(isCoveredByAggregate(detailOf('7102', 23, 48), localAgg, local3200), true, '局部同桶 (0,0) count>1 正确匹配')
+  assert.equal(isCoveredByAggregate(detailOf('7103', 100, 99), localAgg, local3200), false, '局部跨线 1 单位相邻桶 (1,0) 绝不误报')
+  assert.equal(isCoveredByAggregate(detailOf('7104', 99, 100), localAgg, local3200), false, '局部跨线 1 单位相邻桶 (0,1) 绝不误报')
+  const symLocal = {minX: -16384, minY: -16384, maxX: 16384, maxY: 16384}
+  assert.equal(isCoveredByAggregate(detailOf('7202', 0, 0), [{...star('7201', 1, 0, 0), count: 3}], symLocal), false, '对称局部边界跨线 x=0 vs x=1 绝不误报')
+  assert.equal(isCoveredByAggregate(detailOf('7203', 100, 100), [{...star('7201', 1, 0, 0), count: 3}], symLocal), false, '对称局部边界跨行 y=0(row=15) vs y=100(row=16) 绝不误报')
+  assert.equal(isCoveredByAggregate(detailOf('7204', 100, -100), [{...star('7201', 1, 0, 0), count: 3}], symLocal), true, '对称局部同桶 (16,15) 正确匹配')
+  assert.equal(isCoveredByAggregate(detailOf('7205', 100, 100), [{...star('7206', 1, 1, 0), count: 3}], symLocal), true, '对称局部同桶 (16,16) 正确匹配')
+
+  // 3) 私有审态与已撤回反馈在同桶 count > 1 且快照已确认下同样绝不误报。
+  for (const [state, withdrawn] of [['pending', false], ['manual', false], ['rejected', false], ['approved', true]]) {
+    assert.equal(
+      isCoveredByAggregate(detailOf('7300', -1000, -500, state, withdrawn), panoAgg, null, {snapshotConfirmed: true}),
+      false,
+      `私有/撤回状态 (${state}, withdrawn=${withdrawn}) 绝不误报聚合提示`,
+    )
+  }
+
+  // 4) 刚过审详情已可见但地图快照更新前 vs 更新后（结合 useGalaxyMap.snapshotSyncedOrder 真实因果链路）：
+  // 即使刚过审的星与已有 count>1 聚合星落在完全相同的 32×32 桶内，
+  // 只要当前快照（含早已在途的旧快照）发起早于过审观测序号，一律不报 selected-grouped；
+  // 直到在过审观测之后发起的新 Map 快照结算后，才按「独立星直接可点」或「同桶聚合星代表」准确切换。
+  {
+    sessionKey.value = 'acct-causal'
+    const size = {width: 960, height: 640}
+    const queue = []
+    const {map} = setupMap(t, () => {
+      const d = later()
+      queue.push(d)
+      return d.promise
+    })
+    const statusFor = (target, approvedOrder) => {
+      const clickable = map.points.value.some(p => p.starId === target.starId)
+      const confirmed = approvedOrder > 0 && map.snapshotSyncedOrder.value >= approvedOrder
+      return galaxyStatus({
+        foreground: true, ready: map.ready.value, error: map.error.value,
+        total: map.points.value.length, visible: map.points.value.length,
+        snapshotRegion: map.snapshotRegion.value, viewRegion: map.viewRegion.value,
+        loading: map.loading.value,
+        selectedId: target.starId, selectedPublic: true, selectedVisible: true,
+        selectedClickable: clickable,
+        selectedGrouped: isCoveredByAggregate(target, map.points.value, map.snapshotBounds.value, {snapshotConfirmed: confirmed}),
+      })
+    }
+
+    // 4a) 初始快照含同桶聚合星 8001 (0, 0, count=6)；随后发起一轮旧轮询（在过审之前启动）。
+    map.updateCamera(HOME_CAMERA, size)
+    await new Promise(r => setTimeout(r, 25))
+    queue[0].resolve({version: 'v1', unchanged: false, points: [{...star('8001', 0, 0, 0), count: 6}]})
+    await tick(); await tick()
+    assert.ok(map.snapshotSyncedOrder.value > 0)
+
+    map.refreshNow()
+    await new Promise(r => setTimeout(r, 25))
+    assert.equal(queue.length, 2, '过审前的旧轮询请求已在途')
+
+    // 4b) 新星 8002 (-500, -500，与 8001 同属全景桶 15,15) 刚通过审核、详情已可见：
+    const newlyApproved = detailOf('8002', -500, -500, 'approved')
+    const approvedOrder = nextSnapshotOrder()
+    assert.equal(statusFor(newlyApproved, approvedOrder), '', '旧快照早于过审观测：即使同桶存在 count>1 也绝不误报聚合提示')
+
+    // 过审前已发起的旧轮询晚于详情到达：其 requestOrder 仍小于 approvedOrder，仍不得误报！
+    queue[1].resolve({version: 'v1', unchanged: true, points: []})
+    await tick(); await tick()
+    assert.ok(map.snapshotSyncedOrder.value < approvedOrder, '旧在途请求结算后快照因果序号仍早于过审观测')
+    assert.equal(statusFor(newlyApproved, approvedOrder), '', '旧在途请求晚到不得触发误报')
+
+    // 4c) 过审观测之后发起新快照查询 → 分支 A：快照将其收录进同桶聚合星（count 变为 7），此时才显示 selected-grouped。
+    map.refreshNow()
+    await new Promise(r => setTimeout(r, 25))
+    assert.equal(queue.length, 3)
+    queue[2].resolve({version: 'v2', unchanged: false, points: [{...star('8001', 0, 0, 0), count: 7}]})
+    await tick(); await tick()
+    assert.ok(map.snapshotSyncedOrder.value >= approvedOrder)
+    assert.equal(statusFor(newlyApproved, approvedOrder), 'selected-grouped', '过审后快照确认同桶聚合覆盖：准确显示 selected-grouped')
+
+    // 4d) 分支 B：再次过审的新星 8003 (-800, -800) 快照更新后以独立星现身：更新前不误报，更新后直接可点且无聚合提示。
+    const standalone = detailOf('8003', -800, -800, 'approved')
+    const order3 = nextSnapshotOrder()
+    assert.equal(statusFor(standalone, order3), '', '独立星快照更新前不误报聚合提示')
+    map.refreshNow()
+    await new Promise(r => setTimeout(r, 25))
+    queue[3].resolve({version: 'v3', unchanged: false, points: [star('8001', 0, 0, 0), star('8003', -800, -800, 0)]})
+    await tick(); await tick()
+    assert.equal(statusFor(standalone, order3), '', '快照更新收录为独立星后直接可点，无聚合提示')
+  }
 })
