@@ -25,6 +25,7 @@ import {workspaceNavigationRegistry, globalNavigationEntries} from '../navigatio
 import {
   accountIsAuthenticated,
   accountSessionKey,
+  accountSessionReady,
   accountSessionStatus,
   accountUser,
   defaultAvatarUrl,
@@ -68,9 +69,22 @@ watch(accountSessionKey, (key, previousKey) => {
 // =============== 当前工作区上下文 ===============
 // 说明：根据当前路由解析游戏或社区工作区，第二层菜单读取对应注册数据；全局页面不挂载子菜单。
 const currentWorkspace = computed(() => (
-  workspaceNavigationRegistry.find((workspace) => route.path === workspace.to || route.path.startsWith(`${workspace.to}/`))
+  workspaceNavigationRegistry.find((workspace) => route.matched.some(({path}) => (
+    path === workspace.to || path.startsWith(`${workspace.to}/`)
+  )))
 ))
 const currentWorkspaceNavigation = computed(() => currentWorkspace.value?.navigation ?? [])
+// 工作区的授权同时管控直达、历史导航和当前页面。会话失效时立即卸载业务视图。
+const requiresWorkspaceSession = computed(() => Boolean(currentWorkspace.value?.requiresAuth))
+const workspaceAllowed = computed(() => !requiresWorkspaceSession.value || !!accountSessionKey.value)
+const workspaceGateText = computed(() => {
+  if (accountSessionStatus.value === 'passwordRequired') return '请先修改账号密码，再进入社区。'
+  if (accountSessionStatus.value === 'offline' || accountSessionStatus.value === 'pending') return '账号暂未完成验证。请在账号窗口重试。'
+  return accountSessionReady.value ? '登录并验证账号后，即可访问社区。' : '正在验证账号…'
+})
+watch([workspaceAllowed, accountSessionReady], ([allowed, ready]) => {
+  if (!allowed && ready) isAccountModalOpen.value = true
+}, {immediate: true})
 const activeNavIndex = computed(() => currentWorkspaceNavigation.value.findIndex((item) => (
   route.path === item.to || (item.to !== currentWorkspace.value?.to && route.path.startsWith(`${item.to}/`))
 )))
@@ -135,10 +149,9 @@ const handleUserEntry = (): void => {
 }
 
 // =============== 登录限制入口 ===============
-// 说明：requiresAuth 入口在未登录时保持可见但降低亮度；点击时提示先登录并打开账号弹窗，不进入页面。
-// 边界：在捕获阶段 preventDefault，RouterLink 检测到 defaultPrevented 后跳过导航；只拦截点击，不拦截已在页面内的停留。
+// 说明：requiresAuth 入口在未验证时保持可见；点击时复用同一账号弹窗。
 const isEntryLocked = (entry: {readonly requiresAuth?: boolean}): boolean => (
-  Boolean(entry.requiresAuth) && !isAccountAuthenticated.value
+  Boolean(entry.requiresAuth) && !accountSessionKey.value
 )
 
 const guardLockedEntry = (event: MouseEvent, entry: {readonly requiresAuth?: boolean, readonly label: string}): void => {
@@ -446,7 +459,17 @@ const closeWindow = (): void => {
 
         <section class="app-main-column">
           <main class="app-page-host">
-            <slot />
+            <!-- ~ 工作区登录门禁 -->
+            <!-- * 说明：账号验证通过后才挂载社区内容。 -->
+            <!-- * 交互：直接访问或失去会话时使用统一账号窗口。 -->
+            <!-- * 依赖：导航注册表和已验证的会话键。 -->
+            <!-- * 边界：门禁关闭时不会保留受限内容。 -->
+            <slot v-if="workspaceAllowed" />
+            <section v-else class="workspace-auth-gate" aria-labelledby="workspace-auth-title">
+              <h1 id="workspace-auth-title">社区</h1>
+              <p role="status">{{ workspaceGateText }}</p>
+              <n-button size="small" @click="handleUserEntry">打开账号窗口</n-button>
+            </section>
           </main>
         </section>
       </div>
@@ -1077,6 +1100,14 @@ const closeWindow = (): void => {
   flex: 1 1 auto;
   overflow: auto;
   scrollbar-gutter: stable;
+}
+
+.workspace-auth-gate {
+  margin: 24px;
+  color: var(--ds-text-primary);
+
+  h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  p { margin: 8px 0 14px; color: var(--ds-text-secondary); }
 }
 
 .app-version-pill,
