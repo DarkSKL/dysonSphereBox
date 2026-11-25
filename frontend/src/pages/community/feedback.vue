@@ -276,7 +276,13 @@ function openFromList(starId: string): void {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
   padding: 11px 16px; border-bottom: 1px solid var(--ds-border-subtle);
 }
-.panel-header h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.panel-header h2 {
+  margin: 0; font-size: 16px; font-weight: 650; padding-bottom: 2px;
+  // 抽屉标题仅作为程序化焦点落点（供无障碍与 Esc/Tab 键盘流接管），去掉默认生硬矩形外框；
+  // 键盘聚焦时仅保留一条贴合产品细边框语言的克制底部微线。
+  &:focus { outline: none; }
+  &:focus-visible { outline: none; box-shadow: inset 0 -1.5px 0 color-mix(in srgb, var(--ds-brand) 42%, transparent); }
+}
 .panel-body { padding: 14px 16px; flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
 .panel-hint, .panel-error, .withdraw-confirm { font-size: 13px; }
 .panel-error { color: var(--ds-error); margin-bottom: 12px; overflow-wrap: anywhere; }

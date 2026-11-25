@@ -72,6 +72,7 @@ let glowsMode = ''
 // 云雾亮度的缓动状态：数量变化时在约 0.45 秒内趋近目标，避免 0→1→少量→密集之间亮度跳变。减少动态效果时直接到位。
 let cloudLevel = -1
 let cloudAt = 0
+let cloudSettling = false
 let drag: {id: number; start: Coordinates; camera: Camera; button: number; sawContext: boolean} | undefined
 let skipNativeMenu = false
 let arrivalsAt = 0
@@ -102,9 +103,13 @@ function cloudTarget(): number {
 }
 
 function easeCloud(now: number, target: number): boolean {
-  const step = easeCloudLevel(cloudLevel, target, now - cloudAt, reduced.matches)
+  // 长时间静止后重新起步（如 0→1 首星落地），首帧按 16ms 步进，避免单帧跳过大半过渡。
+  const rawDt = now - cloudAt
+  const dt = !cloudSettling && rawDt > 120 ? 16 : rawDt
+  const step = easeCloudLevel(cloudLevel, target, dt, reduced.matches)
   cloudAt = now
   cloudLevel = step.level
+  cloudSettling = step.settling
   return step.settling
 }
 
@@ -131,7 +136,7 @@ function draw(now: number): void {
   const hasCloud = plan.draw
   if (plan.release) { nebula?.dispose(); nebula = undefined }
   drawSkyDust(context, props.camera, size.value, palette, cloudLevel)
-  drawSeedGlow(context, size.value, palette, 1 - Math.min(1, cloudLevel * 2.2))
+  drawSeedGlow(context, size.value, palette, 1 - Math.min(.84, cloudLevel * 1.52), props.camera)
   if (!props.stars.length && !settling && !hasCloud) { pauseFlow(); return }
   const flowing = hasCloud && !props.focused && !reduced.matches
   if (flowing) {
@@ -146,18 +151,21 @@ function draw(now: number): void {
     const volume = nebula.render(cloudSamples!, props.camera, size.value, surface.width / width, cloudLevel, palette, props.focused, flowElapsed)
     context.drawImage(volume, 0, 0, width, height)
   }
-  const pulse = reduced.matches || !arrivalsAt ? 0 : Math.max(0, 1 - (now - arrivalsAt) / 260)
+  const rawPulse = reduced.matches || !arrivalsAt ? 0 : Math.max(0, 1 - (now - arrivalsAt) / 420)
+  const pulse = rawPulse * rawPulse
   let pulsing = false
   const scale = haloScale(props.stars.length)
+  const sparse = props.stars.length ? Math.exp(-Math.max(0, props.stars.length - 1) / 4.5) : 0
   for (const star of drawOrder.value) {
     const amount = props.arrivals.has(star.point.starId) ? pulse : 0
     context.globalCompositeOperation = star.point.privateLabel ? 'source-over' : palette.composite
-    drawFeedbackStar(context, glows!, star, amount, detail.value, palette, scale)
+    drawFeedbackStar(context, glows!, star, amount, detail.value, palette, scale, sparse)
     if (amount > 0) pulsing = true
   }
   context.globalCompositeOperation = 'source-over'
   for (const star of props.stars) {
-    if (star.point.starId === props.hovered || star.point.starId === props.selected) drawStarFocus(context, star, palette)
+    const isSelected = star.point.starId === props.selected
+    if (isSelected || star.point.starId === props.hovered) drawStarFocus(context, star, palette, isSelected)
   }
   if (pulsing || settling) scheduleDraw()
   else if (flowing && nebula) {
@@ -384,15 +392,16 @@ defineExpose({focus: () => stage.value?.focus({preventScroll: true})})
 
   &.has-star { cursor: pointer; }
   &.dragging { cursor: grabbing; }
-  &:focus-visible { outline: 2px solid var(--ds-brand); outline-offset: -3px; }
+  &:focus { outline: none; }
+  &:focus-visible { outline: 1.5px solid color-mix(in srgb, var(--ds-brand) 85%, transparent); outline-offset: -2px; }
 
   canvas { width: 100%; height: 100%; display: block; }
   .star-caption {
     position: absolute; height: 18px; padding: 0 4px; border: 0; border-radius: 2px;
     background: transparent; color: var(--ds-text-primary); text-align: center; white-space: nowrap;
-    text-shadow: 0 1px 3px var(--ds-bg-shell), 0 0 4px var(--ds-bg-shell);
+    text-shadow: 0 0 6px var(--ds-bg-shell), 0 1px 2px var(--ds-bg-shell);
     font: 500 12px/18px var(--ds-font-display, sans-serif); font-variant-numeric: tabular-nums; cursor: pointer;
-    &::before { content: ''; position: absolute; left: -4px; top: 50%; width: 5px; height: 1px; background: currentColor; opacity: .45; }
+    &::before { content: ''; position: absolute; left: -4px; top: 50%; width: 5px; height: 1px; background: currentColor; opacity: .36; }
     &.on-left::before { left: auto; right: -4px; }
     &:hover, &:focus-visible { background: var(--ds-bg-panel-elevated); outline: 1px solid var(--ds-brand); }
   }

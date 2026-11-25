@@ -74,6 +74,8 @@ watch(() => props.opened, async (opened) => {
   max-height: calc(100% - 75px); overflow: auto; padding: 12px;
   border: 1px solid var(--ds-border-subtle); border-radius: 4px;
   color: var(--ds-text-primary); background: var(--ds-bg-panel-elevated);
+  &:focus { outline: none; }
+  &:focus-visible { outline: 1.5px solid color-mix(in srgb, var(--ds-brand) 78%, transparent); outline-offset: -2px; }
 }
 header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 h3 { margin: 0; font-size: 14px; font-weight: 600; }

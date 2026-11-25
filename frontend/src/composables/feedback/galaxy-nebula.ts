@@ -137,61 +137,73 @@ export function sampleNebula(points: readonly NebulaSource[], budget = particleB
     const armStrength = Math.exp(-3.6 * Math.sin(theta + .65 - phase) ** 2)
     const weight = 1 + Math.min(1.6, .21 * Math.log2(Math.max(1, star.count ?? 1)))
     const seedPhase = random()
-    // 同一缕云丝中的颗粒共享弯曲、相位和速度，两缕错开半程交接。端部稀薄，中段保留可追踪的亮纹。
-    const strands = [0, 1].map(k => ({
-      offset: normal() * .029, span: .024 + .030 * random(), lane: (k ? .072 : -.095) + .032 * normal(),
-      turn: random() * 6.28, height: normal() * 980, age: (seedPhase + k * .5) % 1,
-      rate: k ? 6 : 5, travel: (.061 + .028 * random()) * (.75 + .25 * armStrength),
+    // 三缕交错的细纤维丝缕（端部柔和渐隐，避免孤星出现生硬划痕感，密集时织出通透多层丝缕）。
+    const strands = [0, 1, 2].map(k => ({
+      offset: normal() * .034, span: .032 + .038 * random(),
+      lane: ((k - 1) * .082) + .038 * normal(),
+      turn: random() * 6.28, height: normal() * 1050, age: (seedPhase + k / 3) % 1,
+      rate: 4.5 + k * .8, travel: (.056 + .026 * random()) * (.72 + .28 * armStrength),
     }))
 
     for (let i = 0; i < budget; i++, cursor += SAMPLE_STRIDE) {
       const slot = i % 16
-      const fog = slot === 0
+      const fog = slot === 0 || slot === 8
+      const cocoon = slot === 4 || slot === 11
       const silk = slot === 2 || slot === 9 || slot === 14
-      const strand = strands[Math.floor(i / 16) % 2]
-      const inStrand = radius > .12 && (silk || slot === 6 || slot === 12)
-      const diffuse = !inStrand && random() < .23
+      const strand = strands[Math.floor(i / 16) % strands.length]
+      const inStrand = !cocoon && radius > .12 && (silk || slot === 6 || slot === 12)
+      const diffuse = !inStrand && !cocoon && random() < .38
       const u = random() * 2 - 1
       let x: number, y: number, z: number
-      if (inStrand) {
-        const r = Math.max(.012, radius + strand.offset + strand.span * u + normal() * .0014)
-        const weave = .021 * Math.sin(3.4 * u + strand.turn) + .008 * Math.sin(7 * u + strand.turn)
-        const a = theta + spiralPhase(r) - phase + strand.lane + weave + normal() * .012
+      if (cocoon) {
+        // 贴合星体自身的局部柔和气晕：单星时自然托住反馈星，避免孤零零的尖锐月牙划痕。
+        const spread = DISK_RADIUS * (.020 + .050 * Math.sqrt(random()))
+        const drift = random() * 6.2832
+        x = star.x + Math.cos(drift) * spread + normal() * spread * .30
+        y = star.y + Math.sin(drift) * spread + normal() * spread * .30
+        z = height + normal() * spread * .40
+      } else if (inStrand) {
+        const r = Math.max(.012, radius + strand.offset + strand.span * u + normal() * .0024)
+        const weave = .026 * Math.sin(3.2 * u + strand.turn) + .010 * Math.sin(6.8 * u + strand.turn)
+        const a = theta + spiralPhase(r) - phase + strand.lane + weave + normal() * .020
         x = DISK_RADIUS * r * Math.cos(a)
         y = DISK_RADIUS * r * Math.sin(a)
-        z = height + strand.height + 680 * Math.sin(2.3 * u + strand.turn) + normal() * 320
+        z = height + strand.height + 680 * Math.sin(2.3 * u + strand.turn) + normal() * 380
       } else if (radius < .10 || (radius < .19 && random() < (.19 - radius) / .09)) {
-        const spread = DISK_RADIUS * (diffuse ? .070 + .060 * random() : .021 + .034 * random())
+        const spread = DISK_RADIUS * (diffuse ? .078 + .068 * random() : .024 + .038 * random())
         x = star.x + normal() * spread
         y = star.y + normal() * spread
         z = height + normal() * spread * .76
       } else {
-        const r = Math.abs(radius + normal() * (diffuse ? .12 : .061 + .037 * radius))
+        const r = Math.abs(radius + normal() * (diffuse ? .165 : .074 + .046 * radius))
         const lane = random()
-        const across = diffuse ? normal() * .67 : lane < .48 ? -.105 + normal() * .055 :
-          lane < .77 ? .092 + normal() * .048 : normal() * .21
-        const ripple = .018 * (Math.sin(28 * r + theta) + Math.sin(54 * r - theta))
+        const across = diffuse ? normal() * .92 : lane < .46 ? -.116 + normal() * .076 :
+          lane < .76 ? .104 + normal() * .068 : normal() * .30
+        const ripple = .022 * (Math.sin(26 * r + theta) + Math.sin(50 * r - theta))
         const a = theta + spiralPhase(r) - phase + across + ripple
         x = DISK_RADIUS * r * Math.cos(a)
         y = DISK_RADIUS * r * Math.sin(a)
-        z = height + normal() * (diffuse ? 3700 : fog ? 1800 : 880)
+        z = height + normal() * (diffuse ? 4100 : fog ? 2200 : 1020)
       }
 
       const r = Math.hypot(x, y) / DISK_RADIUS, angle = Math.atan2(y, x)
-      const core = Math.exp(-24 * r * r)
+      const core = Math.exp(-20 * r * r)
       const seam = Math.sin(angle + .65 - spiralPhase(r) - .11 - .055 * Math.sin(30 * r + Math.sin(3 * angle)))
-      const dustLane = (1 - core) * Math.exp(-seam * seam / .008)
-      const knots = .78 + .22 * Math.sin(40 * r + 2 * angle + Math.sin(17 * r - angle))
-      const temp = diffuse && random() < .32 ? .42 * r : r
-      const tint = Math.round(Math.max(0, Math.min(1, temp + normal() * (inStrand ? .025 : .06))) * (PALETTE_SIZE - 1))
-      const diameter = fog ? (diffuse ? 12500 : 4800) + random() ** 2 * 13500 :
-        silk ? 650 + random() ** 2 * 2200 : 120 + random() ** 4 * 490
-      const emission = fog ? (diffuse ? .022 : .054) + .010 * core :
-        silk ? .105 + .085 * random() : .13 + .65 * random() ** 3
-      // 亮脊靠向前缘，外侧拖出薄尾；散落在臂间的反馈保留较松散的局部气体。
-      const shoulder = Math.exp(-((u + .32) ** 2) / .085)
-      const taper = inStrand ? (.22 + .63 * (1 - u * u) + .61 * shoulder) * (.38 + .62 * armStrength) : 1
-      const edge = Math.max(0, Math.min(1, (1.12 - r) / .17))
+      const dustLane = (1 - core) * Math.exp(-seam * seam / .009)
+      const knots = .74 + .26 * Math.sin(38 * r + 2 * angle + Math.sin(17 * r - angle))
+      const temp = diffuse && random() < .36 ? .46 * r : r
+      const tint = Math.round(Math.max(0, Math.min(1, temp + normal() * (inStrand ? .028 : .065))) * (PALETTE_SIZE - 1))
+      const diameter = cocoon ? 3600 + random() ** 2 * 6600 :
+        fog ? (diffuse ? 9400 : 4200) + random() ** 2 * 9800 :
+        silk ? 540 + random() ** 2 * 2000 : 110 + random() ** 4 * 420
+      const emission = cocoon ? .054 + .022 * (1 - Math.min(1, Math.hypot(x - star.x, y - star.y) / (DISK_RADIUS * .095))) :
+        fog ? (diffuse ? .017 : .034) + .008 * core :
+        silk ? .130 + .105 * random() : .12 + .58 * random() ** 3
+      // 纤维端部按平滑钟形衰减，消除生硬截断；外侧拖出薄尾。
+      const shoulder = Math.exp(-((u + .26) ** 2) / .11)
+      const bell = Math.max(0, 1 - u * u) ** 1.35
+      const taper = inStrand ? (.14 + .70 * bell + .52 * shoulder * bell) * (.40 + .60 * armStrength) : 1
+      const edge = Math.max(0, Math.min(1, (1.14 - r) / .22))
 
       samples[cursor] = x
       samples[cursor + 1] = y
@@ -202,11 +214,11 @@ export function sampleNebula(points: readonly NebulaSource[], budget = particleB
       samples[cursor + 6] = star.x
       samples[cursor + 7] = star.y
       samples[cursor + 8] = height
-      const travel = inStrand ? strand.travel : fog ? (diffuse ? .025 : .043) : .037 + .022 * random()
+      const travel = cocoon ? .020 + .014 * random() : inStrand ? strand.travel : fog ? (diffuse ? .024 : .040) : .036 + .022 * random()
       writeTrack(samples, cursor, r, angle, travel, (inStrand ? .6 * strand.height : 540 * Math.sin(2 * angle + 4 * r)))
-      samples[cursor + 15] = inStrand ? (strand.age + .026 * u + .012 * random() + 1) % 1 : random()
-      samples[cursor + 16] = inStrand ? strand.rate : fog ? (diffuse ? 2 : 3) : 4 + (i % 3)
-      samples[cursor + 17] = silk ? 1.5 + (1.15 + 1.6 * random()) * armStrength : fog ? (diffuse ? 1.25 : 1.85) : 1
+      samples[cursor + 15] = inStrand ? (strand.age + .024 * u + .012 * random() + 1) % 1 : random()
+      samples[cursor + 16] = inStrand ? strand.rate : (fog || cocoon) ? (diffuse ? 2 : 2.5) : 4 + (i % 3)
+      samples[cursor + 17] = silk ? 1.85 + (1.45 + 1.85 * random()) * armStrength : cocoon ? 1.35 + .45 * random() : fog ? (diffuse ? 1.55 : 2.25) : 1.05
       const front = 24 * r + .9 * Math.sin(2 * angle - 7 * r)
       samples[cursor + 18] = Math.cos(front)
       samples[cursor + 19] = Math.sin(front)

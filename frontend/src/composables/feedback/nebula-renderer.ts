@@ -37,13 +37,13 @@ void main() {
   axis = projected > 0.01 ? direction / projected : vec2(1.0, 0.0);
   aspect = mix(1.0, life.z, clamp(projected / max(1.0, length(tangent)), 0.0, 1.0));
   float diameter = optics.x * pixelScale * sqrt(aspect);
-  float materialLimit = optics.x < 640.0 ? 1.8 + optics.x * .0035 : clamp(8.0 + optics.x * .014, 10.0, 180.0);
+  float materialLimit = optics.x < 640.0 ? 1.7 + optics.x * .0032 : clamp(8.0 + optics.x * .013, 10.0, 150.0);
   float limit = min(maxSize, pixelRatio * materialLimit);
-  gl_PointSize = max(1.2 * pixelRatio, diameter * inversesqrt(1.0 + diameter * diameter / (limit * limit)));
-  float fade = smoothstep(0.0, .16, age) * smoothstep(0.0, .16, 1.0 - age);
+  gl_PointSize = max(1.15 * pixelRatio, diameter * inversesqrt(1.0 + diameter * diameter / (limit * limit)));
+  float fade = smoothstep(0.0, .18, age) * smoothstep(0.0, .18, 1.0 - age);
   float front = .5 + .5 * dot(dustLane.xy, shadowClock);
-  float transmission = 1.0 - dustLane.z * (.29 + .59 * front * front);
-  light = edgeLight * exposure * optics.y * 1.19 * fade * transmission * clamp(diameter / (1.2 * pixelRatio), .45, 1.0);
+  float transmission = 1.0 - dustLane.z * (.26 + .52 * front * front);
+  light = edgeLight * exposure * optics.y * 1.19 * fade * transmission * clamp(diameter / (1.15 * pixelRatio), .42, 1.0);
   tint = (optics.z + 0.5) / 64.0;
 }`
 const fragmentSource = `
@@ -56,7 +56,7 @@ void main() {
   vec2 local = vec2(dot(p, axis), dot(p, vec2(-axis.y, axis.x)) * aspect);
   float r = dot(local, local);
   if (r >= 1.0) discard;
-  float a = clamp(light * exp(-3.3 * r) * (1.0 - smoothstep(0.65, 1.0, r)), 0.0, 1.0);
+  float a = clamp(light * exp(-4.0 * r) * (1.0 - smoothstep(0.42, 1.0, r)), 0.0, 1.0);
   gl_FragColor = vec4(texture2D(palette, vec2(tint, 0.5)).rgb * a, a);
 }`
 
@@ -148,7 +148,7 @@ function softwareBrush(index: number, theme: GalaxyTheme): HTMLCanvasElement {
   const ctx = brush.getContext('2d')!
   const color = nebulaPaletteFor(theme).slice(index * 4, index * 4 + 3).join(',')
   const gradient = ctx.createRadialGradient(24, 24, 0, 24, 24, 24)
-  for (const [stop, alpha] of [[0, 1], [.35, .67], [.65, .25], [1, 0]]) gradient.addColorStop(stop, 'rgba(' + color + ',' + alpha + ')')
+  for (const [stop, alpha] of [[0, 1], [.22, .62], [.48, .22], [.74, .05], [1, 0]]) gradient.addColorStop(stop, 'rgba(' + color + ',' + alpha + ')')
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, 48, 48)
   return brush
