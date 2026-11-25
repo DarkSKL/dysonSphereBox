@@ -84,6 +84,20 @@ export function revalidateCandidates(ids: readonly string[], stars: readonly Pro
   return kept
 }
 
+/**
+ * 列表条目因快照更新或页码回退变化时，计算应接替焦点的目标星 ID。
+ * - 原聚焦项仍在当前页（或原本未聚焦候选项）：返回 null，不移动焦点；
+ * - 原聚焦项离开当前页且当前页仍有可选条目：优先接替同索引项，超出范围则取当前页最后一项；
+ * - 当前页为空：返回空串，由调用方决定回到容器或星图。
+ */
+export function resolveFocusFallback(prevIds: readonly string[], nextIds: readonly string[], focusedId: string): string | null {
+  if (!focusedId || nextIds.includes(focusedId)) return null
+  if (!nextIds.length) return ''
+  const prevIndex = prevIds.indexOf(focusedId)
+  if (prevIndex < 0) return nextIds[0]
+  return nextIds[Math.min(prevIndex, nextIds.length - 1)]
+}
+
 export function projectVisibleStars(points: readonly DisplayStar[], camera: Camera, size: ViewSize): ProjectedStar[] {
   const frame = cameraFrame(camera, size)
   const visible: ProjectedStar[] = []
@@ -148,6 +162,34 @@ export function queryBounds(camera: Camera, size: ViewSize): Bounds | null {
   const expand = (extent: number) => Math.min(GALAXY_EDGE, Math.ceil(2 ** (Math.ceil(4 * Math.log2(Math.max(1, extent))) / 4)))
   const hw = expand(view.maxX), hh = expand(view.maxY)
   return hw === GALAXY_EDGE && hh === GALAXY_EDGE ? null : {minX: -hw, minY: -hh, maxX: hw, maxY: hh}
+}
+
+export type QueryScope = 'all' | Bounds | null
+
+/**
+ * 把查询范围归一化为可稳定比较的字符串键：全景（null 或 'all'）归为 'all'，
+ * 局部边界四项坐标按 1 单位整数取整（消除 -0 与微小浮点抖动），空串表示尚无成功快照。
+ */
+export function normalizeQueryScope(scope: QueryScope | string | undefined): string {
+  if (scope === undefined || scope === null || scope === 'all') return 'all'
+  if (typeof scope === 'string') {
+    const trimmed = scope.trim()
+    if (!trimmed) return ''
+    if (trimmed === 'all') return 'all'
+    const parts = trimmed.split(',')
+    if (parts.length !== 4) return trimmed
+    const nums = parts.map(Number)
+    if (nums.some(n => !Number.isFinite(n))) return trimmed
+    return nums.map(n => Math.round(n) || 0).join(',')
+  }
+  const nums = [scope.minX, scope.minY, scope.maxX, scope.maxY]
+  if (nums.some(n => !Number.isFinite(n))) return ''
+  return nums.map(n => Math.round(n) || 0).join(',')
+}
+
+/** 将 queryBounds 的结果转为快照查询范围键。 */
+export function queryRegionKey(bounds: Bounds | null): string {
+  return normalizeQueryScope(bounds)
 }
 
 export function boundedCamera(camera: Camera): Camera {

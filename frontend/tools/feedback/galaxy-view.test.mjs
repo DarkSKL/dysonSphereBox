@@ -47,10 +47,10 @@ after(async () => {
   if (priorRAF === undefined) delete globalThis.requestAnimationFrame
   else globalThis.requestAnimationFrame = priorRAF
 })
-const {HOME_CAMERA, project, usefulZoomLimit, queryBounds, includeStar, starsNear, AMBIGUOUS_GAP, isInView, resolveClick, revalidateCandidates} =
+const {HOME_CAMERA, project, usefulZoomLimit, queryBounds, queryRegionKey, normalizeQueryScope, includeStar, starsNear, AMBIGUOUS_GAP, isInView, resolveClick, revalidateCandidates, resolveFocusFallback} =
   await vite.ssrLoadModule('/galaxy-camera.ts')
 const {SAMPLE_STRIDE, sampleNebula, cloudPresence, cloudExposure, cloudPlan, easeCloudLevel, CLOUD_VISIBLE} = await vite.ssrLoadModule('/galaxy-nebula.ts')
-const {galaxyStatus} = await vite.ssrLoadModule('/galaxy-status.ts')
+const {galaxyStatus, isPublicFeedback, isCoveredByAggregate} = await vite.ssrLoadModule('/galaxy-status.ts')
 const {haloScale} = await vite.ssrLoadModule('/galaxy-art.ts')
 const {useGalaxyMap} = await vite.ssrLoadModule('/useGalaxyMap.ts')
 const star = (id, x, y, z) => ({starId: String(id), x, y, z, progress: 'feedback', brightness: .4})
@@ -166,45 +166,59 @@ test('点击命中：明显最近的星直接打开，难以分辨时交给附�
 })
 
 const status = (over = {}) => ({
-  foreground: true, ready: true, error: '', total: 5, visible: 5, snapshotIsPanorama: true, viewIsPanorama: true, loading: false,
-  selectedId: '', selectedVisible: false, selectedClickable: false, aggregated: false, ...over,
+  foreground: true, ready: true, error: '', total: 5, visible: 5, snapshotRegion: 'all', viewRegion: 'all', loading: false,
+  selectedId: '', selectedPublic: false, selectedVisible: false, selectedClickable: false, selectedGrouped: false, ...over,
 })
 
 test('状态提示：各状态互斥，首次加载完成前不误报无反馈', () => {
   assert.equal(galaxyStatus(status()), '')
-  assert.equal(galaxyStatus(status({ready: false, total: 0, visible: 0, snapshotIsPanorama: false})), 'loading')
+  assert.equal(galaxyStatus(status({ready: false, total: 0, visible: 0, snapshotRegion: ''})), 'loading')
   assert.equal(galaxyStatus(status({error: '失败'})), 'error')
   assert.equal(galaxyStatus(status({error: '失败', ready: false})), 'error', '失败优先于加载中')
   assert.equal(galaxyStatus(status({total: 0, visible: 0})), 'empty')
   assert.equal(galaxyStatus(status({foreground: false, ready: false})), '')
 })
 
-test('P1 回到全景：全景回执到达前不得显示「确实无反馈」，也不显示「画面内无星」', () => {
-  // 局部放大后快照为空：画面内没有星，这是局部范围，不是整片星图为空。
-  const local = status({total: 0, visible: 0, snapshotIsPanorama: false, viewIsPanorama: false})
-  assert.equal(galaxyStatus(local), 'offscreen')
+test('P1 回到全景与 P2-2 局部视区切换：按实际查询范围比较并归一化精度，等待新回执时不沿用旧空态', () => {
+  // 精度归一化：微小浮点抖动和 -0 视为同一视区。
+  assert.equal(normalizeQueryScope({minX: -8192.00001, minY: -0, maxX: 8191.99999, maxY: 8192}), '-8192,0,8192,8192')
+  assert.equal(normalizeQueryScope('-8192.00001,-8191.99999,8192.00001,8191.99999'), '-8192,-8192,8192,8192')
+  assert.equal(normalizeQueryScope(null), 'all')
+  assert.equal(normalizeQueryScope('all'), 'all')
+  assert.equal(normalizeQueryScope(''), '')
+  // 同一局部空视区静止（含微小浮点抖动）：正常显示「当前画面里没有星」。
+  const localA = '-8192,-8192,8192,8192'
+  const localB = '-32768,-32768,32768,32768'
+  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotRegion: localA, viewRegion: localA})), 'offscreen')
+  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotRegion: localA, viewRegion: {minX: -8192.00002, minY: -8191.99998, maxX: 8192.00001, maxY: 8191.99999}})), 'offscreen', '同视区微小浮点抖动仍判同一范围')
+  // 从空局部视区 A 拉远/平移到另一局部视区 B：160ms 请求合并窗口（loading=false）和请求在途（loading=true）均不得沿用旧空态。
+  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotRegion: localA, viewRegion: localB, loading: false})), '', '160ms 请求合并窗口期不得沿用旧局部空提示')
+  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotRegion: localA, viewRegion: localB, loading: true})), '', '局部新范围在途期不得沿用旧局部空提示')
+  // 新局部视区 B 到达后：若无星继续报 offscreen，若有星则隐藏。
+  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotRegion: localB, viewRegion: localB})), 'offscreen')
+  assert.equal(galaxyStatus(status({total: 3, visible: 3, snapshotRegion: localB, viewRegion: localB})), '')
   // 点「回到全景」：镜头已回全景范围，但最近一次成功快照仍是局部，等待期间两种提示都不出现。
-  const waiting = status({total: 0, visible: 0, snapshotIsPanorama: false, viewIsPanorama: true, loading: true})
+  const waiting = status({total: 0, visible: 0, snapshotRegion: localA, viewRegion: 'all', loading: true})
   assert.notEqual(galaxyStatus(waiting), 'empty')
   assert.equal(galaxyStatus(waiting), '')
   assert.equal(galaxyStatus({...waiting, loading: false}), '', '请求被排队、尚未发出时同样不能误报')
   // 全景回执到达：真的为空才宣布无反馈。
-  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotIsPanorama: true, viewIsPanorama: true})), 'empty')
+  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotRegion: 'all', viewRegion: 'all'})), 'empty')
   assert.equal(galaxyStatus(status({total: 6, visible: 6})), '')
   // 反向：全景快照为空后放大，等待局部回执期间不报任何提示。
-  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotIsPanorama: true, viewIsPanorama: false})), '')
+  assert.equal(galaxyStatus(status({total: 0, visible: 0, snapshotRegion: 'all', viewRegion: localA})), '')
 })
 
 test('P6 重试等待期间：保留错误提示，不出现「确实无反馈」', () => {
   const retrying = status({error: '连接失败', ready: true, total: 0, visible: 0, loading: true})
   assert.equal(galaxyStatus(retrying), 'error')
-  assert.equal(galaxyStatus(status({error: '连接失败', ready: false, total: 0, visible: 0, loading: true, snapshotIsPanorama: false})), 'error')
+  assert.equal(galaxyStatus(status({error: '连接失败', ready: false, total: 0, visible: 0, loading: true, snapshotRegion: ''})), 'error')
   assert.equal(galaxyStatus({...retrying, loading: false}), 'error', '再次失败：错误保留')
   assert.equal(galaxyStatus(status({error: '', total: 6, visible: 6})), '')
   assert.equal(galaxyStatus(status({error: '', total: 0, visible: 0})), 'empty')
 })
 
-test('P3 聚合星：所读星按自己的坐标判断是否在画面内，聚合隐藏是独立状态', () => {
+test('P3 与 P2-4 聚合星与私有审核状态：仅公开且有明确聚合依据的星才显示聚合提示，私有待审/转人工绝不误报', () => {
   const size = {width: 950, height: 746}
   const camera = {...HOME_CAMERA, zoom: 8}
   const near = {x: 800, y: 500, z: 0}
@@ -213,14 +227,75 @@ test('P3 聚合星：所读星按自己的坐标判断是否在画面内，聚�
   assert.equal(isInView(far, camera, size), false)
   assert.equal(isInView(far, HOME_CAMERA, size), true, '全景时外围星在画面内')
   assert.equal(isInView(near, camera, {width: 0, height: 0}), false)
-  // A) 成员在画面内但快照里只有已移出画面的代表星：不是移出画面，而是聚合隐藏。
-  const grouped = status({selectedId: '5002', selectedVisible: true, selectedClickable: false, aggregated: true})
-  assert.equal(galaxyStatus(grouped), 'selected-grouped')
-  assert.notEqual(galaxyStatus(grouped), 'selected-offscreen')
-  assert.equal(galaxyStatus({...grouped, aggregated: false}), '', '没有聚合证据时不归因于聚合')
-  // B) 成员坐标确实移出画面：提示移出，与代表星是否可见无关。
-  assert.equal(galaxyStatus(status({selectedId: '5002', selectedVisible: false, selectedClickable: true, aggregated: true})), 'selected-offscreen')
-  assert.equal(galaxyStatus(status({selectedId: '5002', selectedVisible: true, selectedClickable: true, aggregated: true})), '')
+
+  const detailOf = (id, x, y, reviewState = 'approved', withdrawn = false) => ({
+    starId: String(id), x, y, z: 0, withdrawn, original: {reviewState},
+  })
+  const nearGroup = [{...star('5001', 1800, 900, 0), count: 6}]
+  const farGroup = [{...star('5001', 70000, -30000, 0), count: 6}]
+  const localBounds = {minX: -16384, minY: -16384, maxX: 16384, maxY: 16384}
+
+  // 1) 待审私有详情 + 画面内未出现在个人星点列表 + 快照中紧邻/同坐标有聚合点 → 不报 selected-grouped。
+  const pendingDetail = detailOf('9101', 1800, 900, 'pending')
+  assert.equal(isPublicFeedback(pendingDetail.original.reviewState, pendingDetail.withdrawn), false)
+  assert.equal(isCoveredByAggregate(pendingDetail, nearGroup, null), false)
+  assert.equal(galaxyStatus(status({
+    selectedId: '9101', selectedPublic: false, selectedVisible: true, selectedClickable: false, selectedGrouped: true,
+  })), '', '待审私有反馈即使传了聚合标记也绝不报 selected-grouped')
+
+  // 2) 转人工私有详情 + 画面内未出现在个人星点列表 + 快照有聚合点 → 不报 selected-grouped。
+  const manualDetail = detailOf('9102', 1800, 900, 'manual')
+  assert.equal(isPublicFeedback(manualDetail.original.reviewState, manualDetail.withdrawn), false)
+  assert.equal(isCoveredByAggregate(manualDetail, nearGroup, null), false)
+  assert.equal(galaxyStatus(status({
+    selectedId: '9102', selectedPublic: false, selectedVisible: true, selectedClickable: false, selectedGrouped: false,
+  })), '', '转人工私有反馈不报 selected-grouped')
+
+  // 驳回 / 撤回同样不归入公开聚合体系。
+  assert.equal(isCoveredByAggregate(detailOf('9103', 1800, 900, 'rejected'), nearGroup, null), false)
+  assert.equal(isCoveredByAggregate(detailOf('9104', 1800, 900, 'approved', true), nearGroup, null), false)
+
+  // 3) 公开详情未直接列出，但聚合点在无关远处（全景与局部均无聚合依据）→ 不报 selected-grouped。
+  const approvedNear = detailOf('5002', 1500, 1000, 'approved')
+  assert.equal(isCoveredByAggregate(approvedNear, farGroup, null), false, '全景下远处无关聚合点不构成聚合依据')
+  assert.equal(isCoveredByAggregate(approvedNear, [{...star('5001', -9000, 6000, 0), count: 6}], localBounds), false, '局部跨度下远处聚合点不构成聚合依据')
+  assert.equal(galaxyStatus(status({
+    selectedId: '5002', selectedPublic: true, selectedVisible: true, selectedClickable: false,
+    selectedGrouped: isCoveredByAggregate(approvedNear, farGroup, null),
+  })), '')
+
+  // 4) 公开详情确有近邻聚合依据：在视区内报 selected-grouped；移出视区报 selected-offscreen 且 includeStar 按成员坐标拉回。
+  assert.equal(isCoveredByAggregate(approvedNear, nearGroup, null), true, '全景近邻聚合点构成明确聚合依据')
+  assert.equal(isCoveredByAggregate(approvedNear, nearGroup, localBounds), true, '局部近邻聚合点构成明确聚合依据')
+  assert.equal(galaxyStatus(status({
+    selectedId: '5002', selectedPublic: true, selectedVisible: true, selectedClickable: false, selectedGrouped: true,
+  })), 'selected-grouped')
+  const approvedFar = detailOf('5009', -60000, 30000, 'approved')
+  const farCluster = [{...star('5008', -58500, 29000, 0), count: 5}]
+  assert.equal(isCoveredByAggregate(approvedFar, farCluster, null), true)
+  assert.equal(galaxyStatus(status({
+    selectedId: '5009', selectedPublic: true, selectedVisible: false, selectedClickable: false, selectedGrouped: true,
+  })), 'selected-offscreen')
+  const pulled = includeStar(camera, approvedFar, size)
+  assert.equal(isInView(approvedFar, pulled, size), true, '回到这颗星按成员自己的坐标把星拉回画面')
+  assert.equal(galaxyStatus(status({
+    selectedId: '5002', selectedPublic: true, selectedVisible: true, selectedClickable: true, selectedGrouped: true,
+  })), '', '直接可点选时不提示聚合隐藏')
+})
+
+test('P2-3 候选列表焦点接替：移除聚焦项后按原索引或末项接替，翻页回退落到有效项，列表外不抢焦点', () => {
+  // 移除中间项：接替同索引后继项。
+  assert.equal(resolveFocusFallback(['6001', '6002', '6003'], ['6001', '6003'], '6002'), '6003')
+  // 移除末项：超出范围则落到当前页最后一项。
+  assert.equal(resolveFocusFallback(['6001', '6002', '6003'], ['6001', '6002'], '6003'), '6002')
+  // 第 2 页唯一项被移除、页码回退到第 1 页：落到第 1 页有效候选按钮。
+  assert.equal(resolveFocusFallback(['6013'], ['6001', '6002', '6003'], '6013'), '6001')
+  // 聚焦项仍在当前页：不移动焦点。
+  assert.equal(resolveFocusFallback(['6001', '6002'], ['6001', '6002', '6003'], '6002'), null)
+  // 焦点原本不在候选按钮上：绝不抢焦点。
+  assert.equal(resolveFocusFallback(['6001', '6002'], ['6002'], ''), null)
+  // 当前页全部移除：返回空串，由列表/外层回退容器或星图。
+  assert.equal(resolveFocusFallback(['6001'], [], '6001'), '')
 })
 
 test('P4 命中：半径内超过 12 颗星全部保留，拥挤时不截断', () => {
@@ -278,50 +353,88 @@ test('P2 云雾淡出：最后一颗星消失后过渡中间帧仍绘制云雾�
   assert.ok(CLOUD_VISIBLE > 0 && CLOUD_VISIBLE < .01)
 })
 
-test('P1 组合态 useGalaxyMap：局部空快照点回到全景，全景延迟回执到达前绝不误报空态', async t => {
+test('P1 与 P2-2 组合态 useGalaxyMap：空局部视区切换另一局部视区或回全景，防抖合并期与在途期均不沿用旧空态', async t => {
   const size = {width: 960, height: 640}
+  const delayedLocalB = later()
+  const delayedLocalC = later()
   const delayedPanorama = later()
   let step = 0
   const {map} = setupMap(t, (op, input) => {
     assert.equal(op, 'Map')
     step++
-    // 第 1 次全景含聚合星（count>1），保证缩放后触发局部范围查询。
+    // 1) 全景含聚合星（count>1），保证缩放后触发局部范围查询。
     if (step === 1) return {version: 'all#1', unchanged: false, points: [{...star('4001', 70000, -30000, 0), count: 5}]}
-    // 第 2 次局部查询为空。
-    if (input.minX !== undefined) return {version: 'local#1', unchanged: false, points: []}
-    // 第 3 次回到全景：延迟返回。
+    // 2) 局部视区 A（zoom=20）为空。
+    if (step === 2) return {version: 'localA#1', unchanged: false, points: []}
+    // 3) 局部视区 B（zoom=6）延迟返回有星。
+    if (step === 3) return delayedLocalB.promise
+    // 4) 局部视区 C（zoom=12）延迟返回仍无星。
+    if (step === 4) return delayedLocalC.promise
+    // 5) 回到全景延迟返回有星。
+    assert.equal(input.minX, undefined)
     return delayedPanorama.promise
   })
   const currentStatus = () => galaxyStatus({
     foreground: true, ready: map.ready.value, error: map.error.value,
     total: map.points.value.length, visible: map.points.value.length,
-    snapshotIsPanorama: map.snapshotIsPanorama.value, viewIsPanorama: map.viewIsPanorama.value,
-    loading: map.loading.value, selectedId: '', selectedVisible: false, selectedClickable: false, aggregated: false,
+    snapshotRegion: map.snapshotRegion.value, viewRegion: map.viewRegion.value,
+    loading: map.loading.value, selectedId: '', selectedPublic: false, selectedVisible: false, selectedClickable: false, selectedGrouped: false,
   })
   map.updateCamera(HOME_CAMERA, size)
   await map.retry()
-  assert.equal(map.snapshotIsPanorama.value, true)
-  // 放大到局部空区
-  map.updateCamera({...HOME_CAMERA, zoom: 12}, size)
+  assert.equal(map.snapshotRegion.value, 'all')
+
+  // 放大到空局部视区 A（zoom=20）
+  map.updateCamera({...HOME_CAMERA, zoom: 20}, size)
   await map.retry()
-  assert.equal(map.snapshotIsPanorama.value, false)
-  assert.equal(map.viewIsPanorama.value, false)
+  const regionA = map.snapshotRegion.value
+  assert.notEqual(regionA, 'all')
+  assert.equal(map.viewRegion.value, regionA)
   assert.equal(map.points.value.length, 0)
-  assert.equal(currentStatus(), 'offscreen')
-  // 点「回到全景」：镜头回到 HOME_CAMERA，但全景回执未到
+  assert.equal(currentStatus(), 'offscreen', '空局部视区静止时正常提示当前画面里没有星')
+
+  // 拉远到另一局部视区 B（zoom=6，仍非全景）：160ms 防抖合并窗口期与请求在途期均不沿用旧空态。
+  map.updateCamera({...HOME_CAMERA, zoom: 6}, size)
+  const regionB = map.viewRegion.value
+  assert.notEqual(regionB, 'all')
+  assert.notEqual(regionB, regionA)
+  assert.equal(map.loading.value, false, '刚切换镜头仍在 160ms 请求合并窗口内')
+  assert.equal(currentStatus(), '', '160ms 请求合并窗口内绝不沿用旧视区空提示')
+  // 等 160ms 合并定时器真正发出局部视区 B 请求
+  await new Promise(r => setTimeout(r, 200))
+  assert.equal(map.loading.value, true)
+  assert.equal(currentStatus(), '', '局部视区 B 回执在途期绝不沿用旧空提示')
+  delayedLocalB.resolve({version: 'localB#1', unchanged: false, points: [star('4002', 5000, 3000, 0)]})
+  await tick()
+  await tick()
+  assert.equal(map.snapshotRegion.value, regionB)
+  assert.equal(map.points.value.length, 1)
+  assert.equal(currentStatus(), '')
+
+  // 再切到局部视区 C（zoom=12）且回执确实无星：新快照到达后正常恢复 offscreen。
+  map.updateCamera({...HOME_CAMERA, zoom: 12}, size)
+  assert.equal(currentStatus(), '')
+  const pendingC = map.retry()
+  await tick()
+  assert.equal(currentStatus(), '')
+  delayedLocalC.resolve({version: 'localC#1', unchanged: false, points: []})
+  await pendingC
+  assert.equal(map.snapshotRegion.value, map.viewRegion.value)
+  assert.equal(currentStatus(), 'offscreen', '新局部视区确实无星时回执到达后正常显示 offscreen')
+
+  // 点「回到全景」：镜头回到 HOME_CAMERA，但全景回执未到（原有 P1 不退化）。
   map.updateCamera(HOME_CAMERA, size)
-  assert.equal(map.viewIsPanorama.value, true)
-  assert.equal(map.snapshotIsPanorama.value, false)
+  assert.equal(map.viewRegion.value, 'all')
+  assert.notEqual(map.snapshotRegion.value, 'all')
   assert.equal(currentStatus(), '', '防抖等待期间不得误报「确实无反馈」')
   const pending = map.retry()
   await tick()
   assert.equal(map.loading.value, true)
-  assert.equal(map.snapshotIsPanorama.value, false)
+  assert.notEqual(map.snapshotRegion.value, 'all')
   assert.equal(currentStatus(), '', '全景回执在途期间不得误报「确实无反馈」')
-  // 全景回执最终到达
   delayedPanorama.resolve({version: 'all#2', unchanged: false, points: [star('4001', 1000, 500, 0)]})
   await pending
-  assert.equal(map.snapshotIsPanorama.value, true)
+  assert.equal(map.snapshotRegion.value, 'all')
   assert.equal(map.points.value.length, 1)
   assert.equal(currentStatus(), '')
 })
@@ -333,8 +446,8 @@ test('P6 组合态 useGalaxyMap.retry：慢请求重试指示持续到结算，�
   const currentStatus = () => galaxyStatus({
     foreground: true, ready: map.ready.value, error: map.error.value,
     total: map.points.value.length, visible: map.points.value.length,
-    snapshotIsPanorama: map.snapshotIsPanorama.value, viewIsPanorama: map.viewIsPanorama.value,
-    loading: map.loading.value, selectedId: '', selectedVisible: false, selectedClickable: false, aggregated: false,
+    snapshotRegion: map.snapshotRegion.value, viewRegion: map.viewRegion.value,
+    loading: map.loading.value, selectedId: '', selectedPublic: false, selectedVisible: false, selectedClickable: false, selectedGrouped: false,
   })
   // 1) 首次 503 失败
   map.updateCamera(HOME_CAMERA, size)
@@ -405,4 +518,131 @@ test('P6 组合态 useGalaxyMap.retry：慢请求重试指示持续到结算，�
   assert.equal(map.loading.value, false)
   assert.equal(map.error.value, '')
   assert.ok(calls.length >= 6)
+})
+
+test('P2-1 组合态 useGalaxyMap.retry：慢重试期间连续切换 3 次视区，保留最新视区补查且转圈持续到有效请求结算（覆盖成功与再次失败）', async t => {
+  const size = {width: 960, height: 640}
+  const regionOf = (input) => input.minX === undefined ? 'all' : `${input.minX},${input.minY},${input.maxX},${input.maxY}`
+  // 分支 A：连续切换 3 次视区后，第 4 个最新视区请求延迟成功。
+  {
+    const pending = []
+    let failInitial = true
+    const {map, calls} = setupMap(t, (_op, input) => {
+      if (failInitial) return Promise.reject(new FeedbackError('requestFailed', '连接反馈星系失败，请重试。'))
+      const d = later()
+      pending.push({region: regionOf(input), d})
+      return d.promise
+    })
+    // 首次 503 失败（无完整目录，每次缩放均触发不同局部边界）。
+    map.updateCamera(HOME_CAMERA, size)
+    await map.retry()
+    assert.equal(map.error.value, '连接反馈星系失败，请重试。')
+
+    failInitial = false
+    let retrySettled = false
+    const retryPromise = map.retry().then(() => { retrySettled = true })
+    await tick()
+    assert.equal(pending.length, 1)
+    assert.equal(pending[0].region, 'all')
+    assert.equal(map.loading.value, true)
+    assert.equal(retrySettled, false)
+
+    // 切视区 1（zoom=4）使第 1 次在途请求作废；前序作废回执到达时 retry 绝不结束，立即补发视区 1。
+    map.updateCamera({...HOME_CAMERA, zoom: 4}, size)
+    const region1 = map.viewRegion.value
+    assert.notEqual(region1, 'all')
+    pending[0].d.resolve({version: 'stale#0', unchanged: false, points: []})
+    await tick(); await tick()
+    assert.equal(retrySettled, false, '第 1 次作废后 retry 仍未结束')
+    assert.equal(map.loading.value, true, '第 1 次作废后 loading 保持为真')
+    assert.equal(pending.length, 2, '已自动补发第 1 次新视区查询')
+    assert.equal(pending[1].region, region1)
+
+    // 切视区 2（zoom=8）后再在防抖窗口内紧接着切视区 3（zoom=16），使第 2 次在途请求作废。
+    map.updateCamera({...HOME_CAMERA, zoom: 8}, size)
+    map.updateCamera({...HOME_CAMERA, zoom: 16}, size)
+    const region3 = map.viewRegion.value
+    assert.notEqual(region3, region1)
+    pending[1].d.reject(new FeedbackError('requestFailed', '已作废的旧错'))
+    await tick(); await tick()
+    assert.equal(retrySettled, false, '第 2 次作废后 retry 仍未结束（不再在 2 次后提前退出）')
+    assert.equal(map.loading.value, true, '第 2 次作废后 loading 保持为真')
+    assert.equal(pending.length, 3, '最新视区补查必须发出且未被清掉')
+    assert.equal(pending[2].region, region3)
+
+    // 再切一次视区 4（zoom=32），使第 3 次在途请求再次作废。
+    map.updateCamera({...HOME_CAMERA, zoom: 32}, size)
+    const region4 = map.viewRegion.value
+    assert.notEqual(region4, region3)
+    pending[2].d.resolve({version: 'stale#2', unchanged: false, points: []})
+    await tick(); await tick()
+    assert.equal(retrySettled, false, '第 3 次作废后 retry 仍持续等待最新视区')
+    assert.equal(map.loading.value, true)
+    assert.equal(pending.length, 4, '第 4 个最新视区请求已发出')
+    assert.equal(pending[3].region, region4)
+
+    // 最新视区 4 延迟成功返回：错误清除、星图展示、retry 正常结算。
+    pending[3].d.resolve({version: 'local4#ok', unchanged: false, points: [star('8001', 200, 150, 0)]})
+    await retryPromise
+    assert.equal(retrySettled, true)
+    assert.equal(map.loading.value, false)
+    assert.equal(map.error.value, '')
+    assert.equal(map.snapshotRegion.value, region4)
+    assert.deepEqual(map.points.value.map(p => p.starId), ['8001'])
+    assert.equal(calls.length, 5)
+  }
+
+  // 分支 B：连续切换 3 次视区后，最新视区有效请求延迟再次失败 → 转圈结束、错误保留、可再次重试成功。
+  {
+    const pending = []
+    let failInitial = true
+    const {map} = setupMap(t, (_op, input) => {
+      if (failInitial) return Promise.reject(new FeedbackError('requestFailed', '初始 503'))
+      const d = later()
+      pending.push({region: regionOf(input), d})
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await map.retry()
+    assert.equal(map.error.value, '初始 503')
+
+    failInitial = false
+    let retrySettled = false
+    const retryPromise = map.retry().then(() => { retrySettled = true })
+    await tick()
+    assert.equal(pending.length, 1)
+
+    // 连续 3 次在途作废（超越旧 2 次上限）
+    for (const zoom of [4, 10, 24]) {
+      map.updateCamera({...HOME_CAMERA, zoom}, size)
+      const prev = pending[pending.length - 1]
+      prev.d.resolve({version: 'stale', unchanged: false, points: []})
+      await tick(); await tick()
+      assert.equal(retrySettled, false)
+      assert.equal(map.loading.value, true)
+    }
+    const latestRegion = map.viewRegion.value
+    assert.equal(pending.length, 4)
+    assert.equal(pending[3].region, latestRegion)
+
+    // 最新视区请求再次 503 失败：retry 结束、loading 复位、保留最新错误提示、允许继续点击重试。
+    pending[3].d.reject(new FeedbackError('requestFailed', '最新视区再次 503'))
+    await retryPromise
+    assert.equal(retrySettled, true)
+    assert.equal(map.loading.value, false)
+    assert.equal(map.error.value, '最新视区再次 503')
+
+    // 再次点击重试可正常恢复。
+    const recovery = map.retry()
+    await tick()
+    assert.equal(map.loading.value, true)
+    assert.equal(pending.length, 5)
+    assert.equal(pending[4].region, latestRegion)
+    pending[4].d.resolve({version: 'recovered#1', unchanged: false, points: [star('8002', 100, 100, 0)]})
+    await recovery
+    assert.equal(map.loading.value, false)
+    assert.equal(map.error.value, '')
+    assert.equal(map.snapshotRegion.value, latestRegion)
+    assert.deepEqual(map.points.value.map(p => p.starId), ['8002'])
+  }
 })

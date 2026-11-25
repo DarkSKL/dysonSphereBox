@@ -12,7 +12,7 @@ import StarQuote from '../../components/feedback/star-quote.vue'
 import VisibleStars from '../../components/feedback/visible-stars.vue'
 import type {ProjectedStar} from '../../composables/feedback/galaxy-camera'
 import {isInView, revalidateCandidates} from '../../composables/feedback/galaxy-camera'
-import {galaxyStatus} from '../../composables/feedback/galaxy-status'
+import {galaxyStatus, isCoveredByAggregate, isPublicFeedback} from '../../composables/feedback/galaxy-status'
 import {useFeedbackGalaxy} from '../../composables/feedback/useFeedbackGalaxy'
 
 definePage({meta: {layout: 'main', keepAlive: true, title: '反馈星系'}})
@@ -25,7 +25,7 @@ const {
   actionMenu, openActions, dismissActions, openPanel,
   changePersonalPage, openDetail, openMine, hover, changeStar, resetCamera, zoom, locate,
 } = useFeedbackGalaxy(focusAfterPanel)
-const {camera, arrivals, ready, error: mapError, loading: mapLoading, snapshotIsPanorama, viewIsPanorama, updateCamera, retry: retryRequest} = map
+const {camera, arrivals, ready, error: mapError, loading: mapLoading, snapshotRegion, viewRegion, snapshotBounds, updateCamera, retry: retryRequest} = map
 const {hover: hoveredStar, hovered, quote} = preview
 const {detail: selectedStar, highlightedEntry, target, busy: detailBusy, unavailable, error: detailError} = detail
 const {editor: openedEditor, draft, error: editorError, saving, length, limit, valid} = editor
@@ -50,17 +50,22 @@ function focusAfterPanel(): void {
 // 说明：五种状态由 galaxyStatus 统一判定。重试期间按钮显示加载，避免重复点击。
 // 使用：错误重试走地图的 retry；所读星移出视野时「回到这颗星」按该星坐标拉回镜头。
 const retrying = ref(false)
+// 只有审核通过且未撤回的公开反馈才进入公开星图与聚合体系；
+// 待审、转人工等私有反馈只在当前星图确有对应私有星点时参与移出视野判断，绝不归因于聚合隐藏。
+const selectedPublic = computed(() => panel.value === 'detail' && !unavailable.value &&
+  !!selectedStar.value && isPublicFeedback(selectedStar.value.original.reviewState, selectedStar.value.withdrawn))
 const selectedOnMap = computed(() => panel.value === 'detail' && !unavailable.value &&
-  !!selectedStar.value && selectedStar.value.original.reviewState !== 'rejected')
+  !!selectedStar.value && (selectedPublic.value || points.value.some(star => star.starId === target.value)))
 const galaxyState = computed(() => galaxyStatus({
   foreground: foreground.value, ready: ready.value, error: mapError.value,
   total: points.value.length, visible: visibleStars.value.length,
-  snapshotIsPanorama: snapshotIsPanorama.value, viewIsPanorama: viewIsPanorama.value, loading: mapLoading.value,
+  snapshotRegion: snapshotRegion.value, viewRegion: viewRegion.value, loading: mapLoading.value,
   selectedId: selectedOnMap.value ? target.value : '',
+  selectedPublic: selectedPublic.value,
   // 按详情自己的坐标判断是否在画面内：聚合时快照只含代表星，不能用「快照里有没有这个 ID」代替。
   selectedVisible: selectedOnMap.value && !!selectedStar.value && isInView(selectedStar.value, camera.value, map.size.value),
   selectedClickable: visibleStars.value.some(star => star.point.starId === target.value),
-  aggregated: points.value.some(star => (star.count ?? 1) > 1),
+  selectedGrouped: selectedPublic.value && !!selectedStar.value && isCoveredByAggregate(selectedStar.value, points.value, snapshotBounds.value),
 }))
 // 列表打开时不再提示「画面内无星」；发布面板已打开时，空状态卡片的「提意见」入口是多余的。
 const statusKind = computed(() => {
@@ -101,13 +106,13 @@ function showCrowd(stars: ProjectedStar[]): void {
 }
 // 镜头一动，点击处的星位置即已过期，立即收起列表。
 watch(camera, () => { if (crowdIds.value.length) crowdIds.value = [] })
-// 候选随快照更新重新校验：失效项从候选 ID 中移除；全部失效时收起列表并交还焦点。
+// 候选随快照更新重新校验：失效项从候选 ID 中移除；全部失效时收起列表，仅原焦点在列表内时交还星图。
 watch(crowd, (list) => {
   if (!crowdIds.value.length) return
   if (!list.length) {
     const inList = !!document.activeElement?.closest('.visible-stars')
     crowdIds.value = []
-    if (inList || document.activeElement === document.body) void nextTick(() => mapView.value?.focus())
+    if (inList) void nextTick(() => mapView.value?.focus())
   } else if (list.length !== crowdIds.value.length) {
     crowdIds.value = list.map(star => star.point.starId)
   }

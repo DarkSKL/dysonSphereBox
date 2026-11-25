@@ -2,8 +2,8 @@ import {computed, onScopeDispose, ref, shallowRef, watch, type Ref} from 'vue'
 
 import {accountSessionKey} from '../../pages/services/account'
 import {feedbackCall, FeedbackError} from '../../services/feedback'
-import type {StarPoint} from '../../types/feedback'
-import {HOME_CAMERA, queryBounds, type Camera, type ViewSize} from './galaxy-camera'
+import type {Bounds, StarPoint} from '../../types/feedback'
+import {HOME_CAMERA, queryBounds, queryRegionKey, type Camera, type ViewSize} from './galaxy-camera'
 import {useGalaxyZoom} from './useGalaxyZoom'
 
 // =============== 条件快照 ===============
@@ -17,12 +17,11 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
   const arrivals = shallowRef<ReadonlySet<string>>(new Set())
   const ready = ref(false)
   const error = ref('')
-  // 请求在途标志：只在 Map 请求真正发出到结算（成功、失败、被废弃）之间为真，供重试指示与「等待全景回执」判定使用。
+  // 请求在途标志：在 Map 请求在途或手动重试尚未结算（含连续切视区补查衔接间隙）期间持续为真。
   const loading = ref(false)
-  // 最近一次成功快照的查询范围是否为全景（无边界）。空结果只有在全景范围下才表示整片星图没有反馈。
-  const snapshotIsPanorama = ref(false)
-  // 当前镜头要查询的范围是否为全景。与 snapshotIsPanorama 不一致，说明画面正在等新范围的回执。
-  const viewIsPanorama = computed(() => region.value === 'all')
+  // 最近一次成功快照对应的实际查询范围键（'all' 或归一化四元边界）与对应边界对象。
+  const snapshotRegion = ref('')
+  const snapshotBounds = shallowRef<Bounds | null>(null)
   // 未聚合的全景已包含全部可读记录，旋转或变焦只需本地裁切；全景的条件轮询仍可发现变化。
   const completeCatalog = ref(false)
   const bounds = computed(() => {
@@ -30,14 +29,12 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
     const outward = lens.outwardTarget.value
     return queryBounds(outward === null ? camera.value : {...camera.value, zoom: outward}, size.value)
   })
-  const region = computed(() => bounds.value
-    ? [bounds.value.minX, bounds.value.minY, bounds.value.maxX, bounds.value.maxY].join(',')
-    : 'all')
+  const region = computed(() => queryRegionKey(bounds.value))
   let revision = 0
   let requestRunning = false
+  let retryCount = 0
   let inFlight: Promise<boolean> | null = null
   let scheduled: number | undefined
-  let snapshotRegion = ''
   let version = ''
   let needsRefresh = false
   let reconnecting = true
@@ -66,25 +63,40 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
     schedule(Math.max(0, 160 - (performance.now() - viewChangedAt)))
   }
 
-  // 手动重试：立即发请求，返回的 Promise 在本次请求结算（成功或失败）时才完成。
-  // 使用：重试按钮用它驱动转圈，指示与请求同生命周期，不依赖任何固定延时。
-  // 边界：若点击时已有旧请求在途，先等其结算；若旧请求未清除错误，再发起一次新的重试并等待其结算。
-  // 若本次重试因视区变化被废弃，最多跟进一次补发；切后台、换账号或卸载时立即退出避免悬停。
+  // 手动重试：立即发请求，返回的 Promise 与 loading 状态持续到最新视区的有效请求真正结算（成功或失败）。
+  // 使用：重试按钮用它驱动转圈，指示与有效请求同生命周期，不依赖任何固定延时。
+  // 边界：若点击时已有旧请求在途，先等其结算；若在途期间视区连续切换多次导致前序请求作废，
+  // 持续跟进对最新视区的补查且不丢弃最后一次查询；切后台、换账号或卸载时立即退出避免悬停。
   async function retry(): Promise<void> {
     const scope = accountSessionKey.value
-    const active = () => !disposed && foreground.value && !!size.value.width && !!size.value.height && accountSessionKey.value === scope
+    const active = () => !disposed && foreground.value && !!size.value.width && !!size.value.height &&
+      !!scope && accountSessionKey.value === scope
     if (!active()) return
-    window.clearTimeout(scheduled)
-    if (inFlight) {
-      await inFlight
-      if (!active()) return
-      if (!error.value && snapshotRegion === region.value) return
+    retryCount++
+    loading.value = true
+    try {
       window.clearTimeout(scheduled)
-    }
-    for (let attempt = 0; attempt < 2 && active(); attempt++) {
-      const settled = await refresh()
-      if (settled || !active()) return
-      window.clearTimeout(scheduled)
+      scheduled = undefined
+      if (inFlight) {
+        const settled = await inFlight
+        if (!active()) return
+        if (settled && !error.value && snapshotRegion.value === region.value) return
+      }
+      while (active()) {
+        if (inFlight) {
+          const settled = await inFlight
+          if (settled || !active()) return
+          continue
+        }
+        window.clearTimeout(scheduled)
+        scheduled = undefined
+        needsRefresh = false
+        const settled = await refresh()
+        if (settled) return
+      }
+    } finally {
+      retryCount--
+      loading.value = requestRunning || retryCount > 0
     }
   }
 
@@ -97,14 +109,15 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
     }
     requestRunning = true
     loading.value = true
-    const requestedRegion = region.value
+    const requestedBounds = bounds.value
+    const requestedRegion = queryRegionKey(requestedBounds)
     const requestRevision = revision
-    const sameRegion = snapshotRegion === requestedRegion
+    const sameRegion = snapshotRegion.value === requestedRegion
     let settled = false
     const run = (async () => {
       try {
         const snapshot = await feedbackCall('Map', {
-          ...(bounds.value ?? {}),
+          ...(requestedBounds ?? {}),
           ...(sameRegion && version ? {version} : {}),
         })
         if (requestRevision !== revision || !foreground.value) return false
@@ -119,8 +132,8 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
         }
         version = snapshot.version
         snapshotVersion.value = snapshot.version
-        snapshotRegion = requestedRegion
-        snapshotIsPanorama.value = requestedRegion === 'all'
+        snapshotBounds.value = requestedBounds
+        snapshotRegion.value = requestedRegion
         error.value = ''
         reconnecting = false
         ready.value = true
@@ -136,10 +149,10 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
       } finally {
         requestRunning = false
         inFlight = null
-        loading.value = false
+        loading.value = retryCount > 0
         if (needsRefresh) {
           needsRefresh = false
-          refreshNow()
+          if (retryCount === 0) refreshNow()
         }
       }
     })()
@@ -161,8 +174,8 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
   }, {flush: 'sync'})
   watch(accountSessionKey, () => {
     revision++
-    snapshotRegion = ''
-    snapshotIsPanorama.value = false
+    snapshotRegion.value = ''
+    snapshotBounds.value = null
     version = ''
     snapshotVersion.value = ''
     points.value = []
@@ -181,6 +194,6 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
     window.clearTimeout(scheduled)
   })
 
-  return {camera, size, points, snapshotVersion, arrivals, ready, error, loading, snapshotIsPanorama, viewIsPanorama, updateCamera, removeStar, refreshNow, retry,
+  return {camera, size, points, snapshotVersion, arrivals, ready, error, loading, snapshotRegion, viewRegion: region, snapshotBounds, updateCamera, removeStar, refreshNow, retry,
     zoomBy: lens.zoomBy, stopZoom: lens.stopZoom}
 }

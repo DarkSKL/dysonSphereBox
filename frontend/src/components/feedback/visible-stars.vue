@@ -4,7 +4,7 @@ import {computed, nextTick, ref, watch} from 'vue'
 
 import {starLabel} from '../../composables/feedback/galaxy-art'
 import {useGalaxyTheme} from '../../composables/feedback/useGalaxyTheme'
-import type {ProjectedStar} from '../../composables/feedback/galaxy-camera'
+import {resolveFocusFallback, type ProjectedStar} from '../../composables/feedback/galaxy-camera'
 import type {DisplayStar, StarPreview} from '../../types/feedback'
 
 const props = defineProps<{
@@ -24,9 +24,11 @@ const root = ref<HTMLElement>()
 const page = ref(1)
 const pageSize = 12
 const lastPage = computed(() => Math.max(1, Math.ceil(props.stars.length / pageSize)))
-const rows = computed(() => props.stars.slice((page.value - 1) * pageSize, page.value * pageSize))
+const currentPage = computed(() => Math.min(page.value, lastPage.value))
+const rows = computed(() => props.stars.slice((currentPage.value - 1) * pageSize, currentPage.value * pageSize))
+const rowIds = computed(() => rows.value.map(({point}) => point.starId))
 
-watch(lastPage, (count) => { page.value = Math.min(page.value, count) })
+watch(lastPage, (count) => { if (page.value > count) page.value = count })
 // 切换列表来源（视野内全部 / 点击处附近）时回到第一页。
 watch(() => props.heading, () => { page.value = 1 })
 watch(() => props.opened, async (opened) => {
@@ -34,6 +36,31 @@ watch(() => props.opened, async (opened) => {
   page.value = 1
   await nextTick()
   root.value?.focus()
+})
+// 快照更新移除当前聚焦的候选（含页码因总数减少而回退）时，把焦点移到剩余可选候选按钮，避免跌落到 body。
+// 边界：只在更新前焦点位于列表候选按钮上时接管；焦点原本在列表外、关闭按钮或分页上时绝不抢焦点。
+watch(rowIds, (next, prev) => {
+  if (!props.opened || !root.value) return
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement) || !root.value.contains(active)) return
+  const focusedId = active.dataset.starId ?? ''
+  const fallback = resolveFocusFallback(prev, next, focusedId)
+  if (fallback === null) return
+  void nextTick(() => {
+    if (!props.opened || !root.value) return
+    const current = document.activeElement
+    if (current && current !== document.body && !root.value.contains(current)) return
+    if (fallback) {
+      const buttons = root.value.querySelectorAll<HTMLButtonElement>('button[data-star-id]')
+      for (let i = 0; i < buttons.length; i++) {
+        if (buttons[i].dataset.starId === fallback) {
+          buttons[i].focus({preventScroll: true})
+          return
+        }
+      }
+    }
+    root.value.focus({preventScroll: true})
+  })
 })
 </script>
 
@@ -54,7 +81,7 @@ watch(() => props.opened, async (opened) => {
     <p v-if="!rows.length" class="empty-note">当前视野没有反馈星。</p>
     <ul v-else>
       <li v-for="{point} in rows" :key="point.starId">
-        <button type="button" :aria-describedby="quote?.starId === point.starId ? 'feedback-list-quote' : undefined"
+        <button type="button" :data-star-id="point.starId" :aria-describedby="quote?.starId === point.starId ? 'feedback-list-quote' : undefined"
           @focus="emit('preview', point)" @blur="emit('preview', null)" @click="emit('open', point.starId)">
           <span class="list-dot" :class="{private: point.privateLabel}" :style="{color: theme.starColors[point.progress]}" aria-hidden="true" />
           <span>{{ starLabel(point) }} · 星 {{ point.starId }}</span>
@@ -64,7 +91,7 @@ watch(() => props.opened, async (opened) => {
     <p id="feedback-list-quote" class="focus-preview" aria-live="polite">
       <template v-if="quote?.preview">{{ quote.preview }}<span v-if="quote.displayName"> — <bdi>{{ quote.displayName }}</bdi></span></template>
     </p>
-    <n-pagination v-if="lastPage > 1" size="small" v-model:page="page" :page-count="lastPage" :page-slot="3" />
+    <n-pagination v-if="lastPage > 1" size="small" :page="currentPage" :page-count="lastPage" :page-slot="3" @update:page="page = $event" />
   </section>
 </template>
 
