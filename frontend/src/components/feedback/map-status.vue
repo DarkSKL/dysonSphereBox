@@ -2,7 +2,7 @@
 import {Compass, LoaderCircle, MessageSquarePlus, TriangleAlert} from '@lucide/vue'
 import {computed, ref} from 'vue'
 
-import type {GalaxyStatusKind} from '../../composables/feedback/galaxy-status'
+import {galaxyStatusContent, type GalaxyStatusKind} from '../../composables/feedback/galaxy-status'
 
 const props = defineProps<{
   kind: GalaxyStatusKind
@@ -17,16 +17,8 @@ const emit = defineEmits<{
   home: []
 }>()
 
-// 五种状态各自一句主文案和至多一个动作，互不重复。error 使用 role=alert，其余为 status。
-const content = computed(() => ({
-  loading: {title: '正在读取星图…', hint: '', action: ''},
-  error: {title: '星图加载失败', hint: props.message, action: '重试'},
-  empty: {title: '星图里还没有反馈', hint: '写下第一条意见，它会成为这里的第一颗星。', action: '提意见'},
-  'selected-offscreen': {title: '正在阅读的星不在当前画面内', hint: '', action: '回到这颗星'},
-  'selected-grouped': {title: '这颗星在画面内，但当前由聚合星代表', hint: '画面里只显示所在的聚合星，这颗星暂时不能单独点选。', action: ''},
-  offscreen: {title: '当前画面里没有星', hint: '', action: '回到全景'},
-  '': {title: '', hint: '', action: ''},
-}[props.kind]))
+// 各类状态各自一句主文案和至多一个动作，互不重复。error 使用 role=alert，其余为 status。
+const content = computed(() => galaxyStatusContent(props.kind, props.message))
 const alert = computed(() => props.kind === 'error')
 const root = ref<HTMLElement>()
 // 聚焦空态里的「提意见」入口；当前不是空态（已有星、错误或其它提示）时返回 false，由调用方回退到星图。
@@ -42,7 +34,7 @@ defineExpose({focusPublish})
 
 <template>
   <!-- ~ 星图状态提示 -->
-  <!-- * 说明：加载中、加载失败、确实无反馈、所读星移出视野、所读星并入聚合星、画面内无星，各用一句文案区分，同一时刻只显示一条。 -->
+  <!-- * 说明：加载中、加载失败、确实无反馈、所读星移出视野、所读星当前未单独显示、画面内无星，各用一句文案区分，同一时刻只显示一条。 -->
   <!-- * 交互：失败显示「重试」，无反馈显示「提意见」，移出视野显示「回到这颗星」，画面内无星显示「回到全景」。 -->
   <!-- * 依赖：galaxyStatus 的判定结果；动作由页面接入地图重试、发布面板与镜头回正。 -->
   <!-- * 边界：只占画布下方的一小条，不遮挡星图中心；窄屏下文字换行，按钮保持可点。 -->

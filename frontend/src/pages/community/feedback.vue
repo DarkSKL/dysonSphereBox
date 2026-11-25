@@ -47,11 +47,11 @@ function focusAfterPanel(): void {
 }
 
 // =============== 星图状态提示 ===============
-// 说明：五种状态由 galaxyStatus 统一判定。重试期间按钮显示加载，避免重复点击。
+// 说明：星图状态由 galaxyStatus 统一判定。重试期间按钮显示加载，避免重复点击。
 // 使用：错误重试走地图的 retry；所读星移出视野时「回到这颗星」按该星坐标拉回镜头。
 const retrying = ref(false)
-// 只有审核通过且未撤回的公开反馈才进入公开星图与聚合体系；
-// 待审、转人工等私有反馈只在当前星图确有对应私有星点时参与移出视野判断，绝不归因于聚合隐藏。
+// 只有审核通过且未撤回的公开反馈才进入公开星图体系；
+// 待审、转人工等私有反馈只在当前星图确有对应私有星点时参与移出视野判断，绝不触发未单独显示提示。
 const selectedPublic = computed(() => panel.value === 'detail' && !unavailable.value &&
   !!selectedStar.value && isPublicFeedback(selectedStar.value.original.reviewState, selectedStar.value.withdrawn))
 const selectedOnMap = computed(() => panel.value === 'detail' && !unavailable.value &&
@@ -84,7 +84,7 @@ const selectedSnapshotConfirmed = computed(() =>
   selectedApprovedOrder.value > 0 && snapshotSyncedOrder.value >= selectedApprovedOrder.value,
 )
 // 公开星在画面内但未出现在旧快照时，主动触发一次条件快照同步：
-// 刚过审的独立星会立刻现身可点；确被同 32×32 桶聚合星代表时，同步结算后再显示聚合提示。
+// 刚过审的独立星会立刻现身可点；若新快照仍未单独显示该星且同 32×32 桶存在聚合星，再展示中性提示。
 watch([
   foreground, selectedPublic, selectedVisible, selectedClickable,
   mapError, snapshotRegion, viewRegion, snapshotSyncedOrder, selectedApprovedOrder,

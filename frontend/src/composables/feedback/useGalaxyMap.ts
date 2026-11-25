@@ -160,12 +160,11 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
       } finally {
         if (currentRetry === retryEntry) currentRetry = null
         syncLoading()
-        // 防御性交接：若退出时仍有当前活跃会话的待补查请求且无在途请求/重试，立即补发，绝不遗漏。
-        const currentScope = accountSessionKey.value
-        if (needsRefresh && currentScope && foreground.value &&
+        // 交接排队刷新：若退出时仍属当前活跃会话且无在途请求/重试，立即补发重试期间排队的主动刷新，绝不遗漏。
+        if (needsRefresh && !disposed && foreground.value && epoch === sessionEpoch && accountSessionKey.value === scope &&
           currentRun?.epoch !== sessionEpoch && currentRetry?.epoch !== sessionEpoch) {
           needsRefresh = false
-          refreshNow()
+          if (size.value.width > 0 && size.value.height > 0) refreshNow()
         }
       }
     })()
@@ -234,10 +233,14 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
           currentRun = null
           syncLoading()
           if (needsRefresh) {
-            needsRefresh = false
             const currentScope = accountSessionKey.value
             const retryingCurrent = !!currentScope && currentRetry?.epoch === sessionEpoch && currentRetry.scope === currentScope
-            if (!retryingCurrent && currentScope) refreshNow()
+            if (!currentScope || !foreground.value || disposed) {
+              needsRefresh = false
+            } else if (!retryingCurrent) {
+              needsRefresh = false
+              refreshNow()
+            }
           }
         }
       }

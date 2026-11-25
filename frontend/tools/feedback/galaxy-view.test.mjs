@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
 import {createServer as createHTTPServer} from 'node:http'
 import {after, test} from 'node:test'
 import {fileURLToPath} from 'node:url'
@@ -50,7 +51,7 @@ after(async () => {
 const {HOME_CAMERA, project, usefulZoomLimit, queryBounds, queryRegionKey, normalizeQueryScope, includeStar, starsNear, AMBIGUOUS_GAP, isInView, resolveClick, revalidateCandidates, resolveFocusFallback} =
   await vite.ssrLoadModule('/galaxy-camera.ts')
 const {SAMPLE_STRIDE, sampleNebula, cloudPresence, cloudExposure, cloudPlan, easeCloudLevel, CLOUD_VISIBLE} = await vite.ssrLoadModule('/galaxy-nebula.ts')
-const {galaxyStatus, isPublicFeedback, isCoveredByAggregate, aggregateCellOf, aggregateGridBounds, nextSnapshotOrder, AGGREGATE_GRID_WIDTH} = await vite.ssrLoadModule('/galaxy-status.ts')
+const {galaxyStatus, galaxyStatusContent, isPublicFeedback, isCoveredByAggregate, aggregateCellOf, aggregateGridBounds, nextSnapshotOrder, AGGREGATE_GRID_WIDTH} = await vite.ssrLoadModule('/galaxy-status.ts')
 const {haloScale} = await vite.ssrLoadModule('/galaxy-art.ts')
 const {GALAXY_THEMES} = await vite.ssrLoadModule('/galaxy-theme.ts')
 const {useGalaxyMap} = await vite.ssrLoadModule('/useGalaxyMap.ts')
@@ -982,5 +983,275 @@ test('复审 P2-2 精确 32×32 网格分桶与快照因果证据：相邻桶绝
     queue[3].resolve({version: 'v3', unchanged: false, points: [star('8001', 0, 0, 0), star('8003', -800, -800, 0)]})
     await tick(); await tick()
     assert.equal(statusFor(standalone, order3), '', '快照更新收录为独立星后直接可点，无聚合提示')
+  }
+})
+
+test('复审 P2 · 地图先到详情晚到（另一会话撤回正在阅读的代表星）：中性提示不含归属断言，详情不可用后立即清除', async t => {
+  t.after(() => { sessionKey.value = 'session-1' })
+  sessionKey.value = 'acct-withdrawn-race'
+  const size = {width: 960, height: 640}
+
+  // 校验组件文案单一真相源：map-status.vue 直接调用 galaxyStatusContent，且组件源码与映射文案均不含无依据聚合归属断言。
+  const mapStatusSource = readFileSync(fileURLToPath(new URL('../../src/components/feedback/map-status.vue', import.meta.url)), 'utf8')
+  assert.ok(mapStatusSource.includes('galaxyStatusContent('), 'map-status.vue 必须通过 galaxyStatusContent 读取真实状态文案')
+  const forbiddenClaims = ['聚合星代表', '聚合成员', '折叠进聚合星', '并入聚合星', '展开聚合星']
+  for (const phrase of forbiddenClaims) {
+    assert.equal(mapStatusSource.includes(phrase), false, `map-status.vue 不得包含无依据归属文案「${phrase}」`)
+  }
+  const groupedCopy = galaxyStatusContent('selected-grouped')
+  assert.equal(groupedCopy.title, '当前星图未单独显示这条反馈')
+  assert.equal(groupedCopy.hint, '')
+  assert.equal(groupedCopy.action, '')
+  const renderedGrouped = `${groupedCopy.title} ${groupedCopy.hint} ${groupedCopy.action}`
+  for (const phrase of forbiddenClaims) {
+    assert.equal(renderedGrouped.includes(phrase), false, `selected-grouped 文案不得包含「${phrase}」`)
+  }
+
+  // 真实状态链路：代表星 S (9501) 原属同 32×32 桶 (15,15) count=3，打开阅读中；
+  // 另一会话撤回 S → 下一次 Map 快照先返回同桶剩余两颗星（代表星变为 9502，count=2），而 Detail 刷新仍在途；
+  // 最后 Detail 返回不可用 / 已撤回。
+  const queue = []
+  const {map} = setupMap(t, () => {
+    const d = later()
+    queue.push(d)
+    return d.promise
+  })
+  const detailOf = (id, x, y, reviewState = 'approved', withdrawn = false) => ({
+    starId: String(id), x, y, z: 0, withdrawn, original: {reviewState},
+  })
+  const computeUI = (selectedDetail, unavailable, approvedOrder) => {
+    const selectedPublic = !unavailable && !!selectedDetail &&
+      isPublicFeedback(selectedDetail.original.reviewState, selectedDetail.withdrawn)
+    const selectedOnMap = !unavailable && !!selectedDetail &&
+      (selectedPublic || map.points.value.some(p => p.starId === selectedDetail.starId))
+    const selectedClickable = map.points.value.some(p => p.starId === selectedDetail?.starId)
+    const confirmed = approvedOrder > 0 && map.snapshotSyncedOrder.value >= approvedOrder
+    const kind = galaxyStatus({
+      foreground: true, ready: map.ready.value, error: map.error.value,
+      total: map.points.value.length, visible: map.points.value.length,
+      snapshotRegion: map.snapshotRegion.value, viewRegion: map.viewRegion.value,
+      loading: map.loading.value,
+      selectedId: selectedOnMap ? selectedDetail.starId : '',
+      selectedPublic,
+      selectedVisible: selectedOnMap && !!selectedDetail && isInView(selectedDetail, map.camera.value, size),
+      selectedClickable,
+      selectedGrouped: selectedPublic && !!selectedDetail &&
+        isCoveredByAggregate(selectedDetail, map.points.value, map.snapshotBounds.value, {snapshotConfirmed: confirmed}),
+    })
+    return {kind, copy: galaxyStatusContent(kind, map.error.value)}
+  }
+
+  // 1) 初始快照：代表星 9501 (0, 0, count=3) 在画面内直接可点。
+  map.updateCamera(HOME_CAMERA, size)
+  await new Promise(r => setTimeout(r, 25))
+  assert.equal(queue.length, 1)
+  queue[0].resolve({version: 'race#1', unchanged: false, points: [{...star('9501', 0, 0, 0), count: 3}]})
+  await tick(); await tick()
+
+  const starS = detailOf('9501', 0, 0, 'approved', false)
+  const approvedOrder = nextSnapshotOrder()
+  const initial = computeUI(starS, false, approvedOrder)
+  assert.equal(initial.kind, '', '代表星 S 在当前快照直接可点时不显示提示')
+  assert.equal(initial.copy.title, '')
+
+  // 2) 另一会话撤回 S → 下一次 Map 先到，返回同桶剩余 2 颗星（代表星换成 9502，count=2），Detail 仍在途（仍持有旧 approved 详情）。
+  map.refreshNow()
+  await new Promise(r => setTimeout(r, 25))
+  assert.equal(queue.length, 2)
+  queue[1].resolve({version: 'race#2', unchanged: false, points: [{...star('9502', -200, -200, 0), count: 2}]})
+  await tick(); await tick()
+  assert.ok(map.snapshotSyncedOrder.value >= approvedOrder, '新快照因果序号晚于详情观测')
+
+  const mapFirstDetailInFlight = computeUI(starS, false, approvedOrder)
+  assert.equal(mapFirstDetailInFlight.kind, 'selected-grouped')
+  assert.equal(mapFirstDetailInFlight.copy.title, '当前星图未单独显示这条反馈', '地图先到详情在途期间只显示中性事实提示')
+  assert.equal(mapFirstDetailInFlight.copy.hint, '')
+  for (const phrase of forbiddenClaims) {
+    assert.equal(mapFirstDetailInFlight.copy.title.includes(phrase), false)
+  }
+
+  // 3a) 详情晚到返回 unavailable（detail=null, unavailable=true）→ 提示立即消失，不残留。
+  const afterUnavailable = computeUI(null, true, 0)
+  assert.equal(afterUnavailable.kind, '', '详情返回不可用后提示立即消失')
+  assert.equal(afterUnavailable.copy.title, '')
+
+  // 3b) 详情晚到返回 withdrawn=true（尚未清空前即刻响应）→ 同样立即消失，不残留。
+  const afterWithdrawn = computeUI(detailOf('9501', 0, 0, 'approved', true), false, 0)
+  assert.equal(afterWithdrawn.kind, '', '详情返回已撤回后提示立即消失')
+  assert.equal(afterWithdrawn.copy.title, '')
+})
+
+test('复审 P3 · 重试期间排队的主动刷新在重试结算后立即补发（成功/失败/首查复用均不丢弃，且不触发死循环）', async t => {
+  t.after(() => { sessionKey.value = 'session-1' })
+  const size = {width: 960, height: 640}
+
+  // 分支 1：慢重试成功收尾，期间同会话主动刷新排队 → 重试成功后立刻补发（远快于 2s 轮询），完成后不再循环。
+  {
+    sessionKey.value = 'acct-p3-success'
+    let round = 0
+    const pending = []
+    const {map, calls, stop} = setupMap(t, () => {
+      round++
+      if (round === 1) return Promise.reject(new FeedbackError('requestFailed', '首次 503'))
+      const d = later()
+      pending.push(d)
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await map.retry()
+    assert.equal(calls.length, 1)
+    assert.equal(map.error.value, '首次 503')
+
+    const retryPromise = map.retry()
+    await tick()
+    assert.equal(pending.length, 1, '重试请求已发出并在途')
+    assert.equal(map.loading.value, true)
+
+    // 重试在途期间触发同会话主动刷新，并让 0ms 定时器跑进 refresh() 将 needsRefresh 置为 true。
+    map.refreshNow()
+    await new Promise(r => setTimeout(r, 30))
+    assert.equal(pending.length, 1, '在途期间单飞保护：不并发发第 2 个请求，仅排队 needsRefresh')
+
+    // 重试请求成功结算。
+    const settledAt = performance.now()
+    pending[0].resolve({version: 'p3-ok#1', unchanged: false, points: [star('1', 100, 100, 0)]})
+    await retryPromise
+    assert.equal(map.error.value, '')
+    assert.equal(map.ready.value, true)
+
+    // 排队的主动刷新应在下一宏任务/数十毫秒内立刻发出，绝不拖到 2s 轮询。
+    await new Promise(r => setTimeout(r, 40))
+    const elapsed = performance.now() - settledAt
+    assert.equal(pending.length, 2, `重试成功后排队的主动刷新必须立即补发（耗时 ${Math.round(elapsed)}ms）`)
+    assert.ok(elapsed < 500)
+
+    // 补发刷新结算后不得再次触发额外刷新（无死循环）。
+    pending[1].resolve({version: 'p3-ok#2', unchanged: false, points: [star('1', 100, 100, 0), star('2', 200, 200, 0)]})
+    await tick(); await tick()
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(pending.length, 2, '补发刷新完成后不得触发额外请求或死循环')
+    assert.equal(map.points.value.length, 2)
+    assert.equal(map.loading.value, false)
+    stop()
+  }
+
+  // 分支 2：慢重试再次失败收尾，期间同会话主动刷新排队 → 重试指示结束，排队刷新仍立即补发且不死循环。
+  {
+    sessionKey.value = 'acct-p3-fail'
+    let round = 0
+    const pending = []
+    const {map, stop} = setupMap(t, () => {
+      round++
+      if (round === 1) return Promise.reject(new FeedbackError('requestFailed', '首次 503'))
+      const d = later()
+      pending.push(d)
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await map.retry()
+
+    let retryDone = false
+    const retryPromise = map.retry().then(() => { retryDone = true })
+    await tick()
+    assert.equal(pending.length, 1)
+
+    map.refreshNow()
+    await new Promise(r => setTimeout(r, 30))
+    assert.equal(pending.length, 1)
+
+    pending[0].reject(new FeedbackError('requestFailed', '再次 503'))
+    await retryPromise
+    assert.equal(retryDone, true, '重试失败结算后 Promise 正常结束')
+    assert.equal(map.error.value, '再次 503')
+
+    await new Promise(r => setTimeout(r, 40))
+    assert.equal(pending.length, 2, '重试失败收尾后排队的主动刷新也应立即补发')
+    pending[1].reject(new FeedbackError('requestFailed', '补发仍 503'))
+    await tick(); await tick()
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(pending.length, 2, '补发再次失败后不得进入无限重试循环')
+    assert.equal(map.loading.value, false)
+    stop()
+  }
+
+  // 分支 3：retry 复用已有在途请求（首查复用路径），期间排队主动刷新 → 原请求成功结算后排队刷新立即补发且不死循环。
+  {
+    sessionKey.value = 'acct-p3-reuse'
+    const pending = []
+    const {map, stop} = setupMap(t, () => {
+      const d = later()
+      pending.push(d)
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await new Promise(r => setTimeout(r, 25))
+    assert.equal(pending.length, 1, '常规首次刷新已在途')
+
+    const retryPromise = map.retry()
+    await tick()
+    assert.equal(pending.length, 1, 'retry 复用已在途请求')
+
+    map.refreshNow()
+    await new Promise(r => setTimeout(r, 30))
+    assert.equal(pending.length, 1, '排队 needsRefresh')
+
+    pending[0].resolve({version: 'reuse#1', unchanged: false, points: [star('10', 10, 10, 0)]})
+    await retryPromise
+    await new Promise(r => setTimeout(r, 40))
+    assert.equal(pending.length, 2, '首查复用路径退出后排队刷新立即补发')
+
+    pending[1].resolve({version: 'reuse#2', unchanged: true, points: []})
+    await tick(); await tick()
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(pending.length, 2, '补发完成后无多余请求')
+    assert.equal(map.loading.value, false)
+    stop()
+  }
+
+  // 分支 4：重试期间排队了主动刷新，随后登出（空会话）或切后台 → 不得泄露旧 needsRefresh 发出空会话/后台请求。
+  {
+    sessionKey.value = 'acct-p3-logout'
+    let round = 0
+    const pending = []
+    const {map, foreground, calls, stop} = setupMap(t, () => {
+      round++
+      if (round === 1) return Promise.reject(new FeedbackError('requestFailed', '首次 503'))
+      const d = later()
+      pending.push(d)
+      return d.promise
+    })
+    map.updateCamera(HOME_CAMERA, size)
+    await map.retry()
+
+    const retryPromise = map.retry()
+    await tick()
+    map.refreshNow()
+    await new Promise(r => setTimeout(r, 30))
+    assert.equal(pending.length, 1)
+    const countBeforeLogout = calls.length
+
+    // 登出切空会话
+    sessionKey.value = ''
+    await retryPromise
+    pending[0].resolve({version: 'stale', unchanged: false, points: []})
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(calls.length, countBeforeLogout, '登出空会话后不得泄露排队刷新发出请求')
+    assert.equal(map.loading.value, false)
+
+    // 切后台同样清空排队刷新，不发后台请求
+    sessionKey.value = 'acct-p3-bg'
+    await new Promise(r => setTimeout(r, 30))
+    const bgRun = pending[pending.length - 1]
+    const retryBg = map.retry()
+    map.refreshNow()
+    await new Promise(r => setTimeout(r, 30))
+    const countBeforeBg = calls.length
+    foreground.value = false
+    await retryBg
+    bgRun.resolve({version: 'stale-bg', unchanged: false, points: []})
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(calls.length, countBeforeBg, '切后台后不得泄露排队刷新发出请求')
+    assert.equal(map.loading.value, false)
+    stop()
   }
 })

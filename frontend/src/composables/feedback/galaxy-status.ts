@@ -2,11 +2,41 @@ import type {Bounds, DisplayStar, ReviewState, StarDetail} from '../../types/fee
 import {GALAXY_EDGE, normalizeQueryScope, type QueryScope} from './galaxy-camera'
 
 // =============== 星图提示状态判定 ===============
-// 说明：把「正在加载、加载失败、确实无反馈、所选星移出视野、所选星由聚合星代表、视野内无星」从同一组输入推出唯一状态，
+// 说明：把「正在加载、加载失败、确实无反馈、所选星移出视野、所选星未在当前快照单独显示、视野内无星」从同一组输入推出唯一状态，
 // 让页面始终只显示一条区分明确的提示，且不会在首次加载完成前或视区切换等待新范围回执期间误报旧空态。
-// 使用：页面把地图与详情状态传入 galaxyStatus；返回值交给 map-status 组件渲染。
-// 边界：只做判定，不读取画布、不发请求；文案在组件内，便于样式与文案同处维护。
+// 使用：页面把地图与详情状态传入 galaxyStatus；返回值与错误文案交由 galaxyStatusContent 生成，由 map-status 组件渲染。
+// 边界：只做状态判定与提示文案映射，不读取画布、不发请求；无服务端聚合星成员列表时保持中性事实提示，不做聚合归属断言。
 export type GalaxyStatusKind = 'loading' | 'error' | 'empty' | 'selected-offscreen' | 'selected-grouped' | 'offscreen' | ''
+
+export interface GalaxyStatusContent {
+  title: string
+  hint: string
+  action: string
+}
+
+/**
+ * 各类星图状态对应的用户可见提示文案（单一真相源，供 map-status.vue 与前端单测共用）。
+ * 边界：服务端 Map 快照不含聚合星成员 ID 列表；面对未单独显示的已选公开反馈，
+ * 只陈述「当前星图未单独显示这条反馈」的客观事实，不作「由聚合星代表」「聚合成员」等无依据归属断言。
+ */
+export function galaxyStatusContent(kind: GalaxyStatusKind, errorMessage = ''): GalaxyStatusContent {
+  switch (kind) {
+    case 'loading':
+      return {title: '正在读取星图…', hint: '', action: ''}
+    case 'error':
+      return {title: '星图加载失败', hint: errorMessage, action: '重试'}
+    case 'empty':
+      return {title: '星图里还没有反馈', hint: '写下第一条意见，它会成为这里的第一颗星。', action: '提意见'}
+    case 'selected-offscreen':
+      return {title: '正在阅读的星不在当前画面内', hint: '', action: '回到这颗星'}
+    case 'selected-grouped':
+      return {title: '当前星图未单独显示这条反馈', hint: '', action: ''}
+    case 'offscreen':
+      return {title: '当前画面里没有星', hint: '', action: '回到全景'}
+    default:
+      return {title: '', hint: '', action: ''}
+  }
+}
 
 /** 服务端聚合快照使用的网格宽度（32×32 = 1024 桶，与 server/service/feedback/map.go:18-19 一致）。 */
 export const AGGREGATE_GRID_WIDTH = 32
@@ -74,7 +104,7 @@ export function aggregateCellOf(
 
 /**
  * 只有审核通过且未撤回的反馈才进入公开星图体系；
- * 待审（pending）、待人工复核（manual）、未通过（rejected）均为私有状态，绝不归因于聚合星隐藏。
+ * 待审（pending）、待人工复核（manual）、未通过（rejected）均为私有状态，绝不触发未单独显示提示。
  */
 export function isPublicFeedback(reviewState: ReviewState | undefined, withdrawn = false): boolean {
   return !withdrawn && reviewState === 'approved'
@@ -83,18 +113,19 @@ export function isPublicFeedback(reviewState: ReviewState | undefined, withdrawn
 export interface AggregateCoverageOptions {
   /**
    * 当前快照是否已由「在观测到该星审核通过之后才发起」的 Map 请求结算确认。
-   * 为 false 时表示旧快照可能尚未收录刚过审的新星，证据不足，一律不判为聚合覆盖。
+   * 为 false 时表示旧快照可能尚未收录刚过审的新星，证据不足，一律不触发提示。
    */
   snapshotConfirmed?: boolean
 }
 
 /**
- * 判断一颗公开反馈星在当前快照中是否存在明确的聚合覆盖依据：
+ * 判断一颗画面内的公开反馈星在当前快照中是否落在已发生聚合的 32×32 分桶内且未单独列出：
  * 1. 目标必须是已审核通过且未撤回的公开反馈；
  * 2. 若调用方提供快照因果确认标志，必须为真（证据不足绝不误报）；
  * 3. 目标本身未直接出现在当前快照的公开星点中；
- * 4. 快照中存在至少一颗公开聚合代表星（count > 1、非私有星），与目标落在与服务端完全一致的 32×32 同一分桶内；
+ * 4. 快照中存在至少一颗公开聚合星（count > 1、非私有星），与目标落在与服务端完全一致的 32×32 同一分桶内；
  *    跨过网格线的相邻桶即使几何距离极近也绝不匹配，同桶 count === 1 独立星同样不匹配。
+ * 注意：服务端 Map 快照不含成员 ID 列表，因此返回 true 仅用于提示「当前星图未单独显示这条反馈」，不作成员归属断言。
  */
 export function isCoveredByAggregate(
   target: Pick<StarDetail, 'starId' | 'x' | 'y' | 'withdrawn'> & {original: Pick<StarDetail['original'], 'reviewState'>},
@@ -146,7 +177,7 @@ export interface GalaxyStatusInput {
   selectedVisible: boolean
   /** 所读的星当前是否有自己的可点击星点。 */
   selectedClickable: boolean
-  /** 当前快照中是否存在明确覆盖该公开星位置的聚合星依据。 */
+  /** 当前快照中同 32×32 桶存在公开聚合星且因果已确认（仅用于中性提示未单独显示，不作归属断言）。 */
   selectedGrouped: boolean
 }
 
@@ -159,7 +190,7 @@ export function galaxyStatus(input: GalaxyStatusInput): GalaxyStatusKind {
   const snapshotScope = normalizeQueryScope(input.snapshotRegion)
   const viewScope = normalizeQueryScope(input.viewRegion)
   // 镜头已切换到与最近成功快照不同的实际查询范围（含 160ms 请求合并窗口期与请求在途期）：
-  // 在新范围快照到达前，不沿用旧快照宣布「确实无反馈」、「画面内无星」或旧聚合状态。
+  // 在新范围快照到达前，不沿用旧快照宣布「确实无反馈」、「画面内无星」或未单独显示提示。
   if (!snapshotScope || snapshotScope !== viewScope) return ''
   if (input.total === 0 && snapshotScope === 'all') return 'empty'
   if (input.selectedId && input.selectedPublic && !input.selectedClickable && input.selectedGrouped) return 'selected-grouped'
