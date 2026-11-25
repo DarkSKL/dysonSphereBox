@@ -1,5 +1,6 @@
 import type {DisplayStar} from '../../types/feedback'
 import {DISK_RADIUS} from './galaxy-camera'
+import {GALAXY_THEMES, type GalaxyTheme} from './galaxy-theme'
 
 // =============== 反馈星的体积光采样 ===============
 // 每粒尘埃保存实星原点、曲线系数、生命周期与暗带参数。旋臂的形状和材料均从可见反馈产生。
@@ -7,22 +8,44 @@ export type NebulaSource = Pick<DisplayStar, 'starId' | 'x' | 'y' | 'z' | 'count
 export const SAMPLE_STRIDE = 21
 export const FLOW_PERIOD_MS = 48000
 export const PALETTE_SIZE = 64
-const stops = [
-  [0, 255, 187, 74], [.14, 255, 143, 54], [.30, 238, 108, 78],
-  [.45, 191, 102, 163], [.62, 129, 113, 238], [.78, 58, 125, 241], [1, 49, 72, 182],
-]
 
-export const nebulaPalette = new Uint8Array(PALETTE_SIZE * 4)
-for (let i = 0; i < PALETTE_SIZE; i++) {
-  const r = i / (PALETTE_SIZE - 1)
-  let end = 1
-  while (end < stops.length - 1 && r > stops[end][0]) end++
-  const left = stops[end - 1], right = stops[end]
-  const t = (r - left[0]) / (right[0] - left[0])
-  for (let channel = 0; channel < 3; channel++) {
-    nebulaPalette[i * 4 + channel] = Math.round(left[channel + 1] * (1 - t) + right[channel + 1] * t)
+// =============== 云雾色带 ===============
+// 说明：把主题里的色标插值为 64 级查找表，供 WebGL 纹理与软件笔刷共用。
+// 使用：按主题取 nebulaPaletteFor；深色表保留 nebulaPalette 导出，旧调用方不受影响。
+// 边界：只含颜色；明暗叠加方式与曝光在主题的 nebula.blend / nebula.gain 中。
+export function buildPalette(stops: GalaxyTheme['nebula']['stops']): Uint8Array {
+  const palette = new Uint8Array(PALETTE_SIZE * 4)
+  for (let i = 0; i < PALETTE_SIZE; i++) {
+    const r = i / (PALETTE_SIZE - 1)
+    let end = 1
+    while (end < stops.length - 1 && r > stops[end][0]) end++
+    const left = stops[end - 1], right = stops[end]
+    const t = (r - left[0]) / (right[0] - left[0])
+    for (let channel = 0; channel < 3; channel++) {
+      palette[i * 4 + channel] = Math.round(left[channel + 1] * (1 - t) + right[channel + 1] * t)
+    }
+    palette[i * 4 + 3] = 255
   }
-  nebulaPalette[i * 4 + 3] = 255
+  return palette
+}
+
+export const nebulaPalette = buildPalette(GALAXY_THEMES.dark.nebula.stops)
+const palettes = {dark: nebulaPalette, light: buildPalette(GALAXY_THEMES.light.nebula.stops)}
+export function nebulaPaletteFor(theme: GalaxyTheme): Uint8Array {
+  return palettes[theme.mode]
+}
+
+// =============== 云雾存在感与曝光 ===============
+// 说明：云雾亮度随可见反馈量连续变化。presence 让第一颗星就带出柔和的云，数量增长时平滑逼近 1；
+// exposure 在数量很大时缓慢压低每颗星的光量，避免密集时过曝成另一种画面。
+// 使用：galaxy-map 用可见星质量算出目标值，再按时间缓动后交给渲染器；曲线不依赖主题。
+// 边界：只描述标量曲线，不读取画布或采样缓冲；0 条时 presence 为 0，不绘制云雾。
+export function cloudPresence(mass: number): number {
+  return 1 - Math.exp(-Math.max(0, mass) / 1.6)
+}
+
+export function cloudExposure(mass: number): number {
+  return 1 / (1 + .2 * Math.log2(1 + Math.max(0, mass - 4) / 4))
 }
 
 export function randomFor(id: string): () => number {
@@ -76,7 +99,8 @@ function writeTrack(out: Float32Array, i: number, r: number, angle: number, half
 
 export function sampleNebula(points: readonly NebulaSource[], budget = particleBudget(points.length)): Float32Array {
   const stars = points.filter(p => !p.privateLabel)
-  if (publicMass(stars) < 2) return new Float32Array()
+  // 第一颗公开星就带出一小片云，避免 1 条与 2 条之间出现“有云/无云”的断层。
+  if (publicMass(stars) < 1) return new Float32Array()
   const samples = new Float32Array(stars.length * budget * SAMPLE_STRIDE)
   let cursor = 0
   for (const star of stars) {

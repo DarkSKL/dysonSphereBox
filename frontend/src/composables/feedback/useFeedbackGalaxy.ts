@@ -300,6 +300,6 @@ export function useFeedbackGalaxy() {
     foreground, map, preview, personal, editor, detail, panel, panelHeading, browse, points, visibleStars,
     confirmWithdraw, writing, actionError, status, currentCollection, showPanel, closePanel, openPanel,
     actionMenu, openActions, dismissActions,
-    changePersonalPage, openDetail, openMine, hover, changeStar, resetCamera, zoom, zoomLimit,
+    changePersonalPage, openDetail, openMine, hover, changeStar, resetCamera, zoom, zoomLimit, locate,
   }
 }

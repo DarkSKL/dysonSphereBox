@@ -41,6 +41,23 @@ export function project(point: GalaxyPosition, camera: Camera, size: ViewSize, f
   }
 }
 
+/**
+ * 屏幕点附近的星，按距离由近到远；距离相同时前面的星（depth 大）在前，再按编号稳定排序。
+ * 用于点击命中：只有一颗明显最近的星时直接打开，两颗以上难以分辨时交给「附近的星」列表选择。
+ */
+export function starsNear(stars: readonly ProjectedStar[], screen: Coordinates, radius: number): {star: ProjectedStar; distance: number}[] {
+  const near: {star: ProjectedStar; distance: number}[] = []
+  for (const star of stars) {
+    const distance = Math.hypot(star.x - screen.x, star.y - screen.y)
+    if (distance <= radius) near.push({star, distance})
+  }
+  return near.sort((a, b) => (a.distance - b.distance) || (b.star.depth - a.star.depth) ||
+    (a.star.point.starId < b.star.point.starId ? -1 : a.star.point.starId > b.star.point.starId ? 1 : 0))
+}
+
+/** 两颗最近的星相差不足该像素数时，视为点击落在拥挤处，不替用户猜测目标。 */
+export const AMBIGUOUS_GAP = 4
+
 export function projectVisibleStars(points: readonly DisplayStar[], camera: Camera, size: ViewSize): ProjectedStar[] {
   const frame = cameraFrame(camera, size)
   const visible: ProjectedStar[] = []

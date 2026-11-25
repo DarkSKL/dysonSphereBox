@@ -103,7 +103,7 @@ export function useNebulaSamples(points: () => readonly DisplayStar[]) {
       starId: p.starId, x: p.x, y: p.y, z: p.z ?? 0, count: p.count ?? 1,
     }))
     revision++
-    if (publicMass(sources) < 2) {
+    if (publicMass(sources) < 1) {
       stop()
       drawn = wide = undefined
       samples.value = empty

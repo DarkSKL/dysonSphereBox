@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
 
-import {createStarGlows, detailLevel, drawEmptySky, drawFeedbackStar, drawStarFocus, starCaptions, starLabel} from '../../composables/feedback/galaxy-art'
-import {boundedCamera, type Camera, type ProjectedStar, type ViewSize} from '../../composables/feedback/galaxy-camera'
-import {edgeTransmission, FLOW_PERIOD_MS} from '../../composables/feedback/galaxy-nebula'
+import {
+  createStarGlows, detailLevel, drawFeedbackStar, drawSeedGlow, drawSkyDust, drawStarFocus, haloScale, starCaptions, starLabel,
+} from '../../composables/feedback/galaxy-art'
+import {AMBIGUOUS_GAP, boundedCamera, starsNear, type Camera, type ProjectedStar, type ViewSize} from '../../composables/feedback/galaxy-camera'
+import {cloudExposure, cloudPresence, edgeTransmission, FLOW_PERIOD_MS} from '../../composables/feedback/galaxy-nebula'
+import {useGalaxyTheme} from '../../composables/feedback/useGalaxyTheme'
 import {useNebulaSamples} from '../../composables/feedback/useNebulaSamples'
 import {createNebulaLayer} from '../../composables/feedback/nebula-renderer'
 import type {Coordinates, DisplayStar} from '../../types/feedback'
@@ -28,6 +31,8 @@ const emit = defineEmits<{
   hover: [point: DisplayStar | null, screen?: Coordinates]
   approach: [point: DisplayStar | null]
   open: [starId: string]
+  /** 点击落在拥挤处，最近的几颗星难以分辨：交给页面用「附近的星」列表让用户选。 */
+  crowd: [stars: ProjectedStar[]]
   browse: []
   menu: [point: Coordinates]
   dismissMenu: []
@@ -41,6 +46,7 @@ const dragging = ref(false)
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
 const size = shallowRef<ViewSize>({width: 0, height: 0})
 const samples = useNebulaSamples(() => props.sources)
+const theme = useGalaxyTheme()
 // 仅绘制按远近排序，键盘列表遵循快照顺序，转动镜头不会打乱同一批反馈。
 const drawOrder = computed(() => props.stars.slice().sort((a, b) => a.depth - b.depth))
 const detail = computed(() => detailLevel(props.camera.zoom))
@@ -60,6 +66,10 @@ let lastFlowFrame: number | undefined
 let flowElapsed = 0
 let observer: ResizeObserver | undefined
 let glows: ReturnType<typeof createStarGlows> | undefined
+let glowsMode = ''
+// 云雾亮度的缓动状态：数量变化时在约 0.45 秒内趋近目标，避免 0→1→少量→密集之间亮度跳变。减少动态效果时直接到位。
+let cloudLevel = -1
+let cloudAt = 0
 let drag: {id: number; start: Coordinates; camera: Camera; button: number; sawContext: boolean} | undefined
 let skipNativeMenu = false
 let arrivalsAt = 0
@@ -83,6 +93,21 @@ function syncMotion(): void {
   } else scheduleDraw()
 }
 
+// 视区质量换算为云雾目标亮度：presence 让第一颗星就带出柔和的云，exposure 压低密集时的叠加亮度。
+function cloudTarget(): number {
+  const mass = visibleMass.value
+  return mass > 0 ? cloudPresence(mass) * cloudExposure(mass) : 0
+}
+
+function easeCloud(now: number, target: number): boolean {
+  if (cloudLevel < 0 || reduced.matches) { cloudLevel = target; cloudAt = now; return false }
+  const dt = Math.min(250, Math.max(0, now - cloudAt))
+  cloudAt = now
+  const next = cloudLevel + (target - cloudLevel) * (1 - Math.exp(-dt / 160))
+  cloudLevel = Math.abs(target - next) < .004 ? target : next
+  return cloudLevel !== target
+}
+
 function draw(now: number): void {
   const started = performance.now()
   frame = 0
@@ -95,13 +120,14 @@ function draw(now: number): void {
   context.resetTransform()
   context.clearRect(0, 0, surface.width, surface.height)
   context.setTransform(surface.width / width, 0, 0, surface.height / height, 0, 0)
-  if (!props.stars.length) {
-    pauseFlow()
-    drawEmptySky(context, props.camera, size.value)
-    return
-  }
-  glows ??= createStarGlows()
-  const hasCloud = visibleMass.value > 1 && samples.value.length > 0
+  const palette = theme.value
+  if (glowsMode !== palette.mode) { glows = createStarGlows(palette); glowsMode = palette.mode }
+  // 星云层与远景尘点对任意数量都走同一套绘制，仅亮度由 cloudLevel 连续变化，0 条也保留同一张星图。
+  const settling = easeCloud(now, props.stars.length ? cloudTarget() : 0)
+  const hasCloud = cloudLevel > .003 && visibleMass.value > 0 && samples.value.length > 0
+  drawSkyDust(context, props.camera, size.value, palette, cloudLevel)
+  drawSeedGlow(context, size.value, palette, 1 - Math.min(1, cloudLevel * 2.2))
+  if (!props.stars.length && !settling) { pauseFlow(); return }
   const flowing = hasCloud && !props.focused && !reduced.matches
   if (flowing) {
     if (lastFlowFrame !== undefined) {
@@ -112,22 +138,23 @@ function draw(now: number): void {
   } else lastFlowFrame = undefined
   if (hasCloud) {
     nebula ??= createNebulaLayer(scheduleDraw)
-    const volume = nebula.render(samples.value, props.camera, size.value, surface.width / width, visibleMass.value, props.focused, flowElapsed)
+    const volume = nebula.render(samples.value, props.camera, size.value, surface.width / width, cloudLevel, palette, props.focused, flowElapsed)
     context.drawImage(volume, 0, 0, width, height)
   }
   const pulse = reduced.matches || !arrivalsAt ? 0 : Math.max(0, 1 - (now - arrivalsAt) / 260)
   let pulsing = false
+  const scale = haloScale(props.stars.length)
   for (const star of drawOrder.value) {
     const amount = props.arrivals.has(star.point.starId) ? pulse : 0
-    context.globalCompositeOperation = star.point.privateLabel ? 'source-over' : 'screen'
-    drawFeedbackStar(context, glows, star, amount, detail.value)
+    context.globalCompositeOperation = star.point.privateLabel ? 'source-over' : palette.composite
+    drawFeedbackStar(context, glows!, star, amount, detail.value, palette, scale)
     if (amount > 0) pulsing = true
   }
   context.globalCompositeOperation = 'source-over'
   for (const star of props.stars) {
-    if (star.point.starId === props.hovered || star.point.starId === props.selected) drawStarFocus(context, star)
+    if (star.point.starId === props.hovered || star.point.starId === props.selected) drawStarFocus(context, star, palette)
   }
-  if (pulsing) scheduleDraw()
+  if (pulsing || settling) scheduleDraw()
   else if (flowing && nebula) {
     // 手动操作始终可以立即排帧。缓慢的尘流单独限频，绘制较慢的设备留出更多输入时间。
     const cost = performance.now() - started
@@ -165,6 +192,14 @@ function hit(screen: Coordinates, radius = 12): ProjectedStar | null {
     distance = squared
   }
   return nearest
+}
+
+// 点击命中：只有一颗明显最近的星时直接打开；最近两颗相差不足 AMBIGUOUS_GAP 像素时不猜，转为附近列表。
+function clickTarget(screen: Coordinates): {open?: ProjectedStar; crowd?: ProjectedStar[]} {
+  const near = starsNear(props.stars, screen, 12)
+  if (!near.length) return {}
+  if (near.length === 1 || near[1].distance - near[0].distance >= AMBIGUOUS_GAP) return {open: near[0].star}
+  return {crowd: near.slice(0, 12).map(item => item.star)}
 }
 
 function move(next: Camera): void {
@@ -227,12 +262,13 @@ function onUp(event: PointerEvent): void {
   const right = drag.button === 2
   const menuGesture = right || drag.sawContext
   const clicked = !dragging.value
-  const star = clicked && !menuGesture ? hit(screenPoint(event)) : null
+  const target = clicked && !menuGesture ? clickTarget(screenPoint(event)) : {}
   // WebView 的 contextmenu 可能先于或晚于松键。同一次右击只打开一次，右键拖动仍用于旋转。
   skipNativeMenu = right && !drag.sawContext
   stopDrag()
   if (menuGesture && clicked) emit('menu', {x: event.clientX, y: event.clientY})
-  else if (star) emit('open', star.point.starId)
+  else if (target.open) emit('open', target.open.point.starId)
+  else if (target.crowd) emit('crowd', target.crowd)
 }
 
 function keyboardMenu(target: EventTarget | null): void {
@@ -277,9 +313,10 @@ function onKey(event: KeyboardEvent): void {
 }
 
 watch(samples, value => {
-  if (!value.length && visibleMass.value < 2) { nebula?.dispose(); nebula = undefined }
+  if (!value.length && visibleMass.value < 1) { nebula?.dispose(); nebula = undefined }
   scheduleDraw()
 })
+watch(theme, scheduleDraw)
 watch(() => props.camera, scheduleDraw)
 watch([() => props.stars, () => props.hovered, () => props.selected, () => props.focused], scheduleDraw)
 watch(() => props.arrivals, (arrivals) => {
@@ -316,7 +353,7 @@ defineExpose({focus: () => stage.value?.focus({preventScroll: true})})
   <!-- * 说明：来自反馈的三维光尘在星盘上相叠，星核打开对应反馈。 -->
   <!-- * 交互：拖动或方向键环绕，滚轮缩放，回车浏览星点，右击打开操作菜单。 -->
   <!-- * 依赖：当前相机、服务器返回星点和账号范围内的私有星。 -->
-  <!-- * 边界：空视野只显示淡淡的远景星尘，减少动态效果时新星直接就位。 -->
+  <!-- * 边界：0 条与多条共用同一张星图，只有云雾亮度随数量连续变化；减少动态效果时亮度直接到位。 -->
   <div ref="stage" class="galaxy-stage" :class="{dragging, 'has-star': hovered}" tabindex="0"
        role="region" aria-haspopup="menu" aria-keyshortcuts="Shift+F10" :aria-controls="menuOpen ? 'feedback-map-actions' : undefined"
        aria-label="立体反馈星图，方向键绕银心旋转，加减键缩放，回车浏览星点，右击或 Shift 加 F10 打开反馈菜单"
@@ -341,23 +378,24 @@ defineExpose({focus: () => stage.value?.focus({preventScroll: true})})
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #060910;
+  // 舞台底色与首页戴森球场景一致：日间 #ebebeb 的白灰底，夜间深空黑；星云与星核由画布按主题绘制。
+  background: var(--ds-bg-shell);
   cursor: grab;
   touch-action: none;
 
   &.has-star { cursor: pointer; }
   &.dragging { cursor: grabbing; }
-  &:focus-visible { outline: 2px solid #9cd8ff; outline-offset: -3px; }
+  &:focus-visible { outline: 2px solid var(--ds-brand); outline-offset: -3px; }
 
   canvas { width: 100%; height: 100%; display: block; }
   .star-caption {
     position: absolute; height: 18px; padding: 0 4px; border: 0; border-radius: 2px;
-    background: transparent; color: #d3dfee; text-align: center; white-space: nowrap;
-    text-shadow: 0 1px 3px #060910, 0 0 4px #060910;
+    background: transparent; color: var(--ds-text-primary); text-align: center; white-space: nowrap;
+    text-shadow: 0 1px 3px var(--ds-bg-shell), 0 0 4px var(--ds-bg-shell);
     font: 500 12px/18px var(--ds-font-display, sans-serif); font-variant-numeric: tabular-nums; cursor: pointer;
     &::before { content: ''; position: absolute; left: -4px; top: 50%; width: 5px; height: 1px; background: currentColor; opacity: .45; }
     &.on-left::before { left: auto; right: -4px; }
-    &:hover, &:focus-visible { color: #fff; background: #101a29; outline: 1px solid #9cd8ff; }
+    &:hover, &:focus-visible { background: var(--ds-bg-panel-elevated); outline: 1px solid var(--ds-brand); }
   }
 }
 </style>

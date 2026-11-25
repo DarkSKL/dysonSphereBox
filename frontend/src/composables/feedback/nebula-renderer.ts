@@ -1,5 +1,6 @@
 import {cameraFrame, type Camera, type ViewSize} from './galaxy-camera'
-import {edgeTransmission, FLOW_PERIOD_MS, nebulaPalette, PALETTE_SIZE, SAMPLE_STRIDE} from './galaxy-nebula'
+import {edgeTransmission, FLOW_PERIOD_MS, nebulaPaletteFor, PALETTE_SIZE, SAMPLE_STRIDE} from './galaxy-nebula'
+import {GALAXY_THEMES, type GalaxyTheme} from './galaxy-theme'
 
 // =============== 三维光尘通道 ===============
 // 光尘在外、中、内三个采样点确定的曲线上单向前行。投影后的切线决定细丝的形状，星核原点只用于裁切。
@@ -59,7 +60,17 @@ void main() {
   gl_FragColor = vec4(texture2D(palette, vec2(tint, 0.5)).rgb * a, a);
 }`
 
-function createPipeline(gl: WebGLRenderingContext) {
+// 深色用发光叠加（screen），浅色用预乘 alpha 的普通叠放，让云雾在白底上是灰白云团而不是发光。
+function applyBlend(gl: WebGLRenderingContext, theme: GalaxyTheme): void {
+  if (theme.nebula.blend === 'over') gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+  else gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+}
+
+function uploadPalette(gl: WebGLRenderingContext, theme: GalaxyTheme): void {
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, PALETTE_SIZE, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, nebulaPaletteFor(theme))
+}
+
+function createPipeline(gl: WebGLRenderingContext, theme: GalaxyTheme) {
   const program = gl.createProgram(), buffer = gl.createBuffer(), palette = gl.createTexture()
   const shaders: WebGLShader[] = []
   const release = () => {
@@ -89,11 +100,11 @@ function createPipeline(gl: WebGLRenderingContext) {
     gl.vertexAttribPointer(i, 3, gl.FLOAT, false, SAMPLE_STRIDE * 4, i * 12)
   })
   gl.bindTexture(gl.TEXTURE_2D, palette)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, PALETTE_SIZE, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, nebulaPalette)
+  uploadPalette(gl, theme)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
   gl.enable(gl.BLEND)
-  gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+  applyBlend(gl, theme)
   const uniform = (name: string) => gl.getUniformLocation(program, name)
   const right = uniform('right'), down = uniform('down'), clipScale = uniform('clipScale')
   const pixelScale = uniform('pixelScale'), exposure = uniform('exposure'), pixelRatio = uniform('pixelRatio')
@@ -101,6 +112,11 @@ function createPipeline(gl: WebGLRenderingContext) {
   gl.uniform1f(uniform('maxSize'), Math.min(256, gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1]))
   let uploaded: Float32Array | undefined
   return {
+    setTheme(next: GalaxyTheme) {
+      gl.bindTexture(gl.TEXTURE_2D, palette)
+      uploadPalette(gl, next)
+      applyBlend(gl, next)
+    },
     draw(samples: Float32Array, camera: Camera, size: ViewSize, dpr: number, gain: number, time: number, shadow: readonly [number, number]) {
       if (samples !== uploaded) {
         gl.bufferData(gl.ARRAY_BUFFER, samples, gl.STATIC_DRAW)
@@ -126,11 +142,11 @@ function createPipeline(gl: WebGLRenderingContext) {
 
 // =============== 软件绘制 ===============
 // WebView 禁用硬件加速时沿用同一批 XYZ、相机和色温。宽光团用缓存笔刷，细尘以有界采样绘制。
-function softwareBrush(index: number): HTMLCanvasElement {
+function softwareBrush(index: number, theme: GalaxyTheme): HTMLCanvasElement {
   const brush = document.createElement('canvas')
   brush.width = brush.height = 48
   const ctx = brush.getContext('2d')!
-  const color = nebulaPalette.slice(index * 4, index * 4 + 3).join(',')
+  const color = nebulaPaletteFor(theme).slice(index * 4, index * 4 + 3).join(',')
   const gradient = ctx.createRadialGradient(24, 24, 0, 24, 24, 24)
   for (const [stop, alpha] of [[0, 1], [.35, .67], [.65, .25], [1, 0]]) gradient.addColorStop(stop, 'rgba(' + color + ',' + alpha + ')')
   ctx.fillStyle = gradient
@@ -159,7 +175,7 @@ function softwareParticles(samples: Float32Array, peak: number) {
   return {samples, offsets: offsets.subarray(0, n), silkStep, grainStep}
 }
 
-function drawSoftware(canvas: HTMLCanvasElement, brushes: HTMLCanvasElement[], particles: ReturnType<typeof softwareParticles>, camera: Camera, size: ViewSize, dpr: number, gain: number, time: number, shadow: readonly [number, number]) {
+function drawSoftware(canvas: HTMLCanvasElement, brushes: HTMLCanvasElement[], theme: GalaxyTheme, particles: ReturnType<typeof softwareParticles>, camera: Camera, size: ViewSize, dpr: number, gain: number, time: number, shadow: readonly [number, number]) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   const {samples, offsets, silkStep, grainStep} = particles
@@ -168,7 +184,7 @@ function drawSoftware(canvas: HTMLCanvasElement, brushes: HTMLCanvasElement[], p
   const materialScale = scale / Math.pow(camera.zoom, .23)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, width + 1, height + 1)
-  ctx.globalCompositeOperation = 'screen'
+  ctx.globalCompositeOperation = theme.nebula.blend === 'over' ? 'source-over' : 'screen'
   let lastX = NaN, lastY = NaN, lastZ = NaN, edgeLight = 0
   for (const i of offsets) {
     const ox = samples[i + 6], oy = samples[i + 7], oz = samples[i + 8]
@@ -205,7 +221,7 @@ function drawSoftware(canvas: HTMLCanvasElement, brushes: HTMLCanvasElement[], p
     const diameter = Math.max(1.2, raw / Math.sqrt(1 + (raw / limit) ** 2))
     if (x < -diameter || x > width + diameter || y < -diameter || y > height + diameter) continue
     const index = samples[i + 5]
-    const brush = brushes[index] ?? (brushes[index] = softwareBrush(index))
+    const brush = brushes[index] ?? (brushes[index] = softwareBrush(index, theme))
     const front = .5 + .5 * (samples[i + 18] * shadow[0] + samples[i + 19] * shadow[1])
     const transmission = 1 - samples[i + 20] * (.29 + .59 * front * front)
     const alpha = edgeLight * gain * samples[i + 4] * 1.19 * fadeEdge(Math.min(age, 1 - age)) * transmission
@@ -226,24 +242,31 @@ function drawSoftware(canvas: HTMLCanvasElement, brushes: HTMLCanvasElement[], p
 export function createNebulaLayer(redraw: () => void) {
   const surface = document.createElement('canvas'), fallback = document.createElement('canvas')
   const gl = surface.getContext('webgl', {alpha: true, antialias: false, depth: false, preserveDrawingBuffer: true})
-  let pipeline = gl && createPipeline(gl)
+  let theme = GALAXY_THEMES.dark
+  let pipeline = gl && createPipeline(gl, theme)
   let previous: {camera: Camera; samples: Float32Array; width: number; height: number; gain: number; dpr: number; tick: number} | undefined
   let software: ReturnType<typeof softwareParticles> | undefined
   let softwarePeak = 0
   const brushes: HTMLCanvasElement[] = []
   const lost = (event: Event) => { event.preventDefault(); pipeline = null; previous = undefined; redraw() }
-  const restored = () => { pipeline = gl && createPipeline(gl); previous = undefined; redraw() }
+  const restored = () => { pipeline = gl && createPipeline(gl, theme); previous = undefined; redraw() }
   surface.addEventListener('webglcontextlost', lost)
   surface.addEventListener('webglcontextrestored', restored)
   return {
     get flowInterval(): number { return pipeline ? 1000 / 30 : 1000 / 12 },
-    render(samples: Float32Array, camera: Camera, size: ViewSize, dpr: number, mass: number, focused: boolean, elapsed: number): HTMLCanvasElement {
+    render(samples: Float32Array, camera: Camera, size: ViewSize, dpr: number, level: number, theme_: GalaxyTheme, focused: boolean, elapsed: number): HTMLCanvasElement {
+      if (theme_.mode !== theme.mode) {
+        // 主题切换：换色带与混合方式，丢弃按旧色带缓存的软件笔刷与上一帧。
+        theme = theme_
+        pipeline?.setTheme(theme)
+        brushes.length = 0
+        previous = undefined
+      }
       const output = pipeline ? surface : fallback
       const resolution = pipeline ? dpr : Math.min(dpr, 1, 960 / Math.max(size.width, size.height))
-      // 曝光随镜头缓慢变化。切换视区快照不会按缓冲区长度重新打光。
-      const t = Math.max(0, Math.min(1, (mass - 1) / 2))
-      const sparseGain = t * t * (3 - 2 * t)
-      const gain = 1.32 * sparseGain * (focused ? .12 : 1) / (1 + .30 * Math.log2(camera.zoom))
+      // level 为 0..1 的云雾亮度（存在感 × 数量曝光，由调用方缓动），镜头缩放只做轻微补偿。
+      // 切换视区快照不会按缓冲区长度重新打光。
+      const gain = 1.32 * theme.nebula.gain * level * (focused ? .12 : 1) / (1 + .30 * Math.log2(camera.zoom))
       const tick = Math.floor(elapsed / this.flowInterval)
       if (previous?.samples === samples && previous.camera === camera && previous.width === size.width &&
           previous.height === size.height && previous.dpr === dpr && previous.gain === gain && previous.tick === tick) return output
@@ -258,7 +281,7 @@ export function createNebulaLayer(redraw: () => void) {
           softwarePeak = Math.max(softwarePeak, samples.length / SAMPLE_STRIDE)
           software = softwareParticles(samples, softwarePeak)
         }
-        drawSoftware(output, brushes, software, camera, size, resolution, gain, time, shadow)
+        drawSoftware(output, brushes, theme, software, camera, size, resolution, gain, time, shadow)
       }
       previous = {camera, samples, width: size.width, height: size.height, dpr, gain, tick}
       return output

@@ -62,6 +62,7 @@ declare module 'vue' {
     DysonSphereSettingsGamePathSection: typeof import('./components/dysonSphere/settings/game-path-section.vue')['default']
     FeedbackEditorForm: typeof import('./components/feedback/editor-form.vue')['default']
     FeedbackGalaxyMap: typeof import('./components/feedback/galaxy-map.vue')['default']
+    FeedbackMapStatus: typeof import('./components/feedback/map-status.vue')['default']
     FeedbackPersonalList: typeof import('./components/feedback/personal-list.vue')['default']
     FeedbackStarDetail: typeof import('./components/feedback/star-detail.vue')['default']
     FeedbackStarQuote: typeof import('./components/feedback/star-quote.vue')['default']

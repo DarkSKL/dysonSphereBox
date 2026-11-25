@@ -1,17 +1,15 @@
 import {progressLabels, type DisplayStar, type StarProgress} from '../../types/feedback'
 import {cameraFrame, DISK_RADIUS, project, type Camera, type ProjectedStar, type ViewSize} from './galaxy-camera'
 import {randomFor, spiralPhase} from './galaxy-nebula'
+import {GALAXY_THEMES, type GalaxyTheme} from './galaxy-theme'
 
-export const starColors: Record<StarProgress, string> = {
-  feedback: '#91dbff',
-  accepted: '#c3a0ff',
-  implemented: '#ffc982',
-}
-const PRIVATE_COLOR = '#b5c1d0'
+// 深色星色保留为导出常量，供星点列表等只需要一套色值的调用方兜底。
+export const starColors: Record<StarProgress, string> = GALAXY_THEMES.dark.starColors
 const FULL_TURN = 2 * Math.PI
 
-// =============== 空视野远景 ===============
-// 固定采样让再次进入空视野时得到同一片天空。尘点只用于绘制，不进入反馈列表、命中或预取。
+// =============== 远景尘点与银心种子光 ===============
+// 说明：远景尘点在任何反馈数量下都绘制，固定采样让同一视角下背景一致，数量变化时背景不跳变。
+// 银心种子光只在反馈很少时出现，作为 0 条时的视觉焦点，随云雾亮起而淡出。尘点只用于绘制，不进入列表、命中或预取。
 const skyRandom = randomFor('feedback-empty-sky')
 const emptySky = Array.from({length: 48}, (_, i) => {
   const halo = i % 5 === 4
@@ -21,33 +19,56 @@ const emptySky = Array.from({length: 48}, (_, i) => {
     x: DISK_RADIUS * r * Math.cos(angle), y: DISK_RADIUS * r * Math.sin(angle),
     z: DISK_RADIUS * (skyRandom() - .5) * (halo ? .48 : .12),
     radius: .55 + .57 * skyRandom(), opacity: .20 + .19 * skyRandom(),
-    color: !halo && r < .32 ? '#b5a69b' : '#9eaec7',
+    warm: !halo && r < .32,
     mist: !halo && i % 3 !== 1,
   }
 })
 
-/** 沿当前方向投影稀疏的远景尘点。使用全景尺度，空视野在高倍率下也有轻微层次。 */
-export function drawEmptySky(ctx: CanvasRenderingContext2D, camera: Camera, size: ViewSize): void {
+/** 沿当前方向投影稀疏的远景尘点。使用全景尺度，高倍率下也有轻微层次；cloud 为 0..1 的云雾亮度，云越亮尘点越淡。 */
+export function drawSkyDust(ctx: CanvasRenderingContext2D, camera: Camera, size: ViewSize, theme: GalaxyTheme, cloud = 0): void {
   const skyCamera = {...camera, zoom: 1}
   const frame = cameraFrame(skyCamera, size)
   const spread = Math.min(40, Math.max(12, Math.min(size.width, size.height) * .042))
+  const fade = 1 - .45 * Math.max(0, Math.min(1, cloud))
   ctx.save()
   for (const dust of emptySky) {
     const {x, y} = project(dust, skyCamera, size, frame)
+    const color = dust.warm ? theme.sky.warmDust : theme.sky.dust
     if (dust.mist) {
       const mist = ctx.createRadialGradient(x, y, 0, x, y, spread)
-      mist.addColorStop(0, dust.color)
-      mist.addColorStop(1, dust.color + '00')
-      ctx.globalAlpha = .045
+      mist.addColorStop(0, color)
+      mist.addColorStop(1, color + '00')
+      ctx.globalAlpha = theme.sky.mistAlpha * fade
       ctx.fillStyle = mist
       ctx.fillRect(x - spread, y - spread, 2 * spread, 2 * spread)
     }
-    ctx.globalAlpha = dust.opacity
-    ctx.fillStyle = dust.color
+    ctx.globalAlpha = dust.opacity * fade
+    ctx.fillStyle = color
     ctx.beginPath()
     ctx.arc(x, y, dust.radius, 0, FULL_TURN)
     ctx.fill()
   }
+  ctx.restore()
+}
+
+/** 银心种子光：0 条时画面唯一的柔和焦点，amount 为 0..1。银心始终投影在画布中心，因此焦点位置不随视角漂移。 */
+export function drawSeedGlow(ctx: CanvasRenderingContext2D, size: ViewSize, theme: GalaxyTheme, amount: number): void {
+  if (amount <= .004) return
+  const x = size.width / 2, y = size.height / 2
+  const radius = Math.max(36, Math.min(size.width, size.height) * .2)
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, radius)
+  glow.addColorStop(0, theme.sky.glow)
+  glow.addColorStop(.35, theme.sky.glow + '55')
+  glow.addColorStop(1, theme.sky.glow + '00')
+  ctx.save()
+  ctx.globalAlpha = theme.sky.glowAlpha * amount
+  ctx.fillStyle = glow
+  ctx.fillRect(x - radius, y - radius, 2 * radius, 2 * radius)
+  ctx.globalAlpha = Math.min(1, theme.sky.glowAlpha * 4.2 * amount)
+  ctx.fillStyle = theme.sky.glow
+  ctx.beginPath()
+  ctx.arc(x, y, 1.8, 0, FULL_TURN)
+  ctx.fill()
   ctx.restore()
 }
 
@@ -59,6 +80,12 @@ export function starLabel(point: DisplayStar): string {
 export function detailLevel(zoom: number): number {
   const t = Math.max(0, Math.min(1, (Math.log2(zoom) - 1.35) / 1.85))
   return t * t * (3 - 2 * t)
+}
+
+/** 光晕随同屏星数缩小：约 30 颗以内保持原大小，密集时逐步收窄到一半，避免光晕互相淹没而无法分辨星核。 */
+export function haloScale(visibleCount: number): number {
+  if (visibleCount <= 30) return 1
+  return Math.max(.5, 1 - .16 * Math.log2(visibleCount / 30))
 }
 
 export function starCaptions(stars: readonly ProjectedStar[], size: ViewSize, level: number) {
@@ -83,8 +110,8 @@ export function starCaptions(stars: readonly ProjectedStar[], size: ViewSize, le
 
 type StarGlows = Record<StarProgress, HTMLCanvasElement>
 
-/** 只缓存三种色光的小笔刷，画布上的每次落笔都由反馈坐标触发。 */
-export function createStarGlows(): StarGlows {
+/** 只缓存三种色光的小笔刷，画布上的每次落笔都由反馈坐标触发。主题切换时重新创建。 */
+export function createStarGlows(theme: GalaxyTheme): StarGlows {
   function brush(color: string): HTMLCanvasElement {
     const canvas = document.createElement('canvas')
     const radius = 48
@@ -102,15 +129,20 @@ export function createStarGlows(): StarGlows {
     }
     return canvas
   }
-  return {feedback: brush(starColors.feedback), accepted: brush(starColors.accepted), implemented: brush(starColors.implemented)}
+  const colors = theme.starColors
+  return {feedback: brush(colors.feedback), accepted: brush(colors.accepted), implemented: brush(colors.implemented)}
 }
 
 // =============== 单颗反馈星 ===============
 // 星核和光晕表达热度，聚合计数只加宽现有光晕。作者待审稿使用空心标记，方便与公开星区分。
-export function drawFeedbackStar(ctx: CanvasRenderingContext2D, glows: StarGlows, star: ProjectedStar, pulse: number, detail: number): void {
+// scale 为 haloScale 的结果，只缩小光晕，不改变星核大小，命中范围不受影响。
+export function drawFeedbackStar(
+  ctx: CanvasRenderingContext2D, glows: StarGlows, star: ProjectedStar, pulse: number, detail: number,
+  theme: GalaxyTheme, scale = 1,
+): void {
   const {point, x, y} = star
   if (point.privateLabel) {
-    ctx.strokeStyle = PRIVATE_COLOR
+    ctx.strokeStyle = theme.privateColor
     ctx.lineWidth = 1.5
     ctx.beginPath()
     ctx.arc(x, y, 4 + detail, 0, FULL_TURN)
@@ -121,11 +153,18 @@ export function drawFeedbackStar(ctx: CanvasRenderingContext2D, glows: StarGlows
   const heat = point.progress === 'implemented' ? .24 : Math.max(0, Math.min(1, point.brightness))
   const density = Math.min(5, Math.log2(Math.max(1, point.count ?? 1)))
   const radius = 1.6 + heat * 1.6 + detail * 1.6
-  const halo = 9 + heat * 12 + density * 3 + pulse * 12 + detail * 3
-  const color = starColors[point.progress] ?? starColors.feedback
-  ctx.globalAlpha = .43 + heat * .32 + pulse * .18
+  const halo = (9 + heat * 12 + density * 3 + detail * 3) * scale + pulse * 12
+  const color = theme.starColors[point.progress] ?? theme.starColors.feedback
+  ctx.globalAlpha = theme.glow.base + heat * theme.glow.slope + pulse * .18
   ctx.drawImage(glows[point.progress] ?? glows.feedback, x - halo, y - halo, 2 * halo, 2 * halo)
   ctx.globalAlpha = 1
+  if (theme.coreRing) {
+    // 浅色下深色星核落在灰色云雾上，先垫一圈白边保证星核轮廓清楚。
+    ctx.fillStyle = theme.coreRing
+    ctx.beginPath()
+    ctx.arc(x, y, radius + 1.4, 0, FULL_TURN)
+    ctx.fill()
+  }
   ctx.fillStyle = color
   if (heat >= .86) {
     // 热门星的细星芒穿过本身的星核，仍然只有一个可命中中心。
@@ -141,24 +180,24 @@ export function drawFeedbackStar(ctx: CanvasRenderingContext2D, glows: StarGlows
   ctx.beginPath()
   ctx.arc(x, y, radius, 0, FULL_TURN)
   ctx.fill()
-  ctx.fillStyle = '#f3f7ff'
+  ctx.fillStyle = theme.coreHighlight
   ctx.beginPath()
   ctx.arc(x, y, radius * (.36 + heat * .24), 0, FULL_TURN)
   ctx.fill()
 }
 
 /** 选中或悬停标记最后绘制，密集区域里的目标始终可辨。 */
-export function drawStarFocus(ctx: CanvasRenderingContext2D, {point, x, y}: ProjectedStar): void {
+export function drawStarFocus(ctx: CanvasRenderingContext2D, {point, x, y}: ProjectedStar, theme: GalaxyTheme): void {
   ctx.beginPath()
   for (let i = 0; i < 4; i++) {
     const angle = (i + .15) * Math.PI / 2
     ctx.moveTo(x + 10 * Math.cos(angle), y + 10 * Math.sin(angle))
     ctx.arc(x, y, 10, angle, angle + Math.PI / 3)
   }
-  ctx.strokeStyle = '#111724'
+  ctx.strokeStyle = theme.focusOutline
   ctx.lineWidth = 3
   ctx.stroke()
-  ctx.strokeStyle = point.privateLabel ? PRIVATE_COLOR : (starColors[point.progress] ?? starColors.feedback)
+  ctx.strokeStyle = point.privateLabel ? theme.privateColor : (theme.starColors[point.progress] ?? theme.starColors.feedback)
   ctx.lineWidth = 1.3
   ctx.stroke()
 }

@@ -74,18 +74,18 @@ onBeforeUnmount(() => observer?.disconnect())
 .star-preview {
   position: absolute; isolation: isolate; pointer-events: auto; margin: 0;
   box-sizing: border-box; width: max-content; max-width: min(25em, calc(100% - 16px)); padding: 4px 7px;
-  color: #f0f3f8; font: 400 14px/1.6 var(--ds-font-ui, sans-serif);
-  text-shadow: 0 1px 3px #080c14, 0 0 4px rgb(5 9 16 / .85);
+  color: var(--ds-text-primary); font: 400 14px/1.6 var(--ds-font-ui, sans-serif);
   overflow-wrap: anywhere;
 }
+// 引文垫一层随主题变化的柔和底：夜间深色、日间近白，正文与云雾叠放时对比度不依赖星云亮度。
 .star-preview::before {
   content: ''; position: absolute; z-index: -1; inset: 1px -2px;
-  border-radius: 5px; background: rgb(6 10 18 / .73); filter: blur(5px);
+  border-radius: 5px; background: color-mix(in srgb, var(--ds-bg-panel-elevated) 86%, transparent); filter: blur(5px);
 }
 blockquote { display: inline; margin: 0; padding: 0; white-space: pre-wrap; }
 figcaption {
   display: inline-flex; align-items: baseline; gap: .38em; max-width: 100%;
-  margin-inline-start: .5em; font-size: 12px; color: #bec9d8; vertical-align: baseline;
+  margin-inline-start: .5em; font-size: 12px; color: var(--ds-text-secondary); vertical-align: baseline;
 }
 figcaption span { flex: none; }
 bdi { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

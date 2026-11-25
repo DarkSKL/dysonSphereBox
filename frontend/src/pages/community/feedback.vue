@@ -5,10 +5,13 @@ import {computed, h, nextTick, ref, watch} from 'vue'
 
 import EditorForm from '../../components/feedback/editor-form.vue'
 import GalaxyMap from '../../components/feedback/galaxy-map.vue'
+import MapStatus from '../../components/feedback/map-status.vue'
 import PersonalList from '../../components/feedback/personal-list.vue'
 import StarDetail from '../../components/feedback/star-detail.vue'
 import StarQuote from '../../components/feedback/star-quote.vue'
 import VisibleStars from '../../components/feedback/visible-stars.vue'
+import type {ProjectedStar} from '../../composables/feedback/galaxy-camera'
+import {galaxyStatus} from '../../composables/feedback/galaxy-status'
 import {useFeedbackGalaxy} from '../../composables/feedback/useFeedbackGalaxy'
 
 definePage({meta: {layout: 'main', keepAlive: true, title: '反馈星系'}})
@@ -19,7 +22,7 @@ const {
   foreground, map, preview, personal, editor, detail, panel, panelHeading, browse, points, visibleStars,
   confirmWithdraw, writing, actionError, status, currentCollection, closePanel,
   actionMenu, openActions, dismissActions, openPanel,
-  changePersonalPage, openDetail, openMine, hover, changeStar, resetCamera, zoom,
+  changePersonalPage, openDetail, openMine, hover, changeStar, resetCamera, zoom, locate,
 } = useFeedbackGalaxy()
 const {camera, arrivals, ready, error: mapError, updateCamera, refreshNow} = map
 const {hover: hoveredStar, hovered, quote} = preview
@@ -27,6 +30,58 @@ const {detail: selectedStar, highlightedEntry, target, busy: detailBusy, unavail
 const {editor: openedEditor, draft, error: editorError, saving, length, limit, valid} = editor
 const {mine, notices} = personal
 const mapView = ref<InstanceType<typeof GalaxyMap>>()
+
+// =============== 星图状态提示 ===============
+// 说明：五种状态由 galaxyStatus 统一判定。重试期间按钮显示加载，避免重复点击。
+// 使用：错误重试走地图的 refreshNow；所读星移出视野时「回到这颗星」按该星坐标拉回镜头。
+const retrying = ref(false)
+const galaxyState = computed(() => galaxyStatus({
+  foreground: foreground.value, ready: ready.value, error: mapError.value,
+  total: points.value.length, visible: visibleStars.value.length, zoom: camera.value.zoom,
+  selectedId: panel.value === 'detail' && !unavailable.value ? target.value : '',
+  selectedVisible: !!target.value && visibleStars.value.some(star => star.point.starId === target.value),
+}))
+// 列表打开时不再提示「画面内无星」；发布面板已打开时，空状态卡片的「提意见」入口是多余的。
+const statusKind = computed(() => {
+  const kind = galaxyState.value
+  if ((browse.value || crowd.value.length) && kind === 'offscreen') return ''
+  if (panel.value === 'publish' && kind === 'empty') return ''
+  return kind
+})
+// 重试按钮只给出「正在重试」的反馈：请求结果由地图状态决定，失败会继续显示错误提示。
+async function retryMap(): Promise<void> {
+  retrying.value = true
+  refreshNow()
+  await new Promise(resolve => window.setTimeout(resolve, 700))
+  retrying.value = false
+}
+function publishFromEmpty(): void {
+  openPanel('publish')
+}
+
+// 回到这颗星：详情自带坐标；拉远到恰好容下它，保留当前朝向。
+function locateSelected(): void {
+  const star = selectedStar.value
+  if (!star) return
+  locate(star)
+}
+
+// =============== 点击拥挤处的附近星列表 ===============
+// 说明：密集时点击落在多颗难分辨的星之间，不猜目标，复用「可浏览星点」列表按距离列出。
+// 边界：列表只在点击处出现，Escape 或选择后收起；选择后沿用 openFromList 打开详情。
+const crowd = ref<ProjectedStar[]>([])
+function showCrowd(stars: ProjectedStar[]): void {
+  dismissActions()
+  preview.clear()
+  browse.value = false
+  crowd.value = stars
+}
+// 镜头一动，点击处的星位置即已过期，立即收起列表。
+watch(camera, () => { if (crowd.value.length) crowd.value = [] })
+function closeCrowd(): void {
+  crowd.value = []
+  void nextTick(() => mapView.value?.focus())
+}
 const menuOptions: DropdownOption[] = [
   {key: 'publish', label: '提意见', icon: () => h(MessageSquarePlus, {size: 16, 'aria-hidden': true})},
   {key: 'mine', label: '我的星星', icon: () => h(Star, {size: 16, 'aria-hidden': true})},
@@ -72,6 +127,7 @@ function selectMenuAction(key: string | number): void {
 
 function openFromList(starId: string): void {
   browse.value = false
+  crowd.value = []
   void nextTick(() => {
     mapView.value?.focus()
     openDetail(starId)
@@ -91,14 +147,14 @@ function openFromList(starId: string): void {
         :menu-open="!!actionMenu" @menu="openActions" @dismiss-menu="dismissActions"
         :tooltip-id="showQuote ? 'feedback-star-quote' : undefined" @approach="preview.approach"
         :active="foreground" :selected="!unavailable ? target : ''" @change="updateCamera"
-        @zoom="zoom" @home="resetCamera" @hover="hover" @open="openDetail" @browse="toggleBrowse" />
-      <div v-if="mapError" class="map-error" role="alert">
-        {{ mapError }} <n-button size="tiny" @click="refreshNow">重试</n-button>
-      </div>
+        @zoom="zoom" @home="resetCamera" @hover="hover" @open="openDetail" @browse="toggleBrowse" @crowd="showCrowd" />
+      <MapStatus :kind="statusKind" :message="mapError" :retrying="retrying" @retry="retryMap" @publish="publishFromEmpty"
+        @locate="locateSelected" @home="resetCamera" />
       <StarQuote v-if="showQuote && quote && anchor" :quote="quote" :anchor="anchor"
         @hold="preview.hold" @leave="preview.leave" @contextmenu.prevent="openActions({x: $event.clientX, y: $event.clientY})" />
-      <VisibleStars class="scene-stars" :opened="browse" :stars="visibleStars" :quote="quote"
-        @close="toggleBrowse" @open="openFromList" @preview="hover" />
+      <VisibleStars class="scene-stars" :opened="browse || crowd.length > 0" :stars="crowd.length ? crowd : visibleStars"
+        :heading="crowd.length ? '附近的星' : '当前视野'" :quote="quote"
+        @close="crowd.length ? closeCrowd() : toggleBrowse()" @open="openFromList" @preview="hover" />
 
       <!-- ~ 星图右键菜单 -->
       <!-- * 说明：在点击位置打开反馈操作，选择后进入对应面板。 -->
@@ -176,11 +232,6 @@ function openFromList(starId: string): void {
   width: min(300px, calc(100% - var(--galaxy-panel-width) - 24px));
   max-height: calc(100% - 24px);
   overflow-wrap: anywhere;
-}
-.map-error {
-  position: absolute; bottom: 12px; left: 12px; max-width: calc(100% - 24px);
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 4px;
-  color: var(--ds-text-primary); background: var(--ds-bg-panel-elevated); font-size: 13px;
 }
 .galaxy-panel {
   position: absolute; z-index: 3; inset: 0 0 0 auto; display: flex; flex-direction: column;

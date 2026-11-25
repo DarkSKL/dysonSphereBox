@@ -2,7 +2,8 @@
 import {X} from '@lucide/vue'
 import {computed, nextTick, ref, watch} from 'vue'
 
-import {starColors, starLabel} from '../../composables/feedback/galaxy-art'
+import {starLabel} from '../../composables/feedback/galaxy-art'
+import {useGalaxyTheme} from '../../composables/feedback/useGalaxyTheme'
 import type {ProjectedStar} from '../../composables/feedback/galaxy-camera'
 import type {DisplayStar, StarPreview} from '../../types/feedback'
 
@@ -10,7 +11,10 @@ const props = defineProps<{
   stars: ProjectedStar[]
   opened: boolean
   quote: StarPreview | null
+  /** 列表来源：视野内全部可选星，或点击处附近难以分辨的几颗星。 */
+  heading?: string
 }>()
+const theme = useGalaxyTheme()
 const emit = defineEmits<{
   close: []
   open: [starId: string]
@@ -39,17 +43,17 @@ watch(() => props.opened, async (opened) => {
   <section v-if="opened" ref="root" class="visible-stars" aria-label="可浏览星点" tabindex="-1"
     @keydown.esc.stop.prevent="emit('close')">
     <header>
-      <h3>当前视野 · {{ stars.length }} 颗可选</h3>
+      <h3>{{ heading || '当前视野' }} · {{ stars.length }} 颗可选</h3>
       <n-button size="tiny" quaternary aria-label="关闭星点列表" title="关闭星点列表" @click="emit('close')">
         <X :size="16" aria-hidden="true" />
       </n-button>
     </header>
-    <p v-if="!rows.length">当前视野没有反馈星。</p>
+    <p v-if="!rows.length" class="empty-note">当前视野没有反馈星。</p>
     <ul v-else>
       <li v-for="{point} in rows" :key="point.starId">
         <button type="button" :aria-describedby="quote?.starId === point.starId ? 'feedback-list-quote' : undefined"
           @focus="emit('preview', point)" @blur="emit('preview', null)" @click="emit('open', point.starId)">
-          <span class="list-dot" :class="{private: point.privateLabel}" :style="{color: starColors[point.progress]}" aria-hidden="true" />
+          <span class="list-dot" :class="{private: point.privateLabel}" :style="{color: theme.starColors[point.progress]}" aria-hidden="true" />
           <span>{{ starLabel(point) }} · 星 {{ point.starId }}</span>
         </button>
       </li>
@@ -77,7 +81,7 @@ li button {
   &:hover, &:focus-visible { background: var(--ds-bg-panel); }
   &:focus-visible { outline: 2px solid var(--ds-brand); }
 }
-.list-dot { flex: 0 0 7px; height: 7px; background: currentColor; border-radius: 50%; box-shadow: inset 0 0 0 1px #29334a; }
+.list-dot { flex: 0 0 7px; height: 7px; background: currentColor; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--ds-border-default); }
 .list-dot.private { background: none; border: 1px solid currentColor; }
 .focus-preview { color: var(--ds-text-secondary); margin: 7px 0; overflow-wrap: anywhere; }
 </style>
