@@ -58,6 +58,32 @@ export function starsNear(stars: readonly ProjectedStar[], screen: Coordinates, 
 /** 两颗最近的星相差不足该像素数时，视为点击落在拥挤处，不替用户猜测目标。 */
 export const AMBIGUOUS_GAP = 4
 
+/**
+ * 点击命中：只有一颗明显最近的星时直接打开；最近两颗相差不足 AMBIGUOUS_GAP 像素时返回命中半径内的全部星，
+ * 由页面用分页列表让用户选择。不截断数量：半径内第 13 颗及之后的星同样可选。
+ */
+export function resolveClick(stars: readonly ProjectedStar[], screen: Coordinates, radius: number):
+  {open?: ProjectedStar; crowd?: ProjectedStar[]} {
+  const near = starsNear(stars, screen, radius)
+  if (!near.length) return {}
+  if (near.length === 1 || near[1].distance - near[0].distance >= AMBIGUOUS_GAP) return {open: near[0].star}
+  return {crowd: near.map(item => item.star)}
+}
+
+/**
+ * 按当前快照重新校验候选：保留候选 ID 的原有顺序，丢弃已不在当前可见星中的 ID，位置取最新投影。
+ * 轮询替换代表星或移除星点后，旧选项不会继续显示；全部失效时返回空数组，由调用方收起列表。
+ */
+export function revalidateCandidates(ids: readonly string[], stars: readonly ProjectedStar[]): ProjectedStar[] {
+  const current = new Map(stars.map(star => [star.point.starId, star]))
+  const kept: ProjectedStar[] = []
+  for (const id of ids) {
+    const star = current.get(id)
+    if (star) kept.push(star)
+  }
+  return kept
+}
+
 export function projectVisibleStars(points: readonly DisplayStar[], camera: Camera, size: ViewSize): ProjectedStar[] {
   const frame = cameraFrame(camera, size)
   const visible: ProjectedStar[] = []
@@ -66,6 +92,13 @@ export function projectVisibleStars(points: readonly DisplayStar[], camera: Came
     if (pos.x >= 0 && pos.x < size.width && pos.y >= 0 && pos.y < size.height) visible.push({...pos, point})
   }
   return visible
+}
+
+/** 世界坐标当前是否投影在画布内。与 projectVisibleStars 使用同一投影与边界，供「所读星是否在画面内」判定使用。 */
+export function isInView(point: GalaxyPosition, camera: Camera, size: ViewSize): boolean {
+  if (!size.width || !size.height) return false
+  const pos = project(point, camera, size)
+  return pos.x >= 0 && pos.x < size.width && pos.y >= 0 && pos.y < size.height
 }
 
 /** 从个人列表或发布回执查看星点时，只在必要时拉远，保留当前朝向与银心。 */

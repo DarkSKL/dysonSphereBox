@@ -44,6 +44,32 @@ export function cloudPresence(mass: number): number {
   return 1 - Math.exp(-Math.max(0, mass) / 1.6)
 }
 
+/** 云雾亮度降到该值以下才视为淡出结束。 */
+export const CLOUD_VISIBLE = .003
+
+/**
+ * 云雾亮度向目标缓动一步。reducedMotion 或首次调用（level 为负）时直接到位；dt 以毫秒计，上限 250 防止切后台后一步跳过。
+ * 返回新亮度与是否仍在趋近目标，调用方据此决定是否继续排帧。
+ */
+export function easeCloudLevel(level: number, target: number, dt: number, reducedMotion: boolean): {level: number; settling: boolean} {
+  if (level < 0 || reducedMotion) return {level: target, settling: false}
+  const next = level + (target - level) * (1 - Math.exp(-Math.min(250, Math.max(0, dt)) / 160))
+  const done = Math.abs(target - next) < .004
+  return {level: done ? target : next, settling: !done}
+}
+
+/**
+ * 本帧是否绘制云雾层，以及应使用哪一批采样。
+ * 采样先于亮度清空：最后一颗公开星消失时 samples 立刻为空，但亮度还在淡出，此时用上一批非空采样（previous）继续绘制，
+ * 亮度降到 CLOUD_VISIBLE 以下才停绘并要求释放云雾层。亮度为 0 且采样为空（始终 0 条）时不绘制，不会有残留。
+ */
+export function cloudPlan<T extends {length: number}>(level: number, samples: T, previous: T | undefined):
+  {draw: boolean; use: T | undefined; release: boolean; keep: T | undefined} {
+  const keep = samples.length ? samples : previous
+  const draw = level > CLOUD_VISIBLE && !!keep?.length
+  return {draw, use: draw ? keep : undefined, release: !draw && !samples.length, keep: draw ? keep : undefined}
+}
+
 export function cloudExposure(mass: number): number {
   return 1 / (1 + .2 * Math.log2(1 + Math.max(0, mass - 4) / 4))
 }

@@ -27,8 +27,11 @@ const lastPage = computed(() => Math.max(1, Math.ceil(props.stars.length / pageS
 const rows = computed(() => props.stars.slice((page.value - 1) * pageSize, page.value * pageSize))
 
 watch(lastPage, (count) => { page.value = Math.min(page.value, count) })
+// 切换列表来源（视野内全部 / 点击处附近）时回到第一页。
+watch(() => props.heading, () => { page.value = 1 })
 watch(() => props.opened, async (opened) => {
   if (!opened) return
+  page.value = 1
   await nextTick()
   root.value?.focus()
 })

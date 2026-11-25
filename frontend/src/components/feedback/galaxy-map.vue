@@ -4,8 +4,8 @@ import {computed, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue'
 import {
   createStarGlows, detailLevel, drawFeedbackStar, drawSeedGlow, drawSkyDust, drawStarFocus, haloScale, starCaptions, starLabel,
 } from '../../composables/feedback/galaxy-art'
-import {AMBIGUOUS_GAP, boundedCamera, starsNear, type Camera, type ProjectedStar, type ViewSize} from '../../composables/feedback/galaxy-camera'
-import {cloudExposure, cloudPresence, edgeTransmission, FLOW_PERIOD_MS} from '../../composables/feedback/galaxy-nebula'
+import {boundedCamera, resolveClick, type Camera, type ProjectedStar, type ViewSize} from '../../composables/feedback/galaxy-camera'
+import {cloudExposure, cloudPlan, cloudPresence, easeCloudLevel, edgeTransmission, FLOW_PERIOD_MS} from '../../composables/feedback/galaxy-nebula'
 import {useGalaxyTheme} from '../../composables/feedback/useGalaxyTheme'
 import {useNebulaSamples} from '../../composables/feedback/useNebulaSamples'
 import {createNebulaLayer} from '../../composables/feedback/nebula-renderer'
@@ -46,6 +46,8 @@ const dragging = ref(false)
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
 const size = shallowRef<ViewSize>({width: 0, height: 0})
 const samples = useNebulaSamples(() => props.sources)
+// 最后一颗公开星消失时，采样会先变空；淡出期间继续用上一批非空采样绘制云雾，淡出结束再丢弃。
+let fadingSamples: Float32Array | undefined
 const theme = useGalaxyTheme()
 // 仅绘制按远近排序，键盘列表遵循快照顺序，转动镜头不会打乱同一批反馈。
 const drawOrder = computed(() => props.stars.slice().sort((a, b) => a.depth - b.depth))
@@ -100,12 +102,10 @@ function cloudTarget(): number {
 }
 
 function easeCloud(now: number, target: number): boolean {
-  if (cloudLevel < 0 || reduced.matches) { cloudLevel = target; cloudAt = now; return false }
-  const dt = Math.min(250, Math.max(0, now - cloudAt))
+  const step = easeCloudLevel(cloudLevel, target, now - cloudAt, reduced.matches)
   cloudAt = now
-  const next = cloudLevel + (target - cloudLevel) * (1 - Math.exp(-dt / 160))
-  cloudLevel = Math.abs(target - next) < .004 ? target : next
-  return cloudLevel !== target
+  cloudLevel = step.level
+  return step.settling
 }
 
 function draw(now: number): void {
@@ -124,10 +124,15 @@ function draw(now: number): void {
   if (glowsMode !== palette.mode) { glows = createStarGlows(palette); glowsMode = palette.mode }
   // 星云层与远景尘点对任意数量都走同一套绘制，仅亮度由 cloudLevel 连续变化，0 条也保留同一张星图。
   const settling = easeCloud(now, props.stars.length ? cloudTarget() : 0)
-  const hasCloud = cloudLevel > .003 && visibleMass.value > 0 && samples.value.length > 0
+  // 云雾有亮度就继续绘制：目标为 0 时用上一批采样淡出；亮度降到阈值以下才停绘并释放云雾层。
+  const plan = cloudPlan(cloudLevel, samples.value, fadingSamples)
+  fadingSamples = plan.keep
+  const cloudSamples = plan.use
+  const hasCloud = plan.draw
+  if (plan.release) { nebula?.dispose(); nebula = undefined }
   drawSkyDust(context, props.camera, size.value, palette, cloudLevel)
   drawSeedGlow(context, size.value, palette, 1 - Math.min(1, cloudLevel * 2.2))
-  if (!props.stars.length && !settling) { pauseFlow(); return }
+  if (!props.stars.length && !settling && !hasCloud) { pauseFlow(); return }
   const flowing = hasCloud && !props.focused && !reduced.matches
   if (flowing) {
     if (lastFlowFrame !== undefined) {
@@ -138,7 +143,7 @@ function draw(now: number): void {
   } else lastFlowFrame = undefined
   if (hasCloud) {
     nebula ??= createNebulaLayer(scheduleDraw)
-    const volume = nebula.render(samples.value, props.camera, size.value, surface.width / width, cloudLevel, palette, props.focused, flowElapsed)
+    const volume = nebula.render(cloudSamples!, props.camera, size.value, surface.width / width, cloudLevel, palette, props.focused, flowElapsed)
     context.drawImage(volume, 0, 0, width, height)
   }
   const pulse = reduced.matches || !arrivalsAt ? 0 : Math.max(0, 1 - (now - arrivalsAt) / 260)
@@ -194,12 +199,9 @@ function hit(screen: Coordinates, radius = 12): ProjectedStar | null {
   return nearest
 }
 
-// 点击命中：只有一颗明显最近的星时直接打开；最近两颗相差不足 AMBIGUOUS_GAP 像素时不猜，转为附近列表。
+// 点击命中：判定规则在 resolveClick（可单测）。拥挤时交出半径内全部候选，列表自身分页。
 function clickTarget(screen: Coordinates): {open?: ProjectedStar; crowd?: ProjectedStar[]} {
-  const near = starsNear(props.stars, screen, 12)
-  if (!near.length) return {}
-  if (near.length === 1 || near[1].distance - near[0].distance >= AMBIGUOUS_GAP) return {open: near[0].star}
-  return {crowd: near.slice(0, 12).map(item => item.star)}
+  return resolveClick(props.stars, screen, 12)
 }
 
 function move(next: Camera): void {
@@ -312,10 +314,7 @@ function onKey(event: KeyboardEvent): void {
   event.preventDefault()
 }
 
-watch(samples, value => {
-  if (!value.length && visibleMass.value < 1) { nebula?.dispose(); nebula = undefined }
-  scheduleDraw()
-})
+watch(samples, scheduleDraw)
 watch(theme, scheduleDraw)
 watch(() => props.camera, scheduleDraw)
 watch([() => props.stars, () => props.hovered, () => props.selected, () => props.focused], scheduleDraw)

@@ -15,7 +15,7 @@ type Panel = 'detail' | 'publish' | 'mine' | 'notices' | ''
 
 // =============== 页面编排 ===============
 // 说明：统一处理前台生命周期、选择和写入后校准。地图和详情分别维护相机与阅读状态。
-export function useFeedbackGalaxy() {
+export function useFeedbackGalaxy(restoreFocus?: () => void) {
   const route = useRoute()
   const active = ref(false)
   const visible = ref(!document.hidden)
@@ -99,7 +99,10 @@ export function useFeedbackGalaxy() {
       const previous = previousFocus
       previousFocus = null
       void nextTick(() => {
-        if (!panel.value && previous?.isConnected) previous.focus({preventScroll: true})
+        if (panel.value) return
+        // 原入口仍挂载就回到原处；入口已被卸载（例如空态卡片在面板打开时消失）则交给页面选择当前存在的落点。
+        if (previous?.isConnected) previous.focus({preventScroll: true})
+        else restoreFocus?.()
       })
     }
   }

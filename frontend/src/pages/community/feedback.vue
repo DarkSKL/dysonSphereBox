@@ -11,6 +11,7 @@ import StarDetail from '../../components/feedback/star-detail.vue'
 import StarQuote from '../../components/feedback/star-quote.vue'
 import VisibleStars from '../../components/feedback/visible-stars.vue'
 import type {ProjectedStar} from '../../composables/feedback/galaxy-camera'
+import {isInView, revalidateCandidates} from '../../composables/feedback/galaxy-camera'
 import {galaxyStatus} from '../../composables/feedback/galaxy-status'
 import {useFeedbackGalaxy} from '../../composables/feedback/useFeedbackGalaxy'
 
@@ -23,37 +24,57 @@ const {
   confirmWithdraw, writing, actionError, status, currentCollection, closePanel,
   actionMenu, openActions, dismissActions, openPanel,
   changePersonalPage, openDetail, openMine, hover, changeStar, resetCamera, zoom, locate,
-} = useFeedbackGalaxy()
-const {camera, arrivals, ready, error: mapError, updateCamera, refreshNow} = map
+} = useFeedbackGalaxy(focusAfterPanel)
+const {camera, arrivals, ready, error: mapError, loading: mapLoading, snapshotIsPanorama, viewIsPanorama, updateCamera, retry: retryRequest} = map
 const {hover: hoveredStar, hovered, quote} = preview
 const {detail: selectedStar, highlightedEntry, target, busy: detailBusy, unavailable, error: detailError} = detail
 const {editor: openedEditor, draft, error: editorError, saving, length, limit, valid} = editor
 const {mine, notices} = personal
 const mapView = ref<InstanceType<typeof GalaxyMap>>()
+const mapStatus = ref<InstanceType<typeof MapStatus>>()
+
+// =============== 面板关闭后的焦点落点 ===============
+// 说明：打开面板会卸载空态卡片里的「提意见」按钮，Escape 关闭后原节点已不存在。
+// 使用：useFeedbackGalaxy 在原焦点节点失效时调用；当前仍有「提意见」入口就聚焦它，否则（例如已有星）回到星图。
+// 边界：只在面板关闭后的下一帧执行，不抢走用户已经移到别处的焦点。
+function focusAfterPanel(): void {
+  void nextTick(() => {
+    const active = document.activeElement
+    if (active && active !== document.body && !active.closest('.galaxy-panel')) return
+    if (mapStatus.value?.focusPublish()) return
+    mapView.value?.focus()
+  })
+}
 
 // =============== 星图状态提示 ===============
 // 说明：五种状态由 galaxyStatus 统一判定。重试期间按钮显示加载，避免重复点击。
-// 使用：错误重试走地图的 refreshNow；所读星移出视野时「回到这颗星」按该星坐标拉回镜头。
+// 使用：错误重试走地图的 retry；所读星移出视野时「回到这颗星」按该星坐标拉回镜头。
 const retrying = ref(false)
+const selectedOnMap = computed(() => panel.value === 'detail' && !unavailable.value &&
+  !!selectedStar.value && selectedStar.value.original.reviewState !== 'rejected')
 const galaxyState = computed(() => galaxyStatus({
   foreground: foreground.value, ready: ready.value, error: mapError.value,
-  total: points.value.length, visible: visibleStars.value.length, zoom: camera.value.zoom,
-  selectedId: panel.value === 'detail' && !unavailable.value ? target.value : '',
-  selectedVisible: !!target.value && visibleStars.value.some(star => star.point.starId === target.value),
+  total: points.value.length, visible: visibleStars.value.length,
+  snapshotIsPanorama: snapshotIsPanorama.value, viewIsPanorama: viewIsPanorama.value, loading: mapLoading.value,
+  selectedId: selectedOnMap.value ? target.value : '',
+  // 按详情自己的坐标判断是否在画面内：聚合时快照只含代表星，不能用「快照里有没有这个 ID」代替。
+  selectedVisible: selectedOnMap.value && !!selectedStar.value && isInView(selectedStar.value, camera.value, map.size.value),
+  selectedClickable: visibleStars.value.some(star => star.point.starId === target.value),
+  aggregated: points.value.some(star => (star.count ?? 1) > 1),
 }))
 // 列表打开时不再提示「画面内无星」；发布面板已打开时，空状态卡片的「提意见」入口是多余的。
 const statusKind = computed(() => {
   const kind = galaxyState.value
-  if ((browse.value || crowd.value.length) && kind === 'offscreen') return ''
+  if ((browse.value || crowdIds.value.length) && kind === 'offscreen') return ''
   if (panel.value === 'publish' && kind === 'empty') return ''
   return kind
 })
-// 重试按钮只给出「正在重试」的反馈：请求结果由地图状态决定，失败会继续显示错误提示。
+// 重试按钮的转圈与本次请求同生命周期：retry 在请求结算（成功、失败或被废弃）时才返回。
+// 失败时错误提示保留、按钮恢复可点；成功时错误提示随快照到达消失。
 async function retryMap(): Promise<void> {
+  if (retrying.value) return
   retrying.value = true
-  refreshNow()
-  await new Promise(resolve => window.setTimeout(resolve, 700))
-  retrying.value = false
+  try { await retryRequest() } finally { retrying.value = false }
 }
 function publishFromEmpty(): void {
   openPanel('publish')
@@ -69,17 +90,30 @@ function locateSelected(): void {
 // =============== 点击拥挤处的附近星列表 ===============
 // 说明：密集时点击落在多颗难分辨的星之间，不猜目标，复用「可浏览星点」列表按距离列出。
 // 边界：列表只在点击处出现，Escape 或选择后收起；选择后沿用 openFromList 打开详情。
-const crowd = ref<ProjectedStar[]>([])
+// 只保存候选 ID；显示的列表每次由当前快照重新校验：轮询替换代表星或移除星点后，失效的选项自动消失。
+const crowdIds = ref<string[]>([])
+const crowd = computed<ProjectedStar[]>(() => crowdIds.value.length ? revalidateCandidates(crowdIds.value, visibleStars.value) : [])
 function showCrowd(stars: ProjectedStar[]): void {
   dismissActions()
   preview.clear()
   browse.value = false
-  crowd.value = stars
+  crowdIds.value = stars.map(star => star.point.starId)
 }
 // 镜头一动，点击处的星位置即已过期，立即收起列表。
-watch(camera, () => { if (crowd.value.length) crowd.value = [] })
+watch(camera, () => { if (crowdIds.value.length) crowdIds.value = [] })
+// 候选随快照更新重新校验：失效项从候选 ID 中移除；全部失效时收起列表并交还焦点。
+watch(crowd, (list) => {
+  if (!crowdIds.value.length) return
+  if (!list.length) {
+    const inList = !!document.activeElement?.closest('.visible-stars')
+    crowdIds.value = []
+    if (inList || document.activeElement === document.body) void nextTick(() => mapView.value?.focus())
+  } else if (list.length !== crowdIds.value.length) {
+    crowdIds.value = list.map(star => star.point.starId)
+  }
+})
 function closeCrowd(): void {
-  crowd.value = []
+  crowdIds.value = []
   void nextTick(() => mapView.value?.focus())
 }
 const menuOptions: DropdownOption[] = [
@@ -127,7 +161,7 @@ function selectMenuAction(key: string | number): void {
 
 function openFromList(starId: string): void {
   browse.value = false
-  crowd.value = []
+  crowdIds.value = []
   void nextTick(() => {
     mapView.value?.focus()
     openDetail(starId)
@@ -148,13 +182,13 @@ function openFromList(starId: string): void {
         :tooltip-id="showQuote ? 'feedback-star-quote' : undefined" @approach="preview.approach"
         :active="foreground" :selected="!unavailable ? target : ''" @change="updateCamera"
         @zoom="zoom" @home="resetCamera" @hover="hover" @open="openDetail" @browse="toggleBrowse" @crowd="showCrowd" />
-      <MapStatus :kind="statusKind" :message="mapError" :retrying="retrying" @retry="retryMap" @publish="publishFromEmpty"
+      <MapStatus ref="mapStatus" :kind="statusKind" :message="mapError" :retrying="retrying" @retry="retryMap" @publish="publishFromEmpty"
         @locate="locateSelected" @home="resetCamera" />
       <StarQuote v-if="showQuote && quote && anchor" :quote="quote" :anchor="anchor"
         @hold="preview.hold" @leave="preview.leave" @contextmenu.prevent="openActions({x: $event.clientX, y: $event.clientY})" />
-      <VisibleStars class="scene-stars" :opened="browse || crowd.length > 0" :stars="crowd.length ? crowd : visibleStars"
-        :heading="crowd.length ? '附近的星' : '当前视野'" :quote="quote"
-        @close="crowd.length ? closeCrowd() : toggleBrowse()" @open="openFromList" @preview="hover" />
+      <VisibleStars class="scene-stars" :opened="browse || crowdIds.length > 0" :stars="crowdIds.length ? crowd : visibleStars"
+        :heading="crowdIds.length ? '附近的星' : '当前视野'" :quote="quote"
+        @close="crowdIds.length ? closeCrowd() : toggleBrowse()" @open="openFromList" @preview="hover" />
 
       <!-- ~ 星图右键菜单 -->
       <!-- * 说明：在点击位置打开反馈操作，选择后进入对应面板。 -->

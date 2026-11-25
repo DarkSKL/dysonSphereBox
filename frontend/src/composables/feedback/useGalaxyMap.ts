@@ -17,6 +17,12 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
   const arrivals = shallowRef<ReadonlySet<string>>(new Set())
   const ready = ref(false)
   const error = ref('')
+  // 请求在途标志：只在 Map 请求真正发出到结算（成功、失败、被废弃）之间为真，供重试指示与「等待全景回执」判定使用。
+  const loading = ref(false)
+  // 最近一次成功快照的查询范围是否为全景（无边界）。空结果只有在全景范围下才表示整片星图没有反馈。
+  const snapshotIsPanorama = ref(false)
+  // 当前镜头要查询的范围是否为全景。与 snapshotIsPanorama 不一致，说明画面正在等新范围的回执。
+  const viewIsPanorama = computed(() => region.value === 'all')
   // 未聚合的全景已包含全部可读记录，旋转或变焦只需本地裁切；全景的条件轮询仍可发现变化。
   const completeCatalog = ref(false)
   const bounds = computed(() => {
@@ -29,11 +35,13 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
     : 'all')
   let revision = 0
   let requestRunning = false
+  let inFlight: Promise<boolean> | null = null
   let scheduled: number | undefined
   let snapshotRegion = ''
   let version = ''
   let needsRefresh = false
   let reconnecting = true
+  let disposed = false
   let viewChangedAt = -Infinity
 
   function schedule(delay: number): void {
@@ -58,49 +66,85 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
     schedule(Math.max(0, 160 - (performance.now() - viewChangedAt)))
   }
 
-  async function refresh(): Promise<void> {
-    if (!foreground.value || !size.value.width || !size.value.height || !accountSessionKey.value) return
+  // 手动重试：立即发请求，返回的 Promise 在本次请求结算（成功或失败）时才完成。
+  // 使用：重试按钮用它驱动转圈，指示与请求同生命周期，不依赖任何固定延时。
+  // 边界：若点击时已有旧请求在途，先等其结算；若旧请求未清除错误，再发起一次新的重试并等待其结算。
+  // 若本次重试因视区变化被废弃，最多跟进一次补发；切后台、换账号或卸载时立即退出避免悬停。
+  async function retry(): Promise<void> {
+    const scope = accountSessionKey.value
+    const active = () => !disposed && foreground.value && !!size.value.width && !!size.value.height && accountSessionKey.value === scope
+    if (!active()) return
+    window.clearTimeout(scheduled)
+    if (inFlight) {
+      await inFlight
+      if (!active()) return
+      if (!error.value && snapshotRegion === region.value) return
+      window.clearTimeout(scheduled)
+    }
+    for (let attempt = 0; attempt < 2 && active(); attempt++) {
+      const settled = await refresh()
+      if (settled || !active()) return
+      window.clearTimeout(scheduled)
+    }
+  }
+
+  // 返回 true 表示本次请求正常结算（成功或失败）；false 表示未发出或因 revision 变化被废弃。
+  async function refresh(): Promise<boolean> {
+    if (!foreground.value || !size.value.width || !size.value.height || !accountSessionKey.value) return false
     if (requestRunning) {
       needsRefresh = true
-      return
+      return false
     }
     requestRunning = true
+    loading.value = true
     const requestedRegion = region.value
     const requestRevision = revision
     const sameRegion = snapshotRegion === requestedRegion
-    try {
-      const snapshot = await feedbackCall('Map', {
-        ...(bounds.value ?? {}),
-        ...(sameRegion && version ? {version} : {}),
-      })
-      if (requestRevision !== revision || !foreground.value) return
-      if (!snapshot.unchanged) {
-        const next = snapshot.points ?? []
-        const known = new Set(points.value.map((point) => point.starId))
-        if (sameRegion && !reconnecting && !error.value) {
-          arrivals.value = new Set(next.filter((point) => !known.has(point.starId)).map((point) => point.starId))
+    let settled = false
+    const run = (async () => {
+      try {
+        const snapshot = await feedbackCall('Map', {
+          ...(bounds.value ?? {}),
+          ...(sameRegion && version ? {version} : {}),
+        })
+        if (requestRevision !== revision || !foreground.value) return false
+        if (!snapshot.unchanged) {
+          const next = snapshot.points ?? []
+          const known = new Set(points.value.map((point) => point.starId))
+          if (sameRegion && !reconnecting && !error.value) {
+            arrivals.value = new Set(next.filter((point) => !known.has(point.starId)).map((point) => point.starId))
+          }
+          points.value = next
+          if (requestedRegion === 'all') completeCatalog.value = next.every(point => (point.count ?? 1) <= 1)
         }
-        points.value = next
-        if (requestedRegion === 'all') completeCatalog.value = next.every(point => (point.count ?? 1) <= 1)
+        version = snapshot.version
+        snapshotVersion.value = snapshot.version
+        snapshotRegion = requestedRegion
+        snapshotIsPanorama.value = requestedRegion === 'all'
+        error.value = ''
+        reconnecting = false
+        ready.value = true
+        settled = true
+        return true
+      } catch (failure) {
+        if (requestRevision !== revision || !foreground.value) return false
+        error.value = failure instanceof FeedbackError ? failure.message : '星图加载失败，请重试。'
+        reconnecting = true
+        version = ''
+        settled = true
+        return true
+      } finally {
+        requestRunning = false
+        inFlight = null
+        loading.value = false
+        if (needsRefresh) {
+          needsRefresh = false
+          refreshNow()
+        }
       }
-      version = snapshot.version
-      snapshotVersion.value = snapshot.version
-      snapshotRegion = requestedRegion
-      error.value = ''
-      reconnecting = false
-      ready.value = true
-    } catch (failure) {
-      if (requestRevision !== revision || !foreground.value) return
-      error.value = failure instanceof FeedbackError ? failure.message : '星图加载失败，请重试。'
-      reconnecting = true
-      version = ''
-    } finally {
-      requestRunning = false
-      if (needsRefresh) {
-        needsRefresh = false
-        refreshNow()
-      }
-    }
+    })()
+    inFlight = run
+    return (await run) && settled
   }
 
   watch(region, () => {
@@ -118,6 +162,7 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
   watch(accountSessionKey, () => {
     revision++
     snapshotRegion = ''
+    snapshotIsPanorama.value = false
     version = ''
     snapshotVersion.value = ''
     points.value = []
@@ -131,10 +176,11 @@ export function useGalaxyMap(foreground: Ref<boolean>) {
     refreshNow()
   }, {flush: 'sync'})
   onScopeDispose(() => {
+    disposed = true
     revision++
     window.clearTimeout(scheduled)
   })
 
-  return {camera, size, points, snapshotVersion, arrivals, ready, error, updateCamera, removeStar, refreshNow,
+  return {camera, size, points, snapshotVersion, arrivals, ready, error, loading, snapshotIsPanorama, viewIsPanorama, updateCamera, removeStar, refreshNow, retry,
     zoomBy: lens.zoomBy, stopZoom: lens.stopZoom}
 }
