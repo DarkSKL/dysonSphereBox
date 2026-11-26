@@ -3,6 +3,7 @@ import {CornerDownRight, ShieldCheck} from '@lucide/vue'
 import {computed, nextTick, watch} from 'vue'
 
 import {formatFeedbackTime, reviewLabels, type Entry, type EntryKind, type StarDetail} from '../../types/feedback'
+import StarAvatar from './star-avatar.vue'
 
 const props = defineProps<{
   detail: StarDetail
@@ -29,9 +30,9 @@ const supplements = computed(() => groupedReplies('supplement', props.detail.sup
 const comments = computed(() => groupedReplies('comment', []))
 const lastPage = computed(() => Math.max(1, Math.ceil(props.detail.replies.total / props.detail.replies.pageSize)))
 
-function initialOf(name: string | undefined, fallback = '匿'): string {
+function isAnonymousName(name: string | undefined): boolean {
   const trimmed = name?.trim() ?? ''
-  return trimmed ? (Array.from(trimmed)[0] || fallback) : fallback
+  return !trimmed || trimmed === '匿名' || trimmed === '匿名玩家'
 }
 
 watch(() => props.highlighted, async (id) => {
@@ -107,7 +108,13 @@ watch(() => props.highlighted, async (id) => {
         class="comment-item"
         :class="{'entry-highlight': highlighted === entry.id}"
       >
-        <span class="comment-avatar" aria-hidden="true">{{ initialOf(entry.displayName, '玩') }}</span>
+        <span class="comment-avatar" aria-hidden="true">
+          <StarAvatar
+            :identity="entry.id"
+            :anonymous="isAnonymousName(entry.displayName)"
+            :source="entry.avatar || entry.headerImg || ''"
+          />
+        </span>
         <div class="comment-content">
           <div class="comment-meta">
             <span class="comment-author-wrap">
@@ -284,17 +291,13 @@ watch(() => props.highlighted, async (id) => {
 
 .comment-avatar {
   flex: none;
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   margin-top: 1px;
+  overflow: hidden;
   border: 1px solid var(--ds-border-subtle);
   border-radius: 50%;
   background: var(--ds-bg-panel-elevated);
-  color: var(--ds-text-muted);
-  font-size: 10.5px;
-  font-weight: 600;
 }
 
 .comment-content {

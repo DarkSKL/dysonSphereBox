@@ -65,6 +65,8 @@ export interface Entry {
   kind: EntryKind
   body: string
   displayName: string
+  avatar?: string
+  headerImg?: string
   createdAt: string
   reviewState: ReviewState
   bodyVersion: string

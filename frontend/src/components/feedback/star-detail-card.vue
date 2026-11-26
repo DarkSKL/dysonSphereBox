@@ -3,6 +3,7 @@ import {AlertCircle, Compass, FilePlus2, PencilLine, RotateCw, Trash2, X} from '
 import {computed, nextTick, ref, shallowRef, watch} from 'vue'
 
 import {useGalaxyTheme} from '../../composables/feedback/useGalaxyTheme'
+import {accountUser} from '../../pages/services/account'
 import {
   formatFeedbackTime,
   progressLabels,
@@ -12,11 +13,14 @@ import {
   type StarDetail,
   type StarProgress,
 } from '../../types/feedback'
+import StarAvatar from './star-avatar.vue'
 import type {CardComposerMode} from './star-composer.vue'
 
 interface HeaderSnapshot {
   starId: string
   authorName: string
+  authorAnonymous: boolean
+  authorAvatar: string
   createdAt: string
   progress: StarProgress
   isPrivate: boolean
@@ -67,15 +71,29 @@ const theme = useGalaxyTheme()
 const heading = ref<HTMLElement>()
 const snapshot = shallowRef<HeaderSnapshot | null>(null)
 
+function isAnonymousDisplay(name: string | undefined): boolean {
+  const trimmed = name?.trim() ?? ''
+  return !trimmed || trimmed === '匿名' || trimmed === '匿名玩家'
+}
+
 function buildSnapshot(): HeaderSnapshot {
   const detail = props.detail
   const point = props.mapPoint
   const reviewState = detail?.original.reviewState
   const published = reviewState === 'approved'
   const isPrivate = props.unavailable || (detail ? !published : Boolean(point?.privateLabel))
+  const rawName = detail?.original.displayName?.trim() ?? ''
+  const authorAnonymous = !detail || isAnonymousDisplay(rawName)
+  const entryAvatar = detail?.original.avatar || detail?.original.headerImg || ''
+  // 匿名反馈强制使用默认头像；本人实名反馈在服务端未单独回传头像时复用当前账号头像，其余由默认头像兜底。
+  const authorAvatar = authorAnonymous
+    ? ''
+    : (entryAvatar || (detail?.owned ? (accountUser.value?.headerImg ?? '') : ''))
   return {
     starId: detail?.starId || props.starId || point?.starId || '',
-    authorName: detail ? (detail.original.displayName || '匿名玩家') : '',
+    authorName: detail ? (rawName || '匿名玩家') : '',
+    authorAnonymous,
+    authorAvatar,
     createdAt: detail?.original.createdAt ?? '',
     progress: detail?.progress ?? point?.progress ?? 'feedback',
     isPrivate,
@@ -91,7 +109,7 @@ function buildSnapshot(): HeaderSnapshot {
 }
 
 watch(
-  [() => props.open, () => props.starId, () => props.detail, () => props.mapPoint, () => props.unavailable],
+  [() => props.open, () => props.starId, () => props.detail, () => props.mapPoint, () => props.unavailable, accountUser],
   () => {
     if (props.open) snapshot.value = buildSnapshot()
   },
@@ -100,11 +118,6 @@ watch(
 
 const view = computed<HeaderSnapshot>(() => (props.open ? buildSnapshot() : (snapshot.value ?? buildSnapshot())))
 const headingTitle = computed(() => view.value.authorName || '星星详情')
-const authorInitial = computed(() => {
-  const name = view.value.authorName.trim()
-  if (!name) return '星'
-  return Array.from(name)[0] || '星'
-})
 const showProgress = computed(() => !view.value.unavailable && (view.value.hasDetail || Boolean(props.mapPoint)))
 // 仅在待审核/转人工/未通过等非公开状态时呈现审核徽章，已过审公开星不再堆叠冗余标签。
 const reviewBadge = computed(() => {
@@ -195,7 +208,13 @@ defineExpose({
         <!-- * 说明：左侧呈现作者与发布时间，右侧紧凑收拢星号、状态标签、作者管理工具图标与关闭按钮，彻底消除多层空行堆叠。 -->
         <header class="star-card-header">
           <div class="header-author">
-            <span class="author-avatar" aria-hidden="true">{{ authorInitial }}</span>
+            <span class="author-avatar" aria-hidden="true">
+              <StarAvatar
+                :identity="view.starId || 'star-author'"
+                :anonymous="view.authorAnonymous"
+                :source="view.authorAvatar"
+              />
+            </span>
             <div class="author-info">
               <div class="author-name-line">
                 <h2
@@ -417,16 +436,12 @@ defineExpose({
 
 .author-avatar {
   flex: none;
-  display: grid;
-  place-items: center;
   width: 32px;
   height: 32px;
+  overflow: hidden;
   border: 1px solid var(--ds-border-default);
   border-radius: 50%;
   background: var(--ds-bg-panel-elevated);
-  color: var(--ds-text-secondary);
-  font-size: 12.5px;
-  font-weight: 600;
 }
 
 .author-info {

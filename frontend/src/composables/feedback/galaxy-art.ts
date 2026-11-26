@@ -458,9 +458,9 @@ function drawPinpointGlint(
   }
 }
 
-// =============== 单颗反馈星（方案 A：针尖高锐星核） ===============
-// 以收窄白芯与真实星等差融入星云游离尘星：普通星纤细清亮、光谱色清晰可读，高赞与已实现主星浮现极短 1px 微芒；
-// 待审/待复核私有星表现为轻柔呼吸闪烁的微星与短暂微芒，与恒亮公开星清晰区分。
+// =============== 单颗反馈星（方案 A：针尖高锐星核 · 按热度分星等） ===============
+// 以收窄白芯与真实星等差融入星云游离尘星：体积（半径）、亮度（透明度 + 高热炽白芯）与 1px 微芒均随点赞热度（brightness）连续拉开；
+// 低赞星纤细柔和、高赞主星清亮醒目并浮现锐利十字微芒；待审私有星表现为轻柔呼吸闪烁的微星。
 export function drawFeedbackStar(
   ctx: CanvasRenderingContext2D, glows: StarGlows, star: ProjectedStar, pulse: number, detail: number,
   theme: GalaxyTheme, scale = 1, sparse = 0, time = 0,
@@ -492,32 +492,42 @@ export function drawFeedbackStar(
   }
 
   const heat = Math.max(0, Math.min(1, point.brightness))
-  const mag = Math.pow(heat, 1.32)
+  // 体积随热度按非线性的天文星等曲线平滑拉开（0 赞纤细如亮尘，高赞跃升为醒目主星）。
+  const sizeCurve = Math.pow(heat, 1.18)
+  const lumCurve = Math.pow(heat, .72)
   const isImplemented = point.progress === 'implemented'
-  const isAccepted = point.progress === 'accepted'
-  const tierBoost = isImplemented ? .34 : isAccepted ? .14 : 0
-  const jitter = (starPhaseSeed(point.starId) - .5) * .28
+  const tierBoost = isImplemented ? .18 : 0
   const density = Math.min(5, Math.log2(Math.max(1, point.count ?? 1)))
-  const baseRadius = (light ? 1.48 + mag * 1.32 : 1.56 + mag * 1.52) + tierBoost + jitter + Math.min(.55, density * .16) + detail * .68 + sparse * .28
-  const coreRadius = Math.max(1.25, baseRadius * (.80 + .20 * scale)) + pulse * 2.2
+  const baseRadius = (light ? 1.24 + sizeCurve * 2.45 : 1.28 + sizeCurve * 2.85) + tierBoost + Math.min(.65, density * .18) + detail * .72 + sparse * .32
+  const coreRadius = Math.max(1.12, baseRadius * (.78 + .22 * scale)) + pulse * 2.4
   const core = glows[point.progress] ?? glows.feedback
+  // 亮度随点赞热度连续增强：低赞柔和融入星尘，高赞饱满透亮。
+  const starAlpha = Math.min(1, (light ? .56 + .44 * lumCurve : .52 + .48 * lumCurve) + pulse * .35)
 
-  // 浅色水墨仅保留极紧致的宣纸底衬，确保密集墨带中矿墨星点清晰，不形成发散雾团。
+  // 浅色水墨仅保留极紧致的宣纸底衬，随热度微调衬托力度，不形成发散雾团。
   if (glows.cushion) {
-    const cushion = coreRadius * 1.95
-    ctx.globalAlpha = .46 + heat * .14
+    const cushion = coreRadius * 1.92
+    ctx.globalAlpha = (.32 + .34 * lumCurve) * starAlpha
     ctx.drawImage(glows.cushion, x - cushion, y - cushion, 2 * cushion, 2 * cushion)
   }
 
-  ctx.globalAlpha = 1
+  ctx.globalAlpha = starAlpha
   ctx.drawImage(core, x - coreRadius, y - coreRadius, 2 * coreRadius, 2 * coreRadius)
 
-  // 高热主星或已实现反馈浮现极短 1px 十字微芒，自然拉出星空主次层次且绝不发糊。
-  if (isImplemented || heat > .66 || pulse > .08) {
+  // 深色高赞星追加一层极紧致的炽白内芯叠加（无外扩雾晕），让高赞主星在亮度上与低赞星一眼分明。
+  if (!light && (heat > .34 || pulse > .08)) {
+    const hotFactor = Math.max(0, (heat - .34) / .66)
+    const hotRadius = coreRadius * (.52 + .18 * hotFactor)
+    ctx.globalAlpha = Math.min(.92, hotFactor * .82 + pulse * .45)
+    ctx.drawImage(core, x - hotRadius, y - hotRadius, 2 * hotRadius, 2 * hotRadius)
+  }
+
+  // 中高赞星自然浮现极短 1px 光学十字微芒，长度与明度均随点赞热度递进，既清晰体现热度层次又绝不发糊。
+  if (heat > .46 || pulse > .08) {
     const color = theme.starColors[point.progress] ?? theme.starColors.feedback
-    const strength = isImplemented ? Math.max(.62, heat) : heat
-    const glintLen = (2.8 + strength * 2.4) * (.86 + .14 * scale) * (1 + .28 * detail) + pulse * 3.0
-    const glintAlpha = Math.min(.78, (light ? .42 : .58) * (.55 + .45 * strength) + pulse * .35)
+    const glintFactor = Math.max(0, (heat - .46) / .54)
+    const glintLen = (2.6 + glintFactor * 5.2) * (.84 + .16 * scale) * (1 + .26 * detail) + pulse * 3.2
+    const glintAlpha = Math.min(.84, (light ? .28 + .42 * glintFactor : .32 + .50 * glintFactor) + pulse * .35)
     drawPinpointGlint(ctx, x, y, glintLen, color, glintAlpha, light)
   }
   ctx.globalAlpha = 1

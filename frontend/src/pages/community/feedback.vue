@@ -3,13 +3,13 @@ import {Bell, MessageSquarePlus, Star, X} from '@lucide/vue'
 import {useMessage, type DropdownOption} from 'naive-ui'
 import {computed, h, nextTick, ref, shallowRef, watch} from 'vue'
 
-import EditorForm from '../../components/feedback/editor-form.vue'
 import GalaxyMap from '../../components/feedback/galaxy-map.vue'
 import MapStatus from '../../components/feedback/map-status.vue'
 import PersonalList from '../../components/feedback/personal-list.vue'
 import StarComposer, {type CardComposerMode} from '../../components/feedback/star-composer.vue'
 import StarDetailCard from '../../components/feedback/star-detail-card.vue'
 import StarDetail from '../../components/feedback/star-detail.vue'
+import StarPublishCard from '../../components/feedback/star-publish-card.vue'
 import StarQuote from '../../components/feedback/star-quote.vue'
 import VisibleStars from '../../components/feedback/visible-stars.vue'
 import type {ProjectedStar} from '../../composables/feedback/galaxy-camera'
@@ -112,10 +112,11 @@ const galaxyState = computed(() => galaxyStatus({
       snapshotConfirmed: selectedSnapshotConfirmed.value,
     }),
 }))
-// =============== 星云卡片与右侧栏分流 ===============
-// 说明：点击星点弹出的详情改为星云卡片；发布、我的星星与作者提醒继续使用右侧工作面板。
+// =============== 居中弹窗卡片与右侧栏分流 ===============
+// 说明：星星详情与发布一颗星统一采用居中弹窗卡片；我的星星与作者提醒继续使用右侧工作面板。
 const isDetailOpen = computed(() => panel.value === 'detail')
-const isSidePanelOpen = computed(() => panel.value === 'mine' || panel.value === 'notices' || panel.value === 'publish')
+const isPublishOpen = computed(() => panel.value === 'publish' && openedEditor.value?.mode === 'publish')
+const isSidePanelOpen = computed(() => panel.value === 'mine' || panel.value === 'notices')
 const selectedMapPoint = computed(() => target.value ? points.value.find(star => star.starId === target.value) ?? null : null)
 const frozenDetail = shallowRef<StarDetailData | null>(null)
 
@@ -209,12 +210,12 @@ watch(status, text => {
   if (foreground.value) message.success(text)
   status.value = ''
 })
-const panelTitle = computed(() => ({mine: '我的星星', notices: '作者提醒', publish: '发布反馈', detail: '', '': ''})[panel.value])
+const panelTitle = computed(() => ({mine: '我的星星', notices: '作者提醒', publish: '', detail: '', '': ''})[panel.value])
 const anchor = computed(() => {
   if (!hoveredStar.value?.anchor) return undefined
   return visibleStars.value.find(star => star.point.starId === hovered.value)
 })
-const showQuote = computed(() => !!anchor.value && !!quote.value?.preview.trim() && !browse.value && !actionMenu.value && !isDetailOpen.value)
+const showQuote = computed(() => !!anchor.value && !!quote.value?.preview.trim() && !browse.value && !actionMenu.value && !isDetailOpen.value && !isPublishOpen.value)
 const canTransfer = computed(() => !!selectedStar.value?.owned && !selectedStar.value.canEdit &&
   selectedStar.value.original.reviewState === 'approved' && openedEditor.value?.mode === 'edit')
 const editorDisabled = computed(() => {
@@ -341,11 +342,30 @@ function openFromList(starId: string): void {
         </template>
       </StarDetailCard>
 
-      <!-- ~ 右侧功能面板（发布、我的星星与作者提醒） -->
-      <!-- * 说明：承载发布反馈、个人列表和作者提醒，与星点详情弹出卡分离。 -->
+      <!-- ~ 发布一颗星弹窗卡片 -->
+      <!-- * 说明：与星星详情卡片同套居中弹窗框架，替代旧版右侧抽屉表单。 -->
+      <!-- * 交互：点击遮罩、关闭按钮或 Escape 收起并保留草稿；Ctrl/Cmd+Enter 快捷提交审核。 -->
+      <StarPublishCard
+        :open="isPublishOpen"
+        :body="draft.body"
+        :show-name="draft.showName"
+        :length="length"
+        :limit="limit"
+        :valid="valid"
+        :saving="saving"
+        :error="editorError"
+        :disabled="false"
+        @text="editor.update({...draft, body: $event})"
+        @name="editor.update({...draft, showName: $event})"
+        @submit="editor.submit()"
+        @close="closePanel"
+      />
+
+      <!-- ~ 右侧功能面板（我的星星与作者提醒） -->
+      <!-- * 说明：承载个人列表和作者提醒，与居中弹窗卡片分离。 -->
       <!-- * 交互：Escape 收起，关闭后将焦点交回原入口。 -->
       <!-- * 依赖：panel 模式与个人分页状态。 -->
-      <!-- * 边界：从个人列表点选星星后自动切换为星云详情弹出卡。 -->
+      <!-- * 边界：从个人列表点选星星后自动切换为居中详情弹出卡。 -->
       <aside v-if="isSidePanelOpen" class="galaxy-panel" aria-labelledby="feedback-panel-title" @keydown.esc.stop.prevent="closePanel">
         <header class="panel-header">
           <h2 ref="panelHeading" id="feedback-panel-title" tabindex="-1">{{ panelTitle }}</h2>
@@ -357,11 +377,6 @@ function openFromList(starId: string): void {
           <PersonalList v-if="panel === 'mine' || panel === 'notices'" :mode="panel"
             :mine="mine.page" :notices="notices.page" :busy="currentCollection.busy" :error="currentCollection.error"
             @mine="openMine" @notice="personal.openNotice" @page="changePersonalPage" @retry="changePersonalPage()" />
-
-          <EditorForm v-if="panel === 'publish' && openedEditor?.mode === 'publish'" mode="publish" :body="draft.body"
-            :show-name="draft.showName" :limit="limit" :length="length" :valid="valid" :saving="saving" :error="editorError"
-            :disabled="false" :can-transfer="false" @text="editor.update({...draft, body: $event})"
-            @name="editor.update({...draft, showName: $event})" @submit="editor.submit()" @close="closePanel" />
         </div>
       </aside>
     </div>
