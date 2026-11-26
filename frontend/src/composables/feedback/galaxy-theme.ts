@@ -29,6 +29,7 @@ export interface GalaxyTheme {
     dust: string
     warmDust: string
     wispCool: string
+    wispNebula: string
     wispWarm: string
     wispAlpha: number
     glow: string
@@ -50,15 +51,16 @@ const DARK: GalaxyTheme = {
   composite: 'screen',
   glow: {base: .40, slope: .34},
   sky: {
-    dust: '#a2b8db',
-    warmDust: '#d8be9e',
-    wispCool: '#5c7fbc',
-    wispWarm: '#cb9458',
-    wispAlpha: .042,
-    glow: '#ffbe64',
-    glowMid: '#7c92cf',
-    glowAlpha: .25,
-    dustScale: 1.25,
+    dust: '#b8d0f2',
+    warmDust: '#edd2ae',
+    wispCool: '#5280d4',
+    wispNebula: '#84509a',
+    wispWarm: '#cfa06c',
+    wispAlpha: .062,
+    glow: '#e8c488',
+    glowMid: '#6882c8',
+    glowAlpha: .15,
+    dustScale: 1.38,
   },
   nebula: {
     blend: 'screen',
@@ -87,13 +89,14 @@ const LIGHT: GalaxyTheme = {
     dust: '#747a82',
     warmDust: '#646970',
     wispCool: '#8e949c',
+    wispNebula: '#848a92',
     wispWarm: '#7d838b',
-    wispAlpha: .052,
-    // 去掉褐色银心斑，改用极淡清墨旋涡微晕，0 条时保持静谧留白与水墨呼吸感。
+    wispAlpha: .060,
+    // 极轻清墨银心，不向外扩散成圈，保持宣纸留白与水墨呼吸感。
     glow: '#9aa0a8',
     glowMid: '#aeb3ba',
-    glowAlpha: .15,
-    dustScale: 1.05,
+    glowAlpha: .10,
+    dustScale: 1.15,
   },
   nebula: {
     blend: 'over',

@@ -152,7 +152,10 @@ export function sampleNebula(points: readonly NebulaSource[], budget = particleB
       const silk = slot === 2 || slot === 9 || slot === 14
       const strand = strands[Math.floor(i / 16) % strands.length]
       const inStrand = !cocoon && radius > .12 && (silk || slot === 6 || slot === 12)
-      const diffuse = !inStrand && !cocoon && random() < .38
+      const diffuse = !inStrand && !cocoon && random() < .46
+      // 将星云原有的弥散散云中约一半自然扩散至星盘外围更广区域，保持同源体积粒子材质与旋涡切线方向，不另起炉灶。
+      const farDiffuse = diffuse && random() < .56
+      const farWisp = farDiffuse && !fog && random() < .32
       const u = random() * 2 - 1
       let x: number, y: number, z: number
       if (cocoon) {
@@ -169,41 +172,71 @@ export function sampleNebula(points: readonly NebulaSource[], budget = particleB
         x = DISK_RADIUS * r * Math.cos(a)
         y = DISK_RADIUS * r * Math.sin(a)
         z = height + strand.height + 680 * Math.sin(2.3 * u + strand.turn) + normal() * 380
+      } else if (farDiffuse) {
+        // 同源散云向外自然铺展至整个视野（宽屏左右与四角），沿对数旋涡切线延展并保留 3D 厚度，彻底消除星盘圆形边界。
+        const reach = Math.pow(random(), .60)
+        const r = Math.max(.20, radius * .42 + (.20 + 2.24 * reach) + normal() * .16)
+        const ripple = .028 * (Math.sin(18 * r + theta) + Math.sin(34 * r - theta))
+        const a = theta + spiralPhase(r) - phase + normal() * 2.35 + ripple
+        x = DISK_RADIUS * r * Math.cos(a)
+        y = DISK_RADIUS * r * Math.sin(a)
+        z = height + normal() * (5600 + 16000 * Math.min(1.6, r))
       } else if (radius < .10 || (radius < .19 && random() < (.19 - radius) / .09)) {
-        const spread = DISK_RADIUS * (diffuse ? .078 + .068 * random() : .024 + .038 * random())
+        const spread = DISK_RADIUS * (diffuse ? .095 + .085 * random() : .024 + .038 * random())
         x = star.x + normal() * spread
         y = star.y + normal() * spread
         z = height + normal() * spread * .76
       } else {
-        const r = Math.abs(radius + normal() * (diffuse ? .165 : .074 + .046 * radius))
+        const r = Math.abs(radius + normal() * (diffuse ? .25 : .074 + .046 * radius))
         const lane = random()
-        const across = diffuse ? normal() * .92 : lane < .46 ? -.116 + normal() * .076 :
+        const across = diffuse ? normal() * 1.15 : lane < .46 ? -.116 + normal() * .076 :
           lane < .76 ? .104 + normal() * .068 : normal() * .30
         const ripple = .022 * (Math.sin(26 * r + theta) + Math.sin(50 * r - theta))
         const a = theta + spiralPhase(r) - phase + across + ripple
         x = DISK_RADIUS * r * Math.cos(a)
         y = DISK_RADIUS * r * Math.sin(a)
-        z = height + normal() * (diffuse ? 4100 : fog ? 2200 : 1020)
+        z = height + normal() * (diffuse ? 4800 : fog ? 2200 : 1020)
       }
 
       const r = Math.hypot(x, y) / DISK_RADIUS, angle = Math.atan2(y, x)
       const core = Math.exp(-20 * r * r)
       const seam = Math.sin(angle + .65 - spiralPhase(r) - .11 - .055 * Math.sin(30 * r + Math.sin(3 * angle)))
-      const dustLane = (1 - core) * Math.exp(-seam * seam / .009)
+      const laneFade = Math.max(0, Math.min(1, (1.28 - r) / .42))
+      const dustLane = (1 - core) * laneFade * Math.exp(-seam * seam / .009)
       const knots = .74 + .26 * Math.sin(38 * r + 2 * angle + Math.sin(17 * r - angle))
-      const temp = diffuse && random() < .36 ? .46 * r : r
+      // 广域散云以低频三维波雕出自然的聚散丝团与深空暗缝，避免整片糊成均匀雾气。
+      let farPatch = 1
+      if (farDiffuse) {
+        const nx = x / DISK_RADIUS, ny = y / DISK_RADIUS
+        const wave =
+          .50 * Math.sin(2.5 * nx + 1.9 * ny + 1.05 * Math.sin(1.8 * ny - 1.3 * nx)) +
+          .32 * Math.sin(4.6 * ny - 3.2 * nx + .85 * Math.cos(2.6 * nx + 2.1 * ny)) +
+          .18 * Math.cos(7.1 * nx + 5.7 * ny)
+        const clump = Math.max(0, Math.min(1, (wave + .38) / 1.08))
+        farPatch = clump * clump
+      }
+      const temp = farDiffuse
+        ? .64 + .36 * Math.min(1, r / 2.2) - (random() < .28 ? .16 : 0)
+        : diffuse && random() < .36 ? .46 * r : r
       const tint = Math.round(Math.max(0, Math.min(1, temp + normal() * (inStrand ? .028 : .065))) * (PALETTE_SIZE - 1))
       const diameter = cocoon ? 3600 + random() ** 2 * 6600 :
-        fog ? (diffuse ? 9400 : 4200) + random() ** 2 * 9800 :
+        farDiffuse ? (fog ? 11800 + random() ** 2 * 13600 : farWisp ? 1600 + random() ** 2 * 3400 : 140 + random() ** 4 * 460) :
+        fog ? (diffuse ? 9800 : 4200) + random() ** 2 * 10200 :
         silk ? 540 + random() ** 2 * 2000 : 110 + random() ** 4 * 420
-      const emission = cocoon ? .054 + .022 * (1 - Math.min(1, Math.hypot(x - star.x, y - star.y) / (DISK_RADIUS * .095))) :
-        fog ? (diffuse ? .017 : .034) + .008 * core :
+      const emission = cocoon ? .072 + .030 * (1 - Math.min(1, Math.hypot(x - star.x, y - star.y) / (DISK_RADIUS * .095))) :
+        farDiffuse ? (fog ? .034 : farWisp ? .052 : .15 * random() ** 2) * farPatch :
+        fog ? (diffuse ? .019 : .034) + .008 * core :
         silk ? .130 + .105 * random() : .12 + .58 * random() ** 3
-      // 纤维端部按平滑钟形衰减，消除生硬截断；外侧拖出薄尾。
+      // 纤维端部按平滑钟形衰减，消除生硬截断；广域散云不再按圆形半径硬截断，仅做极缓远距衰减。
       const shoulder = Math.exp(-((u + .26) ** 2) / .11)
       const bell = Math.max(0, 1 - u * u) ** 1.35
       const taper = inStrand ? (.14 + .70 * bell + .52 * shoulder * bell) * (.40 + .60 * armStrength) : 1
-      const edge = Math.max(0, Math.min(1, (1.14 - r) / .22))
+      const edge = farDiffuse
+        ? Math.max(.26, 1 - .28 * Math.max(0, r - .75))
+        : (() => {
+            const rawEdge = Math.max(0, Math.min(1, (1.42 - r) / .54))
+            return rawEdge * rawEdge * (3 - 2 * rawEdge)
+          })()
 
       samples[cursor] = x
       samples[cursor + 1] = y
@@ -214,11 +247,11 @@ export function sampleNebula(points: readonly NebulaSource[], budget = particleB
       samples[cursor + 6] = star.x
       samples[cursor + 7] = star.y
       samples[cursor + 8] = height
-      const travel = cocoon ? .020 + .014 * random() : inStrand ? strand.travel : fog ? (diffuse ? .024 : .040) : .036 + .022 * random()
+      const travel = cocoon ? .020 + .014 * random() : inStrand ? strand.travel : farDiffuse ? .026 + .018 * random() : fog ? (diffuse ? .024 : .040) : .036 + .022 * random()
       writeTrack(samples, cursor, r, angle, travel, (inStrand ? .6 * strand.height : 540 * Math.sin(2 * angle + 4 * r)))
       samples[cursor + 15] = inStrand ? (strand.age + .024 * u + .012 * random() + 1) % 1 : random()
-      samples[cursor + 16] = inStrand ? strand.rate : (fog || cocoon) ? (diffuse ? 2 : 2.5) : 4 + (i % 3)
-      samples[cursor + 17] = silk ? 1.85 + (1.45 + 1.85 * random()) * armStrength : cocoon ? 1.35 + .45 * random() : fog ? (diffuse ? 1.55 : 2.25) : 1.05
+      samples[cursor + 16] = inStrand ? strand.rate : (fog || cocoon || farDiffuse) ? (diffuse ? 2 : 2.5) : 4 + (i % 3)
+      samples[cursor + 17] = silk ? 1.85 + (1.45 + 1.85 * random()) * armStrength : cocoon ? 1.35 + .45 * random() : farWisp ? 2.1 + 1.4 * random() : fog ? (diffuse ? 1.75 : 2.25) : 1.05
       const front = 24 * r + .9 * Math.sin(2 * angle - 7 * r)
       samples[cursor + 18] = Math.cos(front)
       samples[cursor + 19] = Math.sin(front)

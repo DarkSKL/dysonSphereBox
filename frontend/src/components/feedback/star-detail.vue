@@ -1,42 +1,38 @@
 <script setup lang="ts">
+import {CornerDownRight, ShieldCheck} from '@lucide/vue'
 import {computed, nextTick, watch} from 'vue'
-import {Heart} from '@lucide/vue'
 
-import {formatFeedbackTime, progressLabels, reviewLabels, type Entry, type EntryKind, type StarDetail} from '../../types/feedback'
+import {formatFeedbackTime, reviewLabels, type Entry, type EntryKind, type StarDetail} from '../../types/feedback'
 
 const props = defineProps<{
   detail: StarDetail
   busy: boolean
-  writing: boolean
   highlighted: string
 }>()
+
 const emit = defineEmits<{
-  like: []
-  edit: []
-  supplement: []
-  comment: []
-  withdraw: []
   page: [value: number]
 }>()
 
+// =============== 讨论分组与去重 ===============
+// 说明：置顶分组有数量上限，翻页时把超出上限的同类条目合并到对应分组并按 ID 去重。
 const allReplies = computed(() => props.detail.replies.list ?? [])
-// 置顶分组有数量上限。翻页时把超出上限的同类条目合并到对应分组。
 function groupedReplies(kind: EntryKind, pinned: Entry[] | null | undefined): Entry[] {
   const group = new Map((pinned ?? []).map((entry) => [entry.id, entry]))
   for (const entry of allReplies.value) if (entry.kind === kind) group.set(entry.id, entry)
   return [...group.values()]
 }
+
 const official = computed(() => groupedReplies('official', props.detail.officialReplies))
 const supplements = computed(() => groupedReplies('supplement', props.detail.supplements).sort((left, right) =>
   left.createdAt.localeCompare(right.createdAt) || left.id.length - right.id.length || left.id.localeCompare(right.id)))
-const otherReplies = computed(() => groupedReplies('comment', []))
-const groups = computed(() => [
-  {label: '开发组回应', entries: official.value},
-  {label: '作者补充', entries: supplements.value},
-  {label: '玩家留言', entries: otherReplies.value},
-])
-const published = computed(() => props.detail.original.reviewState === 'approved')
+const comments = computed(() => groupedReplies('comment', []))
 const lastPage = computed(() => Math.max(1, Math.ceil(props.detail.replies.total / props.detail.replies.pageSize)))
+
+function initialOf(name: string | undefined, fallback = '匿'): string {
+  const trimmed = name?.trim() ?? ''
+  return trimmed ? (Array.from(trimmed)[0] || fallback) : fallback
+}
 
 watch(() => props.highlighted, async (id) => {
   if (!id) return
@@ -46,78 +42,321 @@ watch(() => props.highlighted, async (id) => {
 </script>
 
 <template>
-  <!-- ~ 正文与作者操作 -->
-  <!-- * 说明：原文保留署名和审核进度，处理进展单独标注。 -->
-  <!-- * 交互：使用当前正文版本互动；编辑、补充和撤回由作者权限决定。 -->
-  <!-- * 依赖：StarDetail 的可见文本、进展与操作许可。 -->
-  <!-- * 边界：待审核的正文可以阅读自己的稿件，公开互动仅对已通过的星开放。 -->
-  <article class="feedback-original" :id="'feedback-entry-' + detail.original.id"
-    :class="{'entry-highlight': highlighted === detail.original.id}">
-    <div class="entry-meta">
-      <strong>{{ detail.original.displayName || '匿名玩家' }}</strong>
-      <span>{{ formatFeedbackTime(detail.original.createdAt) }}</span>
-    </div>
-    <div class="entry-meta">
-      <span class="entry-progress" :data-progress="detail.progress">{{ progressLabels[detail.progress] }}</span>
-      <span v-if="detail.releaseVersion">版本 {{ detail.releaseVersion }}</span>
-      <span v-if="detail.owned">{{ reviewLabels[detail.original.reviewState] }}</span>
-    </div>
-    <p class="entry-body">{{ detail.original.body }}</p>
+  <!-- ~ 纯净阅读正文与作者补充 -->
+  <!-- * 说明：所有互动与管理图标已归位至顶栏工具区与底栏评论条，中部完全留给正文、官方回应与简洁评论，避免多层分隔线切割空间。 -->
+  <!-- * 交互：消息提醒深链自动滚动并高亮对应条目；多页留言仅在超出单页时展示轻量分页器。 -->
+  <!-- * 依赖：StarDetail 正文、官方回应、作者补充与分页留言。 -->
+  <!-- * 边界：无留言时不占用多余空占位行，底部输入条自身即构成自然引导。 -->
+  <article
+    class="feedback-post"
+    :id="'feedback-entry-' + detail.original.id"
+    :class="{'entry-highlight': highlighted === detail.original.id}"
+  >
+    <p class="post-body">{{ detail.original.body }}</p>
     <p v-if="detail.reviewReason" class="entry-reason">审核说明 · {{ detail.reviewReason }}</p>
-    <div class="entry-actions">
-      <n-button v-if="published" size="small" :type="detail.liked ? 'primary' : 'default'"
-        :aria-pressed="detail.liked" :disabled="writing || busy" @click="emit('like')">
-        <template #icon><Heart :size="15" aria-hidden="true" /></template>
-        {{ detail.liked ? '已点赞' : '点赞' }} · {{ detail.likeCount }}
-      </n-button>
-      <n-button v-if="published" size="small" :disabled="writing || busy" @click="emit('comment')">写留言</n-button>
-      <n-button v-if="detail.owned && detail.canEdit" size="small" :disabled="writing || busy" @click="emit('edit')">编辑正文</n-button>
-      <n-button v-if="detail.owned && !detail.canEdit && published" size="small" :disabled="writing || busy"
-        @click="emit('supplement')">追加补充</n-button>
-      <n-button v-if="detail.owned" size="small" quaternary type="error" :disabled="writing"
-        @click="emit('withdraw')">撤回</n-button>
+
+    <div v-if="supplements.length" class="supplement-list">
+      <div
+        v-for="entry of supplements"
+        :key="entry.id"
+        :id="'feedback-entry-' + entry.id"
+        class="supplement-item"
+        :class="{'entry-highlight': highlighted === entry.id}"
+      >
+        <div class="supplement-meta">
+          <CornerDownRight :size="12" class="supplement-icon" aria-hidden="true" />
+          <span class="supplement-label">作者补充</span>
+          <span class="meta-time">{{ formatFeedbackTime(entry.createdAt) }}</span>
+          <span v-if="entry.reviewState !== 'approved'" class="state-chip">{{ reviewLabels[entry.reviewState] }}</span>
+        </div>
+        <p class="supplement-body">{{ entry.body }}</p>
+        <p v-if="entry.reviewReason" class="entry-reason">审核说明 · {{ entry.reviewReason }}</p>
+      </div>
     </div>
-    <slot />
   </article>
 
-  <!-- ~ 回应、补充和留言 -->
-  <!-- * 说明：按职责呈现同一星下的发言并按 ID 去重。 -->
-  <!-- * 交互：页码改变只更新讨论，原文和详情目标保留。 -->
-  <!-- * 依赖：详情的置顶分组和 replies 分页。 -->
-  <!-- * 边界：对作者可读的待审或退回发言保留文字状态。 -->
-  <section v-for="group of groups" :key="group.label" class="entry-group" v-show="group.entries.length || (group.label === '玩家留言' && published)">
-    <h3>{{ group.label }}</h3>
-    <p v-if="!group.entries.length" class="empty-discussion">暂无可显示的留言</p>
-    <article v-for="entry of group.entries" :key="entry.id" :id="'feedback-entry-' + entry.id"
-      class="entry-reply" :class="{'entry-highlight': highlighted === entry.id}">
-      <div class="entry-meta">
-        <strong>{{ entry.displayName || (entry.kind === 'official' ? '开发组' : '匿名玩家') }}</strong>
-        <span>{{ formatFeedbackTime(entry.createdAt) }}</span>
-        <span v-if="entry.reviewState !== 'approved'">{{ reviewLabels[entry.reviewState] }}</span>
+  <!-- ~ 开发组官方回应（仅存在时呈现） -->
+  <section v-if="official.length" class="official-section" aria-label="开发组回应">
+    <article
+      v-for="entry of official"
+      :key="entry.id"
+      :id="'feedback-entry-' + entry.id"
+      class="official-item"
+      :class="{'entry-highlight': highlighted === entry.id}"
+    >
+      <div class="official-meta">
+        <span class="official-who">
+          <ShieldCheck :size="13" class="official-icon" aria-hidden="true" />
+          <strong>{{ entry.displayName || '开发组' }}</strong>
+          <span class="official-tag">官方回应</span>
+        </span>
+        <span class="meta-time">{{ formatFeedbackTime(entry.createdAt) }}</span>
       </div>
-      <p class="entry-body">{{ entry.body }}</p>
+      <p class="official-body">{{ entry.body }}</p>
       <p v-if="entry.reviewReason" class="entry-reason">审核说明 · {{ entry.reviewReason }}</p>
     </article>
   </section>
-  <n-pagination v-if="lastPage > 1" class="discussion-pages" :page="detail.replies.page" :page-count="lastPage"
-    :page-slot="4" :disabled="busy" @update:page="emit('page', $event)" />
+
+  <!-- ~ 简洁评论流（仅存在留言时呈现，去掉冗余标题行与空状态占位行） -->
+  <section v-if="comments.length" class="comment-section" aria-label="玩家留言">
+    <ul class="comment-list">
+      <li
+        v-for="entry of comments"
+        :key="entry.id"
+        :id="'feedback-entry-' + entry.id"
+        class="comment-item"
+        :class="{'entry-highlight': highlighted === entry.id}"
+      >
+        <span class="comment-avatar" aria-hidden="true">{{ initialOf(entry.displayName, '玩') }}</span>
+        <div class="comment-content">
+          <div class="comment-meta">
+            <span class="comment-author-wrap">
+              <strong class="comment-author">{{ entry.displayName || '匿名玩家' }}</strong>
+              <span v-if="entry.reviewState !== 'approved'" class="state-chip">{{ reviewLabels[entry.reviewState] }}</span>
+            </span>
+            <span class="meta-time">{{ formatFeedbackTime(entry.createdAt) }}</span>
+          </div>
+          <p class="comment-body">{{ entry.body }}</p>
+          <p v-if="entry.reviewReason" class="entry-reason">审核说明 · {{ entry.reviewReason }}</p>
+        </div>
+      </li>
+    </ul>
+
+    <n-pagination
+      v-if="lastPage > 1"
+      size="small"
+      class="comment-pages"
+      :page="detail.replies.page"
+      :page-count="lastPage"
+      :page-slot="5"
+      :disabled="busy"
+      @update:page="emit('page', $event)"
+    />
+  </section>
 </template>
 
 <style scoped lang="scss">
-.feedback-original, .entry-group { padding: 0 0 16px; margin-bottom: 16px; border-bottom: 1px solid var(--ds-border-subtle); }
-.entry-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; color: var(--ds-text-secondary); font-size: 12px; }
-.entry-meta strong { color: var(--ds-text-primary); font-weight: 600; }
-.entry-meta + .entry-meta { margin-top: 7px; }
-.entry-progress { font-weight: 600; }
-.entry-progress[data-progress='implemented'] { color: var(--ds-warning); }
-.entry-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; line-height: 1.65; }
-.entry-reason { margin: 10px 0; color: var(--ds-error); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
-.entry-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
-.entry-group h3 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
-.entry-reply { padding: 9px 0 2px; }
-.entry-reply + .entry-reply { border-top: 1px solid var(--ds-border-subtle); }
-.entry-reply .entry-body { margin: 6px 0 9px; }
-.entry-highlight { outline: 1px solid var(--ds-warning); outline-offset: 4px; }
-.empty-discussion { margin: 0; color: var(--ds-text-secondary); font-size: 13px; }
-.discussion-pages { justify-content: center; margin-bottom: 8px; }
+// =============== 正文与作者补充 ===============
+.feedback-post {
+  padding: 0;
+}
+
+.post-body {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: 14.5px;
+  line-height: 1.76;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.entry-reason {
+  margin: 8px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--ds-error);
+  color: var(--ds-error);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.supplement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.supplement-item {
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--ds-border-default);
+}
+
+.supplement-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: 11.5px;
+}
+
+.supplement-icon {
+  color: var(--ds-text-muted);
+}
+
+.supplement-label {
+  color: var(--ds-text-secondary);
+  font-weight: 600;
+}
+
+.supplement-body {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: 13.5px;
+  line-height: 1.64;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+// =============== 开发组官方回应 ===============
+.official-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.official-item {
+  padding: 10px 12px;
+  border-left: 2px solid var(--ds-warning);
+  border-radius: 0 4px 4px 0;
+  background: var(--ds-warning-bg);
+}
+
+.official-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.official-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ds-text-primary);
+  strong {
+    font-weight: 600;
+  }
+}
+
+.official-icon {
+  color: var(--ds-warning);
+}
+
+.official-tag {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ds-warning) 18%, transparent);
+  color: var(--ds-warning);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.official-body {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: 13.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+// =============== 简洁评论流 ===============
+.comment-section {
+  margin-top: 14px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.comment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.comment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 0;
+
+  & + .comment-item {
+    border-top: 1px solid var(--ds-border-subtle);
+  }
+}
+
+.comment-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: 50%;
+  background: var(--ds-bg-panel-elevated);
+  color: var(--ds-text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.comment-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.comment-author-wrap {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.comment-author {
+  color: var(--ds-text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.meta-time {
+  flex: none;
+  color: var(--ds-text-muted);
+  font-size: 11px;
+}
+
+.state-chip {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--ds-hover-bg);
+  color: var(--ds-text-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.comment-body {
+  margin: 0;
+  color: color-mix(in srgb, var(--ds-text-primary) 88%, transparent);
+  font-size: 13px;
+  line-height: 1.58;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.entry-highlight {
+  padding-left: 10px;
+  border-left: 2px solid var(--ds-warning);
+  border-radius: 0 4px 4px 0;
+  background: var(--ds-warning-bg);
+}
+
+.comment-pages {
+  justify-content: center;
+  margin-top: 8px;
+}
 </style>

@@ -67,6 +67,8 @@ let frame = 0
 let flowTimer: number | undefined
 let lastFlowFrame: number | undefined
 let flowElapsed = 0
+let lastAmbientFrame: number | undefined
+let ambientElapsed = 0
 let observer: ResizeObserver | undefined
 let glows: ReturnType<typeof createStarGlows> | undefined
 let glowsMode = ''
@@ -87,6 +89,7 @@ function pauseFlow(): void {
   window.clearTimeout(flowTimer)
   flowTimer = undefined
   lastFlowFrame = undefined
+  lastAmbientFrame = undefined
 }
 
 function syncMotion(): void {
@@ -159,10 +162,20 @@ function draw(now: number): void {
   let pulsing = false
   const scale = haloScale(props.stars.length)
   const sparse = props.stars.length ? Math.exp(-Math.max(0, props.stars.length - 1) / 4.5) : 0
+  const hasTwinkling = props.stars.some(star => Boolean(star.point.privateLabel))
+  const ambientActive = hasTwinkling && !props.focused && !reduced.matches
+  if (ambientActive) {
+    if (lastAmbientFrame !== undefined) {
+      const dt = Math.min(250, Math.max(0, now - lastAmbientFrame))
+      ambientElapsed += dt / 1000
+    }
+    lastAmbientFrame = now
+  } else lastAmbientFrame = undefined
+
   for (const star of drawOrder.value) {
     const amount = props.arrivals.has(star.point.starId) ? pulse : 0
-    context.globalCompositeOperation = star.point.privateLabel ? 'source-over' : palette.composite
-    drawFeedbackStar(context, glows!, star, amount, detail.value, palette, scale, sparse)
+    context.globalCompositeOperation = palette.composite
+    drawFeedbackStar(context, glows!, star, amount, detail.value, palette, scale, sparse, reduced.matches ? 0 : ambientElapsed)
     if (amount > 0) pulsing = true
   }
   context.globalCompositeOperation = 'source-over'
@@ -171,10 +184,11 @@ function draw(now: number): void {
     if (isSelected || star.point.starId === props.hovered) drawStarFocus(context, star, palette, isSelected)
   }
   if (pulsing || settling) scheduleDraw()
-  else if (flowing && nebula) {
-    // 手动操作始终可以立即排帧。缓慢的尘流单独限频，绘制较慢的设备留出更多输入时间。
+  else if ((flowing && nebula) || ambientActive) {
+    // 手动操作始终可以立即排帧。星云流动与待审星闪烁单独限频，给交互留足余量。
     const cost = performance.now() - started
-    const delay = Math.max(0, nebula.flowInterval - cost - 7, cost * .75)
+    const interval = flowing && nebula ? nebula.flowInterval : 33
+    const delay = Math.max(0, interval - cost - 7, cost * .75)
     flowTimer = window.setTimeout(scheduleDraw, delay)
   }
 }

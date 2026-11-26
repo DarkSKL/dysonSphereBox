@@ -3,6 +3,10 @@ import {accountSessionKey, resetAccountSession} from '../pages/services/account'
 import type {
   FeedbackNotice, MapSnapshot, MyStar, Page, ReviewState, StarDetail, StarPreview, StarWrite,
 } from '../types/feedback'
+import {mockFeedbackCall} from './feedback-mock'
+
+// 临时预览开关：设为正整数时启用本地模拟数据（不写入真实后端），设为 0 恢复真实服务器数据。
+const FEEDBACK_MOCK_COUNT = 200
 
 interface FeedbackResponses {
   Map: MapSnapshot
@@ -67,6 +71,14 @@ export async function feedbackCall<K extends Operation>(
 ): Promise<FeedbackResponses[K]> {
   const sessionKey = accountSessionKey.value
   if (!sessionKey) throw new FeedbackError('stale', errorLabels.stale)
+  if (FEEDBACK_MOCK_COUNT > 0) {
+    try {
+      return mockFeedbackCall(FEEDBACK_MOCK_COUNT, operation, input as unknown as Record<string, unknown>) as FeedbackResponses[K]
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'requestFailed'
+      throw new FeedbackError(reason, errorLabels[reason] || '模拟反馈调用失败。')
+    }
+  }
   try {
     const bridge = (window as Window & {go?: {feedback?: {FeedbackService?: FeedbackBridge}}}).go?.feedback?.FeedbackService
     if (typeof bridge?.[operation] !== 'function') throw new FeedbackError('unsupported', errorLabels.unsupported)

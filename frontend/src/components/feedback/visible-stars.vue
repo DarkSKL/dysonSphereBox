@@ -113,7 +113,18 @@ li button {
   &:hover, &:focus-visible { background: var(--ds-bg-panel); }
   &:focus-visible { outline: 2px solid var(--ds-brand); }
 }
+@keyframes list-star-twinkle {
+  0%, 100% {
+    opacity: 0.38;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
 .list-dot { flex: 0 0 7px; height: 7px; background: currentColor; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--ds-border-default); }
-.list-dot.private { background: none; border: 1px solid currentColor; }
+.list-dot.private { animation: list-star-twinkle 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .list-dot.private { animation: none; } }
 .focus-preview { color: var(--ds-text-secondary); margin: 7px 0; overflow-wrap: anywhere; }
 </style>

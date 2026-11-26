@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import {Bell, MessageSquarePlus, Star, X} from '@lucide/vue'
 import {useMessage, type DropdownOption} from 'naive-ui'
-import {computed, h, nextTick, ref, watch} from 'vue'
+import {computed, h, nextTick, ref, shallowRef, watch} from 'vue'
 
 import EditorForm from '../../components/feedback/editor-form.vue'
 import GalaxyMap from '../../components/feedback/galaxy-map.vue'
 import MapStatus from '../../components/feedback/map-status.vue'
 import PersonalList from '../../components/feedback/personal-list.vue'
+import StarComposer, {type CardComposerMode} from '../../components/feedback/star-composer.vue'
+import StarDetailCard from '../../components/feedback/star-detail-card.vue'
 import StarDetail from '../../components/feedback/star-detail.vue'
 import StarQuote from '../../components/feedback/star-quote.vue'
 import VisibleStars from '../../components/feedback/visible-stars.vue'
@@ -14,6 +16,7 @@ import type {ProjectedStar} from '../../composables/feedback/galaxy-camera'
 import {isInView, revalidateCandidates} from '../../composables/feedback/galaxy-camera'
 import {galaxyStatus, isCoveredByAggregate, isPublicFeedback, nextSnapshotOrder} from '../../composables/feedback/galaxy-status'
 import {useFeedbackGalaxy} from '../../composables/feedback/useFeedbackGalaxy'
+import type {StarDetail as StarDetailData} from '../../types/feedback'
 
 definePage({meta: {layout: 'main', keepAlive: true, title: '反馈星系'}})
 
@@ -40,7 +43,7 @@ const mapStatus = ref<InstanceType<typeof MapStatus>>()
 function focusAfterPanel(): void {
   void nextTick(() => {
     const active = document.activeElement
-    if (active && active !== document.body && !active.closest('.galaxy-panel')) return
+    if (active && active !== document.body && !active.closest('.galaxy-panel, .star-card-backdrop')) return
     if (mapStatus.value?.focusPublish()) return
     mapView.value?.focus()
   })
@@ -109,11 +112,41 @@ const galaxyState = computed(() => galaxyStatus({
       snapshotConfirmed: selectedSnapshotConfirmed.value,
     }),
 }))
-// 列表打开时不再提示「画面内无星」；发布面板已打开时，空状态卡片的「提意见」入口是多余的。
+// =============== 星云卡片与右侧栏分流 ===============
+// 说明：点击星点弹出的详情改为星云卡片；发布、我的星星与作者提醒继续使用右侧工作面板。
+const isDetailOpen = computed(() => panel.value === 'detail')
+const isSidePanelOpen = computed(() => panel.value === 'mine' || panel.value === 'notices' || panel.value === 'publish')
+const selectedMapPoint = computed(() => target.value ? points.value.find(star => star.starId === target.value) ?? null : null)
+const frozenDetail = shallowRef<StarDetailData | null>(null)
+
+// 卡片退场期间冻结最后一份可用详情，防止详情置空导致淡出帧闪烁。
+watch([isDetailOpen, selectedStar, unavailable], ([opened, current, isUnavailable]) => {
+  if (opened && current && !isUnavailable) frozenDetail.value = current
+  else if (opened && isUnavailable) frozenDetail.value = null
+}, {immediate: true})
+
+const cardDetail = computed(() => (isDetailOpen.value ? (!unavailable.value ? selectedStar.value : null) : frozenDetail.value))
+const cardComposerMode = computed<CardComposerMode | null>(() =>
+  isDetailOpen.value && openedEditor.value && openedEditor.value.mode !== 'publish' ? openedEditor.value.mode : null,
+)
+const cardDiscussionCount = computed(() => {
+  const current = cardDetail.value
+  if (!current) return 0
+  const listCount = current.replies.list?.length ?? 0
+  const pinnedCount = (current.officialReplies?.length ?? 0) + (current.supplements?.length ?? 0)
+  return Math.max(current.replies.total, listCount, pinnedCount)
+})
+const detailMapHint = computed<'offscreen' | 'grouped' | ''>(() =>
+  galaxyState.value === 'selected-offscreen' ? 'offscreen' : galaxyState.value === 'selected-grouped' ? 'grouped' : '',
+)
+
+// 列表打开时不再提示「画面内无星」；发布面板已打开时，空状态卡片的「提意见」入口是多余的；
+// 详情卡片已弹出时，所读星位置提示由卡片顶栏承接，避免在半透明遮罩后重复叠影。
 const statusKind = computed(() => {
   const kind = galaxyState.value
   if ((browse.value || crowdIds.value.length) && kind === 'offscreen') return ''
   if (panel.value === 'publish' && kind === 'empty') return ''
+  if (isDetailOpen.value && (kind === 'selected-offscreen' || kind === 'selected-grouped')) return ''
   return kind
 })
 // 重试按钮的转圈与本次请求同生命周期：retry 在请求结算（成功、失败或被废弃）时才返回。
@@ -176,12 +209,12 @@ watch(status, text => {
   if (foreground.value) message.success(text)
   status.value = ''
 })
-const panelTitle = computed(() => ({detail: '星星详情', mine: '我的星星', notices: '作者提醒', publish: '发布反馈', '': ''})[panel.value])
+const panelTitle = computed(() => ({mine: '我的星星', notices: '作者提醒', publish: '发布反馈', detail: '', '': ''})[panel.value])
 const anchor = computed(() => {
   if (!hoveredStar.value?.anchor) return undefined
   return visibleStars.value.find(star => star.point.starId === hovered.value)
 })
-const showQuote = computed(() => !!anchor.value && !!quote.value?.preview.trim() && !browse.value && !actionMenu.value)
+const showQuote = computed(() => !!anchor.value && !!quote.value?.preview.trim() && !browse.value && !actionMenu.value && !isDetailOpen.value)
 const canTransfer = computed(() => !!selectedStar.value?.owned && !selectedStar.value.canEdit &&
   selectedStar.value.original.reviewState === 'approved' && openedEditor.value?.mode === 'edit')
 const editorDisabled = computed(() => {
@@ -223,7 +256,7 @@ function openFromList(starId: string): void {
     <!-- * 交互：拖动旋转、滚轮缩放，回车打开可浏览星点列表。 -->
     <!-- * 依赖：当前镜头与最近一次成功的视区快照。 -->
     <!-- * 边界：网络恢复保留镜头，星点列表提供画布外的文本入口。 -->
-    <div class="galaxy-scene" :class="{'has-panel': panel}">
+    <div class="galaxy-scene" :class="{'has-panel': isSidePanelOpen}">
       <GalaxyMap ref="mapView" :sources="points" :stars="visibleStars" :camera="camera" :arrivals="arrivals" :hovered="hovered"
         :menu-open="!!actionMenu" @menu="openActions" @dismiss-menu="dismissActions"
         :tooltip-id="showQuote ? 'feedback-star-quote' : undefined" @approach="preview.approach"
@@ -245,12 +278,75 @@ function openFromList(starId: string): void {
         :menu-props="menuProps" :node-props="menuItemProps"
         @clickoutside="dismissActions" @update:show="(shown: boolean) => !shown && dismissActions()" @select="selectMenuAction" />
 
-      <!-- ~ 独立阅读与写入面板 -->
-      <!-- * 说明：切换详情、发布、我的星星和提醒。 -->
+      <!-- ~ 反馈星点详情弹出卡片 -->
+      <!-- * 说明：点击星点后在星图中央以星云观测卡弹出详情与讨论，不再从右侧展开侧栏。 -->
+      <!-- * 交互：点击遮罩、关闭按钮或 Escape 收起卡片，焦点自动返回原入口。 -->
+      <!-- * 依赖：当前目标星点、星体详情、作者权限与内嵌编辑器状态。 -->
+      <!-- * 边界：撤回或失权后仅保留不可用提示；离场动画结束时再释放冻结的展示详情。 -->
+      <StarDetailCard
+        :open="isDetailOpen"
+        :star-id="target"
+        :detail="selectedStar"
+        :map-point="selectedMapPoint"
+        :busy="detailBusy"
+        :writing="writing || saving"
+        :unavailable="unavailable"
+        :detail-error="detailError"
+        :action-error="actionError"
+        :confirm-withdraw="confirmWithdraw"
+        :active-mode="cardComposerMode"
+        :map-hint="detailMapHint"
+        @close="closePanel"
+        @retry="detail.refresh()"
+        @locate="locateSelected"
+        @edit="cardComposerMode === 'edit' ? editor.close() : editor.open('edit', selectedStar ?? undefined)"
+        @supplement="cardComposerMode === 'supplement' ? editor.close() : editor.open('supplement', selectedStar ?? undefined)"
+        @withdraw="confirmWithdraw = !confirmWithdraw"
+        @cancel-withdraw="confirmWithdraw = false"
+        @confirm-withdraw="changeStar('withdraw')"
+        @after-leave="frozenDetail = null"
+      >
+        <StarDetail
+          v-if="cardDetail"
+          :detail="cardDetail"
+          :busy="detailBusy"
+          :highlighted="highlightedEntry"
+          @page="detail.changePage"
+        />
+
+        <template v-if="cardDetail && !unavailable" #footer>
+          <StarComposer
+            :published="cardDetail.original.reviewState === 'approved'"
+            :liked="cardDetail.liked"
+            :like-count="cardDetail.likeCount"
+            :discussion-count="cardDiscussionCount"
+            :busy="detailBusy"
+            :writing="writing || saving"
+            :mode="cardComposerMode"
+            :body="draft.body"
+            :length="length"
+            :limit="limit"
+            :valid="valid"
+            :saving="saving"
+            :error="editorError"
+            :disabled="editorDisabled"
+            :can-transfer="canTransfer"
+            @like="changeStar('like')"
+            @open-comment="editor.open('comment', selectedStar ?? undefined)"
+            @text="editor.update({...draft, body: $event})"
+            @submit="editor.submit(selectedStar ?? undefined)"
+            @close="editor.close()"
+            @transfer="selectedStar && editor.transferToSupplement(selectedStar)"
+          />
+        </template>
+      </StarDetailCard>
+
+      <!-- ~ 右侧功能面板（发布、我的星星与作者提醒） -->
+      <!-- * 说明：承载发布反馈、个人列表和作者提醒，与星点详情弹出卡分离。 -->
       <!-- * 交互：Escape 收起，关闭后将焦点交回原入口。 -->
-      <!-- * 依赖：当前目标、作者权限和同会话写入状态。 -->
-      <!-- * 边界：撤回或失权后只保留不可用状态。 -->
-      <aside v-if="panel" class="galaxy-panel" aria-labelledby="feedback-panel-title" @keydown.esc.stop.prevent="closePanel">
+      <!-- * 依赖：panel 模式与个人分页状态。 -->
+      <!-- * 边界：从个人列表点选星星后自动切换为星云详情弹出卡。 -->
+      <aside v-if="isSidePanelOpen" class="galaxy-panel" aria-labelledby="feedback-panel-title" @keydown.esc.stop.prevent="closePanel">
         <header class="panel-header">
           <h2 ref="panelHeading" id="feedback-panel-title" tabindex="-1">{{ panelTitle }}</h2>
           <n-button quaternary size="small" aria-label="关闭星系面板" title="关闭" :disabled="writing || saving" @click="closePanel">
@@ -261,30 +357,6 @@ function openFromList(starId: string): void {
           <PersonalList v-if="panel === 'mine' || panel === 'notices'" :mode="panel"
             :mine="mine.page" :notices="notices.page" :busy="currentCollection.busy" :error="currentCollection.error"
             @mine="openMine" @notice="personal.openNotice" @page="changePersonalPage" @retry="changePersonalPage()" />
-
-          <template v-if="panel === 'detail'">
-            <p v-if="detailBusy && !selectedStar" role="status" class="panel-hint">正在读取反馈…</p>
-            <div v-if="detailError" class="panel-error" role="status">
-              {{ detailError }} <n-button size="tiny" @click="detail.refresh()">重试</n-button>
-            </div>
-            <p v-if="actionError && !unavailable" class="panel-error" role="alert">{{ actionError }}</p>
-            <div v-if="confirmWithdraw && selectedStar" class="withdraw-confirm">
-              <p>撤回后，星星及其讨论将停止对所有玩家展示。确定撤回？</p>
-              <n-button size="small" :disabled="writing" @click="confirmWithdraw = false">取消</n-button>
-              <n-button size="small" type="error" :loading="writing" @click="changeStar('withdraw')">确认撤回</n-button>
-            </div>
-            <StarDetail v-if="selectedStar && !unavailable" :detail="selectedStar" :busy="detailBusy" :writing="writing || saving"
-              :highlighted="highlightedEntry"
-              @like="changeStar('like')" @edit="editor.open('edit', selectedStar ?? undefined)"
-              @comment="editor.open('comment', selectedStar ?? undefined)" @supplement="editor.open('supplement', selectedStar ?? undefined)"
-              @withdraw="confirmWithdraw = true" @page="detail.changePage">
-              <EditorForm v-if="openedEditor && openedEditor.mode !== 'publish'" :mode="openedEditor.mode" :body="draft.body"
-                :show-name="draft.showName" :limit="limit" :length="length" :valid="valid" :saving="saving" :error="editorError"
-                :disabled="editorDisabled" :can-transfer="canTransfer" @text="editor.update({...draft, body: $event})"
-                @submit="editor.submit(selectedStar ?? undefined)" @close="editor.close()"
-                @transfer="selectedStar && editor.transferToSupplement(selectedStar)" />
-            </StarDetail>
-          </template>
 
           <EditorForm v-if="panel === 'publish' && openedEditor?.mode === 'publish'" mode="publish" :body="draft.body"
             :show-name="draft.showName" :limit="limit" :length="length" :valid="valid" :saving="saving" :error="editorError"
@@ -331,9 +403,4 @@ function openFromList(starId: string): void {
   &:focus-visible { outline: none; box-shadow: inset 0 -1.5px 0 color-mix(in srgb, var(--ds-brand) 42%, transparent); }
 }
 .panel-body { padding: 14px 16px; flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
-.panel-hint, .panel-error, .withdraw-confirm { font-size: 13px; }
-.panel-error { color: var(--ds-error); margin-bottom: 12px; overflow-wrap: anywhere; }
-.withdraw-confirm { padding: 8px 0 12px; margin-bottom: 12px; border-bottom: 1px solid var(--ds-border-subtle); }
-.withdraw-confirm p { margin: 0 0 8px; }
-.withdraw-confirm button + button { margin-left: 6px; }
 </style>
