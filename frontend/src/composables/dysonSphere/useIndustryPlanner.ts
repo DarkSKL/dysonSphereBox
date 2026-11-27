@@ -4,7 +4,7 @@ import {describeFactoryDataset} from '../../pages/services/dysonSphere/factory'
 import {gameDirectory, loadGameDirectory} from '../../pages/services/dysonSphere/game'
 import {industryService as api, readIndustryBlueprint} from '../../services/industry-planner'
 
-type Target = {item: number | null; rate: number | null; delivery: number | null}
+type Target = {key: number; item: number | null; rate: number | null; delivery: number | null}
 type Rule = {item: number; choice: number; building: number}
 type Choice = {value: number; label: string}
 const issue = (e: unknown) => e instanceof Error ? e.message : String(e)
@@ -21,7 +21,11 @@ export function useIndustryPlanner() {
   const task = shallowRef<industryworkspace.Task | null>(null)
   const report = shallowRef<industryworkspace.Report | null>(null)
   const error = ref(''), exported = ref(''), busy = ref(false), exporting = ref(false), active = ref(true)
-  const targets = ref<Target[]>([{item: 6001, rate: 60, delivery: null}])
+  const targets = ref<Target[]>([])
+  let nextTargetKey = 0
+  const addTarget = () => {
+    if (targets.value.length < 100) targets.value.push({key: ++nextTargetKey, item: null, rate: 60, delivery: null})
+  }
   const rules = ref<Rule[]>([]), ruleItem = ref<number | null>(null)
   const previewId = ref<number | null>(null), previewCode = ref(''), previewError = ref('')
   const resourceSite = ref<number | null>(null)
@@ -115,7 +119,20 @@ export function useIndustryPlanner() {
   watch([form, targets, rules, energy, dyson], discard, {deep: true, flush: 'sync'})
 
   // =============== 存档会话 ===============
-  // 说明：自动列出游戏设置解析的目录，不自动解析存档；相同目录刷新保留快照，临时目录不写入游戏设置。
+  // 说明：首次打开目录时选择修改时间最新的存档；相同目录刷新保留手动选择和快照。
+  async function selectLatestSave(items: environment.EnvironmentSaveItem[]) {
+    saves.value = items
+    let latest: environment.EnvironmentSaveItem | undefined
+    let latestTime = -Infinity
+    for (const item of items) {
+      const time = Date.parse(item.lastModifiedAt)
+      if (!latest || time > latestTime) {
+        latest = item
+        latestTime = Number.isNaN(time) ? -Infinity : time
+      }
+    }
+    if (latest) await chooseSave(latest.id)
+  }
   const clearSelection = () => {
     ++pageSerial; discard(); saveId.value = null; selection.value = null; resourceSite.value = null
     form.center = null; form.warehouse = null
@@ -136,7 +153,10 @@ export function useIndustryPlanner() {
         if (temporaryRoot.value) return
         if (root.value && resolved.exists && directoryKey(root.value) === directoryKey(resolved.path)) {
           const result = await api.saves()
-          if (serial === directorySerial) saves.value = result
+          if (serial === directorySerial) {
+            if (saveId.value) saves.value = result
+            else await selectLatestSave(result)
+          }
           return
         }
         if (root.value || selection.value || task.value) clearSelection()
@@ -145,7 +165,8 @@ export function useIndustryPlanner() {
         opening = true; busy.value = true
         const result = await api.authorize(resolved.path)
         if (serial !== directorySerial) return
-        root.value = resolved.path; saves.value = result
+        root.value = resolved.path
+        await selectLatestSave(result)
       } catch (e) { if (serial === directorySerial) error.value = issue(e) }
       finally { if (opening && serial === directorySerial) busy.value = false }
     })().finally(() => { directoryRefresh = undefined })
@@ -167,7 +188,7 @@ export function useIndustryPlanner() {
       if (!path || serial !== directorySerial) return
       clearSelection(); temporaryRoot.value = true; root.value = path; saves.value = []
       const result = await api.saves()
-      if (serial === directorySerial) saves.value = result
+      if (serial === directorySerial) await selectLatestSave(result)
     } catch (e) {
       if (serial === directorySerial) { clearSelection(); root.value = ''; saves.value = []; error.value = issue(e) }
     } finally { if (serial === directorySerial) busy.value = false }
@@ -300,7 +321,7 @@ export function useIndustryPlanner() {
   })
   onDeactivated(() => { active.value = false; stopTimer(); closePreview() })
   onBeforeUnmount(() => { active.value = false; ++directorySerial; ++pageSerial; discard(); void api.revoke().catch(() => {}) })
-  return {form, energy, dyson, overrideEnergy, detail, root, suggested, rootExists, temporaryRoot, saves, saveId, selection, task, report, targets, items, itemName, siteName, sites, allSites, resourceSite, currentResources,
+  return {form, energy, dyson, overrideEnergy, detail, root, suggested, rootExists, temporaryRoot, saves, saveId, selection, task, report, targets, addTarget, items, itemName, siteName, sites, allSites, resourceSite, currentResources,
     rules, ruleItem, recipeChoices, buildings, addRule, directResourceError, ready, running, paused, error, exported, busy, exporting, previewId, previewCode, previewError,
     inspecting, inspectResources, openDirectory, restoreDirectory, chooseSave, setTechnology, revoke, start, resume, cancel, showPreview, previewName, closePreview, exportPack}
 }
