@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	systemAPI "DysonSphereBox/apiDefinition/system"
+	"DysonSphereBox/core/request"
 )
 
 // avatarByteLimit 职责：限制头像为 2MiB；使用：解码前后检查；边界：服务器仍校验图片尺寸和实际内容。
@@ -57,12 +58,21 @@ func UploadAvatar(ctx context.Context, fileName, contentBase64 string) (*systemA
 	if err = writer.Close(); err != nil {
 		return nil, err
 	}
-	result, err := requestBody[systemAPI.AccountAvatarData](ctx, http.MethodPost, systemAPI.APIURLUploadAvatar, &body, writer.FormDataContentType(), true)
+	access, err := ServerRequests().Capture(systemAPI.UploadAvatarAPI, "")
+	if err != nil {
+		return nil, err
+	}
+	result, err := accountRequest[systemAPI.AccountAvatarData](ctx, systemAPI.UploadAvatarAPI, request.Input{
+		Session: &access, Body: &body, ContentType: writer.FormDataContentType(),
+	})
 	if err != nil {
 		return nil, err
 	}
 	if result.User.ID == 0 || strings.TrimSpace(result.User.HeaderImg) == "" {
 		return nil, errors.New("服务器未返回已保存的头像，请重新选择图片重试。")
+	}
+	if err := projectProfile(access, result.User.ID, func() { setSessionUser(&result.User) }); err != nil {
+		return nil, err
 	}
 	return &result.User, nil
 }

@@ -20,7 +20,7 @@ import {usePageTutorial} from '../composables/usePageTutorial'
 import {useThemeMode} from '../composables/useThemeMode'
 import AccountModal from '../components/layout/account-modal.vue'
 import AnnouncementModal from '../components/layout/announcement-modal.vue'
-import AnnouncementHistoryPopover from '../components/layout/announcement-history-popover.vue'
+import NotificationCenter from '../components/layout/notification-center.vue'
 import {workspaceNavigationRegistry, globalNavigationEntries} from '../navigation/registry'
 import {
   accountIsAuthenticated,
@@ -51,6 +51,7 @@ const accountAvatarSource = computed(() => isAccountAuthenticated.value
 watch([accountAvatarSource, () => accountUser.value?.ID], () => { accountAvatarFailed.value = false })
 const globalMenuTrigger = ref<HTMLButtonElement | null>(null)
 const globalMenuRoot = ref<HTMLDivElement | null>(null)
+const notificationLayer = ref<HTMLDivElement | null>(null)
 const isUpdateDialogOpen = ref(false)
 const {appVersion, loadAppVersion} = useAppVersion()
 const {appUpdateInfo, checkAppUpdate} = useAppUpdateState()
@@ -58,13 +59,6 @@ const hasAppUpdate = computed(() => Boolean(appUpdateInfo.value?.hasUpdate && ap
 const {isDarkMode, isSavingThemeMode, loadThemeMode, toggleThemeMode} = useThemeMode()
 const {isTutorialRunning, tryAutoStartTutorial: tryAutoStartGlobalTutorial} = usePageTutorial('global')
 const announcements = useAnnouncements()
-// 账号身份或服务器变化时撤销旧公告展示；同一作用域只自动检查一次，失败后由聚焦或手动入口重试。
-// 账号快照在同一轮状态应用里已校准服务器地址，因此只要出现已验证作用域即可检查，不依赖启动引导是否收尾。
-watch(accountSessionKey, (key, previousKey) => {
-  if (key === previousKey) return
-  announcements.resetSession()
-  if (key) void announcements.check()
-}, {immediate: true, flush: 'sync'})
 
 // =============== 当前工作区上下文 ===============
 // 说明：根据当前路由解析游戏或社区工作区，第二层菜单读取对应注册数据；全局页面不挂载子菜单。
@@ -164,10 +158,6 @@ const guardLockedEntry = (event: MouseEvent, entry: {readonly requiresAuth?: boo
 const title = computed(() => route.meta.title || '戴森球盒子')
 const themeToggleTitle = computed(() => (isDarkMode.value ? '切换到日间模式' : '切换到夜间模式'))
 
-// 说明：公告自动检查失败后，用户回到窗口或网络恢复时允许在同一作用域重试；成功检查过的作用域由 composable 去重。
-const retryAnnouncementCheck = (): void => {
-  if (accountSessionKey.value) void announcements.check()
-}
 // 说明：启动时服务器暂时不可达会保留 token 但无法取得已验证身份；回到窗口或网络恢复时重新走统一刷新。
 // 边界：离线状态即使保留了缓存用户也强制重新验证，避免只读本地快照而永远停在离线阶段。
 const retryAccountSync = (): void => {
@@ -176,23 +166,19 @@ const retryAccountSync = (): void => {
     void refreshAccountSession({force: status === 'offline', reason: 'focus-retry'})
   }
 }
-const retryAccountAndAnnouncements = (): void => {
-  retryAccountSync()
-  retryAnnouncementCheck()
-}
 
 onMounted(() => {
   void loadAppVersion()
   // 启动时检查一次；设置页复用本次结果，网络失败时可在设置页重新检查。
   void checkAppUpdate().catch(() => undefined)
-  window.addEventListener('focus', retryAccountAndAnnouncements)
-  window.addEventListener('online', retryAccountAndAnnouncements)
+  window.addEventListener('focus', retryAccountSync)
+  window.addEventListener('online', retryAccountSync)
   void loadThemeMode()
   void tryAutoStartGlobalTutorial()
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('focus', retryAccountAndAnnouncements)
-  window.removeEventListener('online', retryAccountAndAnnouncements)
+  window.removeEventListener('focus', retryAccountSync)
+  window.removeEventListener('online', retryAccountSync)
 })
 
 // =============== 主题切换交互 ===============
@@ -345,6 +331,13 @@ const closeWindow = (): void => {
     <AppUpdateDialog v-model:show="isUpdateDialogOpen" />
 
     <section class="app-workspace">
+      <!-- ~ 消息中心挂载层 -->
+      <!-- * 说明：右侧面板与页面内容叠放，顶部对齐标题栏下沿 -->
+      <!-- * 交互：面板范围外的页面仍接收鼠标操作 -->
+      <!-- * 依赖：NotificationCenter 将面板挂载到此处 -->
+      <!-- * 边界：挂载层裁切滑出动画，窗口标题栏保持可操作 -->
+      <div ref="notificationLayer" class="app-notification-layer" />
+
       <!-- ~ 无边框窗口标题栏 -->
       <!-- * 说明：跨越工作区选项与页面内容，统一承载当前标题、版本、主题和窗口控制 -->
       <!-- * 交互：标题空白区可拖动窗口；右侧按钮调用主题与 Wails 窗口 API -->
@@ -370,7 +363,10 @@ const closeWindow = (): void => {
             <span class="app-version-update-label">更新</span>
           </button>
           <span v-else class="app-version-pill">{{ appVersion }}</span>
-          <AnnouncementHistoryPopover :disabled="!isAccountAuthenticated || !verifiedAccountSession || isAccountModalOpen || isTutorialRunning || announcements.open.value || announcements.checking.value || announcements.pending.value" :has-latest="announcements.hasUnread.value && isAccountAuthenticated" />
+          <NotificationCenter
+            :mount-target="notificationLayer"
+            :disabled="!verifiedAccountSession || isAccountModalOpen || isTutorialRunning || announcements.open.value || announcements.pending.value"
+          />
           <!-- ~ 日夜模式切换 -->
           <!-- * 说明：在窗口工具栏中提供主题切换入口 -->
           <!-- * 交互：点击后从按钮中心揭示新主题，并将选择保存到系统配置 -->
@@ -601,11 +597,20 @@ const closeWindow = (): void => {
 }
 
 .app-workspace {
+  --app-header-height: 54px;
   position: absolute;
   inset: 0 0 0 var(--app-rail-width);
   display: flex;
   min-width: 0;
   flex-direction: column;
+}
+
+.app-notification-layer {
+  position: absolute;
+  z-index: 20;
+  inset: var(--app-header-height) 0 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .app-workspace-body {
@@ -1011,7 +1016,7 @@ const closeWindow = (): void => {
   position: relative;
   z-index: 10;
   display: flex;
-  height: 54px;
+  height: var(--app-header-height);
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;

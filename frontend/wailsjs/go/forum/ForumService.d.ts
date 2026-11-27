@@ -18,6 +18,8 @@ export function PostDetail(arg1:forum.PostDetailRequest):Promise<forum.PostDetai
 
 export function Posts(arg1:forum.PostListRequest):Promise<forum.PostPage>;
 
+export function PublicationReview(arg1:string,arg2:string):Promise<forum.PublicationReview>;
+
 export function PublishPost(arg1:forum.PublishPostRequest):Promise<forum.IDResult>;
 
 export function PublishReply(arg1:forum.PublishReplyRequest):Promise<forum.Reply>;

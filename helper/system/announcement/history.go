@@ -6,14 +6,13 @@ package announcement
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	systemAPI "DysonSphereBox/apiDefinition/system"
-	accountHelper "DysonSphereBox/helper/system/account"
 )
 
 // NoticeHistoryDTO是分页历史查询结果。
@@ -49,8 +48,8 @@ func GetHistory(ctx context.Context, sessionID string, page, pageSize int64) (*N
 		return nil, errors.New("公告会话已失效")
 	}
 	requestStartedAt := time.Now()
-	path := systemAPI.APIURLClientNoticeGetHistory + "?page=" + fmt.Sprintf("%d", page) + "&pageSize=" + fmt.Sprintf("%d", pageSize)
-	raw, err := request[json.RawMessage](historyCtx, session, http.MethodGet, path, nil)
+	query := url.Values{"page": {strconv.FormatInt(page, 10)}, "pageSize": {strconv.FormatInt(pageSize, 10)}}
+	raw, err := requestNotice(historyCtx, session, systemAPI.NoticeHistoryAPI, query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -106,8 +105,7 @@ func GetHistoryItem(sessionID, id string, revision int64) (*systemAPI.ClientNoti
 	if session == nil {
 		return nil, errors.New("公告会话已失效")
 	}
-	g, subject, key, token, _, client, ok := accountHelper.VerifiedSession()
-	if !ok || g != session.generation || subject != session.subject || key != session.serverKey || client != session.client || token == "" {
+	if session.scope.Context.Err() != nil {
 		delete(sessions.values, sessionID)
 		return nil, errors.New("公告会话已失效")
 	}
@@ -119,7 +117,7 @@ func GetHistoryItem(sessionID, id string, revision int64) (*systemAPI.ClientNoti
 	if session.historyCancel != nil {
 		session.historyCancel()
 	}
-	session.historyCtx, session.historyCancel = context.WithCancel(session.ctx)
+	session.historyCtx, session.historyCancel = context.WithCancel(session.scope.Context)
 	validUntil := time.Time{}
 	if entry.EndsAt != nil {
 		end, err := parseUTC(*entry.EndsAt)
@@ -164,7 +162,7 @@ func MarkHistoryRead(ctx context.Context, sessionID, id string, revision int64) 
 		stop := context.AfterFunc(selectionCtx, cancel)
 		defer stop()
 	}
-	raw, err := request[json.RawMessage](requestCtx, session, http.MethodPost, systemAPI.APIURLClientNoticeMarkRead, systemAPI.ClientNoticeMarkReadRequest{ID: id, Revision: revision})
+	raw, err := requestNotice(requestCtx, session, systemAPI.MarkNoticeReadAPI, nil, systemAPI.ClientNoticeMarkReadRequest{ID: id, Revision: revision})
 	if err != nil {
 		return nil, err
 	}

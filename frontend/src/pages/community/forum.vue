@@ -8,7 +8,7 @@ import {
   RotateCcw,
   Send,
 } from '@lucide/vue'
-import {computed, onDeactivated, ref, watch} from 'vue'
+import {computed, onDeactivated, ref, watch, watchPostEffect} from 'vue'
 import ForumBodyRenderer from '../../components/forum/forum-body-renderer.vue'
 import ForumEditor from '../../components/forum/forum-editor.vue'
 import ForumReportModal from '../../components/forum/forum-report-modal.vue'
@@ -40,6 +40,7 @@ const {
   repliesPageSize,
   repliesLoading,
   repliesError,
+  focusedReplyId,
   postDraft,
   replyDraft,
   busyResourceAction,
@@ -127,6 +128,15 @@ watch([viewMode, currentPostId], () => {
   if (detailScrollRef.value) {
     detailScrollRef.value.scrollTop = 0
   }
+})
+
+// 回复分页与帖子正文独立返回，等两者完成渲染后再滚动并聚焦通知对应的回复。
+watchPostEffect(() => {
+  if (!focusedReplyId.value || !postDetail.value) return
+  const target = detailScrollRef.value?.querySelector<HTMLElement>(`[data-reply-id="${focusedReplyId.value}"]`)
+  if (!target) return
+  target.scrollIntoView({block: 'center'})
+  target.focus({preventScroll: true})
 })
 
 onDeactivated(() => {
@@ -343,7 +353,9 @@ onDeactivated(() => {
               </div>
 
               <ul v-else class="reply-stream">
-                <li v-for="reply in replies" :key="reply.id" class="reply-entry">
+                <li v-for="reply in replies" :key="reply.id" class="reply-entry" :data-reply-id="reply.id"
+                  :class="{'is-review-target': focusedReplyId === reply.id}" tabindex="-1"
+                >
                   <div class="reply-head">
                     <div class="reply-author">
                       <strong>{{ reply.authorName }}</strong>
@@ -1068,6 +1080,11 @@ onDeactivated(() => {
 .reply-entry {
   padding: 16px 0;
   border-bottom: 1px solid var(--ds-border-subtle);
+
+  &.is-review-target {
+    outline: 1px solid var(--ds-brand);
+    outline-offset: 4px;
+  }
 
   &:last-child {
     border-bottom: none;

@@ -5,6 +5,7 @@ package forum
 // 边界：不向前端暴露 x-token；本地预览仅允许访问经由本应用文件对话框登记的令牌路径。
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"io"
@@ -16,7 +17,7 @@ import (
 	"time"
 
 	api "DysonSphereBox/apiDefinition/forum"
-	systemAPI "DysonSphereBox/apiDefinition/system"
+	"DysonSphereBox/core/request"
 	"DysonSphereBox/helper/system/account"
 )
 
@@ -144,79 +145,45 @@ func serveRemoteMedia(writer http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	session, err := captureSession("")
+	desc := api.MediaAPI
+	if req.Method == http.MethodHead {
+		desc = api.MediaHeadAPI
+	}
+	adapter := account.ServerRequests()
+	session, err := adapter.Capture(desc, "")
 	if err != nil {
 		writer.Header().Set("Cache-Control", "no-store")
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	if rawGen := strings.TrimSpace(req.URL.Query().Get("g")); rawGen != "" {
-		if expectedGen, parseErr := strconv.ParseUint(rawGen, 10, 64); parseErr != nil || expectedGen != session.generation {
+		if expectedGen, parseErr := strconv.ParseUint(rawGen, 10, 64); parseErr != nil || expectedGen != session.Generation {
 			writer.Header().Set("Cache-Control", "no-store")
 			http.Error(writer, "stale session", http.StatusUnauthorized)
 			return
 		}
 	}
 
-	targetPath, err := ResolveIDPath(api.PathResourceContent, uint(id))
+	input, err := IDInput("", uint(id))
 	if err != nil {
 		http.NotFound(writer, req)
 		return
 	}
-	upstreamReq, err := session.client.NewRequest(req.Context(), req.Method, strings.TrimPrefix(targetPath, "/"), nil)
-	if err != nil {
-		http.Error(writer, "bad gateway", http.StatusBadGateway)
-		return
+	input.Session, input.Range, input.IfRange = &session, req.Header.Get("Range"), req.Header.Get("If-Range")
+	started := false
+	err = request.Stream(req.Context(), adapter, desc, input, func(_ context.Context, resp *http.Response) error {
+		started = true
+		return writeMedia(writer, req.Method, resp)
+	})
+	if err != nil && !started {
+		status := mediaErrorStatus(err)
+		writer.Header().Set("Cache-Control", "no-store")
+		http.Error(writer, http.StatusText(status), status)
 	}
-	upstreamReq.Header.Set(systemAPI.AccountTokenHeader, session.token)
-	upstreamReq.Header.Set("Cache-Control", "no-store")
-	if rangeHeader := req.Header.Get("Range"); rangeHeader != "" {
-		upstreamReq.Header.Set("Range", rangeHeader)
-	}
-	if ifRange := req.Header.Get("If-Range"); ifRange != "" {
-		upstreamReq.Header.Set("If-Range", ifRange)
-	}
+}
 
-	resp, err := session.client.DoStreamNoRedirect(upstreamReq)
-	if err != nil {
-		writer.Header().Set("Cache-Control", "no-store")
-		http.Error(writer, "upstream unavailable", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	refresh := resp.Header.Get(systemAPI.AccountNewTokenHeader)
-	if resp.StatusCode == http.StatusUnauthorized {
-		session.acceptAuth("", true, false)
-		writer.Header().Set("Cache-Control", "no-store")
-		http.Error(writer, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if resp.StatusCode == http.StatusConflict {
-		session.acceptAuth(refresh, false, true)
-		writer.Header().Set("Cache-Control", "no-store")
-		http.Error(writer, "password required", http.StatusConflict)
-		return
-	}
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
-		writer.Header().Set("Cache-Control", "no-store")
-		http.Error(writer, "media unavailable", http.StatusNotFound)
-		return
-	}
-	// 服务端业务失败可能返回 HTTP 200 + application/json，直接视为不可用，不把 JSON 当媒体交付。
-	if strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "application/json") {
-		writer.Header().Set("Cache-Control", "no-store")
-		http.Error(writer, "media unavailable", http.StatusNotFound)
-		return
-	}
-
-	session.acceptAuth(refresh, false, false)
-	if generation, _, _, _, _, client, ok := account.VerifiedSession(); !ok || generation != session.generation || client != session.client {
-		writer.Header().Set("Cache-Control", "no-store")
-		http.Error(writer, "stale session", http.StatusUnauthorized)
-		return
-	}
-
+// writeMedia 仅向 WebView 透传媒体允许的响应头和正文，HEAD 只写响应头。
+func writeMedia(writer http.ResponseWriter, method string, resp *http.Response) error {
 	for _, header := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Content-Disposition"} {
 		if value := resp.Header.Get(header); value != "" {
 			writer.Header().Set(header, value)
@@ -225,9 +192,26 @@ func serveRemoteMedia(writer http.ResponseWriter, req *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.WriteHeader(resp.StatusCode)
-	if req.Method != http.MethodHead {
-		_, _ = io.Copy(writer, resp.Body)
+	if method != http.MethodHead {
+		_, err := io.Copy(writer, resp.Body)
+		return err
 	}
+	return nil
+}
+
+// mediaErrorStatus 将请求失败映射为 WebView 可处理的本地媒体响应状态。
+func mediaErrorStatus(err error) int {
+	if detail := request.Details(err); detail != nil {
+		switch detail.Kind {
+		case request.AuthRequired, request.Unauthorized, request.Stale:
+			return http.StatusUnauthorized
+		case request.PasswordRequired:
+			return http.StatusConflict
+		case request.BuildFailed, request.TransportFailed:
+			return http.StatusBadGateway
+		}
+	}
+	return http.StatusNotFound
 }
 
 // serveLocalPreview 使用 http.ServeContent 提供编辑器本地选中图片或 MP4 的预览（原生支持 Range）。

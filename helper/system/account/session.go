@@ -33,6 +33,13 @@ var sessionMutationState struct {
 	// ctx/cancel 职责：取消旧代次在途请求；使用：替换会话；边界：取消不能撤回已送达写入。
 	ctx    context.Context
 	cancel context.CancelFunc
+	// verifiedCtx/verifiedCancel 在可信会话失效或进入改密时取消业务请求，不中断账号接口本身。
+	verifiedCtx    context.Context
+	verifiedCancel context.CancelFunc
+	// changed 供常驻工作协程等待下一次可信会话状态变化。
+	changed chan struct{}
+	// stopping 阻止桌面关闭后重新捕获可信业务作用域。
+	stopping bool
 }
 
 // sessionUserState 职责：缓存当前已验证账号的用户资料，供统一会话快照直接返回。
@@ -43,11 +50,11 @@ var sessionUserState struct {
 	value *systemAPI.AccountUser
 }
 
-// SetSessionUser 保存服务端确认过的当前用户资料。
+// setSessionUser 保存服务端确认过的当前用户资料。
 // 职责：让后续本地会话读取无需再次请求服务器即可得到用户信息。
 // 使用：Login、CurrentUser、UploadAvatar 与资料更新成功后调用。
 // 边界：传入 nil 等同于清空；保存副本，调用方后续修改不会影响缓存。
-func SetSessionUser(user *systemAPI.AccountUser) {
+func setSessionUser(user *systemAPI.AccountUser) {
 	sessionUserState.Lock()
 	defer sessionUserState.Unlock()
 	if user == nil {
@@ -169,31 +176,55 @@ func notifySessionCleared() {
 	}
 }
 
-// HandleAnnouncementAuthResponse按公告原会话处理鉴权副作用。
-// 职责：安全应用401和409；使用：公告HTTP解析响应后调用。
-// 边界：旧代次、旧token、旧client无副作用。
-func HandleAnnouncementAuthResponse(generation uint64, token string, client *core.HTTPClient, refreshedToken string, unauthorized, needPassword bool) bool {
-	return HandleAuthenticatedResponse(generation, token, client, refreshedToken, unauthorized, needPassword)
-}
-
-// HandleAuthenticatedResponse 职责：按请求捕获的会话接纳续期与鉴权副作用；使用：公告、翻译等认证请求解析完整响应后调用；边界：旧代次或旧目标无副作用，token 不返回前端。
-func HandleAuthenticatedResponse(generation uint64, token string, client *core.HTTPClient, refreshedToken string, unauthorized, needPassword bool) bool {
-	return acceptAccountResponse(requestSnapshot{generation: generation, token: token, client: client}, refreshedToken, unauthorized, needPassword, 0, "", nil, false) == nil
-}
-
 // VerifiedSession 职责：捕获已验证主体、HTTP目标、token及可取消代次；使用：公告GET/POST；边界：token仅留Go内存。
 func VerifiedSession() (generation uint64, subject, serverKey, token string, ctx context.Context, client *core.HTTPClient, ok bool) {
 	sessionMutationState.Lock()
 	defer sessionMutationState.Unlock()
+	if sessionMutationState.stopping {
+		return
+	}
 	client = core.GLOBAL.ServerClient
 	token = Token()
 	if client == nil || token == "" || sessionMutationState.subject == "" || needPasswordLocked() {
 		return
 	}
-	if sessionMutationState.ctx == nil {
-		sessionMutationState.ctx, sessionMutationState.cancel = context.WithCancel(context.Background())
+	if sessionMutationState.verifiedCtx == nil {
+		sessionMutationState.verifiedCtx, sessionMutationState.verifiedCancel = context.WithCancel(context.Background())
 	}
-	return sessionMutationState.generation, sessionMutationState.subject, client.BaseURL(), token, sessionMutationState.ctx, client, true
+	return sessionMutationState.generation, sessionMutationState.subject, client.BaseURL(), token, sessionMutationState.verifiedCtx, client, true
+}
+
+// VerifiedSessionChanges 职责：唤醒可信会话的后台消费者；使用：先取信号再捕获会话；边界：静默续期保留当前作用域。
+func VerifiedSessionChanges() <-chan struct{} {
+	sessionMutationState.Lock()
+	defer sessionMutationState.Unlock()
+	if sessionMutationState.changed == nil {
+		sessionMutationState.changed = make(chan struct{})
+	}
+	return sessionMutationState.changed
+}
+
+// StopServerRequests 职责：结束桌面退出时的账号和可信业务请求；使用：关闭应用时调用；边界：保留下次启动恢复会话所需的凭据。
+func StopServerRequests() {
+	sessionMutationState.Lock()
+	defer sessionMutationState.Unlock()
+	sessionMutationState.stopping = true
+	if sessionMutationState.cancel != nil {
+		sessionMutationState.cancel()
+	}
+	signalVerifiedChangeLocked()
+}
+
+// 职责：取消旧可信业务请求并唤醒观察者；使用：持会话锁的状态变更；边界：不触碰账号请求或凭据。
+func signalVerifiedChangeLocked() {
+	if sessionMutationState.verifiedCancel != nil {
+		sessionMutationState.verifiedCancel()
+		sessionMutationState.verifiedCtx, sessionMutationState.verifiedCancel = nil, nil
+	}
+	if sessionMutationState.changed != nil {
+		close(sessionMutationState.changed)
+		sessionMutationState.changed = nil
+	}
 }
 
 // needPasswordLocked 职责：读取改密标志；使用：持会话锁捕获凭据；边界：不改变状态。
@@ -274,6 +305,7 @@ func invalidateLocked() {
 		sessionMutationState.cancel()
 	}
 	sessionMutationState.subject = ""
+	signalVerifiedChangeLocked()
 	sessionMutationState.ctx, sessionMutationState.cancel = context.WithCancel(context.Background())
 	clearSessionUser()
 }

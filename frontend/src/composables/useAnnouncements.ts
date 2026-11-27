@@ -31,7 +31,6 @@ const historyPageSize = ref(20)
 const historyTotal = ref(0)
 const historyLoading = ref(false)
 const historyError = ref('')
-const historyOpen = ref(false)
 const historyDetail = ref<NoticeHistoryEntry | null>(null)
 const historyDetailOpen = ref(false)
 const historyDetailLoading = ref(false)
@@ -41,6 +40,7 @@ const historyDetailPending = ref(false)
 const historyDetailError = ref('')
 // 自动检查按账号作用域去重：只有成功取得最新公告结果后才记为该作用域已完成，失败允许聚焦或手动重试。
 let automaticScope = ''
+const presentedVersions = new Set<string>()
 let requestSequence = 0
 let historySequence = 0
 let historyDetailSequence = 0
@@ -59,9 +59,9 @@ const currentScope = (): string => {
 // 说明：所有异步结果同时核对请求次序和账号代次；旧响应不得修改当前展示或查阅状态。
 export function useAnnouncements() {
   const title = computed(() => item.value?.title ?? '')
-  const hasUnread = computed(() => Boolean(item.value) || history.value.some((entry) => !entry.read))
-  // 同一账号作用域只自动检查一次，普通历史浏览不会重新触发启动弹窗。
-  const check = async (manual = false): Promise<void> => {
+  const hasUnread = computed(() => Boolean(item.value))
+  // 登录和重连可重新同步，同一公告版本在本次会话中只自动弹出一次。
+  const check = async (manual = false, reconnect = false): Promise<void> => {
     const scope = currentScope()
     if (!scope) {
       if (manual) {
@@ -70,15 +70,9 @@ export function useAnnouncements() {
       }
       return
     }
-    if (!manual && automaticScope === scope) return
-    if (checking.value || pending.value || historyLoading.value || historyDetailPending.value) return
+    if (!manual && !reconnect && automaticScope === scope) return
+    if (checking.value || pending.value || historyDetailPending.value) return
     checking.value = true
-    item.value = null
-    html.value = ''
-    open.value = false
-    ready.value = false
-    visibleReady.value = false
-    error.value = ''
     const sequence = ++requestSequence
     try {
       const session = sessionID.value || await captureAnnouncementSession()
@@ -89,11 +83,12 @@ export function useAnnouncements() {
       if (sequence !== requestSequence || scope !== currentScope()) return
       // 服务器已给出确定性结果（含“暂无公告”），同一作用域不再自动重复查询；失败分支不写入，允许重试。
       automaticScope = scope
-      if (!latest.item) { item.value = null; open.value = false; return }
+      if (!latest.item) { item.value = null; close(); return }
       const serverNow = Date.parse(latest.serverTime)
       if (!Number.isFinite(serverNow)) throw new Error('公告服务器时间无效')
       expiresAtMono = latest.item.endsAt ? requestStartedAt + (Date.parse(latest.item.endsAt) - serverNow) : Number.POSITIVE_INFINITY
-      if (expiresAtMono <= performance.now()) { open.value = false; return }
+      if (expiresAtMono <= performance.now()) { item.value = null; close(); return }
+      if (!manual && item.value?.id === latest.item.id && item.value.revision === latest.item.revision) return
       item.value = latest.item
       if (latest.item.contentFormat !== 'html' && latest.item.contentFormat !== 'markdown') throw new Error('公告格式不受支持')
       const configuredServer = serverEffectiveAddress.value || 'http://127.0.0.1:8888'
@@ -101,16 +96,19 @@ export function useAnnouncements() {
       ready.value = false
       visibleReady.value = Boolean(html.value)
       error.value = visibleReady.value ? '' : '公告正文无法显示。'
-      open.value = Boolean(html.value)
+      const version = `${latest.item.id}:${latest.item.revision}`
+      open.value = visibleReady.value && (manual || !presentedVersions.has(version))
+      if (open.value) presentedVersions.add(version)
     } catch (cause) {
       if (sequence !== requestSequence || scope !== currentScope()) return
-      error.value = cause instanceof Error ? cause.message : String(cause)
-      if (manual) open.value = true
+      if (manual) {
+        error.value = cause instanceof Error ? cause.message : String(cause)
+        open.value = true
+      }
     } finally {
       if (sequence === requestSequence) checking.value = false
     }
   }
-  const resetAutoAttempt = (): void => { automaticScope = '' }
   const closeHistoryDetail = (): void => {
     historyDetailSequence++
     historyDetailOpen.value = false
@@ -126,6 +124,7 @@ export function useAnnouncements() {
     requestSequence++
     historySequence++
     automaticScope = ''
+    presentedVersions.clear()
     item.value = null
     html.value = ''
     open.value = false
@@ -141,17 +140,15 @@ export function useAnnouncements() {
     historyTotal.value = 0
     historyLoading.value = false
     historyError.value = ''
-    historyOpen.value = false
     closeHistoryDetail()
   }
   // 每次查询先撤销旧页选择权，错误时保留分页位置供重试，并允许减少每页数量。
   const loadHistory = async (page = 1, pageSize = historyPageSize.value): Promise<void> => {
-    if (historyLoading.value || historyDetailPending.value || checking.value || pending.value) return
+    if (historyLoading.value || pending.value || historyDetailPending.value) return
     if (page < 1 || ![1, 5, 10, 20].includes(pageSize)) return
     const sequence = ++historySequence
     const scope = currentScope()
     historyLoading.value = true
-    historyOpen.value = true
     historyPage.value = page
     historyPageSize.value = pageSize
     historyError.value = ''
@@ -173,7 +170,6 @@ export function useAnnouncements() {
       historyPage.value = result.page
       historyPageSize.value = result.pageSize
       historyTotal.value = result.total
-      historyOpen.value = true
     } catch (cause) {
       if (sequence === historySequence && scope === currentScope()) historyError.value = cause instanceof Error ? cause.message : String(cause)
     } finally {
@@ -300,5 +296,5 @@ export function useAnnouncements() {
     if (event instanceof MouseEvent && event.button > 1) return
     event.preventDefault(); event.stopPropagation(); void BrowserOpenURL(href)
   }
-  return {item, title, html, open, ready, pending, checking, error, hasUnread, check, acknowledge, close, openLink, markVisible, verifyVisible, resetAutoAttempt, resetSession, history, historyPage, historyPageSize, historyTotal, historyLoading, historyError, historyOpen, historyDetail, historyDetailOpen, historyDetailLoading, historyDetailHtml, historyDetailReady, historyDetailPending, historyDetailError, loadHistory, openHistoryDetail, closeHistoryDetail, acknowledgeHistory, verifyHistoryVisible, isHistoryExpired}
+  return {item, title, html, open, ready, pending, checking, error, hasUnread, check, acknowledge, close, openLink, markVisible, verifyVisible, resetSession, history, historyPage, historyPageSize, historyTotal, historyLoading, historyError, historyDetail, historyDetailOpen, historyDetailLoading, historyDetailHtml, historyDetailReady, historyDetailPending, historyDetailError, loadHistory, openHistoryDetail, closeHistoryDetail, acknowledgeHistory, verifyHistoryVisible, isHistoryExpired}
 }

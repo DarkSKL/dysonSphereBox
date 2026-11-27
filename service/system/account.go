@@ -23,8 +23,6 @@ type AccountService struct{}
 func (service *AccountService) UploadAvatar(fileName, contentBase64 string) (*systemAPI.AccountUser, error) {
 	user, err := accountHelper.UploadAvatar(context.Background(), fileName, contentBase64)
 	if err == nil {
-		// 上传响应就是服务器保存后的完整用户，写入会话缓存后全局账号状态无需再请求一次资料。
-		accountHelper.SetSessionUser(user)
 		accountHelper.RecordStateChange("avatarUpdated", "账号头像上传并保存完成")
 	}
 	return user, err

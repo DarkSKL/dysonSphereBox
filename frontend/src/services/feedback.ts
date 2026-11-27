@@ -1,3 +1,4 @@
+import {ref} from 'vue'
 import * as feedbackBindings from '../../wailsjs/go/feedback/FeedbackService'
 import {accountSessionKey, resetAccountSession} from '../pages/services/account'
 import type {
@@ -24,6 +25,14 @@ type Operation = keyof FeedbackResponses
 type Request<K extends Operation> = Parameters<typeof feedbackBindings[K]>[0]
 type NativeResponse<K extends Operation> = Awaited<ReturnType<typeof feedbackBindings[K]>>
 type FeedbackBridge = Partial<Record<Operation, unknown>>
+
+// =============== 星系深链 ===============
+// 说明：已处于同一详情地址时，用户从消息中心再次选择可重新打开已关闭的详情。
+const deepLinkRevision = ref(0)
+export const feedbackDeepLinkRevision = (): number => deepLinkRevision.value
+export function reopenFeedbackDeepLink(): void {
+  deepLinkRevision.value++
+}
 
 export class FeedbackError extends Error {
   constructor(readonly reason: string, message: string) {

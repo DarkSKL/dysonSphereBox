@@ -4910,6 +4910,7 @@ export namespace forum {
 	export class PostDetailRequest {
 	    sessionKey: string;
 	    postId: number;
+	    force?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PostDetailRequest(source);
@@ -4919,6 +4920,7 @@ export namespace forum {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sessionKey = source["sessionKey"];
 	        this.postId = source["postId"];
+	        this.force = source["force"];
 	    }
 	}
 	export class PostListRequest {
@@ -4926,6 +4928,7 @@ export namespace forum {
 	    categoryId: number;
 	    page: number;
 	    pageSize: number;
+	    force?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PostListRequest(source);
@@ -4937,6 +4940,7 @@ export namespace forum {
 	        this.categoryId = source["categoryId"];
 	        this.page = source["page"];
 	        this.pageSize = source["pageSize"];
+	        this.force = source["force"];
 	    }
 	}
 	export class PostSummary {
@@ -5016,6 +5020,28 @@ export namespace forum {
 		}
 	}
 	
+	export class PublicationReview {
+	    id: number;
+	    status: string;
+	    postId: number;
+	    targetType: string;
+	    targetId: number;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PublicationReview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.status = source["status"];
+	        this.postId = source["postId"];
+	        this.targetType = source["targetType"];
+	        this.targetId = source["targetId"];
+	        this.reason = source["reason"];
+	    }
+	}
 	export class PublishBlueprintInput {
 	    name: string;
 	    blueprintCode: string;
@@ -5306,6 +5332,7 @@ export namespace forum {
 	
 	export class SessionRequest {
 	    sessionKey: string;
+	    force?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SessionRequest(source);
@@ -5314,6 +5341,7 @@ export namespace forum {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sessionKey = source["sessionKey"];
+	        this.force = source["force"];
 	    }
 	}
 
@@ -6321,6 +6349,73 @@ export namespace multiplayer {
 	        this.localPorts = this.convertValues(source["localPorts"], forward.LocalPort);
 	        this.network = this.convertValues(source["network"], NetworkView);
 	        this.pending = source["pending"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace notification {
+	
+	export class InboxEntry {
+	    ID: string;
+	    title: string;
+	    body: string;
+	    bizType: string;
+	    bizID: string;
+	    readAt: string;
+	    recalledAt: string;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InboxEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.title = source["title"];
+	        this.body = source["body"];
+	        this.bizType = source["bizType"];
+	        this.bizID = source["bizID"];
+	        this.readAt = source["readAt"];
+	        this.recalledAt = source["recalledAt"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class InboxPage {
+	    page: number;
+	    pageSize: number;
+	    total: number;
+	    list: InboxEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new InboxPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.total = source["total"];
+	        this.list = this.convertValues(source["list"], InboxEntry);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -8354,6 +8449,32 @@ export namespace system {
 	        this.to = source["to"];
 	        this.page = source["page"];
 	        this.pageSize = source["pageSize"];
+	    }
+	}
+	export class NotificationReadResult {
+	    affected: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NotificationReadResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.affected = source["affected"];
+	    }
+	}
+	export class NotificationUnread {
+	    total: number;
+	    categories: Record<string, number>;
+	
+	    static createFrom(source: any = {}) {
+	        return new NotificationUnread(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.categories = source["categories"];
 	    }
 	}
 	export class TutorialProgressDTO {

@@ -182,6 +182,8 @@ type IDResult struct {
 type SessionRequest struct {
 	// SessionKey 职责：前端当前已验证账号作用域键；使用：防止切号后错绑旧请求；边界：不透传远端。
 	SessionKey string `json:"sessionKey"`
+	// Force 职责：显式刷新分类；使用：Wails 调用方触发重新读取；边界：仅用于客户端请求策略。
+	Force bool `json:"force,omitempty"`
 }
 
 // PostListRequest 描述帖子分页查询参数。
@@ -197,6 +199,8 @@ type PostListRequest struct {
 	Page int `json:"page"`
 	// PageSize 职责：每页数量；使用：分页查询；边界：默认 20，最大 100。
 	PageSize int `json:"pageSize"`
+	// Force 职责：显式刷新分页；使用：Wails 调用方跳过内存结果；边界：不发送给论坛服务器。
+	Force bool `json:"force,omitempty"`
 }
 
 // PostDetailRequest 描述单篇帖子详情查询参数。
@@ -208,6 +212,8 @@ type PostDetailRequest struct {
 	SessionKey string `json:"sessionKey"`
 	// PostID 职责：目标帖子 ID；使用：替换路径参数；边界：必须为正整数。
 	PostID uint `json:"postId"`
+	// Force 职责：显式核对最新详情；使用：资源状态变化后重新读取；边界：仅用于客户端请求策略。
+	Force bool `json:"force,omitempty"`
 }
 
 // ReplyListRequest 描述回复分页查询参数。

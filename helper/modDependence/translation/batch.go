@@ -9,25 +9,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
-	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	translationAPI "DysonSphereBox/apiDefinition/modTranslation"
-	systemAPI "DysonSphereBox/apiDefinition/system"
+	"DysonSphereBox/core/request"
 	accountHelper "DysonSphereBox/helper/system/account"
 )
-
-// responseLimit 职责：限制翻译响应内存；使用：读取上限加一检测；边界：超限整批失败。
-const responseLimit = 4 << 20
-
-// SessionKey 职责：构造不含凭据的作用域标识；使用：与前端验证会话匹配；边界：仅用于拒绝迟到请求，不作为认证依据。
-func SessionKey(generation uint64, subject, server string) string {
-	return strings.Join([]string{server, subject, strconv.FormatUint(generation, 10)}, "\n")
-}
 
 // EncodeRequest 职责：校验批次并编码原文；使用：服务入口发请求前调用；边界：非法单项交给服务器返回条目错误，不改变原文。
 func EncodeRequest(texts []string) ([]byte, error) {
@@ -54,50 +42,37 @@ func TranslateBatch(caller context.Context, texts []string, sessionKey string) (
 	if err != nil {
 		return empty, err
 	}
-	generation, subject, server, token, sessionContext, client, ok := accountHelper.VerifiedSession()
-	if !ok || sessionKey == "" || SessionKey(generation, subject, server) != sessionKey {
+	if sessionKey == "" {
 		return empty, errors.New("请先登录并验证账号后重试翻译")
 	}
-	ctx, cancel := context.WithTimeout(caller, 30*time.Second)
-	defer cancel()
-	stop := context.AfterFunc(sessionContext, cancel)
-	defer stop()
-	req, err := client.NewRequest(ctx, http.MethodPost, strings.TrimPrefix(translationAPI.APIURLTranslateBatch, "/"), bytes.NewReader(raw))
+	data, err := request.Do[json.RawMessage](caller, accountHelper.ServerRequests(), translationAPI.TranslateBatchAPI, request.Input{
+		SessionKey: sessionKey, Payload: json.RawMessage(raw),
+	})
 	if err != nil {
-		return empty, errors.New("无法创建翻译请求")
+		return empty, translationFailure(err)
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(systemAPI.AccountTokenHeader, token)
-	resp, err := client.DoNoRedirect(req)
-	if err != nil {
-		return empty, errors.New("翻译请求失败，请手动重试")
+	return DecodeBatch(data, texts)
+}
+
+// translationFailure 将传输、认证和协议异常映射为既有市场提示。
+func translationFailure(err error) error {
+	if detail := request.Details(err); detail != nil {
+		switch detail.Kind {
+		case request.AuthRequired, request.PasswordRequired:
+			return errors.New("请先登录并验证账号后重试翻译")
+		case request.Stale:
+			return errors.New("账号或服务器已切换，已丢弃翻译响应")
+		case request.Unauthorized:
+			return errors.New("登录已失效，请登录后重试翻译")
+		case request.ReadFailed:
+			return errors.New("翻译响应读取失败或超出限制")
+		case request.InvalidEnvelope, request.InvalidData:
+			return errors.New("翻译响应格式无效")
+		case request.HTTPFailed, request.BusinessFailed:
+			return errors.New("翻译暂不可用，请检查登录状态后手动重试")
+		}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized {
-		accountHelper.HandleAuthenticatedResponse(generation, token, client, "", true, false)
-		return empty, errors.New("登录已失效，请登录后重试翻译")
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, responseLimit+1))
-	if err != nil || len(body) > responseLimit {
-		return empty, errors.New("翻译响应读取失败或超出限制")
-	}
-	var envelope translationAPI.BatchResponse
-	if !utf8.Valid(body) || json.Unmarshal(body, &envelope) != nil || envelope.Code == nil {
-		return empty, errors.New("翻译响应格式无效")
-	}
-	needPassword := resp.StatusCode == http.StatusConflict && *envelope.Code == systemAPI.AccountCodeNeedChangePassword
-	if !accountHelper.HandleAuthenticatedResponse(generation, token, client, resp.Header.Get(systemAPI.AccountNewTokenHeader), false, needPassword) {
-		return empty, errors.New("账号或服务器已切换，已丢弃翻译响应")
-	}
-	if resp.StatusCode != http.StatusOK || *envelope.Code != 0 {
-		return empty, errors.New("翻译暂不可用，请检查登录状态后手动重试")
-	}
-	currentGeneration, currentSubject, currentServer, _, _, currentClient, current := accountHelper.VerifiedSession()
-	if !current || currentClient != client || SessionKey(currentGeneration, currentSubject, currentServer) != sessionKey {
-		return empty, errors.New("账号或服务器已切换，已丢弃翻译响应")
-	}
-	return DecodeBatch(envelope.Data, texts)
+	return errors.New("翻译请求失败，请手动重试")
 }
 
 // DecodeBatch 职责：校验等长结果并恢复失败原文；使用：HTTP 成功后及契约测试；边界：畸形批次整体失败，单项错误不污染其它项。

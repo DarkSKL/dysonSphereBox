@@ -1,4 +1,4 @@
-import {ref} from 'vue'
+import {ref, shallowRef} from 'vue'
 import * as forumBindings from '../../wailsjs/go/forum/ForumService'
 import {forum as forumModels} from '../../wailsjs/go/models'
 import {accountSessionKey, resetAccountSession, verifiedAccountSession} from '../pages/services/account'
@@ -112,21 +112,26 @@ export function createForumRequestId(): string {
   })
 }
 
-export async function fetchForumCategories(): Promise<ForumCategory[]> {
+/** 读取论坛分类，显式刷新时跳过 Go 层已保存的结果。 */
+export async function fetchForumCategories(force = false): Promise<ForumCategory[]> {
   return runSessionCall('Categories', (sessionKey) =>
-    forumBindings.Categories(forumModels.SessionRequest.createFrom({sessionKey})),
+    forumBindings.Categories(forumModels.SessionRequest.createFrom({sessionKey, force})),
   ) as Promise<ForumCategory[]>
 }
 
-export async function fetchForumPosts(categoryId: number, page: number, pageSize: number): Promise<ForumPage<ForumPostSummary>> {
+/** 读取指定论坛分类和页码，将刷新意图随分页参数交给 Go 层。 */
+export async function fetchForumPosts(
+  input: Omit<forumModels.PostListRequest, 'sessionKey'>,
+): Promise<ForumPage<ForumPostSummary>> {
   return runSessionCall('Posts', (sessionKey) =>
-    forumBindings.Posts(forumModels.PostListRequest.createFrom({sessionKey, categoryId, page, pageSize})),
+    forumBindings.Posts(forumModels.PostListRequest.createFrom({...input, sessionKey})),
   ) as Promise<ForumPage<ForumPostSummary>>
 }
 
-export async function fetchForumPostDetail(postId: number): Promise<ForumPostDetail> {
+/** 读取帖子详情，刷新资源状态时跳过 Go 层已保存的结果。 */
+export async function fetchForumPostDetail(postId: number, force = false): Promise<ForumPostDetail> {
   return runSessionCall('PostDetail', (sessionKey) =>
-    forumBindings.PostDetail(forumModels.PostDetailRequest.createFrom({sessionKey, postId})),
+    forumBindings.PostDetail(forumModels.PostDetailRequest.createFrom({sessionKey, postId, force})),
   ) as Promise<ForumPostDetail>
 }
 
@@ -135,6 +140,14 @@ export async function fetchForumReplies(postId: number, page: number, pageSize: 
     forumBindings.Replies(forumModels.ReplyListRequest.createFrom({sessionKey, postId, page, pageSize})),
   ) as Promise<ForumPage<ForumReply>>
 }
+
+// =============== 发布审核通知 ===============
+// 说明：按审核记录 ID 查询作者可见结果。通过的目标交给当前论坛页消费，账号作用域随目标一起传递。
+export function fetchForumPublicationReview(id: string): Promise<forumModels.PublicationReview> {
+  return runSessionCall('PublicationReview', (sessionKey) => forumBindings.PublicationReview(sessionKey, id))
+}
+
+export const forumReviewTarget = shallowRef<{sessionKey: string; postId: number; replyId: number} | null>(null)
 
 export interface PublishForumPostPayload {
   requestId: string

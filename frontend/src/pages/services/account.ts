@@ -247,6 +247,20 @@ async function syncSessionState(expectedRevision = sessionRevision): Promise<voi
   }
 }
 
+// syncNotificationSession 职责：把后台发现的过期或改密同步到界面；使用：通知会话事件或请求失败后；边界：不覆盖切号后的界面或已验证的账号资料。
+export async function syncNotificationSession(expectedKey: string): Promise<void> {
+  if (!expectedKey || accountSessionKey.value !== expectedKey || !hasAccountBridge()) return
+  try {
+    const state = await GetSessionState()
+    if (accountSessionKey.value !== expectedKey || (state.verified && stateIdentity(state) === expectedKey)) return
+    stateSequence++
+    if (!state.authenticated) state.status = 'expired'
+    applySessionState(state)
+  } catch {
+    // 读本地快照失败时保留界面，由后续账号同步重试。
+  }
+}
+
 // =============== 启动引导 ===============
 // 说明：应用启动时等待后端基础设施就绪，加载服务器地址，再完成一次远端会话验证；网络短暂失败时自动重试。
 // 边界：引导只执行一次；进入页面或打开账号入口时仍可再次调用 refreshAccountSession 重试。

@@ -5,6 +5,7 @@ import './style.scss'
 import { installDiagnostics } from './pages/services/diagnostics'
 import { bootstrapAccountSession } from './pages/services/account'
 import { installWebviewDropGuard } from './pages/services/webview-drop'
+import { installNotificationSync } from './composables/useNotifications'
 
 // =============== 应用引导 ===============
 // 说明：创建 Vue 实例、挂载路由并立即启动账号会话引导；引导内部会等待 Go 后端 startup 完成。
@@ -12,9 +13,11 @@ import { installWebviewDropGuard } from './pages/services/webview-drop'
 const app = createApp(App)
 const disposeDiagnostics = installDiagnostics(app)
 const disposeDropGuard = installWebviewDropGuard()
+const disposeNotifications = installNotificationSync()
 app.use(router).mount('#app')
 void bootstrapAccountSession()
 if (import.meta.hot) import.meta.hot.dispose(() => {
   disposeDiagnostics()
   disposeDropGuard()
+  disposeNotifications()
 })

@@ -11,33 +11,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
+	"net/url"
 	"sync"
 	"time"
 
+	api "DysonSphereBox/apiDefinition"
 	systemAPI "DysonSphereBox/apiDefinition/system"
-	"DysonSphereBox/core"
+	"DysonSphereBox/core/request"
+	"DysonSphereBox/core/requestcache"
 	accountHelper "DysonSphereBox/helper/system/account"
 )
-
-// responseLimit 职责：限制完整编码响应为4MiB；使用：读取limit+1判断超限；边界：不截断为成功响应。
-const responseLimit = 4 << 20
 
 // NoticeSession捕获一次已验证账号作用域并隐藏token。
 // 职责：保证公告请求不会在账号切换后改绑新身份。
 // 使用：前端先调用CaptureSession，再用句柄查询/确认。
 // 边界：句柄仅内存有效，切服或会话代次变化后失效。
 type NoticeSession struct {
-	// generation 固定账号代次，切号或退出后不得接纳旧结果。
-	generation uint64
-	// subject、serverKey、token 固定身份与请求目标，token只在Go侧使用。
-	subject, serverKey, token string
-	// client 固定HTTP实例，不随GLOBAL替换而改绑。
-	client *core.HTTPClient
-	// ctx 在账号切换代次时取消。
-	ctx context.Context
+	// scope 固定原服务器、主体和会话生命周期，只在发请求时取得当前凭据。
+	scope   requestcache.Scope
+	subject string
 	// itemID、revision 记录最新查询授权展示的版本。
 	itemID   string
 	revision int64
@@ -87,13 +80,12 @@ func CaptureSessionID() (string, error) {
 	}
 	id := hex.EncodeToString(bytes[:])
 	sessions.Lock()
-	g, subject, key, _, _, client, ok := accountHelper.VerifiedSession()
-	if !ok || g != s.generation || subject != s.subject || key != s.serverKey || client != s.client {
+	if s.scope.Context.Err() != nil {
 		sessions.Unlock()
 		return "", fail("stale", "账号会话已切换")
 	}
 	for previous, existing := range sessions.values {
-		if existing.generation == s.generation && existing.subject == s.subject && existing.serverKey == s.serverKey && existing.client == s.client {
+		if existing.scope == s.scope {
 			// 相同作用域复用完整绑定，避免历史入口捕获句柄时撤销已显示的最新公告。
 			sessions.Unlock()
 			return previous, nil
@@ -108,7 +100,7 @@ func CaptureSessionID() (string, error) {
 	return id, nil
 }
 
-// sessionByID 职责：按当前验证身份复制句柄及最新token；使用：每次请求前后核对；边界：失效句柄立即移除，不把续期token返回前端。
+// sessionByID 职责：复制有效公告句柄及其版本绑定；使用：请求前后核对；边界：失效句柄立即移除。
 func sessionByID(id string) *NoticeSession {
 	sessions.Lock()
 	defer sessions.Unlock()
@@ -116,13 +108,11 @@ func sessionByID(id string) *NoticeSession {
 	if s == nil {
 		return nil
 	}
-	g, subject, key, token, _, client, ok := accountHelper.VerifiedSession()
-	if !ok || g != s.generation || subject != s.subject || key != s.serverKey || client != s.client || token == "" {
+	if s.scope.Context.Err() != nil {
 		delete(sessions.values, id)
 		return nil
 	}
 	copy := *s
-	copy.token = token
 	if s.selectedHistory != nil {
 		selection := *s.selectedHistory
 		copy.selectedHistory = &selection
@@ -177,98 +167,55 @@ type MarkReadDTO = systemAPI.ClientNoticeMarkReadReceipt
 
 // CaptureSession 职责：捕获可信账号和请求取消上下文；使用：创建公告句柄；边界：未验证或需改密时失败，不进行网络查询。
 func CaptureSession() (*NoticeSession, error) {
-	g, subject, key, token, ctx, client, ok := accountHelper.VerifiedSession()
-	if !ok {
+	access, err := accountHelper.ServerRequests().Capture(systemAPI.LatestNoticeAPI, "")
+	if err != nil {
 		return nil, errors.New("账号尚未完成验证或需要修改密码")
 	}
-	return &NoticeSession{generation: g, subject: subject, serverKey: key, token: token, ctx: ctx, client: client}, nil
+	return &NoticeSession{scope: access.Scope, subject: access.Subject}, nil
 }
 
-// request 职责：执行有界公告HTTP并按捕获会话接纳鉴权副作用；使用：最新、历史及手动确认；边界：禁止重定向，超时或超限失败，不自动重试。
-// 逻辑流：1. 固定原会话token => 2. 有界读取统一响应 => 3. 核对会话后接纳续期或鉴权错误 => 4. 返回待校验业务数据。
-func request[T any](caller context.Context, session *NoticeSession, method, path string, payload any) (T, error) {
-	var zero T
-	if session == nil {
-		return zero, errors.New("公告会话已失效")
+// requestNotice 按原公告句柄取得最新凭据，执行接口并交付待校验的业务数据。
+func requestNotice(ctx context.Context, session *NoticeSession, desc *api.ApiDesc, query url.Values, payload any) (json.RawMessage, error) {
+	adapter := accountHelper.ServerRequests()
+	access, err := adapter.Capture(desc, session.scope.ID)
+	if err != nil || access.Scope != session.scope {
+		return nil, fail("stale", "账号会话已切换")
 	}
-	ctx, cancel := context.WithTimeout(caller, 10*time.Second)
-	defer cancel()
-	stop := context.AfterFunc(session.ctx, cancel)
-	defer stop()
-	var body io.Reader
-	if payload != nil {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return zero, err
-		}
-		body = strings.NewReader(string(data))
-	}
-	req, err := session.client.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
+	data, err := request.Do[json.RawMessage](ctx, adapter, desc, request.Input{Session: &access, Query: query, Payload: payload})
 	if err != nil {
-		return zero, err
+		return nil, noticeRequestFailure(err)
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Cache-Control", "no-store")
-	req.Header.Set("Referer", "")
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.Header.Set("x-token", session.token)
-	resp, err := session.client.DoNoRedirect(req)
-	if err != nil {
-		return zero, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized {
-		if !accountHelper.HandleAnnouncementAuthResponse(session.generation, session.token, session.client, "", true, false) {
-			return zero, fail("stale", "账号会话已切换")
+	return data, nil
+}
+
+// noticeRequestFailure 保留前端可恢复错误码及明确的协议提示。
+func noticeRequestFailure(err error) error {
+	if detail := request.Details(err); detail != nil {
+		if detail.Status == http.StatusNotFound {
+			return fail("unsupported", "当前服务器尚不支持公告，请升级服务器后重试")
 		}
-		return zero, fail("unauthorized", "登录已失效，请重新登录")
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		return zero, fail("unsupported", "当前服务器尚不支持公告，请升级服务器后重试")
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, responseLimit+1))
-	if err != nil || len(raw) > responseLimit {
-		return zero, errors.New("公告响应超过4MiB或读取失败")
-	}
-	fields, err := requireFields(raw, "code", "data", "msg")
-	if err != nil {
-		return zero, err
-	}
-	var envelope systemAPI.ClientNoticeEnvelope
-	if string(fields["code"]) == "null" || string(fields["msg"]) == "null" || json.Unmarshal(raw, &envelope) != nil {
-		return zero, errors.New("公告响应外壳格式无效")
-	}
-	if resp.StatusCode == http.StatusConflict && envelope.Code == 10001 {
-		var flags struct {
-			NeedChangePassword bool `json:"needChangePassword"`
-		}
-		_ = json.Unmarshal(envelope.Data, &flags)
-		if flags.NeedChangePassword {
-			if !accountHelper.HandleAnnouncementAuthResponse(session.generation, session.token, session.client, resp.Header.Get("new-token"), false, true) {
-				return zero, fail("stale", "账号会话已切换")
+		switch detail.Kind {
+		case request.Stale:
+			return fail("stale", "账号会话已切换")
+		case request.Unauthorized:
+			return fail("unauthorized", "登录已失效，请重新登录")
+		case request.PasswordRequired:
+			return fail("passwordRequired", "请先修改账号密码")
+		case request.ReadFailed:
+			return errors.New("公告响应超过4MiB或读取失败")
+		case request.InvalidEnvelope:
+			return errors.New("公告响应外壳格式无效")
+		case request.BusinessFailed:
+			var data struct {
+				Reason string `json:"reason"`
 			}
-			return zero, fail("passwordRequired", "请先修改账号密码")
+			if detail.Code == 7 && json.Unmarshal(detail.Data, &data) == nil &&
+				(data.Reason == "revisionChanged" || data.Reason == "announcementUnavailable") {
+				return fail(data.Reason, "公告内容已变化或失效，请重新检查最新公告")
+			}
 		}
 	}
-	if !accountHelper.HandleAnnouncementAuthResponse(session.generation, session.token, session.client, resp.Header.Get("new-token"), false, false) {
-		return zero, errors.New("公告会话已失效")
-	}
-	if resp.StatusCode != http.StatusOK || envelope.Code != 0 {
-		var reason struct {
-			Reason string `json:"reason"`
-		}
-		_ = json.Unmarshal(envelope.Data, &reason)
-		if resp.StatusCode == 200 && envelope.Code == 7 && (reason.Reason == "revisionChanged" || reason.Reason == "announcementUnavailable") {
-			return zero, fail(reason.Reason, "公告内容已变化或失效，请重新检查最新公告")
-		}
-		return zero, errors.New("公告请求失败，请稍后重试")
-	}
-	if err := json.Unmarshal(envelope.Data, &zero); err != nil {
-		return zero, err
-	}
-	return zero, nil
+	return errors.New("公告请求失败，请稍后重试")
 }
 
 // GetLatest 职责：读取并绑定唯一最新未读版本；使用：服务层检查；边界：无内容不保存可提交版本，过期不返回。
@@ -279,7 +226,7 @@ func GetLatest(ctx context.Context, sessionID string) (*NoticeLatestDTO, error) 
 	}
 	sequence := beginQuery(sessionID)
 	requestStartedAt := time.Now()
-	raw, err := request[json.RawMessage](ctx, session, http.MethodGet, systemAPI.APIURLClientNoticeGetLatestUnread, nil)
+	raw, err := requestNotice(ctx, session, systemAPI.LatestNoticeAPI, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +267,7 @@ func MarkRead(ctx context.Context, sessionID, id string, revision int64) (*MarkR
 	if !session.validUntil.IsZero() && !time.Now().Before(session.validUntil) {
 		return nil, errors.New("公告已到期")
 	}
-	raw, err := request[json.RawMessage](ctx, session, http.MethodPost, systemAPI.APIURLClientNoticeMarkRead, systemAPI.ClientNoticeMarkReadRequest{ID: id, Revision: revision})
+	raw, err := requestNotice(ctx, session, systemAPI.MarkNoticeReadAPI, nil, systemAPI.ClientNoticeMarkReadRequest{ID: id, Revision: revision})
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +290,7 @@ func bindReadReceipt(sessionID string, snapshot *NoticeSession, receipt *MarkRea
 	sessions.Lock()
 	defer sessions.Unlock()
 	current := sessions.values[sessionID]
-	if current == nil || current.generation != snapshot.generation || current.client != snapshot.client {
+	if current == nil || current.scope != snapshot.scope || current.scope.Context.Err() != nil {
 		return false
 	}
 	if history {

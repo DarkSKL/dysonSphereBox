@@ -34,6 +34,10 @@ export function Posts(arg1) {
   return window['go']['forum']['ForumService']['Posts'](arg1);
 }
 
+export function PublicationReview(arg1, arg2) {
+  return window['go']['forum']['ForumService']['PublicationReview'](arg1, arg2);
+}
+
 export function PublishPost(arg1) {
   return window['go']['forum']['ForumService']['PublishPost'](arg1);
 }

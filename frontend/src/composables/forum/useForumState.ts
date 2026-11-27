@@ -1,5 +1,5 @@
 import {useMessage} from 'naive-ui'
-import {computed, onBeforeUnmount, reactive, ref, watch} from 'vue'
+import {computed, onActivated, onBeforeUnmount, onDeactivated, reactive, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
 import {accountSessionKey, verifiedAccountSession} from '../../pages/services/account'
 import {
@@ -10,6 +10,7 @@ import {
   fetchForumReplies,
   fetchForumBlueprintCode,
   ForumError,
+  forumReviewTarget,
   importForumBlueprint,
   importForumMod,
   importForumSave,
@@ -127,6 +128,12 @@ export function useForumState() {
   const repliesPageSize = ref(20)
   const repliesLoading = ref(false)
   const repliesError = ref('')
+  const focusedReplyId = ref(0)
+  let categoriesSequence = 0
+  let postsSequence = 0
+  let detailSequence = 0
+  let repliesSequence = 0
+  let active = false
 
   // 发帖草稿状态（保留重试 requestId 与已选文件）
   const postDraft = reactive({
@@ -159,11 +166,15 @@ export function useForumState() {
   const enabledCategories = computed(() => categories.value.filter((item) => item.enabled))
 
   // =============== 数据加载 ===============
-  async function loadCategories(): Promise<void> {
+  async function loadCategories(force = false): Promise<void> {
     if (!isAuthenticated.value) return
+    const sessionKey = accountSessionKey.value
+    const sequence = ++categoriesSequence
+    const current = () => sessionKey === accountSessionKey.value && sequence === categoriesSequence
     categoriesLoading.value = true
     try {
-      const list = await fetchForumCategories()
+      const list = await fetchForumCategories(force)
+      if (!current()) return
       categories.value = list
       if (selectedCategoryId.value > 0 && !list.some((item) => item.id === selectedCategoryId.value)) {
         selectedCategoryId.value = 0
@@ -172,30 +183,39 @@ export function useForumState() {
         postDraft.categoryId = enabledCategories.value[0].id
       }
     } catch (error) {
-      message.error(formatErrorMessage(error))
+      if (current()) message.error(formatErrorMessage(error))
     } finally {
-      categoriesLoading.value = false
+      if (current()) categoriesLoading.value = false
     }
   }
 
-  async function loadPosts(page = postsPage.value): Promise<void> {
+  async function loadPosts(page = postsPage.value, force = false): Promise<void> {
     if (!isAuthenticated.value) return
+    const sessionKey = accountSessionKey.value
+    const sequence = ++postsSequence
+    const current = () => sessionKey === accountSessionKey.value && sequence === postsSequence
     postsLoading.value = true
     postsError.value = ''
     try {
-      const result = await fetchForumPosts(selectedCategoryId.value, page, postsPageSize.value)
+      const result = await fetchForumPosts({
+        categoryId: selectedCategoryId.value,
+        page,
+        pageSize: postsPageSize.value,
+        force,
+      })
+      if (!current()) return
       posts.value = result.list ?? []
       postsTotal.value = result.total ?? 0
       postsPage.value = result.page || page
     } catch (error) {
-      postsError.value = formatErrorMessage(error)
+      if (current()) postsError.value = formatErrorMessage(error)
     } finally {
-      postsLoading.value = false
+      if (current()) postsLoading.value = false
     }
   }
 
-  async function refreshList(): Promise<void> {
-    await Promise.all([loadCategories(), loadPosts(postsPage.value)])
+  async function refreshList(force = true): Promise<void> {
+    await Promise.all([loadCategories(force), loadPosts(postsPage.value, force)])
   }
 
   function selectCategory(categoryId: number): void {
@@ -210,46 +230,80 @@ export function useForumState() {
     void loadPosts(page)
   }
 
-  async function openPostDetail(postId: number): Promise<void> {
+  async function openPostDetail(postId: number, replyId = 0): Promise<void> {
     if (!postId || !isAuthenticated.value) return
     if (currentPostId.value !== postId) {
       resetReplyDraft()
+      postDetail.value = null
+      replies.value = []
     }
+    if (replyId) replies.value = []
     currentPostId.value = postId
     viewMode.value = 'detail'
     repliesPage.value = 1
-    await Promise.all([loadPostDetail(postId), loadReplies(postId, 1)])
+    await Promise.all([loadPostDetail(postId), loadReplies(postId, 1, replyId)])
   }
 
-  async function loadPostDetail(postId = currentPostId.value): Promise<void> {
+  async function loadPostDetail(postId = currentPostId.value, force = false): Promise<void> {
     if (!postId || !isAuthenticated.value) return
+    const key = accountSessionKey.value
+    const sequence = ++detailSequence
+    const current = () => key === accountSessionKey.value && sequence === detailSequence && postId === currentPostId.value
     detailLoading.value = true
     detailError.value = ''
     try {
-      postDetail.value = await fetchForumPostDetail(postId)
+      const result = await fetchForumPostDetail(postId, force)
+      if (current()) postDetail.value = result
     } catch (error) {
+      if (!current()) return
       detailError.value = formatErrorMessage(error)
       if (error instanceof ForumError && error.reason === 'notFound') {
         postDetail.value = null
       }
     } finally {
-      detailLoading.value = false
+      if (current()) detailLoading.value = false
     }
   }
 
-  async function loadReplies(postId = currentPostId.value, page = repliesPage.value): Promise<void> {
+  // 服务端只提供回复分页，先按最大页块找出可见顺序，再换算为界面页码。
+  async function findReplyPage(postId: number, replyId: number, current: () => boolean): Promise<number | null> {
+    for (let page = 1; current() && active; page++) {
+      const result = await fetchForumReplies(postId, page, 100)
+      const list = result.list ?? []
+      const index = list.findIndex((reply) => reply.id === replyId)
+      const size = result.pageSize || 100
+      if (index >= 0) return Math.floor(((page - 1) * size + index) / repliesPageSize.value) + 1
+      if (!list.length || page * size >= result.total) break
+    }
+    return null
+  }
+
+  async function loadReplies(postId = currentPostId.value, page = repliesPage.value, replyId = 0): Promise<void> {
     if (!postId || !isAuthenticated.value) return
+    const key = accountSessionKey.value
+    const sequence = ++repliesSequence
+    const current = () => key === accountSessionKey.value && sequence === repliesSequence && postId === currentPostId.value && viewMode.value === 'detail'
     repliesLoading.value = true
     repliesError.value = ''
+    focusedReplyId.value = 0
     try {
+      if (replyId) {
+        page = await findReplyPage(postId, replyId, current) ?? page
+        if (!current() || !active) return
+      }
       const result = await fetchForumReplies(postId, page, repliesPageSize.value)
+      if (!current()) return
       replies.value = result.list ?? []
       repliesTotal.value = result.total ?? 0
       repliesPage.value = result.page || page
+      if (replyId && active) {
+        if (replies.value.some((reply) => reply.id === replyId)) focusedReplyId.value = replyId
+        else message.warning('该回复当前不可见，已打开所属帖子。')
+      }
     } catch (error) {
-      repliesError.value = formatErrorMessage(error)
+      if (current()) repliesError.value = formatErrorMessage(error)
     } finally {
-      repliesLoading.value = false
+      if (current()) repliesLoading.value = false
     }
   }
 
@@ -267,11 +321,9 @@ export function useForumState() {
     viewMode.value = 'compose'
   }
 
-  function backToList(reload = false): void {
+  function backToList(force = false): void {
     viewMode.value = 'list'
-    if (reload) {
-      void loadPosts(postsPage.value)
-    }
+    void loadPosts(postsPage.value, force)
   }
 
   function resetPostDraft(): void {
@@ -423,7 +475,7 @@ export function useForumState() {
         postDraft.requestId = createForumRequestId()
       }
       if (error instanceof ForumError && error.reason === 'categoryDisabled') {
-        void loadCategories()
+        void loadCategories(true)
       }
       message.error(text)
     } finally {
@@ -511,7 +563,7 @@ export function useForumState() {
     if (error instanceof ForumError && error.reason === 'notFound') {
       message.warning('该资源已下架或不可用，已为你刷新最新状态。')
       if (currentPostId.value > 0) {
-        await loadPostDetail(currentPostId.value)
+        await loadPostDetail(currentPostId.value, true)
       }
       return
     }
@@ -604,17 +656,39 @@ export function useForumState() {
   }
 
   // =============== 会话变化监听 ===============
+  // 论坛通过同一个详情入口处理列表与审核通知；只有当前激活的缓存页可以消费目标。
+  function consumeReviewTarget(): void {
+    const target = forumReviewTarget.value
+    if (!active || !target) return
+    forumReviewTarget.value = null
+    if (target.sessionKey === accountSessionKey.value) void openPostDetail(target.postId, target.replyId)
+  }
+  watch(forumReviewTarget, consumeReviewTarget, {flush: 'post'})
+  onActivated(() => {
+    active = true
+    consumeReviewTarget()
+    if (viewMode.value === 'list' && !categoriesLoading.value && !postsLoading.value) {
+      void refreshList(false)
+    }
+  })
+  onDeactivated(() => { active = false })
+
   watch(accountSessionKey, (nextKey, prevKey) => {
     if (nextKey === prevKey) return
     categories.value = []
+    categoriesLoading.value = false
     posts.value = []
+    postsLoading.value = false
     postsTotal.value = 0
     postsError.value = ''
     postDetail.value = null
+    detailLoading.value = false
     detailError.value = ''
     replies.value = []
     repliesTotal.value = 0
     repliesError.value = ''
+    repliesLoading.value = false
+    focusedReplyId.value = 0
     selectedCategoryId.value = 0
     postsPage.value = 1
     currentPostId.value = 0
@@ -624,7 +698,7 @@ export function useForumState() {
     resetPostDraft()
     resetReplyDraft()
     if (nextKey) {
-      void refreshList()
+      void refreshList(false)
     }
   }, {immediate: true})
 
@@ -656,6 +730,7 @@ export function useForumState() {
     repliesPageSize,
     repliesLoading,
     repliesError,
+    focusedReplyId,
     postDraft,
     replyDraft,
     busyResourceAction,

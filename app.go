@@ -5,7 +5,9 @@ package main
 // 边界：不实现具体业务流程，不定义数据库模型或前端组件。
 
 import (
+	boxAPI "DysonSphereBox/apiDefinition/boxServer"
 	"DysonSphereBox/constant/logging"
+	systemConstant "DysonSphereBox/constant/system"
 	"DysonSphereBox/core/diagnostics"
 	logStore "DysonSphereBox/helper/system/logging"
 	"DysonSphereBox/service"
@@ -17,6 +19,7 @@ import (
 	legacyMigration "DysonSphereBox/helper/modDependence/installer/migration/legacy"
 	v2Installer "DysonSphereBox/helper/modDependence/installer/v2"
 	systemHelper "DysonSphereBox/helper/system"
+	accountHelper "DysonSphereBox/helper/system/account"
 	environmentService "DysonSphereBox/service/environment"
 	"DysonSphereBox/utils/dysonsphere"
 
@@ -53,11 +56,19 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	core.GLOBAL.RuntimeContext = ctx
 
-	err := core.InitDatabase(databaseTemplate)
+	err := accountHelper.ServerRequests().Loader.LoadAll(boxAPI.Endpoints()...)
+	if err == nil {
+		err = core.InitDatabase(databaseTemplate)
+	}
+	if err == nil {
+		service.ServiceGroupApp.SystemServiceGroup.StartNotifications(ctx, func(key, event string) {
+			runtime.EventsEmit(ctx, systemConstant.NotificationRuntimeEvent, key, event)
+		})
+	}
 	close(a.databaseReady)
 	if err != nil {
-		diagnostics.Default.Record(logging.Entry{Action: "初始化客户端基础设施失败", Level: logging.Fatal, Source: "backend.startup", Reason: "数据库、迁移或服务器配置初始化返回错误", Namespace: "system.lifecycle.initializeFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err), "result": "failed"}})
-		panic(fmt.Errorf("init database: %w", err))
+		diagnostics.Default.Record(logging.Entry{Action: "初始化客户端基础设施失败", Level: logging.Fatal, Source: "backend.startup", Reason: "请求目录、数据库、迁移或服务器配置初始化返回错误", Namespace: "system.lifecycle.initializeFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err), "result": "failed"}})
+		panic(fmt.Errorf("init client infrastructure: %w", err))
 	}
 	if err := logStore.MigrateLegacy(core.GLOBAL.DB); err != nil {
 		diagnostics.Default.Record(logging.Entry{Action: "迁移历史日志失败", Level: logging.Error, Source: "backend.logging", Reason: "旧日志转换返回错误，旧表仍保留", Namespace: "system.logging.migrationFailed", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})
@@ -82,6 +93,8 @@ func (a *App) startup(ctx context.Context) {
 // 使用：Wails 框架在应用退出时自动调用。
 // 边界：关闭失败只记录到控制台，避免退出流程二次 panic。
 func (a *App) shutdown(ctx context.Context) {
+	service.ServiceGroupApp.SystemServiceGroup.StopNotifications()
+	accountHelper.StopServerRequests()
 	cleanupContext, cancelCleanup := context.WithTimeout(context.Background(), 3*time.Second)
 	if err := service.ServiceGroupApp.FactoryServiceGroup.ReleaseResources(cleanupContext); err != nil {
 		diagnostics.Default.Record(logging.Entry{Action: "等待工厂生成退出超时", Level: logging.Error, Source: "backend.shutdown", Reason: "候选计算未在关闭期限内退出", Namespace: "factory.generation.shutdown", Handler: logging.System, Data: map[string]interface{}{"error": diagnostics.ErrorData(err)}})

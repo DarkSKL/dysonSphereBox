@@ -6,7 +6,6 @@ package forum
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	api "DysonSphereBox/apiDefinition/forum"
 	"DysonSphereBox/core"
+	"DysonSphereBox/core/request"
 	forumHelper "DysonSphereBox/helper/forum"
 	"DysonSphereBox/service/environment"
 
@@ -42,7 +42,7 @@ func (service *ForumService) callerContext() context.Context {
 // 使用：论坛页面加载、刷新或账号切换后调用。
 // 边界：失效会话拒绝请求；返回非 nil 切片。
 func (service *ForumService) Categories(input api.SessionRequest) ([]api.Category, error) {
-	items, err := forumHelper.DoJSON[[]api.Category](service.callerContext(), input.SessionKey, http.MethodGet, api.PathCategories, nil, nil)
+	items, err := forumHelper.QueryCategories(service.callerContext(), input.SessionKey, input.Force)
 	if err != nil {
 		return nil, err
 	}
@@ -57,11 +57,7 @@ func (service *ForumService) Categories(input api.SessionRequest) ([]api.Categor
 // 使用：论坛首页列表浏览、切换分类和翻页时调用。
 // 边界：CategoryID 为 0 时查询全部分类；每页最多 100 条。
 func (service *ForumService) Posts(input api.PostListRequest) (api.PostPage, error) {
-	query := forumHelper.PageQuery(input.Page, input.PageSize)
-	if input.CategoryID > 0 {
-		query.Set("categoryId", strconv.FormatUint(uint64(input.CategoryID), 10))
-	}
-	page, err := forumHelper.DoJSON[api.PostPage](service.callerContext(), input.SessionKey, http.MethodGet, api.PathPosts, query, nil)
+	page, err := forumHelper.QueryPosts(service.callerContext(), input)
 	if err != nil {
 		return api.PostPage{}, err
 	}
@@ -74,13 +70,9 @@ func (service *ForumService) Posts(input api.PostListRequest) (api.PostPage, err
 // PostDetail 查询单篇可见帖子的正文、块结构与可见资源列表。
 // 职责：调用 GET /client/forum/posts/:id 返回帖子完整阅读数据。
 // 使用：用户点击帖子进入详情页或刷新当前帖子时调用。
-// 边界：隐藏或不存在的帖子返回 notFound 错误。
+// 边界：详情在当前会话短时复用，重新向服务端读取时隐藏或不存在的帖子返回 notFound。
 func (service *ForumService) PostDetail(input api.PostDetailRequest) (api.PostDetail, error) {
-	path, err := forumHelper.ResolveIDPath(api.PathPostDetail, input.PostID)
-	if err != nil {
-		return api.PostDetail{}, err
-	}
-	detail, err := forumHelper.DoJSON[api.PostDetail](service.callerContext(), input.SessionKey, http.MethodGet, path, nil, nil)
+	detail, err := forumHelper.QueryPostDetail(service.callerContext(), input)
 	if err != nil {
 		return api.PostDetail{}, err
 	}
@@ -95,12 +87,7 @@ func (service *ForumService) PostDetail(input api.PostDetailRequest) (api.PostDe
 // 使用：帖子详情页加载回复、翻页或发表回复后刷新列表时调用。
 // 边界：PostID 必须大于 0；每条回复自带本回复的可见图片资源列表。
 func (service *ForumService) Replies(input api.ReplyListRequest) (api.ReplyPage, error) {
-	path, err := forumHelper.ResolveIDPath(api.PathPostReplies, input.PostID)
-	if err != nil {
-		return api.ReplyPage{}, err
-	}
-	query := forumHelper.PageQuery(input.Page, input.PageSize)
-	page, err := forumHelper.DoJSON[api.ReplyPage](service.callerContext(), input.SessionKey, http.MethodGet, path, query, nil)
+	page, err := forumHelper.QueryReplies(service.callerContext(), input)
 	if err != nil {
 		return api.ReplyPage{}, err
 	}
@@ -209,7 +196,8 @@ func (service *ForumService) PublishPost(input api.PublishPostRequest) (api.IDRe
 		Mod:        input.Mod,
 	}
 
-	result, err := forumHelper.DoMultipart[api.IDResult](service.callerContext(), input.SessionKey, api.PathPosts, "post", draft, files)
+	call := request.Input{SessionKey: input.SessionKey, Target: strconv.FormatUint(uint64(input.CategoryID), 10)}
+	result, err := forumHelper.DoMultipart[api.IDResult](service.callerContext(), api.PublishPostAPI, call, "post", draft, files)
 	if err == nil {
 		forumHelper.RecordAction("publishPost", "发布论坛帖子", "论坛服务确认发帖成功", map[string]interface{}{
 			"postId":     result.ID,
@@ -226,7 +214,7 @@ func (service *ForumService) PublishPost(input api.PublishPostRequest) (api.IDRe
 // 边界：正文最多 2,000 字符；带图回复强制使用 markdown 格式和 UUID RequestID。
 // 逻辑流：1. 校验帖子 ID、正文与格式 => 2. 无图直接 DoJSON => 3. 带图校验 image1..image4 并流式 DoMultipart => 4. 记录操作日志并返回新回复。
 func (service *ForumService) PublishReply(input api.PublishReplyRequest) (api.Reply, error) {
-	path, err := forumHelper.ResolveIDPath(api.PathPostReplies, input.PostID)
+	call, err := forumHelper.IDInput(input.SessionKey, input.PostID)
 	if err != nil {
 		return api.Reply{}, err
 	}
@@ -256,7 +244,8 @@ func (service *ForumService) PublishReply(input api.PublishReplyRequest) (api.Re
 	}
 
 	if len(input.Images) == 0 {
-		reply, err := forumHelper.DoJSON[api.Reply](service.callerContext(), input.SessionKey, http.MethodPost, path, nil, payload)
+		call.Payload = payload
+		reply, err := forumHelper.DoJSON[api.Reply](service.callerContext(), api.PublishReplyAPI, call)
 		if err == nil {
 			forumHelper.RecordAction("publishReply", "发表论坛回复", "论坛服务确认回复成功", map[string]interface{}{
 				"postId":  input.PostID,
@@ -292,7 +281,7 @@ func (service *ForumService) PublishReply(input api.PublishReplyRequest) (api.Re
 		files = append(files, forumHelper.MultipartFilePart{FieldName: slotName, File: inspected})
 	}
 
-	reply, err := forumHelper.DoMultipart[api.Reply](service.callerContext(), input.SessionKey, path, "reply", payload, files)
+	reply, err := forumHelper.DoMultipart[api.Reply](service.callerContext(), api.PublishReplyAPI, call, "reply", payload, files)
 	if err == nil {
 		forumHelper.RecordAction("publishReply", "发表带图论坛回复", "论坛服务确认回复成功", map[string]interface{}{
 			"postId":     input.PostID,
@@ -327,7 +316,9 @@ func (service *ForumService) Report(input api.ReportRequest) (api.IDResult, erro
 		TargetID:   input.TargetID,
 		Reason:     reason,
 	}
-	result, err := forumHelper.DoJSON[api.IDResult](service.callerContext(), input.SessionKey, http.MethodPost, api.PathReports, nil, payload)
+	result, err := forumHelper.DoJSON[api.IDResult](service.callerContext(), api.ReportAPI, request.Input{
+		SessionKey: input.SessionKey, Payload: payload,
+	})
 	if err == nil {
 		forumHelper.RecordAction("report", "提交论坛举报", "论坛服务已受理举报", map[string]interface{}{
 			"reportId":   result.ID,
@@ -343,11 +334,11 @@ func (service *ForumService) Report(input api.ReportRequest) (api.IDResult, erro
 // 使用：点击 Thunderstore 模组卡打开市场前调用。
 // 边界：已下架资源由服务端返回 notFound。
 func (service *ForumService) GetResource(input api.ResourceActionRequest) (api.Resource, error) {
-	path, err := forumHelper.ResolveIDPath(api.PathResource, input.ResourceID)
+	call, err := forumHelper.IDInput(input.SessionKey, input.ResourceID)
 	if err != nil {
 		return api.Resource{}, err
 	}
-	return forumHelper.DoJSON[api.Resource](service.callerContext(), input.SessionKey, http.MethodGet, path, nil, nil)
+	return forumHelper.DoJSON[api.Resource](service.callerContext(), api.ResourceAPI, call)
 }
 
 // FetchBlueprintCode 复核蓝图资源可用性并返回可复制的蓝图编码。

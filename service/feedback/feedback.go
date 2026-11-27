@@ -9,7 +9,6 @@ import (
 	"DysonSphereBox/core"
 	feedbackHelper "DysonSphereBox/helper/feedback"
 	"context"
-	"net/http"
 	"net/url"
 	"strings"
 )
@@ -31,7 +30,7 @@ func (service *FeedbackService) Map(input api.MapRequest) (api.MapResult, error)
 	if err != nil {
 		return api.MapResult{}, err
 	}
-	return feedbackHelper.Do[api.MapResult](service.callerContext(), input.SessionKey, http.MethodGet, api.PathMap, query, nil)
+	return feedbackHelper.Do[api.MapResult](service.callerContext(), input.SessionKey, api.MapAPI, query, nil)
 }
 
 // Preview 职责：查询星星首行预览；使用：星系页面查询；边界：失效账号不返回数据。
@@ -40,7 +39,7 @@ func (service *FeedbackService) Preview(input api.PreviewRequest) (api.PreviewRe
 		return api.PreviewResult{}, feedbackHelper.InvalidInput("缺少查询星星首行预览所需的参数")
 	}
 	query := url.Values{"starId": {input.StarID}}
-	return feedbackHelper.Do[api.PreviewResult](service.callerContext(), input.SessionKey, http.MethodGet, api.PathPreview, query, nil)
+	return feedbackHelper.Do[api.PreviewResult](service.callerContext(), input.SessionKey, api.PreviewAPI, query, nil)
 }
 
 // Previews 职责：读取一批公开星的首行与署名。使用：星图预取时按可见代表星调用。
@@ -51,7 +50,7 @@ func (service *FeedbackService) Previews(input api.PreviewsRequest) (api.Preview
 		return api.PreviewsResult{}, err
 	}
 	payload := api.PreviewsRequest{StarIDs: ids}
-	return feedbackHelper.Do[api.PreviewsResult](service.callerContext(), input.SessionKey, http.MethodPost, api.PathPreviews, nil, payload)
+	return feedbackHelper.Do[api.PreviewsResult](service.callerContext(), input.SessionKey, api.PreviewsAPI, nil, payload)
 }
 
 // Detail 职责：查询星星详情和发言分页；使用：星系页面查询；边界：失效账号不返回数据。
@@ -61,13 +60,13 @@ func (service *FeedbackService) Detail(input api.DetailRequest) (api.StarDetail,
 	}
 	query := feedbackHelper.PageQuery(input.Page, input.PageSize)
 	query.Set("starId", input.StarID)
-	return feedbackHelper.Do[api.StarDetail](service.callerContext(), input.SessionKey, http.MethodGet, api.PathDetail, query, nil)
+	return feedbackHelper.Do[api.StarDetail](service.callerContext(), input.SessionKey, api.DetailAPI, query, nil)
 }
 
 // Mine 职责：查询当前账号的星星；使用：星系页面查询；边界：失效账号不返回数据。
 func (service *FeedbackService) Mine(input api.PageRequest) (api.MineResult, error) {
 	query := feedbackHelper.PageQuery(input.Page, input.PageSize)
-	return feedbackHelper.Do[api.MineResult](service.callerContext(), input.SessionKey, http.MethodGet, api.PathMine, query, nil)
+	return feedbackHelper.Do[api.MineResult](service.callerContext(), input.SessionKey, api.MineAPI, query, nil)
 }
 
 // Publish 职责：发布星星；使用：用户主动操作；边界：写入失败时由页面决定是否用原请求标识重试。
@@ -77,7 +76,7 @@ func (service *FeedbackService) Publish(input api.PublishRequest) (api.WriteStar
 	}
 	sessionKey := input.SessionKey
 	input.SessionKey = ""
-	result, err := feedbackHelper.Do[api.WriteStarResult](service.callerContext(), sessionKey, http.MethodPost, api.PathPublish, nil, input)
+	result, err := feedbackHelper.Do[api.WriteStarResult](service.callerContext(), sessionKey, api.PublishAPI, nil, input)
 	if err == nil {
 		feedbackHelper.RecordWrite("publish", "发布星星")
 	}
@@ -91,7 +90,7 @@ func (service *FeedbackService) Edit(input api.EditRequest) (api.WriteStarResult
 	}
 	sessionKey := input.SessionKey
 	input.SessionKey = ""
-	result, err := feedbackHelper.Do[api.WriteStarResult](service.callerContext(), sessionKey, http.MethodPost, api.PathEdit, nil, input)
+	result, err := feedbackHelper.Do[api.WriteStarResult](service.callerContext(), sessionKey, api.EditAPI, nil, input)
 	if err == nil {
 		feedbackHelper.RecordWrite("edit", "编辑星星原文")
 	}
@@ -105,7 +104,7 @@ func (service *FeedbackService) Reply(input api.ReplyRequest) (api.ReplyResult, 
 	}
 	sessionKey := input.SessionKey
 	input.SessionKey = ""
-	result, err := feedbackHelper.Do[api.ReplyResult](service.callerContext(), sessionKey, http.MethodPost, api.PathReply, nil, input)
+	result, err := feedbackHelper.Do[api.ReplyResult](service.callerContext(), sessionKey, api.ReplyAPI, nil, input)
 	if err == nil {
 		feedbackHelper.RecordWrite("reply", "提交留言或作者补充")
 	}
@@ -119,7 +118,7 @@ func (service *FeedbackService) Like(input api.LikeRequest) (api.LikeResult, err
 	}
 	sessionKey := input.SessionKey
 	input.SessionKey = ""
-	result, err := feedbackHelper.Do[api.LikeResult](service.callerContext(), sessionKey, http.MethodPost, api.PathLike, nil, input)
+	result, err := feedbackHelper.Do[api.LikeResult](service.callerContext(), sessionKey, api.LikeAPI, nil, input)
 	if err == nil {
 		feedbackHelper.RecordWrite("like", "设置点赞状态")
 	}
@@ -133,7 +132,7 @@ func (service *FeedbackService) Withdraw(input api.WithdrawRequest) (api.Withdra
 	}
 	sessionKey := input.SessionKey
 	input.SessionKey = ""
-	result, err := feedbackHelper.Do[api.WithdrawResult](service.callerContext(), sessionKey, http.MethodPost, api.PathWithdraw, nil, input)
+	result, err := feedbackHelper.Do[api.WithdrawResult](service.callerContext(), sessionKey, api.WithdrawAPI, nil, input)
 	if err == nil {
 		feedbackHelper.RecordWrite("withdraw", "撤回我的星星")
 	}
@@ -147,7 +146,7 @@ func (service *FeedbackService) Seen(input api.SeenRequest) (api.OKResult, error
 	}
 	sessionKey := input.SessionKey
 	input.SessionKey = ""
-	result, err := feedbackHelper.Do[api.OKResult](service.callerContext(), sessionKey, http.MethodPost, api.PathSeen, nil, input)
+	result, err := feedbackHelper.Do[api.OKResult](service.callerContext(), sessionKey, api.SeenAPI, nil, input)
 	if err == nil {
 		feedbackHelper.RecordWrite("seen", "推进留言已读游标")
 	}
@@ -157,7 +156,7 @@ func (service *FeedbackService) Seen(input api.SeenRequest) (api.OKResult, error
 // Notices 职责：查询我的作者提醒；使用：星系页面查询；边界：失效账号不返回数据。
 func (service *FeedbackService) Notices(input api.PageRequest) (api.NoticesResult, error) {
 	query := feedbackHelper.PageQuery(input.Page, input.PageSize)
-	return feedbackHelper.Do[api.NoticesResult](service.callerContext(), input.SessionKey, http.MethodGet, api.PathNotices, query, nil)
+	return feedbackHelper.Do[api.NoticesResult](service.callerContext(), input.SessionKey, api.NoticesAPI, query, nil)
 }
 
 // ReadNotice 职责：确认作者提醒已读；使用：用户主动操作；边界：写入失败时由页面决定是否用原请求标识重试。
@@ -167,7 +166,7 @@ func (service *FeedbackService) ReadNotice(input api.ReadNoticeRequest) (api.OKR
 	}
 	sessionKey := input.SessionKey
 	input.SessionKey = ""
-	result, err := feedbackHelper.Do[api.OKResult](service.callerContext(), sessionKey, http.MethodPost, api.PathReadNotice, nil, input)
+	result, err := feedbackHelper.Do[api.OKResult](service.callerContext(), sessionKey, api.ReadNoticeAPI, nil, input)
 	if err == nil {
 		feedbackHelper.RecordWrite("readNotice", "确认作者提醒已读")
 	}

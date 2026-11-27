@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strconv"
 
+	systemAPI "DysonSphereBox/apiDefinition/system"
 	"DysonSphereBox/core"
 )
 
@@ -19,6 +20,8 @@ type requestSnapshot struct {
 	client     *core.HTTPClient
 	ctx        context.Context
 	detached   bool
+	// verified 让可信业务响应也受改密引起的上下文更换约束。
+	verified bool
 }
 
 // captureRequestLocked 职责：原子捕获凭据；使用：持会话锁的认证/注销流程；边界：只初始化取消上下文。
@@ -33,6 +36,9 @@ func captureRequestLocked() requestSnapshot {
 func captureRequest() requestSnapshot {
 	sessionMutationState.Lock()
 	defer sessionMutationState.Unlock()
+	if sessionMutationState.stopping {
+		return requestSnapshot{}
+	}
 	return captureRequestLocked()
 }
 
@@ -43,7 +49,8 @@ func ensureRequestCurrent(s requestSnapshot) error {
 	}
 	sessionMutationState.Lock()
 	defer sessionMutationState.Unlock()
-	if sessionMutationState.generation != s.generation || core.GLOBAL.ServerClient != s.client {
+	if sessionMutationState.stopping || sessionMutationState.generation != s.generation || core.GLOBAL.ServerClient != s.client ||
+		(s.verified && sessionMutationState.verifiedCtx != s.ctx) {
 		return errors.New("账号会话或服务器已切换，已丢弃旧响应。")
 	}
 	return nil
@@ -52,6 +59,10 @@ func ensureRequestCurrent(s requestSnapshot) error {
 // beginLoginRequest 职责：开始登录并捕获同一代次目标；使用：Login发送前；边界：先清旧会话，失败不恢复旧账号。
 func beginLoginRequest() requestSnapshot {
 	sessionMutationState.Lock()
+	if sessionMutationState.stopping {
+		sessionMutationState.Unlock()
+		return requestSnapshot{}
+	}
 	sessionMutationState.generation++
 	invalidateLocked()
 	setNeedChangePassword(false)
@@ -65,6 +76,10 @@ func beginLoginRequest() requestSnapshot {
 // beginLogoutRequest 职责：立即清本机会话并保留原token注销；使用：Logout发送前；边界：响应不会再作用于任何新会话。
 func beginLogoutRequest() (requestSnapshot, error) {
 	sessionMutationState.Lock()
+	if sessionMutationState.stopping {
+		sessionMutationState.Unlock()
+		return requestSnapshot{}, errors.New("客户端正在关闭")
+	}
 	snapshot := captureRequestLocked()
 	sessionMutationState.generation++
 	invalidateLocked()
@@ -78,12 +93,13 @@ func beginLogoutRequest() (requestSnapshot, error) {
 }
 
 // acceptAccountResponse 职责：原子提交当前请求的续期、鉴权及可信用户；使用：完整解析响应后；边界：同代次旧凭据只能返回结果，不覆盖较新凭据。
-func acceptAccountResponse(s requestSnapshot, refreshed string, unauthorized, needPassword bool, verifiedID uint, loginToken string, loginPassword *bool, clearPassword bool) error {
+func acceptAccountResponse(s requestSnapshot, refreshed string, unauthorized, needPassword bool, user *systemAPI.AccountUser, loginToken string, loginPassword *bool, clearPassword bool) error {
 	if s.detached {
 		return nil
 	}
 	sessionMutationState.Lock()
-	if sessionMutationState.generation != s.generation || core.GLOBAL.ServerClient != s.client {
+	if sessionMutationState.stopping || sessionMutationState.generation != s.generation || core.GLOBAL.ServerClient != s.client ||
+		(s.verified && (s.ctx == nil || sessionMutationState.verifiedCtx != s.ctx)) {
 		sessionMutationState.Unlock()
 		return errors.New("账号会话或服务器已切换，请重试。")
 	}
@@ -92,11 +108,11 @@ func acceptAccountResponse(s requestSnapshot, refreshed string, unauthorized, ne
 		sessionMutationState.Unlock()
 		return errors.New("账号凭据已续期，已丢弃旧鉴权响应。")
 	}
-	if verifiedID != 0 && !currentCredential {
+	if user != nil && !currentCredential {
 		sessionMutationState.Unlock()
 		return errors.New("账号凭据已续期，已丢弃旧身份响应。")
 	}
-	if verifiedID != 0 && sessionMutationState.subject != "" && sessionMutationState.subject != strconv.FormatUint(uint64(verifiedID), 10) {
+	if user != nil && sessionMutationState.subject != "" && sessionMutationState.subject != strconv.FormatUint(uint64(user.ID), 10) {
 		sessionMutationState.Unlock()
 		return errors.New("账号验证主体与当前会话不匹配。")
 	}
@@ -110,6 +126,13 @@ func acceptAccountResponse(s requestSnapshot, refreshed string, unauthorized, ne
 		return err
 	}
 	defer sessionMutationState.Unlock()
+	previousSubject := sessionMutationState.subject
+	previousPassword := needPasswordLocked()
+	defer func() {
+		if previousSubject != sessionMutationState.subject || previousPassword != needPasswordLocked() {
+			signalVerifiedChangeLocked()
+		}
+	}()
 	if loginPassword != nil {
 		if loginToken == "" {
 			return errors.New("服务器未返回登录凭据")
@@ -118,10 +141,6 @@ func acceptAccountResponse(s requestSnapshot, refreshed string, unauthorized, ne
 			return err
 		}
 		setNeedChangePassword(*loginPassword)
-		// 登录响应携带的 ID 就是本次 token 的主体；记录后公告、翻译等已验证能力无需再等额外请求。
-		if verifiedID != 0 {
-			sessionMutationState.subject = strconv.FormatUint(uint64(verifiedID), 10)
-		}
 	} else {
 		if currentCredential && refreshed != "" {
 			if err := saveTokenValue(refreshed); err != nil {
@@ -133,9 +152,15 @@ func acceptAccountResponse(s requestSnapshot, refreshed string, unauthorized, ne
 		}
 		if currentCredential && clearPassword {
 			setNeedChangePassword(false)
+			// 成功改密后界面会注销，等待重新验证才允许恢复可信业务。
+			sessionMutationState.subject = ""
 		}
-		if verifiedID != 0 {
-			sessionMutationState.subject = strconv.FormatUint(uint64(verifiedID), 10)
+	}
+	// 可信主体与资料一同生效，连接观察者醒来时读到的是完整快照。
+	if user != nil {
+		setSessionUser(user)
+		if user.ID != 0 {
+			sessionMutationState.subject = strconv.FormatUint(uint64(user.ID), 10)
 		}
 	}
 	return nil

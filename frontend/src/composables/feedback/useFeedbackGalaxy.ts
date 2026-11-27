@@ -2,7 +2,7 @@ import {computed, nextTick, onActivated, onDeactivated, onMounted, onScopeDispos
 import {useRoute} from 'vue-router'
 
 import {accountSessionKey} from '../../pages/services/account'
-import {feedbackCall, FeedbackError} from '../../services/feedback'
+import {feedbackCall, FeedbackError, feedbackDeepLinkRevision} from '../../services/feedback'
 import {reviewLabels, type Coordinates, type DisplayStar, type GalaxyPosition, type MyStar} from '../../types/feedback'
 import {HOME_CAMERA, includeStar, projectVisibleStars, usefulZoomLimit} from './galaxy-camera'
 import {useFeedbackDetail} from './useFeedbackDetail'
@@ -261,8 +261,8 @@ export function useFeedbackGalaxy(restoreFocus?: () => void) {
     sync()
     timer = window.setInterval(sync, 2000)
   }, {flush: 'post'})
-  watch([foreground, () => route.query.star], ([isForeground, id]) => {
-    if (isForeground && route.name === '/community/feedback' && typeof id === 'string' && /^\d+$/.test(id) && id !== deepLink) {
+  watch([foreground, () => route.query.star, feedbackDeepLinkRevision], ([isForeground, id, revision], [, , previousRevision]) => {
+    if (isForeground && route.name === '/community/feedback' && typeof id === 'string' && /^\d+$/.test(id) && (id !== deepLink || revision !== previousRevision)) {
       deepLink = id
       openDetail(id)
     }

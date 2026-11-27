@@ -14,6 +14,8 @@ const (
 	PathPostDetail = "/client/forum/posts/{{ID}}"
 	// PathPostReplies 分页查询或提交指定帖子的回复。
 	PathPostReplies = "/client/forum/posts/{{ID}}/replies"
+	// PathPublicationReview 职责：查询作者可见的审核详情；使用：审核通知带审核记录 ID 调用；边界：相对于应用服务器前缀。
+	PathPublicationReview = "/client/forum/reviews/{{ID}}"
 	// PathReports 提交对帖子、回复或资源的举报。
 	PathReports = "/client/forum/reports"
 	// PathResource 查询并复核单个可见资源的最新元数据。
