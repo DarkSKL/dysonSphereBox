@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {CircleHelp, EyeOff, Globe, Lock, PlugZap, Activity, UserRound, Users, X} from '@lucide/vue'
+import {CircleHelp, EyeOff, Globe, Lock, Activity, UserRound, Users, X} from '@lucide/vue'
 import {useDialog, useMessage} from 'naive-ui'
 import {computed, onDeactivated, ref, watch} from 'vue'
 import LobbyBrowser from '../../components/multiplayer/lobby-browser.vue'
@@ -150,8 +150,6 @@ function closeRoom(): void {
         </n-tooltip>
         <span v-else class="state-label" :class="`state-${connectionState}`"><i />{{ connectionText }}</span>
         <span v-if="!snapshot && state?.account.nickname" class="account-name" :title="state.account.nickname"><UserRound :size="14" />{{ state.account.nickname }}</span>
-        <!-- * 控制链路强制保持：连接中/重连中由 Go 自动重试，仅在不可重连的原因停止后提供重新连接 -->
-        <n-button v-if="connectionState === 'offline'" size="small" secondary :disabled="!state?.account.loggedIn" :loading="pending.has('connect')" @click="mp.connect()"><template #icon><PlugZap :size="14" /></template>重新连接</n-button>
         <!-- * 诊断入口：页头图标按需打开抽屉，离线时也可查看连接提示 -->
         <n-tooltip>
           <template #trigger>
@@ -171,7 +169,7 @@ function closeRoom(): void {
 
     <!-- ~ 当前房间：突出游戏连接地址、成员与邀请，隐藏大厅列表 -->
     <CurrentRoom v-if="room && state" :state="state" :pending="pending" :online="online" :busy="roomBusy" @invite="mp.invite()" @leave="mp.leave()" @retry="mp.retry()" @kick="mp.kick($event)" />
-    <LobbyBrowser v-else :admission-enabled="admissionEnabled" :state="state" :query="query" :online="online" :loading="lobbyLoading" :ready="lobbyReady" :error="lobbyError" :selected="joinOpen && joinMode === 'room' ? joinTarget : ''" :busy="roomBusy" :connection-title="connectionTitle" :connection-hint="connectionHint" @search="search" @sort="sort" @page="query.page = $event" @page-size="pageSize" @join="openRoom" @refresh="mp.refreshLobby(true)" @create="openCreate" @invite="openInvite" @connect="mp.connect()" />
+    <LobbyBrowser v-else :admission-enabled="admissionEnabled" :state="state" :query="query" :online="online" :loading="lobbyLoading" :connecting="pending.has('connect')" :ready="lobbyReady" :error="lobbyError" :selected="joinOpen && joinMode === 'room' ? joinTarget : ''" :busy="roomBusy" :connection-title="connectionTitle" :connection-hint="connectionHint" @search="search" @sort="sort" @page="query.page = $event" @page-size="pageSize" @join="openRoom" @refresh="mp.refreshLobby(true)" @create="openCreate" @invite="openInvite" @connect="mp.connect()" />
 
     <!-- ~ 技术诊断：由页头入口打开，连接状态与网络地址随 Go 投影更新 -->
     <NetworkDiagnostics v-model:show="diagnosticsOpen" :state="state" :online="online" />

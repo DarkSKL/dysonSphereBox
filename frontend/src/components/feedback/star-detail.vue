@@ -1,19 +1,63 @@
 <script setup lang="ts">
 import {CornerDownRight, ShieldCheck} from '@lucide/vue'
-import {computed, nextTick, watch} from 'vue'
+import type {InputInst} from 'naive-ui'
+import {computed, nextTick, ref, watch} from 'vue'
 
 import {formatFeedbackTime, reviewLabels, type Entry, type EntryKind, type StarDetail} from '../../types/feedback'
 import StarAvatar from './star-avatar.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   detail: StarDetail
   busy: boolean
   highlighted: string
-}>()
+  /** 作者可编辑正文：开启后双击正文进入就地编辑。 */
+  editable?: boolean
+  editing?: boolean
+  editBody?: string
+  editInvalid?: boolean
+  editDisabled?: boolean
+}>(), {
+  editable: false,
+  editing: false,
+  editBody: '',
+  editInvalid: false,
+  editDisabled: false,
+})
 
 const emit = defineEmits<{
   page: [value: number]
+  edit: []
+  text: [value: string]
+  submit: []
+  cancelEdit: []
 }>()
+
+// =============== 正文就地编辑 ===============
+// 说明：作者双击（或聚焦后按 Enter）正文即把正文原位换成文本框，不再占用顶栏图标；提交条仍由底部输入栏承担。
+// 交互：Ctrl/Cmd + Enter 提交，Escape 收起编辑并保留草稿（不关闭整张卡片）。
+// 边界：只在 editable 时响应；双击时阻止浏览器选中单词，避免进入编辑前闪一下选区。
+const editorRef = ref<InputInst>()
+
+function onBodyMouseDown(event: MouseEvent): void {
+  if (props.editable && event.detail > 1) event.preventDefault()
+}
+
+function onEditKeydown(event: KeyboardEvent): void {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault()
+    emit('submit')
+  } else if (event.key === 'Escape') {
+    event.preventDefault()
+    event.stopPropagation()
+    emit('cancelEdit')
+  }
+}
+
+watch(() => props.editing, async (on) => {
+  if (!on) return
+  await nextTick()
+  editorRef.value?.focus()
+})
 
 // =============== 讨论分组与去重 ===============
 // 说明：置顶分组有数量上限，翻页时把超出上限的同类条目合并到对应分组并按 ID 去重。
@@ -53,7 +97,32 @@ watch(() => props.highlighted, async (id) => {
     :id="'feedback-entry-' + detail.original.id"
     :class="{'entry-highlight': highlighted === detail.original.id}"
   >
-    <p class="post-body">{{ detail.original.body }}</p>
+    <n-input
+      v-if="editing"
+      ref="editorRef"
+      class="post-editor"
+      type="textarea"
+      size="small"
+      :value="editBody"
+      :autosize="{minRows: 3, maxRows: 10}"
+      :input-props="{'aria-label': '编辑正文', 'aria-describedby': 'star-composer-count'}"
+      :status="editInvalid ? 'error' : undefined"
+      :disabled="editDisabled"
+      placeholder="修改反馈正文…（Ctrl+Enter 提交，Esc 收起）"
+      @update:value="emit('text', $event)"
+      @keydown="onEditKeydown"
+    />
+    <p
+      v-else
+      class="post-body"
+      :class="{'is-editable': editable}"
+      :tabindex="editable ? 0 : undefined"
+      :title="editable ? '双击编辑正文' : undefined"
+      :aria-keyshortcuts="editable ? 'Enter' : undefined"
+      @mousedown="onBodyMouseDown"
+      @dblclick="editable && emit('edit')"
+      @keydown.enter.self.prevent="editable && emit('edit')"
+    >{{ detail.original.body }}</p>
     <p v-if="detail.reviewReason" class="entry-reason">审核说明 · {{ detail.reviewReason }}</p>
 
     <div v-if="supplements.length" class="supplement-list">
@@ -155,6 +224,30 @@ watch(() => props.highlighted, async (id) => {
   line-height: 1.76;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+
+  // 可编辑：悬停给一层极浅底色提示「这里能双击」，不引入额外图标。
+  &.is-editable {
+    margin: -4px -8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: text;
+    transition: background-color 140ms ease;
+
+    &:hover {
+      background: var(--ds-hover-bg);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--ds-brand);
+      outline-offset: 1px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .post-body.is-editable {
+    transition: none;
+  }
 }
 
 .entry-reason {

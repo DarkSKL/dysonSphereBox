@@ -217,7 +217,7 @@ const resizeByKey = (event: KeyboardEvent): void => {
 .bench-timeline { grid-area: timeline; }
 // 非调试模式不挂载时间流：去掉右侧列与列间距，网格与预览占满宽度。
 .quant-workbench:not(.is-debug) { grid-template-areas: 'bar' 'alert' 'graph' 'split' 'preview'; grid-template-columns: minmax(0, 1fr); column-gap: 0; }
-.bench-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.bench-bar { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .bench-title h1 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; }
 .bench-actions { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; }
 .bench-title { flex: 0 0 auto; }

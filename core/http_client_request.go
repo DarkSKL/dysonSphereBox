@@ -51,6 +51,20 @@ func (model *HTTPClient) DoNoRedirect(request *http.Request) (*http.Response, er
 	return clientCopy.Do(request)
 }
 
+// DoStreamNoRedirect 发送不自动重定向且不受默认短超时截断的流式 HTTP 请求。
+// 职责：支持论坛大文件上传、下载与媒体 Range 读取，超时完全由请求 Context 控制。
+// 使用：论坛上传、下载和媒体代理等需要流式传输的鉴权接口调用。
+// 边界：复用共享 Transport，不跟随重定向，调用方必须负责关闭响应体并设置 Context 取消信号。
+func (model *HTTPClient) DoStreamNoRedirect(request *http.Request) (*http.Response, error) {
+	if model == nil || model.client == nil {
+		return nil, errors.New("http client is not initialized")
+	}
+	clientCopy := *model.client
+	clientCopy.Timeout = 0
+	clientCopy.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	return clientCopy.Do(request)
+}
+
 // ResolveURL 将相对路径解析为完整请求地址。
 // 职责：把 BaseURL 与业务路径组合为可请求 URL。
 // 使用：NewRequest 或需要预览请求地址时调用。

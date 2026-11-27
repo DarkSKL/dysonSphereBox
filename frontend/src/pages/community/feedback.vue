@@ -130,6 +130,11 @@ const cardDetail = computed(() => (isDetailOpen.value ? (!unavailable.value ? se
 const cardComposerMode = computed<CardComposerMode | null>(() =>
   isDetailOpen.value && openedEditor.value && openedEditor.value.mode !== 'publish' ? openedEditor.value.mode : null,
 )
+// 作者在已展示的正文上双击即可就地编辑；写入、加载与不可用期间禁用。
+const bodyEditable = computed(() => {
+  const current = cardDetail.value
+  return !!current && !unavailable.value && current.owned && current.canEdit && !writing.value && !saving.value && !detailBusy.value
+})
 const cardDiscussionCount = computed(() => {
   const current = cardDetail.value
   if (!current) return 0
@@ -300,7 +305,7 @@ function openFromList(starId: string): void {
         @close="closePanel"
         @retry="detail.refresh()"
         @locate="locateSelected"
-        @edit="cardComposerMode === 'edit' ? editor.close() : editor.open('edit', selectedStar ?? undefined)"
+        :minimap-stars="points"
         @supplement="cardComposerMode === 'supplement' ? editor.close() : editor.open('supplement', selectedStar ?? undefined)"
         @withdraw="confirmWithdraw = !confirmWithdraw"
         @cancel-withdraw="confirmWithdraw = false"
@@ -312,7 +317,16 @@ function openFromList(starId: string): void {
           :detail="cardDetail"
           :busy="detailBusy"
           :highlighted="highlightedEntry"
+          :editable="bodyEditable"
+          :editing="cardComposerMode === 'edit'"
+          :edit-body="draft.body"
+          :edit-invalid="length > limit"
+          :edit-disabled="saving"
           @page="detail.changePage"
+          @edit="editor.open('edit', selectedStar ?? undefined)"
+          @text="editor.update({...draft, body: $event})"
+          @submit="editor.submit(selectedStar ?? undefined)"
+          @cancel-edit="editor.close()"
         />
 
         <template v-if="cardDetail && !unavailable" #footer>

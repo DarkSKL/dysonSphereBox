@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AlertCircle, Compass, FilePlus2, PencilLine, RotateCw, Trash2, X} from '@lucide/vue'
+import {AlertCircle, Compass, FilePlus2, RotateCw, Trash2, X} from '@lucide/vue'
 import {computed, nextTick, ref, shallowRef, watch} from 'vue'
 
 import {useGalaxyTheme} from '../../composables/feedback/useGalaxyTheme'
@@ -13,6 +13,7 @@ import {
   type StarDetail,
   type StarProgress,
 } from '../../types/feedback'
+import GalaxyMinimap from './galaxy-minimap.vue'
 import StarAvatar from './star-avatar.vue'
 import type {CardComposerMode} from './star-composer.vue'
 
@@ -47,16 +48,17 @@ const props = withDefaults(defineProps<{
   confirmWithdraw: boolean
   activeMode?: CardComposerMode | null
   mapHint?: 'offscreen' | 'grouped' | ''
+  minimapStars?: readonly DisplayStar[]
 }>(), {
   activeMode: null,
   mapHint: '',
+  minimapStars: () => [],
 })
 
 const emit = defineEmits<{
   close: []
   retry: []
   locate: []
-  edit: []
   supplement: []
   withdraw: []
   cancelWithdraw: []
@@ -136,6 +138,11 @@ const starAccent = computed(() =>
     : (theme.value.starColors[view.value.progress] ?? theme.value.starColors.feedback),
 )
 const hasOwnerTools = computed(() => view.value.hasDetail && !view.value.unavailable && view.value.owned)
+// 缩略图高亮当前读的星：优先用详情坐标，详情未到时退回星图点位。
+const minimapSelected = computed(() => {
+  const source = props.detail ?? props.mapPoint
+  return source ? {x: source.x, y: source.y, z: source.z} : null
+})
 
 // =============== 焦点接管与遮罩关闭守卫 ===============
 // 说明：打开或切星时聚焦卡片标题以便 Escape 立即生效；仅当按下与抬起均落在遮罩自身才关闭，防止划选正文拖出边界误关。
@@ -196,6 +203,9 @@ defineExpose({
       @wheel.stop
       @keydown.esc.stop.prevent="requestClose"
     >
+      <!-- 右上角星图缩略图：纯展示，不拦截指针 -->
+      <GalaxyMinimap v-if="minimapStars.length" :stars="minimapStars" :selected="minimapSelected" />
+
       <section
         class="star-detail-card ds-bracket"
         role="dialog"
@@ -246,23 +256,6 @@ defineExpose({
             <span class="header-sep" aria-hidden="true" />
 
             <div class="header-tools" role="toolbar" aria-label="反馈管理与窗口操作">
-              <n-tooltip v-if="hasOwnerTools && view.canEdit" :delay="220" placement="bottom">
-                <template #trigger>
-                  <button
-                    type="button"
-                    class="tool-icon-btn"
-                    :class="{'is-active': activeMode === 'edit'}"
-                    aria-label="编辑正文"
-                    :aria-pressed="activeMode === 'edit'"
-                    :disabled="writing || busy"
-                    @click="emit('edit')"
-                  >
-                    <PencilLine :size="15" :stroke-width="1.85" aria-hidden="true" />
-                  </button>
-                </template>
-                编辑正文
-              </n-tooltip>
-
               <n-tooltip v-if="hasOwnerTools && !view.canEdit && view.published" :delay="220" placement="bottom">
                 <template #trigger>
                   <button
@@ -379,6 +372,8 @@ defineExpose({
   padding: 20px;
   background: rgb(1 4 12 / 0.56);
   backdrop-filter: blur(8px);
+  // 命名容器：供右上角缩略图按遮罩宽度决定是否与居中卡片并排。
+  container: star-backdrop / inline-size;
 
   &.is-light {
     background: rgb(235 235 235 / 0.56);

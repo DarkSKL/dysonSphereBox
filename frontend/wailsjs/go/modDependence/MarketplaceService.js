@@ -10,6 +10,10 @@ export function RefreshRemotePackageList(arg1, arg2, arg3, arg4) {
   return window['go']['modDependence']['MarketplaceService']['RefreshRemotePackageList'](arg1, arg2, arg3, arg4);
 }
 
+export function ResolveThunderstorePackage(arg1, arg2, arg3) {
+  return window['go']['modDependence']['MarketplaceService']['ResolveThunderstorePackage'](arg1, arg2, arg3);
+}
+
 export function TranslateDescriptions(arg1, arg2) {
   return window['go']['modDependence']['MarketplaceService']['TranslateDescriptions'](arg1, arg2);
 }

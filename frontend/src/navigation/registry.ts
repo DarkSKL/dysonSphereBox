@@ -3,10 +3,11 @@ import {
   IconAdjustmentsHorizontal,
   IconFileText,
   IconInfoCircle,
+  IconMessage2,
   IconMessages,
   IconNetwork,
-  IconStars,
 } from '@tabler/icons-vue'
+import FeedbackNebulaIcon from './feedback-nebula-icon.vue'
 import {gameNavigationIcons} from './game-icons'
 
 /** 描述可由侧边导航渲染的路由入口。 */
@@ -65,7 +66,8 @@ export const workspaceNavigationRegistry: readonly WorkspaceNavigationDefinition
     requiresAuth: true,
     navigation: [
       { key: 'multiplayer', label: '联机', to: '/community/multiplayer', icon: IconNetwork, requiresAuth: true },
-      { key: 'feedback', label: '反馈星系', to: '/community/feedback', icon: IconStars, requiresAuth: true },
+      { key: 'forum', label: '论坛', to: '/community/forum', icon: IconMessage2, requiresAuth: true },
+      { key: 'feedback', label: '反馈星系', to: '/community/feedback', icon: FeedbackNebulaIcon, requiresAuth: true },
     ],
   },
 ]

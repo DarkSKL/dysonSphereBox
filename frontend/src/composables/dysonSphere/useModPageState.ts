@@ -3,10 +3,11 @@ import { NButton, NTooltip, useDialog, useMessage } from 'naive-ui'
 import { computed, h, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { CancelRemotePackageInstall, ContinueRemotePackageInstall, InstallRemotePackage, ListInstalledPackageKeys, ListInstallProgressSnapshots, UninstallRemotePackage } from '../../../wailsjs/go/modDependence/InstallerService'
-import { GetRemotePackageList, RefreshRemotePackageList } from '../../../wailsjs/go/modDependence/MarketplaceService'
+import { GetRemotePackageList, RefreshRemotePackageList, ResolveThunderstorePackage } from '../../../wailsjs/go/modDependence/MarketplaceService'
 import { contract, modDependence } from '../../../wailsjs/go/models'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import { gameDirectory, getBepInExStatus, installBepInEx, loadGameDirectory } from '../../pages/services/dysonSphere/game'
+import { consumePendingForumModTarget, pendingForumModTarget } from '../../services/forum'
 import type { InstallConflictAction, InstallProgressPayload } from '../../types/mod'
 import { formatDownloadSpeed, formatErrorMessage } from '../../utils/format'
 import { useModDescriptionTranslation } from './useModDescriptionTranslation'
@@ -24,6 +25,7 @@ export const useModPageState = () => {
   const router = useRouter()
 
   const selectedPackKey = ref('')
+  const resolvedForumPack = ref<modDependence.RemoteModPackageDTO | null>(null)
   const selectedSource = ref('thunderstore')
   const searchKeyword = ref('')
   const dialogVisible = ref(false)
@@ -60,6 +62,7 @@ export const useModPageState = () => {
 
   const selectedPack = computed<modDependence.RemoteModPackageDTO | undefined>(() => {
   return packageList.value.find((pack) => pack.key === selectedPackKey.value)
+    || (resolvedForumPack.value?.key === selectedPackKey.value ? resolvedForumPack.value : undefined)
 })
   const descriptionTranslation = useModDescriptionTranslation({
     packages: packageList,
@@ -547,6 +550,7 @@ export const useModPageState = () => {
   }
 
   const pack = packageList.value.find((item) => item.key === key)
+    || (resolvedForumPack.value?.key === key ? resolvedForumPack.value : undefined)
   if (!pack) {
     message.error('未找到要安装的模组。')
     return
@@ -702,18 +706,54 @@ export const useModPageState = () => {
   }
 }
 
+  // =============== 社区论坛模组定位 ===============
+  // 说明：当用户从社区论坛模组卡跳转至模组市场时，按 namespace/packageName 和可选版本号解析并直接打开对应详情弹窗。
+  const applyPendingForumModTarget = async (): Promise<void> => {
+  const target = consumePendingForumModTarget()
+  if (!target || !canOpenModPage.value) {
+    return
+  }
+  if (selectedSource.value !== 'thunderstore') {
+    selectedSource.value = 'thunderstore'
+  }
+  try {
+    const resolved = await ResolveThunderstorePackage(target.namespace, target.packageName, target.version || '')
+    if (resolved?.key) {
+      resolvedForumPack.value = resolved
+      if (!packageList.value.some((pack) => pack.key === resolved.key)) {
+        packageList.value = [resolved, ...packageList.value]
+      }
+      await syncInstalledPackageKeys()
+      selectedPackKey.value = resolved.key
+      dialogVisible.value = true
+      return
+    }
+  } catch (error) {
+    message.warning(`未能直接定位该模组版本，已改为按包名搜索：${formatErrorMessage(error)}`)
+  }
+  searchKeyword.value = target.packageName || target.namespace
+  await refreshPackages(false)
+}
+
   onMounted(async () => {
   bindInstallProgressListener()
   await restoreInstallProgressSnapshots()
   await refreshGamePathAvailability()
+  await applyPendingForumModTarget()
   await nextTick()
   observeLoadMoreTarget()
 })
   onActivated(async () => {
   await restoreInstallProgressSnapshots()
   await refreshGamePathAvailability()
+  await applyPendingForumModTarget()
   await nextTick()
   observeLoadMoreTarget()
+})
+  watch(pendingForumModTarget, (target) => {
+  if (target && canOpenModPage.value) {
+    void applyPendingForumModTarget()
+  }
 })
   onBeforeUnmount(() => {
   loadMoreObserver?.disconnect()

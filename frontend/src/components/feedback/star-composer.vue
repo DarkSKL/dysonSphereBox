@@ -163,7 +163,9 @@ function onEscape(): void {
         </n-tooltip>
       </div>
 
+      <!-- 编辑正文时文本框就地显示在正文位置（star-detail），这里只保留计数与提交条 -->
       <n-input
+        v-if="mode !== 'edit'"
         ref="inputRef"
         type="textarea"
         size="small"

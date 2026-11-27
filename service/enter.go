@@ -8,6 +8,7 @@ import (
 	"DysonSphereBox/service/environment"
 	"DysonSphereBox/service/factory"
 	"DysonSphereBox/service/feedback"
+	"DysonSphereBox/service/forum"
 	"DysonSphereBox/service/modDependence"
 	"DysonSphereBox/service/multiplayer"
 	"DysonSphereBox/service/system"
@@ -36,6 +37,8 @@ type ServiceGroup struct {
 	MultiplayerServiceGroup multiplayer.ServiceGroup
 	// FeedbackServiceGroup 职责：聚合星系页面的桥接服务；使用：根注册器；边界：注册时不访问服务器。
 	FeedbackServiceGroup feedback.ServiceGroup
+	// ForumServiceGroup 职责：聚合社区论坛的桥接与资源导入服务；使用：根注册器；边界：注册时不访问服务器。
+	ForumServiceGroup forum.ServiceGroup
 }
 
 // RegisterServices 返回需要绑定到 Wails 的全部服务实例。
@@ -52,5 +55,6 @@ func RegisterServices() []interface{} {
 
 	services = append(services, ServiceGroupApp.FactoryServiceGroup.RegisterServices()...)
 	services = append(services, ServiceGroupApp.FeedbackServiceGroup.RegisterServices()...)
+	services = append(services, ServiceGroupApp.ForumServiceGroup.RegisterServices()...)
 	return services
 }

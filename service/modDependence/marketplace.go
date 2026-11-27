@@ -53,3 +53,15 @@ func (service *MarketplaceService) RefreshRemotePackageList(source string, page 
 		UseCache: false,
 	})
 }
+
+// ResolveThunderstorePackage 按命名空间、包名和可选版本号定位单个 Thunderstore 模组包。
+// 职责：提供版本时按 thunderstore:{namespace}:{packageName}:{version} 精确定位；未提供版本时解析该包最新可用版本。
+// 使用：社区论坛模组卡片跳转至模组市场并直接定位对应包或版本时调用。
+// 边界：只查询 Thunderstore 市场索引，不自动执行安装或修改本地文件。
+func (service *MarketplaceService) ResolveThunderstorePackage(namespace string, packageName string, version string) (*ModDependenceResponse.RemoteModPackageDTO, error) {
+	ctx := context.Background()
+	if version != "" {
+		return marketplaceHelper.ResolveRemotePackage(ctx, "thunderstore:"+namespace+":"+packageName+":"+version)
+	}
+	return marketplaceHelper.ResolveLatestRemotePackage(ctx, namespace, packageName)
+}

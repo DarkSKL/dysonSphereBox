@@ -8,6 +8,7 @@ import (
 	"DysonSphereBox/constant/logging"
 	"DysonSphereBox/core"
 	"DysonSphereBox/core/diagnostics"
+	forumHelper "DysonSphereBox/helper/forum"
 	"embed"
 	"fmt"
 	"log"
@@ -61,7 +62,8 @@ func main() {
 		MinHeight: 768,
 		Frameless: true,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:     assets,
+			Middleware: forumHelper.MediaProxyMiddleware,
 		},
 		Windows: &windows.Options{
 			IsZoomControlEnabled: false,

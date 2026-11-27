@@ -7,4 +7,6 @@ export function GetRemotePackageList(arg1:string,arg2:number,arg3:number,arg4:st
 
 export function RefreshRemotePackageList(arg1:string,arg2:number,arg3:number,arg4:string):Promise<modDependence.RemotePackageListData>;
 
+export function ResolveThunderstorePackage(arg1:string,arg2:string,arg3:string):Promise<modDependence.RemoteModPackageDTO>;
+
 export function TranslateDescriptions(arg1:Array<string>,arg2:string):Promise<modTranslation.BatchData>;

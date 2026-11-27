@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ArrowRight, KeyRound, LockKeyhole, Plus, RefreshCw, Search} from '@lucide/vue'
+import {ArrowRight, KeyRound, LockKeyhole, PlugZap, Plus, RefreshCw, Search} from '@lucide/vue'
 import {computed, ref, watch} from 'vue'
 import type {LobbyQuery, MultiplayerState, RoomSummary} from '../../types/multiplayer'
 import {portText} from '../../utils/multiplayer'
@@ -8,7 +8,7 @@ import MultiplayerAvatar from './avatar.vue'
 // =============== 大厅浏览与筛选 ===============
 // 说明：列表来自后端投影；输入草稿提交后才搜索，排序、分页和每页条数交给页面更新请求。
 const props = defineProps<{
-  state: MultiplayerState | null; query: LobbyQuery; online: boolean; admissionEnabled: boolean; loading: boolean
+  state: MultiplayerState | null; query: LobbyQuery; online: boolean; admissionEnabled: boolean; loading: boolean; connecting: boolean
   ready: boolean; error: string; selected: string; busy: boolean
   connectionTitle: string; connectionHint: string
 }>()
@@ -33,6 +33,17 @@ const total = computed(() => props.state?.lobby.total ?? 0)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / props.query.pageSize)))
 const emptyTitle = computed(() => !props.online ? props.connectionTitle : props.error ? '暂时无法读取大厅' : props.query.keyword ? '没有找到匹配的房间' : '下一段旅程，从你的房间开始')
 const emptyHint = computed(() => !props.online ? props.connectionHint : props.error || (props.query.keyword ? '试试其他房间名，或使用好友发来的邀请码。' : '目前没有可加入的公开房间。创建一个房间，邀请好友一起建设星系。'))
+// 说明：控制链路强制保持，连接中与重连中展示原位加载态；仅离线且已登录时允许手动连接，图标按钮常驻工具栏避免位移。
+const connectionState = computed(() => props.state?.connection.state ?? 'offline')
+const isConnecting = computed(() => props.connecting || connectionState.value === 'connecting' || connectionState.value === 'reconnecting')
+const canConnect = computed(() => connectionState.value === 'offline' && Boolean(props.state?.account.loggedIn) && !props.connecting)
+const connectLabel = computed(() => {
+  if (connectionState.value === 'online') return '已连接大厅'
+  if (connectionState.value === 'reconnecting') return '正在重新连接'
+  if (isConnecting.value) return '正在连接大厅'
+  if (props.state && !props.state.account.loggedIn) return '请先登录账号'
+  return props.state?.connection.lastErrorCode ? '重新连接' : '连接大厅'
+})
 
 // 说明：更新时间只在读取完成或列表内容真正变化时刷新，其他投影推送（链路、诊断）不影响。
 const updatedAt = ref(0)
@@ -58,10 +69,10 @@ function createdText(ms: number): string {
   <!-- ~ 公开大厅：顶部工具栏、带分页的房间表格与明确的连接/加载/空状态 -->
   <section class="lobby-browser" aria-label="公开房间" :aria-busy="loading">
     <!-- ~ 大厅工具栏 -->
-    <!-- * 说明：左侧搜索与排序，右侧方形图标按钮与创建房间主操作 -->
-    <!-- * 交互：悬停图标查看提示，刷新时原位展示加载状态 -->
+    <!-- * 说明：左侧搜索与排序，右侧方形图标按钮（刷新、连接、邀请码加入）与创建房间主操作 -->
+    <!-- * 交互：悬停图标查看提示，刷新与连接时原位展示加载状态 -->
     <!-- * 依赖：查询、连接、准入与忙碌状态，由页面处理各操作事件 -->
-    <!-- * 边界：离线禁用查询和刷新，暂停准入或房间操作中禁用加入与创建 -->
+    <!-- * 边界：离线禁用查询和刷新，在线或未登录禁用连接，暂停准入或房间操作中禁用加入与创建 -->
     <form class="lobby-toolbar" @submit.prevent="search">
       <n-input v-model:value="searchDraft" class="search-input" placeholder="搜索房间名，回车确认" aria-label="搜索房间名" clearable :disabled="!online" @clear="emit('search', '')">
         <template #prefix><Search :size="16" /></template>
@@ -69,6 +80,7 @@ function createdText(ms: number): string {
       <n-select :value="query.sort" :options="sortOptions" :disabled="!online || loading" aria-label="房间排序" class="sort-select" @update:value="emit('sort', $event)" />
       <span class="toolbar-spacer" />
       <n-tooltip><template #trigger><n-button class="toolbar-icon-button" :disabled="!online || loading" :loading="loading" aria-label="刷新大厅" @click="emit('refresh')"><template #icon><RefreshCw :size="16" /></template></n-button></template>刷新大厅</n-tooltip>
+      <n-tooltip><template #trigger><n-button class="toolbar-icon-button" :disabled="!canConnect" :loading="isConnecting" :aria-label="connectLabel" @click="emit('connect')"><template #icon><PlugZap :size="16" /></template></n-button></template>{{ connectLabel }}</n-tooltip>
       <n-tooltip><template #trigger><n-button class="toolbar-icon-button" :disabled="!admissionEnabled || busy" aria-label="邀请码加入" aria-haspopup="dialog" @click="emit('invite')"><template #icon><KeyRound :size="16" /></template></n-button></template>邀请码加入</n-tooltip>
       <n-button type="primary" :disabled="!admissionEnabled || busy" @click="emit('create')"><template #icon><Plus :size="17" /></template>创建房间</n-button>
     </form>
@@ -104,7 +116,7 @@ function createdText(ms: number): string {
         <n-button v-if="online && !error && !query.keyword" secondary :disabled="!admissionEnabled || busy" @click="emit('create')">创建第一个房间<template #icon><ArrowRight :size="16" /></template></n-button>
         <n-button v-else-if="online && error" secondary @click="emit('refresh')">重新读取大厅</n-button>
         <n-button v-else-if="online && query.keyword" secondary @click="emit('search', '')">查看全部房间</n-button>
-        <n-button v-else-if="state?.connection.state === 'offline' && state.account.loggedIn" secondary @click="emit('connect')">连接大厅</n-button>
+        <n-button v-else-if="state?.connection.state === 'offline' && state.account.loggedIn" secondary :loading="connecting" @click="emit('connect')">连接大厅</n-button>
       </div>
     </div>
     <footer class="lobby-footer"><span>大厅仅显示公开且未满员的房间</span><span>私密房间请使用好友发来的邀请码加入</span></footer>

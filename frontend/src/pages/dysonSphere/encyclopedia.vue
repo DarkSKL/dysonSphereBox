@@ -36,7 +36,7 @@ function navigate(path: string): void { void router.push(path) }
   <div class="encyclopedia-page">
     <header class="encyclopedia-header">
       <div class="encyclopedia-heading"><h1>游戏图鉴</h1></div>
-      <n-input v-model:value="searchKeyword" class="encyclopedia-search encyclopedia-field" :placeholder="isAchievement ? '搜索成就名称、条件或编号…' : '搜索物品、建筑、科技…'" clearable :aria-label="isAchievement ? '搜索成就' : '搜索图鉴'" @keyup.enter="state.commitSearch">
+      <n-input v-model:value="searchKeyword" size="small" class="encyclopedia-search encyclopedia-field" :placeholder="isAchievement ? '搜索成就名称、条件或编号…' : '搜索物品、建筑、科技…'" clearable :aria-label="isAchievement ? '搜索成就' : '搜索图鉴'" @keyup.enter="state.commitSearch">
         <template #prefix><Search :size="15" /></template>
       </n-input>
     </header>
@@ -87,10 +87,11 @@ function navigate(path: string): void { void router.push(path) }
 </template>
 
 <style scoped lang="scss">
-.encyclopedia-page { container: encyclopedia / inline-size; min-height: 100%; box-sizing: border-box; padding: var(--ds-page-padding-top) var(--ds-page-padding-x) var(--ds-page-padding-bottom); color: var(--ds-text-primary); }
-.encyclopedia-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
-.encyclopedia-heading { min-width: 0; }
-h1 { margin: 0; color: var(--ds-text-primary); font-size: 23px; font-weight: 700; line-height: 1.4; }
+.encyclopedia-page { container: encyclopedia / inline-size; min-height: 100%; box-sizing: border-box; padding: 14px var(--ds-page-padding-x) var(--ds-page-padding-bottom); color: var(--ds-text-primary); }
+// 顶栏与「量化与蓝图」工作台一致：上内边距 14px、控件高度 28px、标题 19px、栏下间距 10px。
+.encyclopedia-header { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.encyclopedia-heading { min-width: 0; flex: 0 0 auto; }
+h1 { margin: 0; color: var(--ds-text-primary); font-size: 19px; font-weight: 700; line-height: 1.3; }
 .encyclopedia-search { width: 280px; flex: 0 1 280px; }
 .encyclopedia-search :deep(.n-input__placeholder) { color: var(--ds-text-secondary); }
 // 名称开关与筛选控件同组：无描边、无填充，只用悬停与开启状态的浅色底区分。
@@ -127,7 +128,7 @@ h1 { margin: 0; color: var(--ds-text-primary); font-size: 23px; font-weight: 700
 .source-properties dd { margin: 0; overflow-wrap: anywhere; }
 .source-note { margin: 10px 0 0; color: var(--ds-text-secondary); font-size: 12px; line-height: 1.8; }
 @keyframes catalog-arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-@container encyclopedia (max-width: 650px) { .encyclopedia-header { align-items: stretch; flex-direction: column; gap: 12px; margin-bottom: 16px; } .encyclopedia-search { width: 100%; flex-basis: auto; } }
+@container encyclopedia (max-width: 650px) { .encyclopedia-header { align-items: stretch; flex-direction: column; gap: 8px; } .encyclopedia-search { width: 100%; flex-basis: auto; } }
 @container encyclopedia (max-width: 600px) { .group-select { width: 120px; } .section-search { width: 140px; } }
 @media (prefers-reduced-motion: reduce) { .catalog-content.is-first-visit { animation: none; } .guide-row { transition: none; } }
 </style>
