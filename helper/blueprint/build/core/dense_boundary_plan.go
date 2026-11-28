@@ -131,7 +131,7 @@ func (b *builder) compactDenseGroundBoundary(ctx context.Context, plan *denseBou
 			return nil
 		}
 	}
-	index, err := b.newDenseRoutePortIndex(ctx)
+	index, err := b.prepareDenseRoutePortIndex(ctx)
 	if err != nil {
 		return err
 	}

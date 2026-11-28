@@ -639,6 +639,9 @@ function slotDisplayName(slot: string): string {
     <div class="editor-footer">
       <span class="footer-hint">支持在正文任意位置插入资源块；每个已选资源需保留在正文中才会随提交生效。</span>
       <span class="footer-count" :class="{'is-over': bodyCharCount > maxBodyChars}">{{ bodyCharCount }} / {{ maxBodyChars }}</span>
+      <div v-if="$slots.actions" class="footer-actions">
+        <slot name="actions" />
+      </div>
     </div>
 
     <ForumBlueprintModal v-model:show="blueprintModalOpen" :initial="bindings.blueprint" @confirm="handleConfirmInlineBlueprint" />
@@ -1031,6 +1034,7 @@ function slotDisplayName(slot: string): string {
 
 .editor-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -1041,12 +1045,23 @@ function slotDisplayName(slot: string): string {
 }
 
 .footer-count {
+  margin-left: auto;
+  white-space: nowrap;
   font-family: var(--ds-font-mono);
 
   &.is-over {
     color: var(--ds-error);
     font-weight: 600;
   }
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .link-modal-footer {

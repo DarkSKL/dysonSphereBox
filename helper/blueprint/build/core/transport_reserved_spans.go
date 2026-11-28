@@ -32,6 +32,17 @@ func (env *transportEnvironment) reservedSpanClear(first, second vector, source,
 	if len(env.reservedSpans) == 0 || env.densePorts == nil {
 		return true
 	}
+	if slot, shift := env.densePorts.integerEdges.slot(first, second); slot >= 0 && uint64(len(env.reservedSpans)) < uint64(manyReservedOwners) {
+		return env.integerReservedSpanClear(first, second, uint32(slot), integerEdgeDirection(first, second, shift), source, target)
+	}
+	return env.visitReservedIntersections(first, second, func(number int) bool {
+		owner := env.reservedSpans[number].owner
+		return owner == source || owner == target
+	})
+}
+
+// visitReservedIntersections 在真实球面或平面上执行原有带段距离核验；visit 返回 false 时提前结束。
+func (env *transportEnvironment) visitReservedIntersections(first, second vector, visit func(int) bool) bool {
 	shape := beltPackingShape(env.densePorts.world(first), env.densePorts.world(second))
 	env.reservedSpanQuery.begin(len(env.reservedSpans))
 	return packingShapeCells(shape, func(cell [3]int) bool {
@@ -39,15 +50,11 @@ func (env *transportEnvironment) reservedSpanClear(first, second vector, source,
 			if env.reservedSpanQuery.seen(number) {
 				continue
 			}
-			reserved := env.reservedSpans[number]
-			if reserved.owner == source || reserved.owner == target {
-				continue
-			}
-			other := reserved.shape
+			other := env.reservedSpans[number].shape
 			if shape.high[0] < other.low[0] || other.high[0] < shape.low[0] || shape.high[1] < other.low[1] || other.high[1] < shape.low[1] || shape.high[2] < other.low[2] || other.high[2] < shape.low[2] {
 				continue
 			}
-			if surfaceSpanDistanceSquared(shape.span, other.span) < .46*.46-1e-6 {
+			if surfaceSpanDistanceSquared(shape.span, other.span) < .46*.46-1e-6 && !visit(number) {
 				return false
 			}
 		}

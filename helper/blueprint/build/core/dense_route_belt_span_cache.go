@@ -21,11 +21,7 @@ func (index *denseRoutePortIndex) cachedBeltSpanClear(first, second vector, slot
 	if index.beltSpanCache == nil {
 		index.beltSpanCache = new(denseBeltSpanCache)
 	}
-	// 静态槽号小于8Mi个网格节点。低位分别编码三轴、方向和查询结果。
-	key := uint32(slot)*12 + uint32(shift)*2
-	if first.x > second.x || first.y > second.y || first.z > second.z {
-		key += 2
-	}
+	key := (uint32(slot)*6 + integerEdgeDirection(first, second, shift)) << 1
 	bucket := key * 0x9e3779b1 >> (32 - denseBeltSpanCacheBits)
 	token := uint64(revision)<<32 | uint64(key)
 	entry := index.beltSpanCache[bucket]

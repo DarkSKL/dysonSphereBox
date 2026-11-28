@@ -80,35 +80,17 @@ func (b *builder) addStationLeftover(ctx context.Context, use stationLeftoverUse
 
 // stationLeftoverPath 职责：为塔口外侧到原料接入侧建立有界三维路径；使用：塔内微调路径已独立验证后；边界：组外建筑不在当前局部坐标中，禁止误当障碍或创建跨组连接。
 func (b *builder) stationLeftoverPath(ctx context.Context, start, end vector, existing []*placed, future map[vector]bool, approach vector) ([]vector, error) {
-	minimum, maximum := bounds(existing)
-	blocked, err := stationBuildingObstacles(ctx, existing)
+	env, err := newLocalTransportEnvironment(ctx, existing, &end)
 	if err != nil {
 		return nil, err
-	}
-	for _, p := range existing {
-		if surfaceIsBelt(p.record.ItemID) {
-			blocked[beltCell(p.a)] = true
-		}
-		if p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
-			for x := math.Floor(math.Min(p.a.x, p.b.x)); x <= math.Ceil(math.Max(p.a.x, p.b.x)); x++ {
-				for y := math.Floor(math.Min(p.a.y, p.b.y)); y <= math.Ceil(math.Max(p.a.y, p.b.y)); y++ {
-					blocked[vector{x, y, math.Round(p.a.z)}] = true
-				}
-			}
-		}
 	}
 	for point := range future {
 		if point == beltCell(start) || point == beltCell(vector{start.x + approach.x, start.y + approach.y, 0}) {
 			continue
 		}
 		for z := 0.; z <= transportMaxHeight; z++ {
-			blocked[vector{point.x, point.y, z}] = true
+			env.blocked[vector{point.x, point.y, z}] = true
 		}
-	}
-	env := &transportEnvironment{
-		blocked: blocked, reserved: map[vector]map[*placed]bool{}, cache: map[transportPathCacheKey][]vector{},
-		minimum: vector{math.Floor(math.Min(minimum.x, end.x)) - 8, math.Floor(math.Min(minimum.y, end.y)) - 8, 0},
-		maximum: vector{math.Ceil(math.Max(maximum.x, end.x)) + 8, math.Ceil(math.Max(maximum.y, end.y)) + 8, transportMaxHeight},
 	}
 	points, expanded := env.findTransportPath(ctx, start, end, nil, nil, false)
 	if ctx.Err() != nil {

@@ -197,28 +197,13 @@ func (b *builder) flySelfSprayPath(start vector, target *placed, begin int) ([]v
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	entities := b.all[begin:]
-	minimum, maximum := bounds(entities)
-	blocked, err := stationBuildingObstacles(ctx, entities)
+	env, err := newLocalTransportEnvironment(ctx, b.all[begin:], nil)
 	if err != nil {
 		return nil, err
 	}
-	for _, entity := range entities {
-		if surfaceIsBelt(entity.record.ItemID) {
-			blocked[beltCell(entity.a)] = true
-		}
-		if entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
-			for x := math.Floor(math.Min(entity.a.x, entity.b.x)); x <= math.Ceil(math.Max(entity.a.x, entity.b.x)); x++ {
-				for y := math.Floor(math.Min(entity.a.y, entity.b.y)); y <= math.Ceil(math.Max(entity.a.y, entity.b.y)); y++ {
-					blocked[vector{x, y, math.Round(entity.a.z)}] = true
-				}
-			}
-		}
-	}
-	if blocked[beltCell(start)] {
+	if env.blocked[beltCell(start)] {
 		return nil, &blueprint.Error{Code: "GEN_E_ROUTE", Message: "自产增产剂过滤支路起点已占位"}
 	}
-	env := &transportEnvironment{blocked: blocked, reserved: map[vector]map[*placed]bool{}, cache: map[transportPathCacheKey][]vector{}, minimum: vector{math.Floor(minimum.x) - 8, math.Floor(minimum.y) - 8, 0}, maximum: vector{math.Ceil(maximum.x) + 8, math.Ceil(maximum.y) + 8, transportMaxHeight}}
 	points, _ := env.findTransportPath(ctx, start, target.a, nil, target, false)
 	if ctx.Err() != nil {
 		return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "自产增产剂实体回流已取消或超时"}

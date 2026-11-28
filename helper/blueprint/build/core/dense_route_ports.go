@@ -37,7 +37,7 @@ type denseRoutePortIndex struct {
 	polarFrame *densePolarFrame
 	// worldCache 职责：复用固定球面框架下的纯格点投影；使用：串行候选寻路；边界：有界且不缓存动态占位或规则结论。
 	worldCache *denseRouteWorldCache
-	boxes      []packingShape
+	denseRouteStaticIndex
 	// strictBelts 职责：普通布局寻路时禁止与已提交的独立带段相交；使用：共享塔/配送全场候选；边界：超密度保留原带段规则，最终仍统一验收。
 	strictBelts bool
 	// boundary 职责：为左侧输入输出区启用严格带段规则；使用：三层独立接口；边界：厂内密铺不因本字段变成普通碰撞模式。
@@ -47,11 +47,7 @@ type denseRoutePortIndex struct {
 	beltBounds []denseRouteBeltBounds
 	beltCells  map[[3]int][]int
 	beltEdges  map[[2]*placed]bool
-	// origins 职责：保存每个静态盒所属建筑的切平面原点；使用：临界高架顶部的局部球面投影；边界：不修改模型盒尺寸。
-	origins []placement.Vector
-	owners  []*placed
-	cells   map[[3]int][]int
-	nodes   map[[3]int][]*placed
+	nodes      map[[3]int][]*placed
 	// nodeWorld 职责：为既有节点桶保留世界点；使用：登记时预存，外部直接登记首次查询时补齐；边界：不改变桶类型和实体身份豁免。
 	nodeWorld map[*placed]denseRouteNodeWorld
 	previous  map[*placed][]*placed
@@ -67,37 +63,89 @@ type denseRoutePortIndex struct {
 
 // newDenseRoutePortIndex 职责：沿用全场真实轮廓的静态模型建立接驳索引；使用：密铺寻路开始；边界：不把分拣器粗矩形加回密铺障碍。
 func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIndex, error) {
+	return b.buildDenseRoutePortIndex(ctx, false)
+}
+
+// prepareDenseRoutePortIndex 职责：准备边界接驳并交接已构建的固定占位；使用：同一次主路布线前的边界预检；边界：无准备作用域时只构建当前视图。
+func (b *builder) prepareDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIndex, error) {
+	return b.buildDenseRoutePortIndex(ctx, true)
+}
+
+// buildDenseRoutePortIndex 职责：组装固定盒与当前带节点；使用：边界准备和主路由；边界：准备产物只交接一次，动态状态始终独占。
+func (b *builder) buildDenseRoutePortIndex(ctx context.Context, prepare bool) (*denseRoutePortIndex, error) {
 	catalog, err := placement.LoadCatalog()
 	if err != nil {
 		return nil, err
 	}
-	index := &denseRoutePortIndex{strictBelts: b.policy != nil && b.policy.density == densityStandard, cells: map[[3]int][]int{}, nodes: map[[3]int][]*placed{}, previous: map[*placed][]*placed{}, edges: map[[2]vector]bool{}, registered: map[*placed]bool{}, beltCells: map[[3]int][]int{}, beltEdges: map[[2]*placed]bool{}}
+	index := &denseRoutePortIndex{strictBelts: b.policy != nil && b.policy.density == densityStandard, nodes: map[[3]int][]*placed{}, previous: map[*placed][]*placed{}, edges: map[[2]vector]bool{}, registered: map[*placed]bool{}, beltCells: map[[3]int][]int{}, beltEdges: map[[2]*placed]bool{}}
 	if len(b.all) > 0 {
 		index.footprintLow, index.footprintHigh = bounds(b.all)
 		index.footprintReady = true
 	}
-	encoding := newPlanarRuleEncoding()
 	if b.polarFrame != nil {
 		frame := *b.polarFrame
 		index.polarFrame = &frame
-		encoding = &surfaceEncoding{}
 	}
-	for _, entity := range b.all {
-		if err := ctx.Err(); err != nil {
+	roof := b.policy != nil && b.policy.density == densityDense
+	preparation, _ := ctx.Value(denseRouteStaticPreparationKey{}).(*denseRouteStaticPreparation)
+	var signatures *[]denseRouteStaticEntity
+	if preparation != nil && preparation.owner == b {
+		if prepare {
+			signatures = new([]denseRouteStaticEntity)
+		} else if prepared := preparation.geometry; prepared != nil {
+			preparation.geometry = nil
+			matches, err := prepared.matches(ctx, b.all, index.polarFrame, roof)
+			if err != nil {
+				return nil, err
+			}
+			if matches {
+				index.denseRouteStaticIndex = prepared.index
+			}
+		}
+	}
+	if index.cells == nil {
+		if err := index.buildStatic(ctx, catalog, b.all, roof, signatures); err != nil {
 			return nil, err
 		}
-		if surfaceIsBelt(entity.record.ItemID) || entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
+	}
+	for _, p := range b.all {
+		index.addNode(p)
+		if surfaceIsBelt(p.record.ItemID) && p.output != nil && surfaceIsBelt(p.output.record.ItemID) {
+			index.previous[p.output] = append(index.previous[p.output], p)
+		}
+	}
+	if signatures != nil && ctx.Err() == nil {
+		preparation.geometry = &denseRouteStaticGeometry{index: index.denseRouteStaticIndex, entities: *signatures, frame: index.polarFrame, roofs: roof}
+	}
+	return index, nil
+}
+
+// buildStatic 职责：建立精确静态盒及对应桶；使用：几何准备或失效后的重建；边界：每个建筑仍按原版模型、姿态及取消顺序核对。
+func (index *denseRoutePortIndex) buildStatic(ctx context.Context, catalog *placement.Catalog, entities []*placed, roofs bool, signatures *[]denseRouteStaticEntity) error {
+	index.cells = map[[3]int][]int{}
+	encoding := newPlanarRuleEncoding()
+	if index.polarFrame != nil {
+		encoding = &surfaceEncoding{}
+	}
+	for _, entity := range entities {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !denseRouteStaticObstacle(entity) {
 			continue
+		}
+		if signatures != nil {
+			*signatures = append(*signatures, denseRouteStaticSignature(entity))
 		}
 		shapes, err := splitterClearanceShapes(catalog, entity.record.ItemID, entity.record.ModelIndex)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		normalShapes := len(shapes)
-		if b.policy != nil && b.policy.density == densityDense && expandableStorage(entity.record.ItemID) {
+		if roofs && expandableStorage(entity.record.ItemID) {
 			roof, roofErr := storageRoofCollider(catalog, entity.record.ItemID, entity.record.ModelIndex)
 			if roofErr != nil {
-				return nil, roofErr
+				return roofErr
 			}
 			shapes = append(append([]placement.Collider{}, shapes...), roof)
 		}
@@ -108,7 +156,7 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 		for shapeIndex, collider := range shapes {
 			box, err := encoding.colliderBox(vector{origin[0], origin[1], origin[2]}, entity.record.Yaw, collider)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			shape := boxPackingShape("static", box)
 			if shapeIndex >= normalShapes {
@@ -124,13 +172,7 @@ func (b *builder) newDenseRoutePortIndex(ctx context.Context) (*denseRoutePortIn
 			})
 		}
 	}
-	for _, p := range b.all {
-		index.addNode(p)
-		if surfaceIsBelt(p.record.ItemID) && p.output != nil && surfaceIsBelt(p.output.record.ItemID) {
-			index.previous[p.output] = append(index.previous[p.output], p)
-		}
-	}
-	return index, nil
+	return nil
 }
 
 // denseRouteWorld 职责：使用最终平面规则的带中心高度换算米制坐标；使用：接驳距离与碰撞；边界：球面终检仍在编码后独立执行。

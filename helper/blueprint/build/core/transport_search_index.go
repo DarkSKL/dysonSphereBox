@@ -5,6 +5,9 @@ package build
 
 import "math"
 
+// unavailableTransportPoint 标记本次搜索中对任一入边均不可用的格点，不进入堆，边段净空失败不会写入此标记。
+var unavailableTransportPoint transportPathNode
+
 // transportSearchIndex 职责：保存当前搜索唯一的节点记录；使用：整数网格避免三浮点键的哈希和比较；边界：分数坐标或越界搜索整体回退，不能截断坐标合并节点。
 type transportSearchIndex struct {
 	integer map[uint64]*transportPathNode
@@ -39,32 +42,31 @@ func transportSearchKey(point vector) uint64 {
 	return uint64(int64(point.x)+(1<<20))<<27 | uint64(int64(point.y)+(1<<20))<<6 | uint64(int64(point.z)+1)
 }
 
-// get 职责：读取已访问状态；使用：邻格关闭剪枝与松弛；边界：不存在返回 nil，不改变状态。
-func (index *transportSearchIndex) get(point vector) *transportPathNode {
+// lookup 查询节点及其全局页槽号，同一次探测的写入复用此槽号。通用映射和页外位置返回 -1。
+func (index *transportSearchIndex) lookup(point vector) (*transportPathNode, int) {
 	if index.pages != nil {
 		x, y, z := int(point.x)-index.minX, int(point.y)-index.minY, int(point.z)
 		if x < 0 || x >= index.width || y < 0 || y >= index.height || z < 0 || z > transportMaxHeight {
-			return nil
+			return nil, -1
 		}
 		slot := (z*index.height+y)*index.width + x
 		if index.pageGeneration[slot>>8] != index.generation {
-			return nil
+			return nil, slot
 		}
 		if page := index.pages[slot>>8]; page != nil {
-			return page[slot&255]
+			return page[slot&255], slot
 		}
-		return nil
+		return nil, slot
 	}
 	if index.integer != nil {
-		return index.integer[transportSearchKey(point)]
+		return index.integer[transportSearchKey(point)], -1
 	}
-	return index.general[point]
+	return index.general[point], -1
 }
 
-// set 职责：登记新发现的合法节点；使用：加入开放队列之前；边界：由调用方先核对边界和真实几何。
-func (index *transportSearchIndex) set(point vector, node *transportPathNode) {
+// store 登记本轮节点或格点拒绝标记。页模式的调用方传入同一坐标的有效 lookup 槽号。
+func (index *transportSearchIndex) store(point vector, slot int, node *transportPathNode) {
 	if index.pages != nil {
-		slot := (int(point.z)*index.height+int(point.y)-index.minY)*index.width + int(point.x) - index.minX
 		page := index.pages[slot>>8]
 		if page == nil {
 			page = new([256]*transportPathNode)

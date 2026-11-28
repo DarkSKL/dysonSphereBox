@@ -25,10 +25,18 @@ const checking = ref(false)
 const error = ref('')
 const sessionID = ref('')
 const visibleReady = ref(false)
-const history = ref<NoticeHistoryEntry[]>([])
-const historyPage = ref(1)
-const historyPageSize = ref(20)
-const historyTotal = ref(0)
+// 历史列表仅保留摘要和来源页，详情正文从 Go 已校验的页中读取。
+export type HistoryRow = Pick<NoticeHistoryEntry, 'id' | 'revision' | 'kind' | 'title' | 'publishedAt' | 'read' | 'readAt'> & {
+  page: number
+  pageSize: number
+}
+const history = ref<HistoryRow[]>([])
+const historyHasMore = ref(false)
+const historyMoreError = ref('')
+const historyBatchSize = 10
+let historyOffset = 0
+let boundPage = 0
+let boundPageSize = 0
 const historyLoading = ref(false)
 const historyError = ref('')
 const historyDetail = ref<NoticeHistoryEntry | null>(null)
@@ -135,49 +143,80 @@ export function useAnnouncements() {
     checking.value = false
     pending.value = false
     history.value = []
-    historyPage.value = 1
-    historyPageSize.value = 20
-    historyTotal.value = 0
+    historyOffset = 0
+    boundPage = 0
+    historyMoreError.value = ''
+    historyHasMore.value = false
     historyLoading.value = false
     historyError.value = ''
     closeHistoryDetail()
   }
-  // 每次查询先撤销旧页选择权，错误时保留分页位置供重试，并允许减少每页数量。
-  const loadHistory = async (page = 1, pageSize = historyPageSize.value): Promise<void> => {
-    if (historyLoading.value || pending.value || historyDetailPending.value) return
-    if (page < 1 || ![1, 5, 10, 20].includes(pageSize)) return
-    const sequence = ++historySequence
+  // Go 只绑定最近一次成功查询的页，失败查询也会撤销旧绑定。
+  const queryHistoryPage = async (page: number, pageSize: number, sequence: number) => {
+    boundPage = 0
+    const startedAt = performance.now()
+    const result = await fetchAnnouncementHistory(sessionID.value, page, pageSize)
+    if (sequence !== historySequence) throw new Error('公告查询已更新')
+    const serverTime = Date.parse(result.serverTime)
+    if (!Number.isFinite(serverTime)) throw new Error('公告服务器时间无效')
+    historyServerTime = serverTime
+    historyRequestStartedAt = startedAt
+    boundPage = result.page
+    boundPageSize = result.pageSize
+    return result
+  }
+
+  // 续载保留现有摘要；刷新重新校验已展示范围，成功后统一替换。
+  const loadHistory = async (append = false): Promise<void> => {
     const scope = currentScope()
+    if (!scope || historyLoading.value || pending.value || historyDetailOpen.value || (append && !historyHasMore.value)) return
+    const sequence = ++historySequence
     historyLoading.value = true
-    historyPage.value = page
-    historyPageSize.value = pageSize
     historyError.value = ''
-    history.value = []
-    closeHistoryDetail()
+    historyMoreError.value = ''
     try {
       if (!sessionID.value) {
         const session = await captureAnnouncementSession()
         if (sequence !== historySequence || scope !== currentScope()) return
         sessionID.value = session
       }
-      const requestStartedAt = performance.now()
-      const result = await fetchAnnouncementHistory(sessionID.value, page, pageSize)
-      if (sequence !== historySequence || scope !== currentScope()) return
-      historyServerTime = Date.parse(result.serverTime)
-      if (!Number.isFinite(historyServerTime)) throw new Error('公告服务器时间无效')
-      historyRequestStartedAt = requestStartedAt
-      history.value = result.list ?? []
-      historyPage.value = result.page
-      historyPageSize.value = result.pageSize
-      historyTotal.value = result.total
+      const rows = new Map<string, HistoryRow>()
+      if (append) {
+        for (const row of history.value) rows.set(`${row.id}:${row.revision}`, row)
+      }
+      let offset = append ? historyOffset : 0
+      let more: boolean
+      do {
+        // 长正文可能触及单次响应上限，缩至单条后继续同一偏移。
+        const size = offset % historyBatchSize === 0 ? historyBatchSize : 1
+        let result
+        try {
+          result = await queryHistoryPage(offset / size + 1, size, sequence)
+        } catch (cause) {
+          if (size === 1 || !String(cause).includes('超过4MiB') || sequence !== historySequence || scope !== currentScope()) throw cause
+          result = await queryHistoryPage(offset + 1, 1, sequence)
+        }
+        if (sequence !== historySequence || scope !== currentScope()) return
+        for (const {id, revision, kind, title, publishedAt, read, readAt} of result.list) {
+          rows.set(`${id}:${revision}`, {id, revision, kind, title, publishedAt, read, readAt, page: result.page, pageSize: result.pageSize})
+        }
+        offset = result.page * result.pageSize
+        more = result.list.length > 0 && offset < result.total
+      } while (!append && more && offset < historyOffset)
+      history.value = [...rows.values()]
+      historyOffset = offset
+      historyHasMore.value = more
     } catch (cause) {
-      if (sequence === historySequence && scope === currentScope()) historyError.value = cause instanceof Error ? cause.message : String(cause)
+      if (sequence === historySequence && scope === currentScope()) {
+        const target = append ? historyMoreError : historyError
+        target.value = cause instanceof Error ? cause.message : String(cause)
+      }
     } finally {
       if (sequence === historySequence && scope === currentScope()) historyLoading.value = false
     }
   }
-  // 详情必须取自Go保存的当前页，避免任意ID或已失效分页建立确认权限。
-  const openHistoryDetail = async (entry: NoticeHistoryEntry): Promise<void> => {
+  // 从较早批次打开时先重读来源页，再让 Go 校验选中的 ID 和版本。
+  const openHistoryDetail = async (entry: HistoryRow): Promise<void> => {
     if (!sessionID.value || historyLoading.value || historyDetailPending.value) return
     const sequence = historySequence
     const detailSequence = ++historyDetailSequence
@@ -190,6 +229,10 @@ export function useAnnouncements() {
     historyDetailError.value = ''
     historyDetailPending.value = false
     try {
+      if (boundPage !== entry.page || boundPageSize !== entry.pageSize) {
+        await queryHistoryPage(entry.page, entry.pageSize, sequence)
+        if (sequence !== historySequence || detailSequence !== historyDetailSequence || scope !== currentScope()) return
+      }
       const detail = await fetchAnnouncementHistoryItem(sessionID.value, entry.id, entry.revision)
       if (sequence !== historySequence || detailSequence !== historyDetailSequence || scope !== currentScope()) return
       historyDetail.value = detail
@@ -296,5 +339,5 @@ export function useAnnouncements() {
     if (event instanceof MouseEvent && event.button > 1) return
     event.preventDefault(); event.stopPropagation(); void BrowserOpenURL(href)
   }
-  return {item, title, html, open, ready, pending, checking, error, hasUnread, check, acknowledge, close, openLink, markVisible, verifyVisible, resetSession, history, historyPage, historyPageSize, historyTotal, historyLoading, historyError, historyDetail, historyDetailOpen, historyDetailLoading, historyDetailHtml, historyDetailReady, historyDetailPending, historyDetailError, loadHistory, openHistoryDetail, closeHistoryDetail, acknowledgeHistory, verifyHistoryVisible, isHistoryExpired}
+  return {item, title, html, open, ready, pending, checking, error, hasUnread, check, acknowledge, close, openLink, markVisible, verifyVisible, resetSession, history, historyHasMore, historyMoreError, historyLoading, historyError, historyDetail, historyDetailOpen, historyDetailLoading, historyDetailHtml, historyDetailReady, historyDetailPending, historyDetailError, loadHistory, openHistoryDetail, closeHistoryDetail, acknowledgeHistory, verifyHistoryVisible, isHistoryExpired}
 }

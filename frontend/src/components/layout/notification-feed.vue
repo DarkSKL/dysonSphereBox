@@ -1,25 +1,31 @@
 <script setup lang="ts">
-import {ChevronLeft, ChevronRight, CircleAlert, Inbox, RotateCw} from '@lucide/vue'
+import {CircleAlert, Inbox, RotateCw} from '@lucide/vue'
 import {ref, watch} from 'vue'
 
-const props = defineProps<{
+defineProps<{
   readonly loading: boolean
   readonly error: string
   readonly empty: boolean
   readonly emptyLabel: string
-  readonly page: number
-  readonly pageCount: number
-  readonly total: number
+  readonly hasMore: boolean
+  readonly moreError: string
 }>()
 const emit = defineEmits<{
   (event: 'retry'): void
-  (event: 'page', page: number): void
+  (event: 'more'): void
 }>()
 
 // =============== 列表滚动 ===============
-// 说明：翻页时从新一页的首条消息开始浏览；后台刷新同一页时保留阅读位置。
-const listViewport = ref<HTMLDivElement | null>(null)
-watch(() => props.page, () => listViewport.value?.scrollTo(0, 0))
+// 底部标记在可见时触发续载，每批完成后重新观察以填满较高的窗口。
+const listEnd = ref<HTMLElement | null>(null)
+watch(listEnd, (element, _, onCleanup) => {
+  if (!element) return
+  const observer = new IntersectionObserver(([entry]) => {
+    if (entry.isIntersecting && listEnd.value === element) emit('more')
+  })
+  observer.observe(element)
+  onCleanup(() => observer.disconnect())
+}, {flush: 'post'})
 </script>
 
 <template>
@@ -28,9 +34,9 @@ watch(() => props.page, () => listViewport.value?.scrollTo(0, 0))
     <!-- * 说明：站内信和公告共用列表密度与状态反馈 -->
     <!-- * 交互：滚动列表，加载失败时可重试 -->
     <!-- * 依赖：上层列表数据和查询状态 -->
-    <!-- * 边界：首次加载或换页时展示骨架；同页刷新保留现有条目 -->
+    <!-- * 边界：首次加载展示骨架；追加失败后保留条目，允许原地重试 -->
     <span v-if="loading && empty" class="sr-only" role="status">正在加载消息…</span>
-    <div ref="listViewport" class="notification-feed-viewport" :aria-busy="loading">
+    <div class="notification-feed-viewport" :aria-busy="loading">
       <div v-if="loading && empty" class="notification-feed-skeleton" aria-hidden="true">
         <div v-for="row in 5" :key="row" class="notification-feed-skeleton-row">
           <span />
@@ -52,27 +58,13 @@ watch(() => props.page, () => listViewport.value?.scrollTo(0, 0))
       <ul v-else class="notification-feed-list">
         <slot />
       </ul>
-    </div>
-
-    <!-- ~ 列表分页操作 -->
-    <!-- * 说明：汇总当前类别的消息数量，可放入每页数量选择 -->
-    <!-- * 交互：通过上一页与下一页请求对应页 -->
-    <!-- * 依赖：上层传入的分页范围与加载状态 -->
-    <!-- * 边界：空列表仍可保留公告的每页数量选择 -->
-    <slot name="feedback" />
-    <footer v-if="total || $slots.controls" class="notification-feed-footer">
-      <slot name="controls" />
-      <span v-if="total">共 {{ total }} 条</span>
-      <div v-if="total" class="notification-feed-pager">
-        <button type="button" title="上一页" aria-label="上一页" :disabled="page <= 1 || loading" @click="emit('page', page - 1)">
-          <ChevronLeft :size="16" aria-hidden="true" />
-        </button>
-        <span class="notification-feed-page" aria-live="polite" :aria-label="`第 ${page} 页，共 ${pageCount} 页`">{{ page }} / {{ pageCount }}</span>
-        <button type="button" title="下一页" aria-label="下一页" :disabled="page >= pageCount || loading" @click="emit('page', page + 1)">
-          <ChevronRight :size="16" aria-hidden="true" />
-        </button>
+      <div v-if="moreError" class="notification-feed-load-status" role="alert">
+        {{ moreError }}
+        <n-button size="small" @click="emit('more')">重试</n-button>
       </div>
-    </footer>
+      <p v-else-if="loading && !empty" class="notification-feed-load-status" role="status">正在加载消息…</p>
+      <div v-else-if="hasMore && !error && !loading" ref="listEnd" class="notification-feed-list-end" aria-hidden="true" />
+    </div>
   </section>
 </template>
 
@@ -141,8 +133,7 @@ watch(() => props.page, () => listViewport.value?.scrollTo(0, 0))
   background: var(--ds-active-bg);
 }
 
-.notification-feed :deep(.notification-row:focus-visible),
-.notification-feed-pager button:focus-visible {
+.notification-feed :deep(.notification-row:focus-visible) {
   outline: 2px solid var(--ds-brand);
   outline-offset: -2px;
 }
@@ -260,51 +251,16 @@ watch(() => props.page, () => listViewport.value?.scrollTo(0, 0))
   background: var(--ds-hover-bg);
 }
 
-.notification-feed-footer {
-  display: flex;
-  min-height: 52px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px 8px 20px;
-  border-top: 1px solid var(--ds-border-subtle);
+.notification-feed-list-end {
+  height: 1px;
+}
+
+.notification-feed-load-status {
+  margin: 0;
+  padding: 8px 20px;
   color: var(--ds-text-secondary);
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.notification-feed-pager {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-.notification-feed-page {
-  min-width: 44px;
   text-align: center;
 }
 
-.notification-feed-pager button {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.notification-feed-pager button:hover:not(:disabled) {
-  background: var(--ds-hover-bg);
-  color: var(--ds-brand);
-}
-
-.notification-feed-pager button:disabled {
-  color: var(--ds-text-disabled);
-  cursor: default;
-}
 </style>

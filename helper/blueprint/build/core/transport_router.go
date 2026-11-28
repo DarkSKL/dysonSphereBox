@@ -94,6 +94,8 @@ type transportEnvironment struct {
 	reservedSpans     []transportReservedSpan
 	reservedSpanCells map[[3]int][]int
 	reservedSpanQuery collisionQueryMarks
+	// reservedEdgeCache 按预留通道的版本共享有向整数边的几何交集，访问权限由每次查询独立判断。
+	reservedEdgeCache *transportReservedEdgeCache
 	// searchQueue 职责：复用本环境串行搜索的堆容量；使用：每轮先清空长度；边界：只保存同一节点工作区的指针，不跨候选共享。
 	searchQueue transportPathQueue
 	// searchArena/searchIndex 职责：复用本候选串行搜索的节点内存；使用：每路开启新代次；边界：不跨环境或并发共享，返回路径只含坐标值。
@@ -131,6 +133,9 @@ func (b *builder) routeTransport(ctx context.Context) error {
 	positions := transportInputPositions(b.transportRoutes, minimum, maximum, b.busFabric == nil && !b.connectedLegacyInputs)
 	if b.denseSpatial && !b.connectedLegacyInputs {
 		positions = b.denseInputPositions(minimum, maximum)
+	}
+	if len(positions) > 0 && len(b.all) > 0 && b.policy != nil && b.policy.mode == 1 {
+		ctx = context.WithValue(ctx, denseRouteStaticPreparationKey{}, &denseRouteStaticPreparation{owner: b})
 	}
 	var err error
 	positions, err = b.fitDenseInputHeight(ctx, positions, minimum, maximum)
@@ -212,7 +217,7 @@ func (b *builder) routeTransportRoutes(ctx context.Context, inputPositions []vec
 	} else if b.denseSpatial {
 		buildingBlocked, err = denseTransportObstacles(ctx, b.all)
 	} else {
-		buildingBlocked, err = stationBuildingObstacles(ctx, b.all)
+		buildingBlocked, err = stationBuildingObstacles(ctx, b.all, false)
 	}
 	if err != nil {
 		return err
@@ -254,11 +259,7 @@ func (b *builder) routeTransportRoutes(ctx context.Context, inputPositions []vec
 		}
 		if !preciseRouting && p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
 			// 分拣器胶囊通道也进入离散占位，最终仍由版本化 slotPose 精确预检决定。
-			for x := math.Floor(math.Min(p.a.x, p.b.x)); x <= math.Ceil(math.Max(p.a.x, p.b.x)); x++ {
-				for y := math.Floor(math.Min(p.a.y, p.b.y)); y <= math.Ceil(math.Max(p.a.y, p.b.y)); y++ {
-					env.blocked[vector{x, y, math.Round(p.a.z)}] = true
-				}
-			}
+			blockTransportInserter(env.blocked, p)
 		}
 	}
 	// 为所有未来入口预留落地柱，防止先路由的高架封死尚未接线的端口。
@@ -511,19 +512,21 @@ func (b *builder) routeTransportRoutes(ctx context.Context, inputPositions []vec
 				env.densePorts.addNode(point)
 			}
 		}
-		env.version++
+		env.advanceRouteOccupancy()
 		b.previewRouteAppend(previewBase, source)
 		completed++
 		reportProgress(ctx, "routing", "正在自动连接内部物料与外部入口", completed, total)
 	}
 	reportProgress(ctx, "routing-finalize", "正在核验全图接线并绑定共享物流链", 0, 0)
+	shortened := b.shortenStrictTransportRoutes(ctx, env, routes, incomingCounts)
 	if len(cornerCutChains) > 0 {
-		if b.cutDenseRouteCorners(ctx, env, routes, cornerCutChains, incomingCounts) > 0 {
-			b.previewCheckpoint("routing")
-		}
-		if ctx.Err() != nil {
-			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
-		}
+		shortened += b.cutDenseRouteCorners(ctx, env, routes, cornerCutChains, incomingCounts)
+	}
+	if ctx.Err() != nil {
+		return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
+	}
+	if shortened > 0 {
+		b.previewCheckpoint("routing")
 	}
 	inserterStatus := "passed"
 	inserterMessage := "机器单臂及逐物品过滤分支按实际跨度和已验证保守吞吐检查，不把带容量当作分拣器容量"
@@ -555,6 +558,12 @@ func (b *builder) routeTransportRoutes(ctx context.Context, inputPositions []vec
 		return err
 	}
 	return b.commitMode1Deliveries()
+}
+
+// advanceRouteOccupancy 在新带路登记完毕后切换占位版本。旧版本路径无法再次命中，在此释放。
+func (env *transportEnvironment) advanceRouteOccupancy() {
+	env.version++
+	clear(env.cache)
 }
 
 // reservedByOther 职责：在路径终点筛选前排除未来端口的垂直净空；使用：同物品 lane 寻路；边界：仅放行当前 route 自己拥有的端点柱。
@@ -647,7 +656,9 @@ func (env *transportEnvironment) findTransportPathWithinBounds(ctx context.Conte
 			for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
 				path[i], path[j] = path[j], path[i]
 			}
-			env.cache[key] = append([]vector{}, path...)
+			if env.cache != nil {
+				env.cache[key] = append([]vector{}, path...)
+			}
 			return path, steps
 		}
 		for _, delta := range []vector{{-1, 0, 0}, {0, 1, 0}, {1, 0, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {

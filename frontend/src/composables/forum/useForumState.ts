@@ -24,6 +24,7 @@ import {
 import type {
   ForumCategory,
   ForumDraftBindings,
+  ForumPage,
   ForumPostDetail,
   ForumPostSummary,
   ForumReply,
@@ -38,6 +39,13 @@ import {formatErrorMessage} from '../../utils/format'
 // 边界：所有网络请求绑定当前已验证账号会话；账号切换或注销时自动清理远端视图，不把旧账号草稿提交给新账号。
 
 export type ForumViewMode = 'list' | 'detail' | 'compose'
+
+// 每个分类保留最近浏览的几页供切换时立即显示，数据新鲜度仍由 Go 请求层判断。
+const retainedPagesPerCategory = 5
+interface CategoryPostPages {
+  lastPage: number
+  pages: Map<number, ForumPage<ForumPostSummary>>
+}
 
 function createEmptyBindings(): ForumDraftBindings {
   return {
@@ -113,7 +121,8 @@ export function useForumState() {
   const posts = ref<ForumPostSummary[]>([])
   const postsTotal = ref(0)
   const postsPage = ref(1)
-  const postsPageSize = ref(20)
+  const postsPageSize = 20
+  const categoryPostPages = new Map<number, CategoryPostPages>()
   const postsLoading = ref(false)
   const postsError = ref('')
 
@@ -176,8 +185,11 @@ export function useForumState() {
       const list = await fetchForumCategories(force)
       if (!current()) return
       categories.value = list
+      for (const id of categoryPostPages.keys()) {
+        if (id !== 0 && !list.some((item) => item.id === id)) categoryPostPages.delete(id)
+      }
       if (selectedCategoryId.value > 0 && !list.some((item) => item.id === selectedCategoryId.value)) {
-        selectedCategoryId.value = 0
+        selectCategory(0)
       }
       if (postDraft.categoryId === null && enabledCategories.value.length > 0) {
         postDraft.categoryId = enabledCategories.value[0].id
@@ -191,24 +203,48 @@ export function useForumState() {
 
   async function loadPosts(page = postsPage.value, force = false): Promise<void> {
     if (!isAuthenticated.value) return
+    const categoryId = selectedCategoryId.value
+    let category = categoryPostPages.get(categoryId)
+    if (!category) {
+      category = {lastPage: page, pages: new Map()}
+      categoryPostPages.set(categoryId, category)
+    }
+    category.lastPage = page
+    const snapshot = category.pages.get(page)
+    postsPage.value = page
+    posts.value = snapshot?.list ?? []
+    postsTotal.value = snapshot?.total ?? 0
+    postsLoading.value = force || !snapshot
+    postsError.value = ''
+
+    // 命中时先恢复当前分页（包括空列表），后台读取只更新仍在浏览的列表。
     const sessionKey = accountSessionKey.value
     const sequence = ++postsSequence
     const current = () => sessionKey === accountSessionKey.value && sequence === postsSequence
-    postsLoading.value = true
-    postsError.value = ''
     try {
-      const result = await fetchForumPosts({
-        categoryId: selectedCategoryId.value,
-        page,
-        pageSize: postsPageSize.value,
-        force,
-      })
+      const result = await fetchForumPosts({categoryId, page, pageSize: postsPageSize, force})
       if (!current()) return
+      const lastPage = Math.max(1, Math.ceil(result.total / postsPageSize))
+      if (page > lastPage) {
+        category.pages.delete(page)
+        await loadPosts(lastPage, force)
+        return
+      }
+      const resultPage = result.page || page
+      category.lastPage = resultPage
+      category.pages.delete(resultPage)
+      category.pages.set(resultPage, result)
+      if (category.pages.size > retainedPagesPerCategory) {
+        category.pages.delete(category.pages.keys().next().value)
+      }
       posts.value = result.list ?? []
       postsTotal.value = result.total ?? 0
-      postsPage.value = result.page || page
+      postsPage.value = resultPage
     } catch (error) {
-      if (current()) postsError.value = formatErrorMessage(error)
+      if (current()) {
+        category.pages.delete(page)
+        postsError.value = formatErrorMessage(error)
+      }
     } finally {
       if (current()) postsLoading.value = false
     }
@@ -221,12 +257,10 @@ export function useForumState() {
   function selectCategory(categoryId: number): void {
     if (selectedCategoryId.value === categoryId) return
     selectedCategoryId.value = categoryId
-    postsPage.value = 1
-    void loadPosts(1)
+    void loadPosts(categoryPostPages.get(categoryId)?.lastPage ?? 1)
   }
 
   function changePostsPage(page: number): void {
-    postsPage.value = page
     void loadPosts(page)
   }
 
@@ -419,9 +453,10 @@ export function useForumState() {
         media.push({slot: 'video', path: postDraft.bindings.video.path})
       }
 
+      const categoryId = postDraft.categoryId
       const result = await publishForumPost({
         requestId: postDraft.requestId,
-        categoryId: postDraft.categoryId,
+        categoryId,
         title,
         body: postDraft.body,
         bodyFormat: 'markdown',
@@ -458,9 +493,12 @@ export function useForumState() {
       })
 
       message.success('帖子发布成功')
+      if (result.id > 0) {
+        categoryPostPages.get(0)?.pages.clear()
+        categoryPostPages.get(categoryId)?.pages.clear()
+      }
       resetPostDraft()
       selectedCategoryId.value = 0
-      postsPage.value = 1
       await loadPosts(1)
       if (result.id > 0) {
         await openPostDetail(result.id)
@@ -514,7 +552,7 @@ export function useForumState() {
         .filter(([, file]) => Boolean(file?.path))
         .map(([slot, file]) => ({slot, path: file.path}))
 
-      await publishForumReply({
+      const reply = await publishForumReply({
         postId,
         requestId: replyDraft.requestId,
         body: replyDraft.body,
@@ -523,6 +561,13 @@ export function useForumState() {
       })
 
       message.success('回复已发送')
+      if (reply.id > 0) {
+        // 公开回复会改变列表回复数，丢弃写入前的读取结果，保留各分类所在页码。
+        postsSequence++
+        postsLoading.value = false
+        for (const category of categoryPostPages.values()) category.pages.clear()
+        if (viewMode.value === 'list') void loadPosts()
+      }
       resetReplyDraft()
       await Promise.all([loadPostDetail(postId), loadReplies(postId, repliesPage.value)])
     } catch (error) {
@@ -675,6 +720,8 @@ export function useForumState() {
 
   watch(accountSessionKey, (nextKey, prevKey) => {
     if (nextKey === prevKey) return
+    categoryPostPages.clear()
+    postsSequence++
     categories.value = []
     categoriesLoading.value = false
     posts.value = []

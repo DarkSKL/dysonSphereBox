@@ -4,7 +4,7 @@ import {Bell, Gift, Megaphone, RotateCw, X} from '@lucide/vue'
 import {useAnnouncements} from '../../composables/useAnnouncements'
 import {useNotifications} from '../../composables/useNotifications'
 import {accountSessionKey} from '../../pages/services/account'
-import type {NoticeHistoryEntry} from '../../pages/services/announcement'
+import type {HistoryRow} from '../../composables/useAnnouncements'
 import {formatDate} from '../../utils/format'
 import ForumReviewNotice from './forum-review-notice.vue'
 import NotificationFeed from './notification-feed.vue'
@@ -20,7 +20,6 @@ type NotificationTab = 'inbox' | 'announcement'
 // 说明：侧栏管理入口、分类和可见性；列表查询和确认查阅使用应用级状态。
 const show = ref(false)
 const tab = ref<NotificationTab>('inbox')
-const pageSizeMenuOpen = ref(false)
 const reviewID = ref('')
 const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
@@ -73,11 +72,10 @@ const dismissFromOutside = (event: Event): void => {
 const dismissFromKeyboard = (event: KeyboardEvent): void => {
   event.preventDefault()
   event.stopPropagation()
-  if (pageSizeMenuOpen.value) pageSizeMenuOpen.value = false
-  else closePanel()
+  closePanel()
 }
 const refreshCurrentTab = (): void => {
-  if (tab.value === 'announcement') void announcements.loadHistory(announcements.historyPage.value)
+  if (tab.value === 'announcement') void announcements.loadHistory()
   else notifications.refresh()
 }
 const openReview = (id: string): void => {
@@ -91,8 +89,6 @@ const closeReview = (): void => {
 
 // =============== 公告列表与查阅 ===============
 // 说明：详情沿用正文可见性和版本校验；刷新与分页重新查询历史公告。
-const pageCount = computed(() => Math.max(1, Math.ceil(announcements.historyTotal.value / announcements.historyPageSize.value)))
-const pageSizeOptions = [20, 10, 5, 1].map((value) => ({label: `${value} 条/页`, value}))
 const detailBody = ref<HTMLElement | null>(null)
 const detailExpired = ref(false)
 const kindLabel = (kind: string): string => kind === 'promotion' ? '推广' : kind === 'announcement' ? '公告' : '通知'
@@ -101,7 +97,7 @@ const formatTime = (value: string | null | undefined): string => {
   const time = new Date(value)
   return Number.isNaN(time.getTime()) ? '时间未知' : time.toLocaleString()
 }
-const openDetail = async (entry: NoticeHistoryEntry): Promise<void> => {
+const openDetail = async (entry: HistoryRow): Promise<void> => {
   closePanel(false)
   await announcements.openHistoryDetail(entry)
   await nextTick()
@@ -124,10 +120,7 @@ const acknowledgeDetail = async (): Promise<void> => {
 // 说明：打开时同步当前类别；账号切换、门禁关闭和卸载时撤销面板交互。
 watch(show, async (opened) => {
   notifications.setPanelOpen(opened)
-  if (!opened) {
-    pageSizeMenuOpen.value = false
-    return
-  }
+  if (!opened) return
   if (tab.value === 'announcement') refreshCurrentTab()
   await nextTick()
   if (show.value) panel.value?.focus({preventScroll: true})
@@ -264,7 +257,7 @@ onBeforeUnmount(() => {
 
         <!-- ~ 历史公告列表 -->
         <!-- * 说明：按条展示发布日期、公告类型和查阅状态 -->
-        <!-- * 交互：点击条目查看详情；可刷新、翻页和调整每页数量 -->
+        <!-- * 交互：点击条目查看详情；滚动至底部自动续载 -->
         <!-- * 依赖：已登录会话与 Go 提供的当前页版本 -->
         <!-- * 边界：打开或翻阅列表不会写回执 -->
         <NotificationFeed
@@ -276,14 +269,13 @@ onBeforeUnmount(() => {
           :error="announcements.historyError.value"
           :empty="!announcements.history.value.length"
           empty-label="暂无历史公告"
-          :page="announcements.historyPage.value"
-          :page-count="pageCount"
-          :total="announcements.historyTotal.value"
+          :has-more="announcements.historyHasMore.value"
+          :more-error="announcements.historyMoreError.value"
+          @more="announcements.loadHistory(true)"
           @retry="refreshCurrentTab"
-          @page="announcements.loadHistory"
         >
           <li v-for="entry in announcements.history.value" :key="`${entry.id}:${entry.revision}`">
-            <button type="button" class="notification-row" :class="{'is-unread': !entry.read}" @click="openDetail(entry)">
+            <button type="button" class="notification-row" :class="{'is-unread': !entry.read}" :disabled="announcements.historyLoading.value" @click="openDetail(entry)">
               <span class="notification-row-icon" aria-hidden="true">
                 <component :is="entry.kind === 'promotion' ? Gift : Megaphone" :size="18" :stroke-width="1.7" />
                 <span v-if="!entry.read" class="notification-row-dot" />
@@ -297,19 +289,6 @@ onBeforeUnmount(() => {
               </span>
             </button>
           </li>
-          <template #controls>
-            <n-select
-              v-model:show="pageSizeMenuOpen"
-              class="announcement-history-page-size"
-              size="small"
-              aria-label="每页公告数量"
-              :value="announcements.historyPageSize.value"
-              :options="pageSizeOptions"
-              :disabled="announcements.historyLoading.value"
-              :to="false"
-              @update:value="(size: number) => announcements.loadHistory(1, size)"
-            />
-          </template>
         </NotificationFeed>
       </section>
     </Transition>
@@ -558,10 +537,6 @@ onBeforeUnmount(() => {
 .notification-tab:focus-visible {
   outline: 2px solid var(--ds-brand);
   outline-offset: -2px;
-}
-
-.announcement-history-page-size {
-  width: 96px;
 }
 
 .announcement-history-detail-meta {

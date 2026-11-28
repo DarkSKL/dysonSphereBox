@@ -17,6 +17,7 @@ import (
 type surfaceAreaOrigin struct{ longitude, latitude float32 }
 
 // surfaceWorldPositionsFor 职责：复现指定端点的建议锚点坐标；使用：第一、第二端点共用映射；边界：未知主网格拒绝，不修改记录或浮点计算顺序。
+// 逻辑流：解析区域父链，按实体首次引用构建区域框架，再按原记录顺序逐点投影。
 func (encoding *surfaceEncoding) surfaceWorldPositionsFor(records []blueprint.Building, secondary bool) ([]vector, error) {
 	if encoding.planar {
 		positions := make([]vector, len(records))
@@ -85,6 +86,12 @@ func (encoding *surfaceEncoding) surfaceWorldPositionsFor(records []blueprint.Bu
 			return nil, err
 		}
 	}
+	// 区域框架只在本次映射内共享。延迟到首次引用时构建，保留空区域及前序实体出错时的行为。
+	var localFrames [4]buildgeometry.SurfaceFrame
+	frames := localFrames[:]
+	if len(origins) > len(frames) {
+		frames = make([]buildgeometry.SurfaceFrame, len(origins))
+	}
 	positions := make([]vector, len(records))
 	for i, record := range records {
 		offset := record.LocalOffset
@@ -95,13 +102,21 @@ func (encoding *surfaceEncoding) surfaceWorldPositionsFor(records []blueprint.Bu
 		if area < 0 || area >= len(origins) {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: "建筑区域索引无效"}
 		}
-		step, err := buildgeometry.PasteLongitudeStep32(buildgeometry.Radians(origins[area].latitude), buildgeometry.Vanilla200)
-		if err != nil {
-			return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: err.Error()}
+		frame := &frames[area]
+		if frame.Grid.ID == "" {
+			origin := origins[area]
+			step, err := buildgeometry.PasteLongitudeStep32(buildgeometry.Radians(origin.latitude), buildgeometry.Vanilla200)
+			if err != nil {
+				return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: err.Error()}
+			}
+			*frame = buildgeometry.SurfaceFrame{
+				Grid:          buildgeometry.Frame{Planet: buildgeometry.Vanilla200, ID: fmt.Sprintf("area/%d", area), Space: buildgeometry.SurfaceGrid},
+				Origin:        buildgeometry.SurfacePosition{Frame: buildgeometry.PlanetWorldFrame(), Longitude: buildgeometry.Radians(origin.longitude), Latitude: buildgeometry.Radians(origin.latitude)},
+				LongitudeStep: step,
+				LatitudeStep:  latitudeRadians,
+			}
 		}
-		gridFrame := buildgeometry.Frame{Planet: buildgeometry.Vanilla200, ID: fmt.Sprintf("area/%d", area), Space: buildgeometry.SurfaceGrid}
-		frame := buildgeometry.SurfaceFrame{Grid: gridFrame, Origin: buildgeometry.SurfacePosition{Frame: buildgeometry.PlanetWorldFrame(), Longitude: buildgeometry.Radians(origins[area].longitude), Latitude: buildgeometry.Radians(origins[area].latitude)}, LongitudeStep: step, LatitudeStep: latitudeRadians}
-		world, err := frame.Project32(buildgeometry.GridPoint{Frame: gridFrame, East: buildgeometry.GridLength(offset.X), North: buildgeometry.GridLength(offset.Y), Height: buildgeometry.HeightLayers(offset.Z)})
+		world, err := frame.Project32(buildgeometry.GridPoint{Frame: frame.Grid, East: buildgeometry.GridLength(offset.X), North: buildgeometry.GridLength(offset.Y), Height: buildgeometry.HeightLayers(offset.Z)})
 		if err != nil {
 			return nil, &blueprint.Error{Code: "GEN_E_SURFACE", Message: err.Error()}
 		}

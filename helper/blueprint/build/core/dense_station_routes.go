@@ -165,7 +165,7 @@ func (b *builder) connectDenseStationField(ctx context.Context, rows []*denseSta
 				env.densePorts.addNode(belt)
 			}
 		}
-		env.version++
+		env.advanceRouteOccupancy()
 	}
 	actualTowers, reserved := make([]*placed, len(towers)), make([][]int, len(towers))
 	for i, tower := range towers {

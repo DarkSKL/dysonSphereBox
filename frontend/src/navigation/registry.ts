@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import {
   IconAdjustmentsHorizontal,
   IconFileText,
+  IconHome,
   IconInfoCircle,
   IconMessage2,
   IconMessages,
@@ -65,6 +66,7 @@ export const workspaceNavigationRegistry: readonly WorkspaceNavigationDefinition
     icon: IconMessages,
     requiresAuth: true,
     navigation: [
+      { key: 'home', label: '首页', to: '/community', icon: IconHome, requiresAuth: true },
       { key: 'multiplayer', label: '联机', to: '/community/multiplayer', icon: IconNetwork, requiresAuth: true },
       { key: 'forum', label: '论坛', to: '/community/forum', icon: IconMessage2, requiresAuth: true },
       { key: 'feedback', label: '反馈星系', to: '/community/feedback', icon: FeedbackNebulaIcon, requiresAuth: true },

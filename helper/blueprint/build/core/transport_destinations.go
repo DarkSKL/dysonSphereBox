@@ -86,6 +86,10 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 	}
 	goals := make([]vector, 0, len(candidates))
 	goalSet := make(map[vector]int, len(candidates))
+	var approachProofs transportGoalProofs
+	if len(candidates) > 1 {
+		approachProofs = make(transportGoalProofs)
+	}
 	for i, candidate := range candidates {
 		if !inside(candidate.point) || candidate.cost < 0 || math.IsNaN(candidate.cost) || math.IsInf(candidate.cost, 0) || candidate.length < 0 || env.blocked[beltCell(candidate.point)] && (candidate.reused == nil || candidate.reused.a != candidate.point) {
 			continue
@@ -93,7 +97,7 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 		old, exists := goalSet[candidate.point]
 		if !exists {
 			// 一个合法入边仍可能只通向封闭死路；仅以同一有向规则证明短链无解时才排除目标。
-			if !env.transportGoalHasApproach(ctx, start, candidate.point, source, target, inside) {
+			if !env.transportGoalHasApproach(ctx, start, candidate.point, source, target, inside, approachProofs) {
 				continue
 			}
 			goals = append(goals, candidate.point)
@@ -174,7 +178,8 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 	defer func() { env.searchQueue = queue.transportPathQueue[:0] }()
 	seen := &env.searchIndex
 	seen.reset(start, env.minimum, env.maximum)
-	seen.set(start, first)
+	_, startSlot := seen.lookup(start)
+	seen.store(start, startSlot, first)
 	serial := 0
 	var best *transportPathNode
 	bestGoal, bestLength, bestCost := -1, math.MaxInt, math.Inf(1)
@@ -202,8 +207,8 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 		for _, delta := range transportNeighborOffsets {
 			point := vector{current.point.x + delta.x, current.point.y + delta.y, current.point.z + delta.z}
 			// 精确分支不会重新打开已关闭节点；先读状态，避免为这些邻格重复查询占位、整段净空和软代价。
-			old := seen.get(point)
-			if old != nil && old.closed && weight == 1 {
+			old, slot := seen.lookup(point)
+			if old == &unavailableTransportPoint || old != nil && old.closed && weight == 1 {
 				continue
 			}
 			distance, length := 0., current.length+1
@@ -214,7 +219,15 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 					continue
 				}
 			}
-			if !allowed(point) || !env.denseTransportStepClear(current.point, point) || !env.reservedSpanClear(current.point, point, source, target) {
+			if old == nil && !allowed(point) {
+				// 端口权限、边界和占位在当前搜索中固定。只在有界整数页记格点拒绝，换前缀或高度即由 reset 切换代次。
+				if slot >= 0 {
+					seen.store(point, slot, &unavailableTransportPoint)
+				}
+				continue
+			}
+			// 已发现节点通过了相同格点判定，从新方向进入的带段仍须独立核对。
+			if !env.denseTransportStepClear(current.point, point) || !env.reservedSpanClear(current.point, point, source, target) {
 				continue
 			}
 			if old != nil {
@@ -232,7 +245,7 @@ func (env *transportEnvironment) findTransportDestinationPathWeighted(ctx contex
 			remainingCost, remainingLength := heuristic(point)
 			serial++
 			node := arena.add(transportPathNode{point: point, parent: current, distance: distance, score: distance + weight*remainingCost, order: serial, length: length, lengthEstimate: length + remainingLength, heuristicCost: remainingCost, heuristicLength: remainingLength})
-			seen.set(point, node)
+			seen.store(point, slot, node)
 			heap.Push(queue, node)
 		}
 	}

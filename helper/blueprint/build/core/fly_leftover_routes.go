@@ -143,27 +143,13 @@ func (b *builder) moveFlyLeftover(ctx context.Context, move flyLeftoverMove) err
 
 // flyLeftoverPath 职责：复用有界三维寻路为独立回收箱建立完整真带；使用：箱体已落位、箱臂未装配时；边界：尾带槽位预留，最终严格碰撞仍为准入条件。
 func (b *builder) flyLeftoverPath(ctx context.Context, link *placed, tail []vector) ([]vector, error) {
-	minimum, maximum := bounds(b.all)
-	blocked, err := stationBuildingObstacles(ctx, b.all)
+	env, err := newLocalTransportEnvironment(ctx, b.all, nil)
 	if err != nil {
 		return nil, err
 	}
-	for _, entity := range b.all {
-		if surfaceIsBelt(entity.record.ItemID) {
-			blocked[beltCell(entity.a)] = true
-		}
-		if entity.record.ItemID >= 2011 && entity.record.ItemID <= 2014 {
-			for x := math.Floor(math.Min(entity.a.x, entity.b.x)); x <= math.Ceil(math.Max(entity.a.x, entity.b.x)); x++ {
-				for y := math.Floor(math.Min(entity.a.y, entity.b.y)); y <= math.Ceil(math.Max(entity.a.y, entity.b.y)); y++ {
-					blocked[vector{x, y, math.Round(entity.a.z)}] = true
-				}
-			}
-		}
-	}
 	for _, point := range tail[1:] {
-		blocked[beltCell(point)] = true
+		env.blocked[beltCell(point)] = true
 	}
-	env := &transportEnvironment{blocked: blocked, reserved: map[vector]map[*placed]bool{}, cache: map[transportPathCacheKey][]vector{}, minimum: vector{math.Floor(minimum.x) - 8, math.Floor(minimum.y) - 8, 0}, maximum: vector{math.Ceil(maximum.x) + 8, math.Ceil(maximum.y) + 8, transportMaxHeight}}
 	points, _ := env.findTransportPath(ctx, link.a, tail[0], link, nil, false)
 	if ctx.Err() != nil {
 		return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "配送副产物实体路由已取消或超时"}

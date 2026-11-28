@@ -17,6 +17,7 @@ interface RefreshScope {
   key: string
   unread: boolean
   list: boolean
+  more: boolean
   running: boolean
 }
 
@@ -24,8 +25,9 @@ const announcements = useAnnouncements()
 const panelOpen = ref(false)
 const announcementTab = ref(false)
 const unread = shallowRef<UnreadCount | null>(null)
-const inbox = shallowRef<InboxPage | null>(null)
-const requestedPage = ref(1)
+const inbox = shallowRef<Pick<InboxPage, 'page' | 'list'> | null>(null)
+const hasMore = ref(false)
+const moreError = ref('')
 const listLoading = ref(false)
 const listError = ref('')
 const actionError = ref('')
@@ -49,22 +51,35 @@ async function loadCount(current: RefreshScope): Promise<void> {
   }
 }
 
-async function loadPage(current: RefreshScope, page: number): Promise<void> {
+// 续载只读取下一批；刷新重读已经展示的范围，使新增、撤回及已读状态同步生效。
+async function loadInbox(current: RefreshScope, append: boolean): Promise<void> {
+  const previous = inbox.value
+  const last = previous?.page ?? 1
+  const first = append ? last + 1 : 1
+  const end = append ? first : last
+  const entries = new Map<string, InboxEntry>()
+  if (append) {
+    for (const entry of previous?.list ?? []) entries.set(entry.ID, entry)
+  }
   listLoading.value = true
   listError.value = ''
+  moreError.value = ''
   try {
-    const result = await fetchNotificationInbox(current.key, page)
-    if (!isCurrent(current) || requestedPage.value !== page) return
-    const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize))
-    if (page > lastPage) {
-      requestedPage.value = lastPage
-      current.list = panelOpen.value
-    } else {
-      inbox.value = result
+    for (let page = first; page <= end; page++) {
+      const result = await fetchNotificationInbox(current.key, page)
+      if (!isCurrent(current)) return
+      for (const entry of result.list) entries.set(entry.ID, entry)
+      const remaining = result.list.length > 0 && page * result.pageSize < result.total
+      if (!remaining || page === end) {
+        inbox.value = {page, list: [...entries.values()]}
+        hasMore.value = remaining
+        break
+      }
     }
   } catch (error) {
-    if (isCurrent(current) && requestedPage.value === page) {
-      listError.value = error instanceof Error ? error.message : String(error)
+    if (isCurrent(current)) {
+      const target = append ? moreError : listError
+      target.value = error instanceof Error ? error.message : String(error)
       void syncNotificationSession(current.key)
     }
   } finally {
@@ -76,14 +91,16 @@ async function loadPage(current: RefreshScope, page: number): Promise<void> {
 async function drain(current: RefreshScope): Promise<void> {
   current.running = true
   try {
-    while (isCurrent(current) && (current.unread || current.list)) {
+    while (isCurrent(current) && (current.unread || current.list || current.more)) {
       const count = current.unread
       const list = current.list && panelOpen.value
+      const append = current.more && panelOpen.value && !announcementTab.value
+      current.more = false
       current.unread = false
       current.list = false
       await Promise.all([
         count ? loadCount(current) : undefined,
-        list ? loadPage(current, requestedPage.value) : undefined,
+        list || append ? loadInbox(current, !list) : undefined,
       ])
     }
   } finally {
@@ -110,12 +127,13 @@ function flushAnnouncements(): void {
 // 说明：在账号引导前接收 Wails 事件；账号首次可用时补查，即使连接或事件先于界面初始化。
 export function installNotificationSync(): () => void {
   const disposeScope = watch(accountSessionKey, (key) => {
-    scope = key ? {key, unread: false, list: false, running: false} : undefined
+    scope = key ? {key, unread: false, list: false, more: false, running: false} : undefined
     unread.value = null
     inbox.value = null
     panelOpen.value = false
     announcementTab.value = false
-    requestedPage.value = 1
+    hasMore.value = false
+    moreError.value = ''
     listLoading.value = false
     listError.value = ''
     actionError.value = ''
@@ -141,7 +159,7 @@ export function installNotificationSync(): () => void {
         if (event === 'connected') {
           syncAnnouncement = true
           flushAnnouncements()
-          if (panelOpen.value && announcementTab.value) void announcements.loadHistory(announcements.historyPage.value)
+          if (panelOpen.value && announcementTab.value) void announcements.loadHistory()
         }
         if (event === 'connected' || event === 'notify:message' || event === 'notify:recall') refresh()
       })
@@ -171,12 +189,10 @@ export function useNotifications() {
     announcementTab.value = active
   }
 
-  function changePage(page: number): void {
-    if (page < 1 || !scope || page === requestedPage.value) return
-    requestedPage.value = page
-    inbox.value = null
-    actionError.value = ''
-    refresh(false, true)
+  function loadMore(): void {
+    if (!scope || !panelOpen.value || announcementTab.value || listLoading.value || !hasMore.value) return
+    scope.more = true
+    if (!scope.running) void drain(scope)
   }
 
   async function markRead(entry: InboxEntry): Promise<void> {
@@ -197,5 +213,5 @@ export function useNotifications() {
     }
   }
 
-  return {unreadCount, hasUnread, inbox, requestedPage, listLoading, listError, actionError, reading, setPanelOpen, setAnnouncementTab, changePage, markRead, refresh}
+  return {unreadCount, hasUnread, inbox, hasMore, moreError, listLoading, listError, actionError, reading, setPanelOpen, setAnnouncementTab, loadMore, markRead, refresh}
 }

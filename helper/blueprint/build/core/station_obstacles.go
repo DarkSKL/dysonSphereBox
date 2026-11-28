@@ -11,8 +11,24 @@ import (
 	"DysonSphereBox/helper/blueprint/build/placement"
 )
 
-// stationBuildingObstacles 职责：防止低层高架穿过熔炉、炼油厂等实体；使用：塔策略高架寻路；边界：以保守 1.2 米格距构建候选，不用原来的二维 footprint 代替建筑高度。
-func stationBuildingObstacles(ctx context.Context, existing []*placed) (map[vector]bool, error) {
+// newLocalTransportEnvironment 建立一次性副产物或自产剂接线环境。塔外部交付口可以扩大边界，各调用方再登记自己的尾链或未来端口。
+func newLocalTransportEnvironment(ctx context.Context, existing []*placed, end *vector) (*transportEnvironment, error) {
+	low, high := bounds(existing)
+	blocked, err := stationBuildingObstacles(ctx, existing, true)
+	if err != nil {
+		return nil, err
+	}
+	if end != nil {
+		low.x, low.y = math.Min(low.x, end.x), math.Min(low.y, end.y)
+		high.x, high.y = math.Max(high.x, end.x), math.Max(high.y, end.y)
+	}
+	return &transportEnvironment{blocked: blocked,
+		minimum: vector{math.Floor(low.x) - 8, math.Floor(low.y) - 8, 0},
+		maximum: vector{math.Ceil(high.x) + 8, math.Ceil(high.y) + 8, transportMaxHeight}}, nil
+}
+
+// stationBuildingObstacles 注册真实建筑盒。局部接线同时登记既有带和臂，全厂路由再按其精确布线策略登记运输占位。
+func stationBuildingObstacles(ctx context.Context, existing []*placed, includeTransport bool) (map[vector]bool, error) {
 	catalog, err := placement.LoadCatalog()
 	if err != nil {
 		return nil, &blueprint.Error{Code: "GEN_E_COLLISION_UNVERIFIED", Message: err.Error()}
@@ -24,7 +40,16 @@ func stationBuildingObstacles(ctx context.Context, existing []*placed) (map[vect
 		if ctx.Err() != nil {
 			return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "物流塔三维障碍登记已取消或超时"}
 		}
-		if surfaceIsBelt(p.record.ItemID) || p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
+		if surfaceIsBelt(p.record.ItemID) {
+			if includeTransport {
+				blocked[beltCell(p.a)] = true
+			}
+			continue
+		}
+		if p.record.ItemID >= 2011 && p.record.ItemID <= 2014 {
+			if includeTransport {
+				blockTransportInserter(blocked, p)
+			}
 			continue
 		}
 		shapes, err := catalog.Shapes(p.record.ItemID, p.record.ModelIndex)
@@ -55,4 +80,13 @@ func stationBuildingObstacles(ctx context.Context, existing []*placed) (map[vect
 		}
 	}
 	return blocked, nil
+}
+
+// blockTransportInserter 按分拣器两端的格网包络保留原离散臂通道。
+func blockTransportInserter(blocked map[vector]bool, arm *placed) {
+	for x := math.Floor(math.Min(arm.a.x, arm.b.x)); x <= math.Ceil(math.Max(arm.a.x, arm.b.x)); x++ {
+		for y := math.Floor(math.Min(arm.a.y, arm.b.y)); y <= math.Ceil(math.Max(arm.a.y, arm.b.y)); y++ {
+			blocked[vector{x, y, math.Round(arm.a.z)}] = true
+		}
+	}
 }

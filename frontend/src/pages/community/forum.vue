@@ -298,14 +298,6 @@ onDeactivated(() => {
 
           <template v-else-if="postDetail">
             <article class="editorial-article">
-              <div class="article-kicker">
-                <span class="cat-tag">
-                  <i class="cat-bar-mark" :class="categoryToneClass(postDetail.category)" aria-hidden="true" />
-                  <span>{{ postDetail.category?.name || '未分类' }}</span>
-                </span>
-                <span v-if="postDetail.category && !postDetail.category.enabled" class="disabled-cat-badge">原分类已停用</span>
-              </div>
-
               <h1 class="article-title">{{ postDetail.title }}</h1>
 
               <div class="article-meta">
@@ -331,6 +323,10 @@ onDeactivated(() => {
                   @report-resource="(res) => forum.openReport({targetType: 'resource', targetId: res.id, title: res.name || `资源 #${res.id}`})"
                 />
               </div>
+              <footer class="article-tags">
+                <n-tag size="small">{{ postDetail.category?.name || '未分类' }}</n-tag>
+                <n-tag v-if="postDetail.category && !postDetail.category.enabled" size="small" type="warning">原分类已停用</n-tag>
+              </footer>
             </article>
 
             <section class="editorial-replies" aria-label="回复列表">
@@ -405,18 +401,18 @@ onDeactivated(() => {
                 :min-height="140"
                 :disabled="replyDraft.submitting"
                 placeholder="输入回复内容（支持 Markdown 与最多 4 张图片）…"
-              />
-
-              <div class="composer-actions">
-                <n-button secondary size="small" :disabled="replyDraft.submitting" @click="forum.resetReplyDraft()">
-                  <template #icon><RotateCcw :size="14" /></template>
-                  清空草稿
-                </n-button>
-                <n-button type="primary" :loading="replyDraft.submitting" @click="forum.submitReply()">
-                  <template #icon><Send :size="14" /></template>
-                  {{ replyDraft.lastError ? '重试发送' : '发送回复' }}
-                </n-button>
-              </div>
+              >
+                <template #actions>
+                  <n-button secondary size="small" :disabled="replyDraft.submitting" @click="forum.resetReplyDraft()">
+                    <template #icon><RotateCcw :size="14" /></template>
+                    清空草稿
+                  </n-button>
+                  <n-button type="primary" size="small" :loading="replyDraft.submitting" @click="forum.submitReply()">
+                    <template #icon><Send :size="14" /></template>
+                    {{ replyDraft.lastError ? '重试发送' : '发送回复' }}
+                  </n-button>
+                </template>
+              </ForumEditor>
             </section>
           </template>
         </div>
@@ -982,21 +978,11 @@ onDeactivated(() => {
   padding-bottom: 28px;
 }
 
-.article-kicker {
+.article-tags {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.disabled-cat-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 3px;
-  background: var(--ds-warning-bg);
-  color: var(--ds-warning);
-  font-size: 11px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .article-title {
@@ -1140,13 +1126,6 @@ onDeactivated(() => {
 .composer-error {
   font-size: 12px;
   color: var(--ds-error);
-}
-
-.composer-actions {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 // =============== 发帖画布表单控件 ===============

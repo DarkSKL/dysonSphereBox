@@ -67,6 +67,15 @@ func (cache *denseIntegerEdgeCache) slot(first, second vector) (int, uint) {
 	return (az-lz)*cache.plane + (ay-ly)*cache.size[0] + ax - lx, shift
 }
 
+// integerEdgeDirection 将 slot 已核准的轴和走向映射为 0 到 5，正反查询可保持各自的浮点结果。
+func integerEdgeDirection(first, second vector, shift uint) uint32 {
+	direction := uint32(shift)
+	if first.x > second.x || first.y > second.y || first.z > second.z {
+		direction++
+	}
+	return direction
+}
+
 // store 职责：只覆盖目标边的两位静态状态；使用：原几何计算完成之后；边界：调用方保证slot有效且没有原生端口权限。
 func (cache *denseIntegerEdgeCache) store(slot int, shift uint, clear bool) {
 	state := byte(1)
