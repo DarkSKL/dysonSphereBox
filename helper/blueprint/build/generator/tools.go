@@ -121,6 +121,24 @@ func (t *toolset) PlanConnected(ctx context.Context, s *workflow.StepContext, ar
 	return workflow.Stage(s, t.keys.connected, specs)
 }
 
+// ConcentrateInputs 从本轮已选的就近入口规格派生集中入口。分行、列高、排序及窗口相同，布线与验收仍由下游逐候选执行。
+func (t *toolset) ConcentrateInputs(ctx context.Context, s *workflow.StepContext, _ emptyArgs) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	specs, err := workflow.Read(s, t.keys.connected)
+	if err != nil {
+		return err
+	}
+	for i := range specs {
+		if specs[i].InputGroup() != core.ConnectedNearbyInputs {
+			return fmt.Errorf("集中入口派生需要同一窗口的就近入口规格")
+		}
+		specs[i].LegacyInputs = true
+	}
+	return workflow.Stage(s, t.keys.connected, specs)
+}
+
 // AssembleConnected 职责：执行一个直连规格；使用：引擎布局候选内部；边界：不验证编码、不择优。
 func (t *toolset) AssembleConnected(ctx context.Context, s *workflow.StepContext, args indexArgs) error {
 	input, err := workflow.Read(s, t.keys.input)

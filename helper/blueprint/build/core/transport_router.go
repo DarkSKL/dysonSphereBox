@@ -314,6 +314,8 @@ func (b *builder) routeTransportRoutes(ctx context.Context, inputPositions []vec
 	}
 	incoming := map[*placed][]*placed{}
 	incomingCounts := map[*placed]int{}
+	cutCorners := b.denseSpatial && b.polarFrame != nil && usesDenseBeltCollisions(ctx)
+	var cornerCutChains [][]*placed
 	for _, p := range b.all {
 		if p.output != nil {
 			incomingCounts[p.output]++
@@ -467,6 +469,9 @@ func (b *builder) routeTransportRoutes(ctx context.Context, inputPositions []vec
 		}
 		previewBase := len(b.all)
 		path := b.byPath(points)
+		if cutCorners && len(path) >= 2*denseRouteCornerPortGuard+1 {
+			cornerCutChains = append(cornerCutChains, path)
+		}
 		for _, point := range path {
 			incomingCounts[point]++
 		}
@@ -512,6 +517,14 @@ func (b *builder) routeTransportRoutes(ctx context.Context, inputPositions []vec
 		reportProgress(ctx, "routing", "正在自动连接内部物料与外部入口", completed, total)
 	}
 	reportProgress(ctx, "routing-finalize", "正在核验全图接线并绑定共享物流链", 0, 0)
+	if len(cornerCutChains) > 0 {
+		if b.cutDenseRouteCorners(ctx, env, routes, cornerCutChains, incomingCounts) > 0 {
+			b.previewCheckpoint("routing")
+		}
+		if ctx.Err() != nil {
+			return &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "全图传送带寻路已取消或超时"}
+		}
+	}
 	inserterStatus := "passed"
 	inserterMessage := "机器单臂及逐物品过滤分支按实际跨度和已验证保守吞吐检查，不把带容量当作分拣器容量"
 	for _, check := range b.logistics.Checks {

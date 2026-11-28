@@ -113,6 +113,7 @@ func newRegistry(a artifacts) (*workflow.Registry, error) {
 		spec("surface.enumerate@1", "PlanSurface", one(a.transport.Ref()), one(a.surfaceSpecs.Ref()), core.DefaultSurfaceSearchOptions(), workflow.Transform),
 		spec("surface.prepare@1", "ApplySurface", []workflow.Artifact{a.transport.Ref(), a.surfaceSpecs.Ref()}, one(a.input.Ref()), indexArgs{}, workflow.Transform),
 		spec("connected.enumerate@1", "PlanConnected", one(a.input.Ref()), one(a.connected.Ref()), core.DefaultConnectedSearchOptions(), workflow.Transform),
+		spec("connected.concentrate-inputs@1", "ConcentrateInputs", one(a.connected.Ref()), one(a.connected.Ref()), emptyArgs{}, workflow.Transform),
 		spec("connected.assemble@1", "AssembleConnected", []workflow.Artifact{a.input.Ref(), a.connected.Ref()}, []workflow.Artifact{a.choice.Ref(), a.geometryStages.assembly.Ref()}, indexArgs{}, workflow.Transform),
 		spec("station.enumerate@1", "PlanStation", one(a.input.Ref()), one(a.station.Ref()), core.DefaultStationSearchOptions(), workflow.Transform),
 		spec("station.assemble@1", "AssembleStation", []workflow.Artifact{a.input.Ref(), a.station.Ref()}, []workflow.Artifact{a.choice.Ref(), a.geometryStages.assembly.Ref()}, indexArgs{}, workflow.Transform),

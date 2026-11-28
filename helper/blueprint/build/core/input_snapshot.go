@@ -29,8 +29,12 @@ type PreparedInput struct {
 	checks   []LogisticsCheck
 	// fingerprint 职责：标识规范输入内容；使用：实例可追踪身份；边界：方案与工具版本由调用层另行组合。
 	fingerprint string
+	// flowFactID 绑定已核验的生产输入、数据集与流图；运输升档和地理子分支沿用同一份物料来源。
+	flowFactID string
 	// bytes 职责：保守估计快照保留空间；使用：任务内存预算；边界：不代表进程 RSS。
 	bytes int64
+	// factBytes 是同一数据集和守恒图的保守大小，运输或地理分支沿用已冻结的事实。
+	factBytes int64
 	// nativeWorkload 职责：记录原生坐标选择使用的实际工作量估计；使用：显式领域事实查询；边界：不修改制造设备数量。
 	nativeWorkload int
 	// geometry 职责：保存当前显式球面规格；使用：跨步骤重建算法上下文；边界：不持有context或调度器。

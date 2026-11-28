@@ -307,7 +307,8 @@ func EnumerateDistributorCandidates(ctx context.Context, input *PreparedInput, o
 		if err != nil {
 			return nil, err
 		}
-		detached := !recycle && !b.setting.EnableIntermediateBuffer && !needsByproductPriority(req.Plan, b.flowGraph, dataset)
+		detached := distributorDetachedSurfaceSupported(req) && !recycle &&
+			!b.setting.EnableIntermediateBuffer && !needsByproductPriority(req.Plan, b.flowGraph, dataset)
 		street := b.hasDenseFlyStreet(req, dataset)
 		strategies := options.Dense
 		if denseNativeLatitude(req) {
@@ -511,7 +512,16 @@ func validateDistributorSpec(input *PreparedInput, spec DistributorCandidateSpec
 	} else if input.request.Density != densityDense {
 		return distributorSpecError("密铺规格与输入密度不符")
 	}
+	if spec.Topology == DistributorDenseDetached && !distributorDetachedSurfaceSupported(input.request) {
+		return &blueprint.Error{Code: "GEN_E_SURFACE", Message: "分离式配送没有固定的原生单元坐标，无法用于原生窗口"}
+	}
 	return nil
+}
+
+// distributorDetachedSurfaceSupported 职责：在试装前排除要求固定原生坐标的窗口；使用：分离式配送各策略的共同资格。
+// 边界：分离式装配在平面全场布线且不建立 polarFrame，原生窗口的编码必须读取该框架；原来的平面、严格单带和原生子环仍进入各自校验。
+func distributorDetachedSurfaceSupported(req Request) bool {
+	return req.SurfaceLayout == nil || !req.SurfaceLayout.polarRoot
 }
 
 // newDistributorAssembly 职责：应用唯一规格并创建短时装配内存；使用：单次求解与局部测量共用；边界：禁用历史获胜者剪枝，不共享可变实体。

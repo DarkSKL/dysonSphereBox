@@ -58,7 +58,9 @@ type denseRoutePortIndex struct {
 	edges     map[[2]vector]bool
 	// integerEdges 职责：缓存实际边界内无权限整数邻边；使用：避免稀疏缓存饱和后重复实算；边界：动态节点及原生端口权限始终独立判断。
 	integerEdges *denseIntegerEdgeCache
-	registered   map[*placed]bool
+	// beltSpanCache 职责：复用同一已登记带段快照的整数邻边查询；使用：全局路由的严格带段区；边界：与静态缓存分离，当前索引的坐标框架和边界在查询阶段固定。
+	beltSpanCache *denseBeltSpanCache
+	registered    map[*placed]bool
 	// staticQuery/beltQuery 职责：分别去重静态盒与动态带段的宽相位结果；使用：串行路由查询；边界：两阶段独立，不缓存动态碰撞结论。
 	staticQuery, beltQuery collisionQueryMarks
 }
@@ -191,9 +193,14 @@ func (index *denseRoutePortIndex) addBeltSpan(p *placed) {
 
 // beltSpanClear 职责：拒绝普通布局及密铺接口区的独立带段交叉；使用：低轨接驳及整数寻路；边界：共同端点由节点身份/连通性检查处理，静态净空另行检查。
 func (index *denseRoutePortIndex) beltSpanClear(first, second vector) bool {
-	if !index.strictBelts && !index.boundarySegment(first, second) {
+	if len(index.belts) == 0 || !index.strictBelts && !index.boundarySegment(first, second) {
 		return true
 	}
+	return index.indexedBeltSpanClear(first, second)
+}
+
+// indexedBeltSpanClear 职责：对当前已登记带段执行精确宽窄相位；使用：规则生效且有带段时；边界：保留原遍历顺序、端点豁免和浮点比较。
+func (index *denseRoutePortIndex) indexedBeltSpanClear(first, second vector) bool {
 	a, c := index.world(first), index.world(second)
 	candidate := beltPackingShape(a, c)
 	index.beltQuery.begin(len(index.belts))
@@ -267,7 +274,7 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 		slot, shift = index.integerEdges.slot(first, second)
 		if slot >= 0 {
 			if state := index.integerEdges.states[slot] >> shift & 3; state != 0 {
-				return state == 2 && index.beltSpanClear(first, second)
+				return state == 2 && index.cachedBeltSpanClear(first, second, slot, shift)
 			}
 		}
 	}
@@ -322,12 +329,12 @@ func (index *denseRoutePortIndex) spanClearWithLinks(first, second vector, links
 		})
 	}
 	// 只缓存静态几何，正反方向共用一个键；大场景达到上限后继续实算，不膨胀为整个三维搜索空间的永久副本。
-	if len(links) == 0 {
-		if slot >= 0 {
-			index.integerEdges.store(slot, shift, clear)
-		} else if len(index.edges) < 131072 {
-			index.edges[key] = clear
-		}
+	if slot >= 0 {
+		index.integerEdges.store(slot, shift, clear)
+		return clear && index.cachedBeltSpanClear(first, second, slot, shift)
+	}
+	if len(links) == 0 && len(index.edges) < 131072 {
+		index.edges[key] = clear
 	}
 	return clear && index.beltSpanClear(first, second)
 }

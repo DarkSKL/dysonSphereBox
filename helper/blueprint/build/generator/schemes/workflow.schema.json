@@ -231,6 +231,35 @@
               "type": "string"
             },
             "tool": {
+              "const": "connected.concentrate-inputs@1"
+            },
+            "with": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {},
+                  "type": "object"
+                },
+                {
+                  "$ref": "#/$defs/reference"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
               "const": "connected.enumerate@1"
             },
             "with": {

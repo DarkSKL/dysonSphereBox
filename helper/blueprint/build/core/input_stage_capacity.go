@@ -25,7 +25,7 @@ func ValidateInputProductionCapacity(ctx context.Context, production *Production
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if err := validateProductionCapacity(p, dataset, production.request.Setting); err != nil {
+		if err := validateProductionCapacity(p, dataset); err != nil {
 			return nil, inputStageCause(ctx, err)
 		}
 		recipe, err := datasetRecipeForProduction(dataset, p)

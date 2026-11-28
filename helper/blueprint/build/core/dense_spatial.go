@@ -230,6 +230,32 @@ func (b *builder) denseSpatialContour(ctx context.Context, unit denseSpatialUnit
 
 // placeDenseSpatialUnits 职责：全场搜索实体交错位置和四向姿态；使用：普通与密铺模式共同空间装配；边界：候选的密度规则独立于搜索范围，最终几何仍须通过完整校验。
 func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpatialUnit, heightLimit float64) error {
+	restore := preserveIndependentStationPacking(ctx, units)
+	stationBlocked, err := b.packDenseSpatialUnits(ctx, units, heightLimit, false)
+	if err != nil {
+		if restore == nil {
+			return err
+		}
+		restore()
+		if !stationBlocked {
+			return err
+		}
+		if _, retryErr := b.packDenseSpatialUnits(ctx, units, heightLimit, true); retryErr != nil {
+			restore()
+			return retryErr
+		}
+	}
+	if b.logistics != nil {
+		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-global-occupancy", Status: "passed", Message: "使用全场实体轮廓与四向姿态搜索，取消产线矩形独占和固定行列间隔；局部空隙可交错利用，全部跨线运输仍需统一布线与最终检查"})
+	}
+	return nil
+}
+
+// packDenseSpatialUnits 职责：执行一轮全场几何落位；使用：默认装箱及独立塔经向净距重试；边界：仅后续独立塔无可用落点时请求重试。
+func (b *builder) packDenseSpatialUnits(ctx context.Context, units []denseSpatialUnit, heightLimit float64, extendStationLongitude bool) (stationBlocked bool, err error) {
+	if len(units) == 0 {
+		return false, nil
+	}
 	heightLimit = denseLatitudeHeightLimit(ctx, heightLimit)
 	if math.IsInf(heightLimit, 1) {
 		// 普通平面请求以无限高表示不分栏；轮廓搜索必须先转换为有限格数，否则转int会把可搜索行压成零。
@@ -280,7 +306,16 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 	packing := &packingIndex{dense: b.policy == nil || b.policy.density == densityDense, cells: map[[3]int][]int{}}
 	placedEntities := map[*placed]bool{}
 	placedStations := []*placed{}
+	scorePacking := b.policy.shape.packingCost
+	if extendStationLongitude {
+		// 重试以少占地为先，接线距离仍用于同面积裁决，物理比例由原终检确认。
+		scorePacking = func(area, _, _ float64) float64 { return area }
+	}
 	for number, unit := range ordered {
+		stationClearance := 0
+		if extendStationLongitude {
+			stationClearance = stationPackingLongitudeExtra(unit, placedStations)
+		}
 		wires := b.denseSpatialUnitWires(unit, placedEntities)
 		bestArea, bestWire, bestAspect := math.Inf(1), math.Inf(1), math.Inf(1)
 		bestScore := math.Inf(1)
@@ -291,7 +326,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 			contour, err := b.denseSpatialContour(ctx, unit, turns)
 			if err != nil {
 				rotatePlacedQuarter(unit.entities, 4-turns)
-				return err
+				return false, err
 			}
 			low, high := bounds(unit.entities)
 			width, height := math.Ceil(high.x)-math.Floor(low.x)+1, math.Ceil(high.y)-math.Floor(low.y)+1
@@ -306,6 +341,10 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 			}
 			maxX, maxY := int(math.Ceil(packing.high.x)+1), max(0, int(math.Max(heightLimit, height)-height))
 			maxWidth := math.Max(widthLimit, math.Max(packing.high.x, width))
+			if stationClearance > 0 {
+				maxX += stationClearance
+				maxWidth = math.Max(maxWidth, float64(maxX)+width)
+			}
 			if !packing.ready {
 				maxX, maxY = 0, 0
 			}
@@ -325,7 +364,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 					attempts++
 					if err := b.checkGeneration("全场实体密铺位置搜索"); err != nil {
 						rotatePlacedQuarter(unit.entities, 4-turns)
-						return err
+						return false, err
 					}
 					dx, dy := float64(x)-math.Floor(low.x), float64(y)-math.Floor(low.y)
 					xHigh, yHigh := math.Max(packing.high.x, float64(x)+width), math.Max(packing.high.y, float64(y)+height)
@@ -339,7 +378,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 					if b.denseSpatialOrder >= 2 {
 						weightedWire = wire
 					}
-					score := b.policy.shape.packingCost(area, aspect, weightedWire)
+					score := scorePacking(area, aspect, weightedWire)
 					if score > bestScore || score == bestScore && (area > bestArea || area == bestArea && (wire > bestWire || wire == bestWire && aspect >= bestAspect)) {
 						continue
 					}
@@ -356,7 +395,8 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 		}
 		if bestTurns < 0 {
 			low, high := bounds(unit.entities)
-			return &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: fmt.Sprintf("全场密铺在本次空间预算内未找到可接线的实体位置（单元%d/%d，实体%d，宽高%.2f/%.2f，预算%.2f/%.2f）", number+1, len(ordered), len(unit.entities), high.x-low.x+1, high.y-low.y+1, widthLimit, heightLimit)}
+			stationBlocked := !extendStationLongitude && stationPackingLongitudeExtra(unit, placedStations) > 0
+			return stationBlocked, &blueprint.Error{Code: "GEN_E_DENSITY_LAYOUT", Message: fmt.Sprintf("全场密铺在本次空间预算内未找到可接线的实体位置（单元%d/%d，实体%d，宽高%.2f/%.2f，预算%.2f/%.2f）", number+1, len(ordered), len(unit.entities), high.x-low.x+1, high.y-low.y+1, widthLimit, heightLimit)}
 		}
 		if b.denseRefine && packing.ready {
 			rotatePlacedQuarter(unit.entities, bestTurns)
@@ -365,7 +405,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 			for iy := -4; iy <= 4; iy++ {
 				for ix := -4; ix <= 4; ix++ {
 					if err := b.checkGeneration("密铺四分之一格微调"); err != nil {
-						return err
+						return false, err
 					}
 					dx, dy := baseX+float64(ix)/4, baseY+float64(iy)/4
 					if low.x+dx < 0 || low.y+dy < 0 {
@@ -382,7 +422,7 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 					if b.denseSpatialOrder >= 2 {
 						weightedWire = wire
 					}
-					score := b.policy.shape.packingCost(area, aspect, weightedWire)
+					score := scorePacking(area, aspect, weightedWire)
 					if score > bestScore || score == bestScore && (area > bestArea || area == bestArea && wire >= bestWire) {
 						continue
 					}
@@ -412,11 +452,8 @@ func (b *builder) placeDenseSpatialUnits(ctx context.Context, units []denseSpati
 	}
 	if enabled, _ := ctx.Value(denseSpatialCompactKey{}).(bool); enabled {
 		if err := b.compactDenseSpatialUnits(ctx, ordered, heightLimit); err != nil {
-			return err
+			return false, err
 		}
 	}
-	if b.logistics != nil {
-		b.logistics.Checks = append(b.logistics.Checks, LogisticsCheck{RuleID: "dense-global-occupancy", Status: "passed", Message: "使用全场实体轮廓与四向姿态搜索，取消产线矩形独占和固定行列间隔；局部空隙可交错利用，全部跨线运输仍需统一布线与最终检查"})
-	}
-	return nil
+	return false, nil
 }

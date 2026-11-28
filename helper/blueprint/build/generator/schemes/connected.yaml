@@ -100,10 +100,8 @@ subflows:
               tool: factory.check-candidate-shape@1
           fallback:
             - id: concentrated-specs
-              tool: connected.enumerate@1
-              with: {inputGroups: [concentrated]}
-            - id: concentrated-window
-              tool: connected.window@1
+              # 入口位置到布线才生效，直接沿用就近组同一表面和窗口的布局规格。
+              tool: connected.concentrate-inputs@1
             - id: concentrated-attempts
               candidates:
                 # layout 在完整候选间比较形状、设施和线路等指标。parallel 是本组并发上限，实际并发还受任务限制。

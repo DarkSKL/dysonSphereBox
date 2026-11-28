@@ -22,7 +22,7 @@ func ComposePreparedInput(ctx context.Context, flow *InputFlowFacts, capacity *P
 		return nil, err
 	}
 	result := &PreparedInput{request: plan.request, requestedSetting: newFinalizationCloner().buildSetting(plan.production.facts.source.request.Setting), dataset: plan.dataset, graph: flow.graph, policy: plan.policy,
-		checks: append([]LogisticsCheck(nil), newLogisticsSummary(*flow.graph, plan.request.Setting).Checks...), nativeWorkload: workload.workload}
+		checks: append([]LogisticsCheck(nil), newLogisticsSummary(*flow.graph, plan.request.Setting).Checks...), nativeWorkload: workload.workload, flowFactID: flow.fingerprint}
 	if err := completePreparedInputIdentity(ctx, result); err != nil {
 		return nil, err
 	}
@@ -83,20 +83,23 @@ func completePreparedInputIdentity(ctx context.Context, input *PreparedInput) er
 	if err != nil {
 		return inputStageCause(ctx, err)
 	}
-	data, err := json.Marshal(input.dataset)
-	if err != nil {
-		return inputStageCause(ctx, err)
-	}
-	graph, err := json.Marshal(input.graph)
-	if err != nil {
-		return inputStageCause(ctx, err)
+	if input.factBytes == 0 {
+		data, err := json.Marshal(input.dataset)
+		if err != nil {
+			return inputStageCause(ctx, err)
+		}
+		graph, err := json.Marshal(input.graph)
+		if err != nil {
+			return inputStageCause(ctx, err)
+		}
+		input.factBytes = 4 * (int64(len(data)) + int64(len(graph)))
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	digest := sha256.Sum256(canonical)
 	input.fingerprint = hex.EncodeToString(digest[:])
-	input.bytes = int64(len(canonical)+len(data)+len(graph))*4 + 4096
+	input.bytes = int64(len(canonical))*4 + input.factBytes + 4096
 	return nil
 }
 

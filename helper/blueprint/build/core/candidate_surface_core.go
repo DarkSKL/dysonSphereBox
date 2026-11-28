@@ -257,7 +257,7 @@ func EnumerateSurfaceCandidates(ctx context.Context, input *PreparedInput, optio
 	return result, nil
 }
 
-// PrepareSurfaceCandidate 职责：把一个合法规格应用为新的不可变领域输入；使用：候选工作区的输入步骤；边界：不共享可变请求，不运行生成，不持有父步骤context。
+// PrepareSurfaceCandidate 为已验证的输入派生地理分支。产线和配置来自封闭只读的父快照，各分支独立持有其改写的选区。
 func PrepareSurfaceCandidate(ctx context.Context, input *PreparedInput, spec SurfaceCandidateSpec) (*PreparedInput, error) {
 	if input == nil {
 		return nil, fmt.Errorf("缺少规范生成输入")
@@ -308,21 +308,20 @@ func PrepareSurfaceCandidate(ctx context.Context, input *PreparedInput, spec Sur
 	if !valid {
 		return nil, fmt.Errorf("球面候选规格不属于请求许可的网格或方向")
 	}
-	request, err := cloneInputRequest(input.request)
-	if err != nil {
-		return nil, err
-	}
-	if request.SurfaceLayout != nil {
-		request.SurfaceLayout.ExpandAdjacent = spec.ExpandAdjacent
-		request.SurfaceLayout.adjacentDepth = spec.AdjacentDepth
-		request.SurfaceLayout.offsetWindow = spec.OffsetWindow
-		request.SurfaceLayout.nativeBand = nil
-		request.SurfaceLayout.polarRoot = spec.Strategy == "native-window"
+	request := input.request
+	if parent := request.SurfaceLayout; parent != nil {
+		layout := *parent
+		layout.ExpandAdjacent = spec.ExpandAdjacent
+		layout.adjacentDepth = spec.AdjacentDepth
+		layout.offsetWindow = spec.OffsetWindow
+		layout.nativeBand = nil
+		layout.polarRoot = spec.Strategy == "native-window"
 		if spec.Strategy == "native-band" {
 			band := surfacePackedBand{low: spec.BandLow, high: spec.BandHigh, segments: spec.BandSegments}
-			request.SurfaceLayout.nativeBand = &band
-			request.SurfaceLayout.LatitudeGridIndex = bandCenter(band)
+			layout.nativeBand = &band
+			layout.LatitudeGridIndex = bandCenter(band)
 		}
+		request.SurfaceLayout = &layout
 	}
 	result := *input
 	result.request, result.geometry = request, spec
@@ -341,6 +340,7 @@ func PrepareSurfaceCandidate(ctx context.Context, input *PreparedInput, spec Sur
 
 // algorithmContext 职责：从显式领域选项恢复一次调用的几何参数；使用：每个枚举和单次求解的入口；边界：仅派生当前ctx，不延长寿命、不调度、不跨步骤保存句柄。
 func (input *PreparedInput) algorithmContext(ctx context.Context) context.Context {
+	ctx = context.WithValue(ctx, transportRowSourceKey{}, input)
 	ctx = context.WithValue(ctx, denseCollisionKey{}, input.request.Density == densityDense)
 	ctx = context.WithValue(ctx, denseNativeWorkloadKey{}, input.nativeWorkload)
 	if input.request.SurfaceLayout != nil {

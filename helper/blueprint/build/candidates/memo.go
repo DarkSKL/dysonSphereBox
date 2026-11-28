@@ -37,6 +37,11 @@ func NewMemo[V any](limit int) *Memo[V] {
 
 // Do 职责：复用相同状态的完整成功结果；使用：指纹已包含全部语义输入时；边界：执行者失败后等待者重新执行，任一调用取消都不取消其他调用。
 func (m *Memo[V]) Do(ctx context.Context, key [32]byte, work func() (V, error)) (V, error) {
+	return m.DoRetaining(ctx, key, work, nil)
+}
+
+// DoRetaining 合并同键在途计算；keep 只决定成功值是否继续驻留，超出大小的值仍交付当前调用方。
+func (m *Memo[V]) DoRetaining(ctx context.Context, key [32]byte, work func() (V, error), keep func(V) bool) (V, error) {
 	var zero V
 	m.mutex.Lock()
 	m.counts.Requested++
@@ -81,9 +86,10 @@ func (m *Memo[V]) Do(ctx context.Context, key [32]byte, work func() (V, error)) 
 		if err == nil {
 			err = ctx.Err()
 		}
+		retain := err == nil && (keep == nil || keep(value))
 		m.mutex.Lock()
 		current.value, current.err = value, err
-		if err != nil {
+		if !retain {
 			delete(m.entries, key)
 		}
 		close(current.done)

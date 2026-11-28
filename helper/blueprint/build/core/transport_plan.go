@@ -68,13 +68,6 @@ func (route *transportRoute) transportSource() *placed {
 	return route.start
 }
 
-// rowFlow 职责：记录某机器行尚未分配的物料；使用：稳定贪心配对；边界：只消耗当前规范节点内的供需。
-type rowFlow struct {
-	row       *transportRow
-	remaining float64
-	role      productionInputRole
-}
-
 // newLogisticsSummary 职责：创建所有模式共用的诊断口径；使用：规范流图建立后；边界：带等级来自归一化设置而非旧 BeltSpeed。
 func newLogisticsSummary(graph quant.FlowGraph, setting Setting) *LogisticsSummary {
 	capacity, _ := transport.BeltCapacityPerMinute(setting.BeltLv)
@@ -84,20 +77,16 @@ func newLogisticsSummary(graph quant.FlowGraph, setting Setting) *LogisticsSumma
 // planTransportRows 职责：按统一容量拆机器行并把每条供需边分配给实际行；使用：mode 1；边界：保留所有边、循环和副产物，不静默补供或减量。
 func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *quant.Dataset) ([]*transportRow, error) {
 	rows := []*transportRow{}
-	byOwner := map[int][]*transportRow{}
-	nodeOwner := map[string]int{}
-	for _, node := range b.flowGraph.Nodes {
-		if node.Kind == "production" {
-			nodeOwner[node.ID] = node.ProductionIndex
-		}
-	}
+	verified := b.verifiedRowSource(ctx, req, dataset)
 	for _, owner := range b.flowGraph.ProductionOrder {
 		if ctx.Err() != nil {
 			return nil, &blueprint.Error{Code: "GEN_E_TIMEOUT", Message: "物料端口规划已取消或超时"}
 		}
 		p := req.Plan.Productions[owner]
-		if err := validateProductionCapacity(p, dataset, b.setting); err != nil {
-			return nil, err
+		if verified == nil {
+			if err := validateProductionCapacity(p, dataset); err != nil {
+				return nil, err
+			}
 		}
 		ri, exists := dataset.RecipeByID[p.RecipeID]
 		if !exists || p.MachineCount <= 0 || p.MachineCount > 10000 || p.IncreaseLv < 0 || p.IncreaseLv > 3 {
@@ -143,99 +132,23 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 		// 分拣器在机器行内按真实空槽并联和堆叠高度规划，不能在实体方案形成前按旧单臂布局拒绝。
 		for _, count := range counts {
 			row := &transportRow{owner: owner, count: count, info: p, recipe: r, inputs: map[int]*placed{}, inputStubs: map[int][]*placed{}}
-			rows, byOwner[owner] = append(rows, row), append(byOwner[owner], row)
+			rows = append(rows, row)
 		}
 	}
-	supplies, demands := map[string]map[int][]*rowFlow{}, map[string]map[int][]*rowFlow{}
-	for node, owner := range nodeOwner {
-		supplies[node], demands[node] = map[int][]*rowFlow{}, map[int][]*rowFlow{}
-		for _, row := range byOwner[owner] {
-			share := float64(row.count) / float64(row.info.MachineCount)
-			for _, rate := range row.info.Outputs {
-				supplies[node][rate.ItemID] = append(supplies[node][rate.ItemID], &rowFlow{row: row, remaining: rate.RatePerMinute * share})
-			}
-			for _, rate := range row.info.Inputs {
-				if req.Mode != 1 && b.directBoundaryUnits == nil {
-					demands[node][rate.ItemID] = append(demands[node][rate.ItemID], &rowFlow{row: row, remaining: rate.RatePerMinute * share})
-					continue
-				}
-				for _, role := range []productionInputRole{recipeInputRole, sprayInputRole} {
-					part, err := productionRoleInputRate(row.info, row.recipe, rate.ItemID, role)
-					if err != nil {
-						return nil, err
-					}
-					if part > 0 {
-						demands[node][rate.ItemID] = append(demands[node][rate.ItemID], &rowFlow{row: row, remaining: part * share, role: role})
-					}
-				}
-			}
-		}
+	allocations, err := b.allocateTransportRows(ctx, req, dataset, rows)
+	if err != nil {
+		return nil, err
 	}
-	capacity := b.logistics.BeltCapacityPerMinute
-	for _, edge := range b.flowGraph.Edges {
-		left := edge.RatePerMinute
-		from, hasFrom := supplies[edge.SourceNodeID]
-		to, hasTo := demands[edge.TargetNodeID]
-		for left > max(1e-8, edge.RatePerMinute*1e-10) {
-			part := math.Min(left, capacity)
-			if (!hasFrom || !hasTo) && b.directBoundaryUnits != nil && b.directBoundaryLaneLimit > 0 {
-				part = math.Min(part, b.directBoundaryLaneLimit)
-			}
-			var source, target *rowFlow
-			if hasFrom {
-				source = nextRowFlow(from[edge.ItemID])
-				if source == nil {
-					return nil, transportAllocationError(edge, left, "生产输出端口不足")
-				}
-				part = math.Min(part, source.remaining)
-			}
-			if hasTo {
-				target = nextRowFlow(to[edge.ItemID])
-				if target == nil {
-					return nil, transportAllocationError(edge, left, "消费输入端口不足")
-				}
-				part = math.Min(part, target.remaining)
-			}
-			route := &transportRoute{edge: edge, rate: part}
-			if source != nil {
-				route.from = source.row
-				source.row.outputs = append(source.row.outputs, route)
-				source.remaining = math.Max(0, source.remaining-part)
-			}
-			if target != nil {
-				route.to = target.row
-				route.inputRole = target.role
-				target.remaining = math.Max(0, target.remaining-part)
-			}
-			b.transportRoutes = append(b.transportRoutes, route)
-			left = math.Max(0, left-part)
+	for _, part := range allocations {
+		route := &transportRoute{edge: b.flowGraph.Edges[part.edge], rate: part.rate, inputRole: part.role}
+		if part.from >= 0 {
+			route.from = rows[part.from]
+			route.from.outputs = append(route.from.outputs, route)
 		}
-	}
-	for _, row := range rows {
-		type inputKey struct {
-			item int
-			role productionInputRole
+		if part.to >= 0 {
+			route.to = rows[part.to]
 		}
-		inputRates := map[inputKey]float64{}
-		outputRates := map[int]float64{}
-		for _, route := range b.transportRoutes {
-			if route.to == row {
-				inputRates[inputKey{route.edge.ItemID, route.inputRole}] += route.rate
-			}
-			if route.from == row {
-				outputRates[route.edge.ItemID] += route.rate
-			}
-		}
-		for key, rate := range inputRates {
-			if rate > capacity+1e-6 {
-				return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行 %d 物品 %d 的独立输入用途汇入 %.3f/min，超过输入带容量 %.3f/min", row.owner, key.item, rate, capacity)}
-			}
-		}
-		for _, item := range row.recipe.Results {
-			if rate := outputRates[item]; rate > capacity+1e-6 {
-				return nil, &blueprint.Error{Code: "GEN_E_PORT_CAPACITY", Message: fmt.Sprintf("机器行 %d 产物 %d 独立输出 %.3f/min，超过单带容量 %.3f/min", row.owner, item, rate, capacity)}
-			}
-		}
+		b.transportRoutes = append(b.transportRoutes, route)
 	}
 	if err := b.planDenseMaterialNetworks(ctx, rows); err != nil {
 		return nil, err
@@ -244,7 +157,7 @@ func (b *builder) planTransportRows(ctx context.Context, req Request, dataset *q
 }
 
 // validateProductionCapacity 职责：拒绝量化取整后机器总能力不足的陈旧方案；使用：mode1 端口规划前；边界：不修改量化机器数，浮点误差按统一容差处理。
-func validateProductionCapacity(p quant.Production, dataset *quant.Dataset, setting Setting) error {
+func validateProductionCapacity(p quant.Production, dataset *quant.Dataset) error {
 	if err := quant.VerifyProductionCapacity(dataset, p); err != nil {
 		return &blueprint.Error{Code: "GEN_E_PLAN_STALE", Message: err.Error()}
 	}
@@ -291,16 +204,6 @@ func validateProductionCapacity(p quant.Production, dataset *quant.Dataset, sett
 
 // finitePositive 职责：检查量化流量为有限正数；使用：生成前快照校验；边界：不改变量化值或补造流量。
 func finitePositive(v float64) bool { return v > 0 && !math.IsNaN(v) && !math.IsInf(v, 0) }
-
-// nextRowFlow 职责：按机器行稳定顺序选择仍有容量的端口；使用：供需贪心；边界：只忽略浮点舍入残差。
-func nextRowFlow(flows []*rowFlow) *rowFlow {
-	for _, flow := range flows {
-		if flow.remaining > 1e-8 {
-			return flow
-		}
-	}
-	return nil
-}
 
 // transportAllocationError 职责：为端口分配失败补充物料和边信息；使用：流量规划失败；边界：不得返回已装配的局部结果。
 func transportAllocationError(edge quant.FlowEdge, rate float64, reason string) error {

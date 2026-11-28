@@ -17,11 +17,14 @@ type candidateRegistry struct {
 	mutex  sync.Mutex
 	stages map[string]candidates.Stage
 	rules  *candidates.Memo[finalRuleProof]
+	// rowAllocations 在同源流图上按实际分行与带容量共享不可变的供需份额。
+	rowAllocations *candidates.Memo[[]transportRowAllocation]
 }
 
 // newCandidateRegistry 职责：创建有界请求注册表；使用：Generate唯一入口；边界：私有实例不存储完整蓝图。
 func newCandidateRegistry() *candidateRegistry {
-	return &candidateRegistry{stages: map[string]candidates.Stage{}, rules: candidates.NewMemo[finalRuleProof](128)}
+	return &candidateRegistry{stages: map[string]candidates.Stage{}, rules: candidates.NewMemo[finalRuleProof](128),
+		rowAllocations: candidates.NewMemo[[]transportRowAllocation](16)}
 }
 
 // recordCandidatePlans 职责：统一登记规范化效果；使用：所有模式候选列表生成后；边界：独立测试未提供注册表时不改变行为。
@@ -46,6 +49,11 @@ func (r *candidateRegistry) snapshot() candidates.Report {
 	out := candidates.Report{Stages: []candidates.Stage{}, FinalRules: r.rules.Counts()}
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+	if work := r.rowAllocations.Counts(); work.Executed+work.Reused > 0 {
+		stage := candidates.Stage{Scope: "transport-row-allocation", Proposed: work.Executed + work.Reused, Unique: work.Executed, Skipped: work.Reused}
+		out.Stages = append(out.Stages, stage)
+		out.Proposed, out.Unique, out.Skipped = stage.Proposed, stage.Unique, stage.Skipped
+	}
 	for _, s := range r.stages {
 		out.Stages = append(out.Stages, s)
 		out.Proposed += s.Proposed
